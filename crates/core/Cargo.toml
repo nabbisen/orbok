@@ -1,16 +1,16 @@
 [package]
-name = "orbok-core"
+name        = "orbok-core"
 description = "orbok shared vocabulary: identifiers, data lifecycle classes, status enums, errors"
-readme = "../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
-serde = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-time = { workspace = true }
+serde                       = { workspace = true }
+thiserror                   = { workspace = true }
+uuid                        = { workspace = true }
+time                        = { workspace = true }

@@ -1,28 +1,30 @@
 [package]
-name = "orbok-extract"
+name        = "orbok-extract"
 description = "orbok document extraction pipeline: extractor trait, normalization, text/markdown/pdf/docx/html extractors (RFC-005, RFC-044)"
-readme = "../../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
-orbok-core = { workspace = true }
+orbok-core                  = { workspace = true }
 # orbok-db intentionally removed from [dependencies] (RFC-044 §14.6):
 # chunker now outputs ExtractedChunk; the pipeline layer maps to ChunkSpec.
-orbok-fs = { workspace = true }
-lopdf = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
-zip = { workspace = true }
+orbok-fs                    = { workspace = true }
+
+lopdf                       = { workspace = true }
+serde                       = { workspace = true }
+tracing                     = { workspace = true }
+zip                         = { workspace = true }
 
 [dev-dependencies]
 # orbok-db kept in dev-deps until v07_features tests migrate to orbok-models.
-orbok-db = { path = "../../data/db" }
-orbok-embed = { path = "../../search/embed" }
-orbok-models = { path = "../../search/models" }
-sha2 = { workspace = true }
-tempfile = { workspace = true }
+orbok-db                    = { path = "../../data/db" }
+orbok-embed                 = { path = "../../search/embed" }
+orbok-models                = { path = "../../search/models" }
+
+sha2                        = { workspace = true }
+tempfile                    = { workspace = true }

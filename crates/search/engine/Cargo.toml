@@ -1,23 +1,25 @@
 [package]
-name = "orbok-search"
+name        = "orbok-search"
 description = "orbok retrieval: keyword search engine trait and FTS5 implementation (RFC-007)"
-readme = "../../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
-orbok-core = { workspace = true }
-orbok-db = { workspace = true }
-orbok-extract = { workspace = true }
-orbok-models = { workspace = true }
-rusqlite = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
+orbok-core                  = { workspace = true }
+orbok-db                    = { workspace = true }
+orbok-extract               = { workspace = true }
+orbok-models                = { workspace = true }
+
+rusqlite                    = { workspace = true }
+serde                       = { workspace = true }
+tracing                     = { workspace = true }
 
 [dev-dependencies]
-orbok-fs = { path = "../../data/fs" }
-tempfile = { workspace = true }
+orbok-fs                    = { path = "../../data/fs" }
+
+tempfile                    = { workspace = true }

@@ -1,22 +1,23 @@
 [package]
-name = "orbok-db"
+name        = "orbok-db"
 description = "orbok authoritative SQLite catalog: migrations and repositories (RFC-002)"
-readme = "../../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
-sha2 = { workspace = true }
-orbok-core = { workspace = true }
-orbok-models = { workspace = true }
-rusqlite = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
+orbok-core                  = { workspace = true }
+orbok-models                = { workspace = true }
+
+sha2                        = { workspace = true }
+rusqlite                    = { workspace = true }
+serde                       = { workspace = true }
+serde_json                  = { workspace = true }
+tracing                     = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile                    = { workspace = true }

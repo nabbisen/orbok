@@ -1,22 +1,23 @@
 [package]
-name = "orbok-ui"
+name        = "orbok-ui"
 description = "orbok GUI: snora/iced views, navigation shell, typed i18n catalog (RFC-027, RFC-031)"
-readme = "../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
 # GUI only — no filesystem or database access in this crate (RFC-027).
-orbok-core = { workspace = true }
-orbok-models = { workspace = true }
-orbok-search = { workspace = true }
-iced = { workspace = true }
-snora = { workspace = true, features = ["lucide-icons"] }
-serde = { workspace = true }
+orbok-core                  = { workspace = true }
+orbok-models                = { workspace = true }
+orbok-search                = { workspace = true }
+
+iced                        = { workspace = true }
+snora                       = { workspace = true, features = ["lucide-icons"] }
+serde                       = { workspace = true }
 
 [dev-dependencies]
-iced_test = { workspace = true }
+iced_test                   = { workspace = true }

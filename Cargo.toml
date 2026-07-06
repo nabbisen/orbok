@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "crates/core",
     "crates/data/db",
@@ -17,64 +17,64 @@ members = [
 
 [workspace.package]
 version = "0.20.1"
-edition = "2024"
-rust-version = "1.85"
-license = "Apache-2.0"
-authors = ["nabbisen"]
-categories = ["gui", "development-tools", "text-processing", "visualization"]
-keywords = ["gui", "search", "text", "pdf", "excel"]
-repository = "https://github.com/nabbisen/orbok"
+edition                 = "2024"
+rust-version            = "1.85"
+license                 = "Apache-2.0"
+authors                 = ["nabbisen"]
+categories              = ["gui", "development-tools", "text-processing", "visualization"]
+keywords                = ["gui", "search", "text", "pdf", "excel"]
+repository              = "https://github.com/nabbisen/orbok"
 
 [workspace.dependencies]
 # internal crates
-orbok-core          = { version = "0.20.1", path = "crates/core" }
-orbok-db            = { version = "0.20.1", path = "crates/data/db" }
-orbok-fs            = { version = "0.20.1", path = "crates/data/fs" }
-orbok-cache         = { version = "0.20.1", path = "crates/data/cache" }
-orbok-extract       = { version = "0.20.1", path = "crates/pipeline/extract" }
-orbok-search        = { version = "0.20.1", path = "crates/search/engine" }
-orbok-models        = { version = "0.20.1", path = "crates/search/models" }
-orbok-workers       = { version = "0.20.1", path = "crates/pipeline/workers" }
-orbok-bench         = { version = "0.20.1", path = "crates/bench" }
-orbok-embed         = { version = "0.20.1", path = "crates/search/embed" }
-orbok-ui            = { version = "0.20.1", path = "crates/ui" }
+orbok-core                  = { version = "0", path = "crates/core" }
+orbok-db                    = { version = "0", path = "crates/data/db" }
+orbok-fs                    = { version = "0", path = "crates/data/fs" }
+orbok-cache                 = { version = "0", path = "crates/data/cache" }
+orbok-extract               = { version = "0", path = "crates/pipeline/extract" }
+orbok-search                = { version = "0", path = "crates/search/engine" }
+orbok-models                = { version = "0", path = "crates/search/models" }
+orbok-workers               = { version = "0", path = "crates/pipeline/workers" }
+orbok-bench                 = { version = "0", path = "crates/bench" }
+orbok-embed                 = { version = "0", path = "crates/search/embed" }
+orbok-ui                    = { version = "0", path = "crates/ui" }
 
 # database — pinned to 0.40 to match localcache 0.20.0
 # (single libsqlite3-sys rule; see RFC-002 amendment / Appendix A §21)
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite                    = { version = "0.40", features = ["bundled"] }
 
 # cache engine — Appendix A pins 0.20.0 (mtime ns-precision fix, schema v5)
-localcache = { version = "0.20.0", features = ["compression", "tracing"] }
+localcache                  = { version = "0.20.0", features = ["compression", "tracing"] }
 
 # GUI — RFC-027 decision: iced 0.14 via snora 0.18
-iced = { version = "0.14", features = ["tokio"] }
-snora = { version = "0.25", features = ["design"] }
-rfd = "0.15"
-app-json-settings = { version = "2" }
+iced                        = { version = "0.14", features = ["tokio"] }
+snora                       = { version = "0.25", features = ["design"] }
+rfd                         = "0.15"
+app-json-settings           = { version = "2" }
 
 # shared utilities
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.11"
-time = { version = "0.3", features = ["formatting", "macros"] }
-thiserror = "2"
-tokio = { version = "1.23", features = ["rt-multi-thread", "macros"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1", features = ["v7"] }
+serde                       = { version = "1", features = ["derive"] }
+serde_json                  = "1"
+sha2                        = "0.11"
+time                        = { version = "0.3", features = ["formatting", "macros"] }
+thiserror                   = "2"
+tokio                       = { version = "1.23", features = ["rt-multi-thread", "macros"] }
+tracing                     = "0.1"
+tracing-subscriber          = { version = "0.3", features = ["env-filter"] }
+uuid                        = { version = "1", features = ["v7"] }
 
-dirs = "6"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-lopdf = "0.41"
-futures = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+dirs                        = "6"
+zip                         = { version = "2", default-features = false, features = ["deflate"] }
+lopdf                       = "0.41"
+futures                     = "0.3"
+reqwest                     = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 
 # dev
-tempfile = "3"
-iced_test = "0.14"
+tempfile                    = "3"
+iced_test                   = "0.14"
 
 [profile.release]
-opt-level = "z"
-lto = true
-strip = true
-codegen-units = 1
+opt-level       = "z"
+lto             = true
+strip           = true
+codegen-units   = 1

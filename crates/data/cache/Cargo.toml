@@ -1,23 +1,24 @@
 [package]
-name = "orbok-cache"
+name        = "orbok-cache"
 description = "orbok cache-engine boundary over localcache (Appendix A)"
-readme = "../../../README.md"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+readme      = "../../../README.md"
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 
 [dependencies]
-orbok-core = { workspace = true }
-orbok-db = { workspace = true }
-orbok-fs = { workspace = true }
-localcache = { workspace = true }
-rusqlite = { workspace = true }
-serde_json = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
+orbok-core                  = { workspace = true }
+orbok-db                    = { workspace = true }
+orbok-fs                    = { workspace = true }
+
+localcache                  = { workspace = true }
+rusqlite                    = { workspace = true }
+serde_json                  = { workspace = true }
+serde                       = { workspace = true }
+tracing                     = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile                    = { workspace = true }

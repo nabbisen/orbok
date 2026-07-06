@@ -1,32 +1,33 @@
 [package]
-name = "orbok-bench"
+name        = "orbok-bench"
 description = "orbok benchmark harness: synthetic corpus, retrieval quality, indexing throughput (RFC-016)"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+version.workspace       = true
+edition.workspace       = true
+rust-version.workspace  = true
+license.workspace       = true
+authors.workspace       = true
+repository.workspace    = true
 publish = false
 
 [lib]
 name = "orbok_bench_lib"
 path = "src/lib.rs"
 
-[dependencies]
-tempfile = { workspace = true }
-orbok-core = { workspace = true }
-orbok-db = { workspace = true }
-orbok-fs = { workspace = true }
-orbok-cache = { workspace = true }
-orbok-extract = { workspace = true }
-orbok-search = { workspace = true }
-orbok-workers = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-
 [[bin]]
 name = "orbok-bench"
 path = "src/bench_main.rs"
+
+[dependencies]
+orbok-core                  = { workspace = true }
+orbok-db                    = { workspace = true }
+orbok-fs                    = { workspace = true }
+orbok-cache                 = { workspace = true }
+orbok-extract               = { workspace = true }
+orbok-search                = { workspace = true }
+orbok-workers               = { workspace = true }
+
+serde                       = { workspace = true }
+serde_json                  = { workspace = true }
+tempfile                    = { workspace = true }
+tracing                     = { workspace = true }
+tracing-subscriber          = { workspace = true }
