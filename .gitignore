@@ -27,3 +27,4 @@ target/
 orbok-data/
 /dist/
 *.tar.gz
+/.git-exclude/
