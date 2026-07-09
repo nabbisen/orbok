@@ -27,6 +27,7 @@ pub mod views;
 #[cfg(test)]
 mod tests;
 
+pub use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 pub use shell::{OrbokApp, key_to_message};
 pub use state::{
     AppState, IndexHealth, Message, NavGroup, ResultTrustDisplay, ResultsStatus, SearchFolderScope,

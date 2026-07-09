@@ -3,6 +3,7 @@
 //! These are plain data — no iced types. They live here so `state.rs`
 //! stays focused on the top-level app model.
 
+use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 use orbok_search::{ActiveFilter, ResultRecoveryAction, ResultTrustState, SuggestedFilter};
 
 // ── Results status ────────────────────────────────────────────────────
@@ -74,6 +75,14 @@ pub struct SearchUiState {
     pub results_status: ResultsStatus,
     /// Index of the selected result card, if any.
     pub selected_result_idx: Option<usize>,
+    /// RFC-042: cached recent search entries (loaded at startup, refreshed
+    /// after every successful search or history mutation).
+    pub history: Vec<SearchHistoryEntry>,
+    /// RFC-042: whether the Recent searches panel is open.
+    pub history_panel_open: bool,
+    /// RFC-042: set while a history entry is being restored; drives the
+    /// "Searching again…" status copy (RFC-042 §9 step 5).
+    pub restoring_history_id: Option<SearchHistoryId>,
 }
 
 impl SearchUiState {

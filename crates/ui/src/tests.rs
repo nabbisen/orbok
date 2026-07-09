@@ -17,6 +17,7 @@ pub mod a11y;
 pub mod components;
 pub mod i18n;
 pub mod rfc041_search_state;
+pub mod rfc042_history;
 pub mod rfc045_location;
 pub mod smoke_views;
 pub mod state;
@@ -231,5 +232,19 @@ pub const ALL_KEYS: &[MessageKey] = &[
     MessageKey::SearchScopeOnly,
     MessageKey::SearchScopeSubfolders,
     MessageKey::SearchRecentFoldersLabel,
+    // RFC-042
+    MessageKey::RecentSearchesLabel,
+    MessageKey::SearchAgainButton,
+    MessageKey::SearchingAgainStatus,
+    MessageKey::OpenRecentSearches,
+    MessageKey::ClearRecentSearches,
+    MessageKey::ClearRecentSearchesConfirmTitle,
+    MessageKey::ClearRecentSearchesConfirmBody,
+    MessageKey::RecentSearchesClearedNotice,
+    MessageKey::RememberRecentSearches,
+    MessageKey::RecentSearchesPrivacyNote,
+    MessageKey::RecentSearchesStrictPrivacyNote,
+    MessageKey::NoRecentSearches,
+    MessageKey::DroppedFilterNotice,
 ];
 mod rfc041_search;

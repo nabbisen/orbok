@@ -221,3 +221,67 @@ pub fn is_already_active(filters: &[ActiveFilter], candidate: &ActiveFilter) -> 
         _ => false,
     })
 }
+
+// ── History conversion ────────────────────────────────────────────────
+
+use orbok_core::{
+    StoredChangedFilter, StoredKindFilter, StoredLanguageFilter, StoredReadyFilter,
+    StoredSearchFilter, StoredSearchStyle,
+};
+
+impl From<&ActiveFilter> for StoredSearchFilter {
+    fn from(f: &ActiveFilter) -> Self {
+        match f {
+            ActiveFilter::Folder { id, label } => StoredSearchFilter::Folder {
+                id: id.clone(),
+                label: label.clone(),
+            },
+            ActiveFilter::Kind { value, label } => StoredSearchFilter::Kind {
+                value: match value {
+                    KindFilter::Documents => StoredKindFilter::Documents,
+                    KindFilter::Pdfs => StoredKindFilter::Pdfs,
+                    KindFilter::Notes => StoredKindFilter::Notes,
+                    KindFilter::Code => StoredKindFilter::Code,
+                    KindFilter::Spreadsheets => StoredKindFilter::Spreadsheets,
+                },
+                label: label.clone(),
+            },
+            ActiveFilter::Changed { value, label } => StoredSearchFilter::Changed {
+                value: match value {
+                    ChangedFilter::AnyTime => StoredChangedFilter::AnyTime,
+                    ChangedFilter::Today => StoredChangedFilter::Today,
+                    ChangedFilter::ThisWeek => StoredChangedFilter::ThisWeek,
+                    ChangedFilter::ThisMonth => StoredChangedFilter::ThisMonth,
+                    ChangedFilter::ThisYear => StoredChangedFilter::ThisYear,
+                },
+                label: label.clone(),
+            },
+            ActiveFilter::ReadyStatus { value, label } => StoredSearchFilter::ReadyStatus {
+                value: match value {
+                    ReadyFilter::Ready => StoredReadyFilter::Ready,
+                    ReadyFilter::NeedsUpdate => StoredReadyFilter::NeedsUpdate,
+                    ReadyFilter::FileNotFound => StoredReadyFilter::FileNotFound,
+                    ReadyFilter::PartlyPrepared => StoredReadyFilter::PartlyPrepared,
+                },
+                label: label.clone(),
+            },
+            ActiveFilter::SearchStyle { value, label } => StoredSearchFilter::SearchStyle {
+                value: match value {
+                    SearchStyle::BestResults => StoredSearchStyle::BestResults,
+                    SearchStyle::ExactWords => StoredSearchStyle::ExactWords,
+                    SearchStyle::Meaning => StoredSearchStyle::Meaning,
+                },
+                label: label.clone(),
+            },
+            ActiveFilter::Language { value, label } => StoredSearchFilter::Language {
+                value: match value {
+                    LanguageFilter::Any => StoredLanguageFilter::Any,
+                    LanguageFilter::English => StoredLanguageFilter::English,
+                    LanguageFilter::Japanese => StoredLanguageFilter::Japanese,
+                    LanguageFilter::Mixed => StoredLanguageFilter::Mixed,
+                },
+                label: label.clone(),
+            },
+        }
+    }
+}

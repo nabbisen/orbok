@@ -17,12 +17,130 @@ use crate::i18n::{
 };
 use crate::state::{AppState, Message, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Element, Length, Padding};
 use orbok_models::SearchCapability;
 use snora::design::Tokens;
 use snora::design::style::color::to_iced_color;
 use snora::lucide;
+
+// ── Recent searches panel (RFC-042 §11.3) ─────────────────────────────────
+
+/// Recent searches list. Collapsed to a single "Recent searches" button when
+/// closed (shown only if entries exist); expands to a panel of entries each
+/// with a "Search again" action and a "Clear recent searches" footer.
+///
+/// "Less is more": no entry counts, no tabs, no technical labels.
+fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
+    let locale = state.locale;
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+
+    if !state.search_ui.history_panel_open {
+        if state.search_ui.history.is_empty() {
+            return column![].into();
+        }
+        return row![
+            button(
+                text(tr(locale, MessageKey::OpenRecentSearches)).size(theme::meta_s(tokens, sc))
+            )
+            .on_press(Message::OpenRecentSearches)
+        ]
+        .into();
+    }
+
+    let mut entries = column![].spacing(tokens.spacing.sm);
+
+    if state.search_ui.history.is_empty() {
+        entries = entries.push(
+            text(tr(locale, MessageKey::NoRecentSearches))
+                .size(theme::meta_s(tokens, sc))
+                .color(to_iced_color(tokens.palette.text_secondary)),
+        );
+    } else {
+        for entry in &state.search_ui.history {
+            let filter_summary = entry
+                .filters
+                .iter()
+                .map(|f| f.label())
+                .collect::<Vec<_>>()
+                .join(" · ");
+
+            let mut entry_col = column![text(&entry.search_text).size(theme::body_s(tokens, sc))]
+                .spacing(tokens.spacing.xs);
+
+            if !filter_summary.is_empty() {
+                entry_col = entry_col.push(
+                    text(filter_summary)
+                        .size(theme::meta_s(tokens, sc))
+                        .color(to_iced_color(tokens.palette.text_secondary)),
+                );
+            }
+
+            let search_again = button(
+                text(tr(locale, MessageKey::SearchAgainButton)).size(theme::meta_s(tokens, sc)),
+            )
+            .on_press(Message::SearchAgain(entry.id.clone()));
+
+            entries = entries.push(column![entry_col, search_again].spacing(tokens.spacing.xs));
+        }
+
+        entries = entries.push(
+            button(
+                text(tr(locale, MessageKey::ClearRecentSearches)).size(theme::meta_s(tokens, sc)),
+            )
+            .on_press(Message::AskClearRecentSearches),
+        );
+    }
+
+    column![
+        row![
+            text(tr(locale, MessageKey::RecentSearchesLabel)).size(theme::label_s(tokens, sc)),
+            button(text("✕").size(theme::meta_s(tokens, sc)))
+                .on_press(Message::CloseRecentSearches),
+        ]
+        .spacing(tokens.spacing.sm),
+        scrollable(entries).height(Length::Shrink),
+    ]
+    .spacing(tokens.spacing.sm)
+    .into()
+}
+
+/// Settings control for clearing recent searches (RFC-042 §11.6). Renders a
+/// single "Clear recent searches" button, or an inline confirmation
+/// (title + body + Cancel/Clear) when `confirm_clear_history` is set.
+/// Confirmation focuses Cancel-equivalent first by listing it first.
+fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message> {
+    let locale = state.locale;
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+
+    if state.confirm_clear_history {
+        column![
+            text(tr(locale, MessageKey::ClearRecentSearchesConfirmTitle))
+                .size(theme::body_s(tokens, sc)),
+            text(tr(locale, MessageKey::ClearRecentSearchesConfirmBody))
+                .size(theme::meta_s(tokens, sc))
+                .color(to_iced_color(tokens.palette.text_secondary)),
+            row![
+                button(text(tr(locale, MessageKey::Cancel)).size(theme::meta_s(tokens, sc)))
+                    .on_press(Message::CancelClearRecentSearches),
+                button(
+                    text(tr(locale, MessageKey::ClearRecentSearches))
+                        .size(theme::meta_s(tokens, sc))
+                )
+                .on_press(Message::ConfirmClearRecentSearches),
+            ]
+            .spacing(tokens.spacing.sm),
+        ]
+        .spacing(tokens.spacing.xs)
+        .into()
+    } else {
+        button(text(tr(locale, MessageKey::ClearRecentSearches)).size(theme::meta_s(tokens, sc)))
+            .on_press(Message::AskClearRecentSearches)
+            .into()
+    }
+}
 
 // ── Search location row ───────────────────────────────────────────────────
 
@@ -163,6 +281,9 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         }
         content = content.push(chips);
     }
+
+    // RFC-042: Recent searches (collapsed button or expanded panel).
+    content = content.push(recent_searches_panel(state));
 
     if let Some(notice) = &state.notice {
         content = content.push(friendly_notice(tokens, locale, notice));
@@ -582,6 +703,24 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         // Privacy
         text(tr(locale, MessageKey::SettingsPrivacyHeading)).size(theme::body_s(tokens, sc)),
         text(tr(locale, MessageKey::SettingsPrivacyLocalOnly)).size(theme::body_s(tokens, sc)),
+        // RFC-042: Remember recent searches toggle + note.
+        row![
+            button(
+                text(if state.remember_recent_searches {
+                    tr(locale, MessageKey::SettingsAdvancedOn)
+                } else {
+                    tr(locale, MessageKey::SettingsAdvancedOff)
+                })
+                .size(theme::body_s(tokens, sc)),
+            )
+            .on_press(Message::ToggleRememberRecentSearches(
+                !state.remember_recent_searches
+            )),
+            text(tr(locale, MessageKey::RememberRecentSearches)).size(theme::body_s(tokens, sc)),
+        ]
+        .spacing(tokens.spacing.sm),
+        text(tr(locale, MessageKey::RecentSearchesPrivacyNote)).size(theme::meta_s(tokens, sc)),
+        recent_searches_clear_control(state),
         // Advanced
         text(tr(locale, MessageKey::SettingsAdvancedHeading)).size(theme::body_s(tokens, sc)),
         row![

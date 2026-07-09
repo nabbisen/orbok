@@ -287,5 +287,24 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchScopeOnly => "This folder only",
         SearchScopeSubfolders => "This folder and subfolders",
         SearchRecentFoldersLabel => "Recent folders",
+        // RFC-042: search history
+        RecentSearchesLabel => "Recent searches",
+        SearchAgainButton => "Search again",
+        SearchingAgainStatus => "Searching again\u{2026}",
+        OpenRecentSearches => "Recent searches",
+        ClearRecentSearches => "Clear recent searches",
+        ClearRecentSearchesConfirmTitle => "Clear recent searches?",
+        ClearRecentSearchesConfirmBody => {
+            "This removes the list of searches shown in orbok. \
+             Your files and search data are not deleted."
+        }
+        RecentSearchesClearedNotice => "Recent searches cleared.",
+        RememberRecentSearches => "Remember recent searches",
+        RecentSearchesPrivacyNote => "Recent searches are saved on this computer only.",
+        RecentSearchesStrictPrivacyNote => {
+            "Recent searches are not saved while Strict privacy is on."
+        }
+        NoRecentSearches => "No recent searches yet.",
+        DroppedFilterNotice => "One narrowing choice was no longer available and was removed.",
     }
 }

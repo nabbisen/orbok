@@ -47,7 +47,7 @@ Shipped across v0.12.0–v0.14.0; the RFCs now live in `rfcs/done/`.
 
 Shipped across v0.17.0–v0.19.0; the RFCs now live in `rfcs/done/`.
 
-## Foundation & Search-UX program (RFC-041 → 045) — 041/043/044/045 implemented; 042 proposed
+## Foundation & Search-UX program (RFC-041 → 045) — implemented
 
 | RFC | Handoff | Theme |
 |-----|---------|-------|
@@ -57,9 +57,9 @@ Shipped across v0.17.0–v0.19.0; the RFCs now live in `rfcs/done/`.
 | 044 | HANDOFF-044 | orbok-extract production hardening and boundary cleanup |
 | 045 | HANDOFF-045-implementation, -task-breakdown-pr-plan, -acceptance-qa-checklist | Search-in-folder flow and friendly folder management |
 
-RFC-044 shipped in v0.16.0, RFC-041 in v0.18.0, RFC-043 in v0.19.0, and
-RFC-045 in v0.20.0 (all now in `rfcs/done/`). RFC-042 is the sole remaining
-proposed RFC.
+RFC-044 shipped in v0.16.0, RFC-041 in v0.18.0, RFC-043 in v0.19.0,
+RFC-045 in v0.20.0, and RFC-042 in v0.21.0 — all now in `rfcs/done/`.
+The whole program is complete.
 
 **Numbering vs. dependency order:** the 041–045 foundation RFCs were authored
 before the 036–040 stabilization RFCs but received later numbers (032–035 were

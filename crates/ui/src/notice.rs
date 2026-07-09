@@ -25,6 +25,11 @@ pub enum UserNotice {
     DiagnosticsFileCreated,
     // ── RFC-040: diagnostics problem ──────────────────────────────────
     DiagnosticsFileFailed,
+    // ── RFC-042: search history ───────────────────────────────────────
+    /// Confirmation: recent searches were cleared.
+    RecentSearchesCleared,
+    /// Info: a narrowing choice was dropped on reopen (folder gone).
+    RecentSearchFilterDropped,
 }
 
 impl UserNotice {
@@ -59,6 +64,7 @@ impl UserNotice {
             Self::FolderAdded | Self::SearchReady => Tone::Success,
             // Neutral/informational.
             Self::PreviewsCleared | Self::DiagnosticsFileCreated => Tone::Info,
+            Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => Tone::Info,
         }
     }
 
@@ -74,6 +80,8 @@ impl UserNotice {
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedTitle,
             Self::DiagnosticsFileCreated => MessageKey::DiagnosticsFileCreated,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
+            Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
+            Self::RecentSearchFilterDropped => MessageKey::DroppedFilterNotice,
         };
         tr(locale, key)
     }
@@ -90,6 +98,8 @@ impl UserNotice {
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedBody,
             Self::DiagnosticsFileCreated => MessageKey::DiagnosticsFileCreated,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
+            Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
+            Self::RecentSearchFilterDropped => MessageKey::DroppedFilterNotice,
         };
         tr(locale, key)
     }
@@ -108,6 +118,7 @@ impl UserNotice {
             | Self::SearchReady
             | Self::PreviewsCleared
             | Self::DiagnosticsFileCreated => return None,
+            Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => return None,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFile,
         };
         Some(tr(locale, key))

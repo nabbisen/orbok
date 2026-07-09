@@ -54,15 +54,13 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | 043 | [Model Download Readiness and Bounded Concurrency](done/043-model-download-readiness-and-concurrency.md) | v0.19.0 |
 | 044 | [orbok-extract Production Hardening](done/044-orbok-extract-production-hardening.md) | v0.16.0 |
 | 045 | [Search-in-Folder Flow and Friendly Folder Management](done/045-search-in-folder-flow-and-friendly-folder-management.md) | v0.20.0 |
+| 042 | [Search History and Reopen Recent Searches](done/042-search-history-and-reopen.md) | v0.21.0 |
 
 ## Proposed
 
-One RFC from the Foundation & Search-UX program remains under review.
-**Numbering is creation order, not dependency order** (RFC-000).
-
-| ID | Title | Notes |
-|---|---|---|
-| 042 | [Search History and Reopen Recent Searches](proposed/042-search-history-and-reopen.md) | Recent searches, no result tabs. Reuses `search_queries`; privacy defers to 039. |
+None. All RFCs through 045 are implemented. Future work will be opened
+here as new RFCs; **numbering is creation order, not dependency order**
+(RFC-000).
 
 Developer handoffs for 032–045 live in [`handoffs/`](handoffs/).
 

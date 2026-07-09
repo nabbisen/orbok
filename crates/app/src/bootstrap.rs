@@ -111,6 +111,14 @@ pub fn load_initial_state() -> Result<AppState, Box<dyn std::error::Error>> {
     state.wizard = wizard;
     state.health = health;
     state.sources = sources;
+    // RFC-042: reflect the persisted history setting and load entries.
+    state.remember_recent_searches = settings.remember_recent_searches;
+    let privacy = settings.privacy_settings();
+    if privacy.effective_recent_searches() {
+        state.search_ui.history = orbok_db::repo::SearchHistoryRepository::new(&catalog)
+            .list()
+            .unwrap_or_default();
+    }
     Ok(state)
 }
 

@@ -13,6 +13,7 @@ pub use search::{ResultTrustDisplay, ResultsStatus, SearchUiState};
 
 use crate::i18n::Locale;
 use crate::notice::UserNotice;
+use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 use orbok_models::SearchCapability;
 use orbok_search::{ResultRecoveryAction, SearchMode};
 
@@ -171,6 +172,11 @@ pub struct AppState {
     pub notice: Option<UserNotice>,
     /// Awaiting user confirmation before running reset catalog.
     pub confirm_reset: bool,
+    /// RFC-042: whether "Remember recent searches" is on (reflects the
+    /// persisted setting; mirrored here so the settings toggle renders).
+    pub remember_recent_searches: bool,
+    /// RFC-042: awaiting confirmation before clearing recent searches.
+    pub confirm_clear_history: bool,
     /// Snora Design tokens, derived from `theme`. The single styling source of
     /// truth for the whole view tree (RFC-032).
     pub tokens: snora::design::Tokens,
@@ -210,6 +216,8 @@ impl Default for AppState {
             show_advanced: false,
             notice: None,
             confirm_reset: false,
+            remember_recent_searches: true,
+            confirm_clear_history: false,
             tokens: snora::design::Tokens::light(),
             theme: crate::theme::Theme::default(),
             text_scale: crate::theme::TextScale::default(),
@@ -351,6 +359,30 @@ pub enum Message {
     /// User clicked a recent-folder chip — reuse that remembered folder as
     /// the current search location (RFC-045 §7.4).
     RecentFolderSelected(orbok_core::id::SourceId),
+    // RFC-042: search history
+    /// Open the Recent searches panel.
+    OpenRecentSearches,
+    /// Close the Recent searches panel.
+    CloseRecentSearches,
+    /// User pressed "Search again" for a history entry.
+    SearchAgain(SearchHistoryId),
+    /// The history entry has been fully restored; carry the restored id so
+    /// the UI can clear `restoring_history_id`.
+    RecentSearchRestored(SearchHistoryId),
+    /// Remove a single history entry.
+    RemoveRecentSearch(SearchHistoryId),
+    /// User pressed "Clear recent searches" — show confirmation.
+    AskClearRecentSearches,
+    /// User pressed Cancel in the clear confirmation.
+    CancelClearRecentSearches,
+    /// User confirmed "Clear recent searches".
+    ConfirmClearRecentSearches,
+    /// Recent searches cleared — carry refreshed (empty) history list.
+    RecentSearchesCleared,
+    /// History list refreshed from the DB (after upsert or clear).
+    HistoryLoaded(Vec<SearchHistoryEntry>),
+    /// Toggle "Remember recent searches" setting.
+    ToggleRememberRecentSearches(bool),
 }
 
 impl AppState {
@@ -622,6 +654,57 @@ impl AppState {
                         summary.source_id,
                         summary.display_name,
                     ));
+                }
+            }
+            // RFC-042: search history
+            Message::OpenRecentSearches => {
+                self.search_ui.history_panel_open = true;
+            }
+            Message::CloseRecentSearches => {
+                self.search_ui.history_panel_open = false;
+            }
+            Message::SearchAgain(id) => {
+                self.search_ui.restoring_history_id = Some(id.clone());
+                self.search_ui.history_panel_open = false;
+                self.search_ui.results_status = ResultsStatus::Searching;
+                // Actual restore (text + filters) happens in orbok once the
+                // entry is loaded; RecentSearchRestored finalises the state.
+            }
+            Message::RecentSearchRestored(id) => {
+                if self.search_ui.restoring_history_id.as_ref() == Some(&id) {
+                    self.search_ui.restoring_history_id = None;
+                }
+            }
+            Message::RemoveRecentSearch(id) => {
+                self.search_ui.history.retain(|e| e.id != *id);
+                // Persist handled by orbok.
+            }
+            Message::AskClearRecentSearches => {
+                // Drives the confirmation dialog rendered by the view layer.
+                self.confirm_clear_history = true;
+            }
+            Message::CancelClearRecentSearches => {
+                self.confirm_clear_history = false;
+            }
+            Message::ConfirmClearRecentSearches => {
+                // Handled in orbok (DB clear); result arrives via
+                // RecentSearchesCleared.
+                self.confirm_clear_history = false;
+            }
+            Message::RecentSearchesCleared => {
+                self.search_ui.history.clear();
+                self.search_ui.history_panel_open = false;
+                self.confirm_clear_history = false;
+            }
+            Message::HistoryLoaded(entries) => {
+                self.search_ui.history = entries.clone();
+            }
+            Message::ToggleRememberRecentSearches(on) => {
+                // UI reflects the new state immediately; orbok persists it.
+                self.remember_recent_searches = *on;
+                if !*on {
+                    // Turning off also empties the visible list (RFC-042 §13.4).
+                    self.search_ui.history.clear();
                 }
             }
         }

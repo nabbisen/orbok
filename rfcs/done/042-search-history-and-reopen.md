@@ -4,7 +4,7 @@
 **Former project name:** orbit  
 **RFC:** 042  
 **Title:** Search History and Reopen Recent Searches  
-**Status:** Proposed
+**Status:** Implemented (v0.21.0)
 **Target milestone:** Search UX / Privacy UX refinement  
 **Date:** 2026-06-18  
 **Related RFC:** RFC-041 Search, Narrow Results, and Browse Around  

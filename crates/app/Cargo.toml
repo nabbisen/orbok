@@ -1,5 +1,5 @@
 [package]
-name        = "orbok"
+name = "orbok"
 description = "orbok application binary: backend bootstrap and GUI launch"
 readme      = "../../README.md"
 version.workspace       = true

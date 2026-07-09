@@ -1,6 +1,8 @@
 //! Tests for orbok-db, validating the RFC-002 §12 testing requirements
 //! and the RFC-001 cleanup invariants against the design specs.
 
+mod rfc042_history;
+
 use crate::Catalog;
 use crate::migrations;
 use crate::repo::{

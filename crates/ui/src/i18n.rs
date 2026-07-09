@@ -328,6 +328,33 @@ pub enum MessageKey {
     SearchScopeSubfolders,
     /// Header for the recent / remembered folder chip row.
     SearchRecentFoldersLabel,
+    // RFC-042: search history
+    /// Panel / section header.
+    RecentSearchesLabel,
+    /// Button on each history entry.
+    SearchAgainButton,
+    /// Status shown while restoring a history entry (RFC-042 §9 step 5).
+    SearchingAgainStatus,
+    /// Button to open the Recent searches panel.
+    OpenRecentSearches,
+    /// Button to clear all history entries.
+    ClearRecentSearches,
+    /// Confirmation dialog title.
+    ClearRecentSearchesConfirmTitle,
+    /// Confirmation dialog body (RFC-042 §11.6).
+    ClearRecentSearchesConfirmBody,
+    /// Success notice shown after clearing (RFC-042 §13.3).
+    RecentSearchesClearedNotice,
+    /// Settings toggle label (RFC-042 §11.5).
+    RememberRecentSearches,
+    /// Privacy sub-label when enabled (RFC-042 §14).
+    RecentSearchesPrivacyNote,
+    /// Privacy sub-label when strict privacy is on (RFC-042 §14).
+    RecentSearchesStrictPrivacyNote,
+    /// Shown when the history list is empty.
+    NoRecentSearches,
+    /// Notice when a filter was dropped on reopen (RFC-042 §9 step 3).
+    DroppedFilterNotice,
 }
 
 /// Translate a fixed message. The per-locale functions are exhaustive

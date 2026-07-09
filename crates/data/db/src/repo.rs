@@ -8,6 +8,7 @@ pub mod events;
 pub mod files;
 pub mod jobs;
 pub mod models;
+pub mod search_history;
 pub mod settings;
 pub mod sources;
 pub mod storage;
@@ -22,6 +23,7 @@ pub use models::{
     ModelRecord, ModelRepository, ModelRole, ModelStatus, NewModel, verify_model_sha256,
 };
 pub use orbok_core::{ExtractionId, JobStatus, JobType};
+pub use search_history::SearchHistoryRepository;
 pub use settings::SettingsRepository;
 pub use sources::{NewSource, SourceRecord, SourceRepository};
 pub use storage::StorageAccountingRepository;

@@ -291,5 +291,24 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchScopeOnly => "このフォルダーのみ",
         SearchScopeSubfolders => "このフォルダーとサブフォルダー",
         SearchRecentFoldersLabel => "最近のフォルダー",
+        // RFC-042: search history
+        RecentSearchesLabel => "最近の検索",
+        SearchAgainButton => "もう一度検索",
+        SearchingAgainStatus => "再検索中\u{2026}",
+        OpenRecentSearches => "最近の検索",
+        ClearRecentSearches => "最近の検索を消去",
+        ClearRecentSearchesConfirmTitle => "最近の検索を消去しますか？",
+        ClearRecentSearchesConfirmBody => {
+            "orbokに表示されている検索履歴を削除します。\
+             ファイルや検索データは削除されません。"
+        }
+        RecentSearchesClearedNotice => "最近の検索を消去しました。",
+        RememberRecentSearches => "最近の検索を記憶する",
+        RecentSearchesPrivacyNote => "最近の検索はこのコンピューター上にのみ保存されます。",
+        RecentSearchesStrictPrivacyNote => {
+            "厳格なプライバシーがオンの間、最近の検索は保存されません。"
+        }
+        NoRecentSearches => "最近の検索はまだありません。",
+        DroppedFilterNotice => "利用できなくなった絞り込み条件が1つ削除されました。",
     }
 }

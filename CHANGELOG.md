@@ -11,6 +11,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.21.0] — 2026-06-21 — Search History and Reopen Recent Searches (RFC-042)
+
+Local recent searches with "Search again" — no automatic result tabs.
+Reopened searches restore the search words (and stored narrowing-choice
+labels), then run again against current files. History is local-only,
+clearable, and disabled by Strict privacy.
+
+### Added
+
+**Core types (`orbok-core::history`)**
+
+- `SearchHistoryEntry` (id, search_text, filters, created_at, last_used_at,
+  previous_result_count, locale) — stores *instructions*, never results
+  (RFC-042 §7.1, §8.2).
+- `StoredSearchFilter` — self-contained mirror of `ActiveFilter` so
+  `orbok-core` stays free of an `orbok-search` dependency, plus the five
+  storage-mirror enums (`StoredKindFilter`, `StoredChangedFilter`,
+  `StoredReadyFilter`, `StoredSearchStyle`, `StoredLanguageFilter`).
+  `folder_id()` / `label()` helpers for restore validity and display.
+- `SearchHistoryId`, `SearchHistorySettings` (default `max_entries = 20`,
+  `clear_when_privacy_strict = true`).
+- `SearchHistoryEntry::accessible_label()` for screen-reader summaries
+  (RFC-042 §15).
+
+**Conversion (`orbok-search`)**
+
+- `impl From<&ActiveFilter> for StoredSearchFilter` — maps each live filter
+  variant + label to its stored mirror (correct dependency direction).
+
+**Storage (`orbok-db`)**
+
+- Migration `0004_search_history.sql` — `search_history` table (instructions
+  + JSON filter labels; no snippets/embeddings/scores).
+- `SearchHistoryRepository`: `upsert` (dedup on text+filters, refresh
+  `last_used_at`/count, evict beyond `max_entries`, reject empty), `list`
+  (newest first), `get`, `remove`, `clear`, `count`.
+
+**UI (`orbok-ui`)**
+
+- `SearchUiState` gains `history`, `history_panel_open`,
+  `restoring_history_id` (RFC-042 §7.4).
+- `AppState` gains `remember_recent_searches` and `confirm_clear_history`.
+- 11 `Message` variants: open/close panel, `SearchAgain`,
+  `RecentSearchRestored`, `RemoveRecentSearch`, ask/cancel/confirm clear,
+  `RecentSearchesCleared`, `HistoryLoaded`, `ToggleRememberRecentSearches`.
+- `recent_searches_panel` view: collapsed "Recent searches" button ↔ expanded
+  list, each entry with a filter summary and "Search again"; "Clear recent
+  searches" footer. No tabs (RFC-042 §5.2).
+- Settings → Privacy: "Remember recent searches" toggle with local-only note,
+  and a "Clear recent searches" control with inline confirmation (Cancel
+  first, RFC-042 §11.6, §15).
+- Two `UserNotice` variants: `RecentSearchesCleared`, `RecentSearchFilterDropped`.
+- 18 i18n keys (En + Ja) covering all required RFC-042 §6.1 labels; forbidden
+  vocabulary (§6.2) excluded and asserted in tests.
+
+**App (`orbok` binary)**
+
+- `history.rs`: record/load/get/remove/clear plus `restore_valid_filters`
+  (drops folder filters whose source no longer exists — RFC-042 §9 step 3),
+  all gated by `PrivacySettings::effective_recent_searches()` so Strict
+  privacy disables history.
+- `OrbokSettings::privacy_settings()` / `history_settings()` derivation.
+- `SubmitSearch` records on success and refreshes the list; `SearchAgain`
+  restores text + reruns against current files; clear/toggle wired with
+  confirmation and notices; history loaded into state at startup.
+
+### Tests
+
+- `orbok-db`: +8 (dedup, max-entries eviction, empty rejection, clear, remove,
+  get round-trip, serde round-trip, folder-filter validity).
+- `orbok-search`: +4 (`From<&ActiveFilter>` variant/label mapping).
+- `orbok-ui`: +9 (panel open/close, search-again restoring flow, clear
+  confirmation, toggle-off clears, remove entry, forbidden-vocabulary copy,
+  app-name copy).
+- Workspace total: **387 tests / 0 failures**.
+
+### Documentation
+
+- RFC-042 moved `proposed/` → `done/`, Status `Implemented (v0.21.0)`.
+  `rfcs/proposed/` is now empty — all RFCs through 045 are implemented.
+- `rfcs/README.md`, `rfcs/handoffs/README.md`, `ROADMAP.md` updated.
+
+---
+
 ## [0.20.1] — 2026-06-21 — Rename crate orbok-app → orbok
 
 ### Changed

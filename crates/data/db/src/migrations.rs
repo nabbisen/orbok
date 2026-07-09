@@ -33,6 +33,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "scheduler",
         sql: include_str!("../migrations/0003_scheduler.sql"),
     },
+    Migration {
+        version: 4,
+        name: "search_history",
+        sql: include_str!("../migrations/0004_search_history.sql"),
+    },
 ];
 
 /// Apply all pending migrations. Called from `Catalog::open` before any

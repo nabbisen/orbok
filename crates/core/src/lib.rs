@@ -11,6 +11,7 @@
 
 pub mod data_class;
 pub mod error;
+pub mod history;
 pub mod id;
 pub mod privacy;
 pub mod status;
@@ -22,6 +23,11 @@ mod tests;
 
 pub use data_class::{CleanupAction, CleanupPlan, DataClass, StorageCategory};
 pub use error::{ErrorCategory, OrbokError, OrbokResult};
+pub use history::{
+    SearchHistoryEntry, SearchHistoryId, SearchHistorySettings, StoredChangedFilter,
+    StoredKindFilter, StoredLanguageFilter, StoredReadyFilter, StoredSearchFilter,
+    StoredSearchStyle,
+};
 pub use id::{
     ChunkId, EmbeddingId, EventId, ExtractionId, FileId, JobId, ModelId, QueryId, SourceId,
 };

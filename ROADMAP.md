@@ -2,25 +2,26 @@
 
 ## Current Status (2026-06-21)
 
-Shipped: **v0.19.0**. RFCs **000–041, 043, 044 implemented** (see
+Shipped: **v0.21.0**. RFCs **000–045 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
 design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
 design) completed across v0.12.0–v0.14.0; the stabilization and
-search-foundation programs landed across v0.16.0–v0.19.0:
+search-foundation programs landed across v0.16.0–v0.21.0:
 
 - v0.16.0 — RFC-044 (orbok-extract production hardening).
 - v0.17.0 — RFC-036 (resource-aware scheduler and backpressure).
 - v0.18.0 — RFC-041 (search / narrow / browse), RFC-037 (source lifecycle), RFC-038 (result trust).
 - v0.19.0 — RFC-043 (model download readiness), RFC-039 (privacy modes), RFC-040 (safe diagnostics).
 - v0.20.0 — RFC-045 (search-in-folder flow and friendly folder management).
+- v0.21.0 — RFC-042 (search history and reopen recent searches).
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
-## Forward Plan — Remaining Proposed RFC (042)
+## Forward Plan — All planned RFCs implemented
 
-One RFC remains under review in `rfcs/proposed/`.
-
-- 042 Search History and Reopen Recent Searches — recent searches; reuses `search_queries`; privacy defers to RFC-039. **Next implementation target.**
+Every RFC through 045 has shipped. There are no RFCs in `rfcs/proposed/`.
+Future work (new features, stabilization, or the v1.0.0 push) will be
+opened as new RFCs in creation order (RFC-000).
 
 ### v1.0.0 gate (unchanged — awaiting owner confirmation)
 
