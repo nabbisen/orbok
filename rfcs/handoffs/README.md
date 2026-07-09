@@ -56,10 +56,11 @@ Shipped across v0.17.0–v0.19.0; the RFCs now live in `rfcs/done/`.
 | 043 | HANDOFF-043 | Model download readiness and bounded concurrency |
 | 044 | HANDOFF-044 | orbok-extract production hardening and boundary cleanup |
 | 045 | HANDOFF-045-implementation, -task-breakdown-pr-plan, -acceptance-qa-checklist | Search-in-folder flow and friendly folder management |
+| 046 | HANDOFF-046-candle-backend-removal | Candle backend cleanup (RFC-046, Option B1) |
 
 RFC-044 shipped in v0.16.0, RFC-041 in v0.18.0, RFC-043 in v0.19.0,
-RFC-045 in v0.20.0, and RFC-042 in v0.21.0 — all now in `rfcs/done/`.
-The whole program is complete.
+RFC-045 in v0.20.0, RFC-042 in v0.21.0, and RFC-046 in v0.22.0 — all now in
+`rfcs/done/`. The whole program is complete.
 
 **Numbering vs. dependency order:** the 041–045 foundation RFCs were authored
 before the 036–040 stabilization RFCs but received later numbers (032–035 were

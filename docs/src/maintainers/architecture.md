@@ -17,7 +17,7 @@ crates/
 │   ├── extract/  orbok-extract — extractor trait, text/PDF/DOCX extractors, chunker (RFC-005)
 │   └── workers/  orbok-workers — indexing pipeline, cleanup, recovery (RFC-011/018)
 ├── search/
-│   ├── embed/    orbok-embed  — inference backends: mock, candle, ONNX (RFC-021)
+│   ├── embed/    orbok-embed  — inference backends: mock, ONNX/tract (RFC-021)
 │   ├── engine/   orbok-search — keyword (FTS5) + vector + hybrid RRF (RFC-007/009)
 │   └── models/   orbok-models — model traits, capability vocabulary (RFC-012)
 └── ui/           orbok-ui     — snora/iced shell, views, i18n, state (RFC-027/031)

@@ -156,7 +156,7 @@ fn build_capability_and_wizard(
 
 /// Execute a keyword/hybrid search and convert results to UI structs.
 /// Uses hybrid search (keyword + semantic) when an embedding model is
-/// configured and the tract/candle feature is compiled in; keyword-only
+/// configured and the tract feature is compiled in; keyword-only
 /// otherwise (RFC-008/009).
 pub(crate) fn run_search(
     catalog: &Catalog,

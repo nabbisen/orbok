@@ -362,11 +362,18 @@ mod reranker_tests {
 // ── Inference backend (M12) ──────────────────────────────────────────
 
 /// The compute backend used for local inference.
+///
+/// **Note (RFC-046):** `CandleCpu` and `CandleCuda` are **not currently
+/// supported**. The `orbok-embed` factory routes them to a not-supported
+/// error; no Candle backend is implemented. These variants are retained for
+/// model-layer/API stability. A future backend-API RFC may revisit them
+/// (e.g. reintroduce a Candle backend, or remove the variants under a
+/// deprecation policy). They are intentionally **not** `#[deprecated]` yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferenceBackend {
-    /// CPU-only inference via candle (no GPU required).
+    /// CPU-only inference via candle. Not currently supported (RFC-046).
     CandleCpu,
-    /// GPU inference via candle + CUDA.
+    /// GPU inference via candle + CUDA. Not currently supported (RFC-046).
     CandleCuda,
     /// ONNX Runtime (CPU or GPU via execution provider).
     OnnxRuntime,
@@ -392,7 +399,7 @@ impl InferenceBackend {
 /// `MockEmbeddingModel` ignores this; it is used only when testing the
 /// pipeline without model files.
 ///
-/// Once a `candle` or `onnx-runtime` integration crate is added (M12
+/// Once an `onnx-runtime` (tract) integration is fully wired (M12
 /// full implementation), it will consume this config and return a
 /// `Box<dyn EmbeddingModel>`.
 #[derive(Debug, Clone)]

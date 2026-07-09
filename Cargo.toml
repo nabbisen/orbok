@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.21.0"
+version = "0.22.0"
 edition                 = "2024"
 rust-version            = "1.85"
 license                 = "Apache-2.0"
@@ -38,6 +38,10 @@ orbok-workers               = { version = "0", path = "crates/pipeline/workers" 
 orbok-bench                 = { version = "0", path = "crates/bench" }
 orbok-embed                 = { version = "0", path = "crates/search/embed" }
 orbok-ui                    = { version = "0", path = "crates/ui" }
+
+# ai
+tract-onnx                  = { version = "0.23" }
+tract-core                  = { version = "0.23" }
 
 # database — pinned to 0.40 to match localcache 0.20.0
 # (single libsqlite3-sys rule; see RFC-002 amendment / Appendix A §21)

@@ -9,6 +9,8 @@
 
 > **Future RFC Notice:** This RFC is intentionally deferred. It must be reconsidered only after the basic implementation tasks from RFC-001 through RFC-020 are substantially complete, tested, and benchmarked. It must not block the initial implementation of `orbok`.
 
+> **Annotation (2026-06-30, RFC-046):** This RFC mentions "candle" once, as a backend-*feasibility evaluation criterion* (§4), during model selection. It did **not** scope a candle inference backend as a deliverable, and no candle backend was implemented. RFC-046 removed the never-implemented candle backend wiring from `orbok-embed` (the `CandleCpu`/`CandleCuda` enum variants remain, routed to a not-supported error). The historical text below is unchanged.
+
 ---
 
 

@@ -55,14 +55,17 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | 044 | [orbok-extract Production Hardening](done/044-orbok-extract-production-hardening.md) | v0.16.0 |
 | 045 | [Search-in-Folder Flow and Friendly Folder Management](done/045-search-in-folder-flow-and-friendly-folder-management.md) | v0.20.0 |
 | 042 | [Search History and Reopen Recent Searches](done/042-search-history-and-reopen.md) | v0.21.0 |
+| 046 | [Declared Candle Embedding Backend — Status and Options](done/046-candle-embedding-backend-status.md) | v0.22.0 |
 
 ## Proposed
 
-None. All RFCs through 045 are implemented. Future work will be opened
+None. All RFCs through 046 are implemented. Future work will be opened
 here as new RFCs; **numbering is creation order, not dependency order**
 (RFC-000).
 
-Developer handoffs for 032–045 live in [`handoffs/`](handoffs/).
+Developer handoffs live in [`handoffs/`](handoffs/). A pre-investigation
+finding note for a separate `--features tract` build issue is in
+[`appendices/FINDING-tract-feature-build.md`](appendices/FINDING-tract-feature-build.md).
 
 ## Archive
 

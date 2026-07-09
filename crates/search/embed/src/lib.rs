@@ -8,17 +8,22 @@
 //! | Backend | Feature flag | Notes |
 //! |---|---|---|
 //! | `Mock` | always | Deterministic 8-dim, test-only |
-//! | `CandleCpu`/`CandleCuda` | `candle` | HuggingFace candle runtime |
 //! | `OnnxRuntime` | `tract` | Tract ONNX runtime (pure Rust) |
 //!
-//! Without the `candle` or `tract` feature, `create_embedding_model`
-//! returns [`OrbokError::Cache`] when called with a non-mock backend.
+//! Without the `tract` feature, `create_embedding_model` returns
+//! [`OrbokError::Cache`] when called with the `OnnxRuntime` backend.
 //! Enable the feature at build time and provide model weights to use
 //! real inference:
 //!
 //! ```sh
 //! cargo build --features orbok-embed/tract
 //! ```
+//!
+//! The `CandleCpu`/`CandleCuda` variants of [`InferenceBackend`] are not
+//! currently supported (RFC-046): selecting either returns a not-supported
+//! error. They are retained in the model layer for API stability; a future
+//! RFC may reintroduce a Candle backend with a concrete implementation and
+//! CI coverage.
 //!
 //! ## RFC-021 model comparison
 //!
@@ -37,9 +42,6 @@
 
 #[cfg(feature = "tract")]
 mod tract_backend;
-
-#[cfg(feature = "candle")]
-mod candle_backend;
 
 use orbok_core::{OrbokError, OrbokResult};
 use orbok_models::{EmbeddingModel, EmbeddingModelConfig, InferenceBackend, MockEmbeddingModel};
@@ -62,11 +64,12 @@ pub const RECOMMENDED_ONNX_FILE: &str = "onnx/model.onnx";
 ///
 /// - `Mock` backend: always works, no model file required.
 /// - `OnnxRuntime`: requires `--features tract` and the model file.
-/// - `CandleCpu`/`CandleCuda`: requires `--features candle` and weights.
+/// - `CandleCpu`/`CandleCuda`: not currently supported (RFC-046); returns a
+///   not-supported error.
 ///
 /// Returns [`OrbokError::Cache`] with a human-readable message when the
-/// requested backend is not compiled in, so callers can degrade to
-/// keyword-only mode.
+/// requested backend is not compiled in or not supported, so callers can
+/// degrade to keyword-only mode.
 pub fn create_embedding_model(
     config: &EmbeddingModelConfig,
 ) -> OrbokResult<Box<dyn EmbeddingModel>> {
@@ -88,20 +91,11 @@ pub fn create_embedding_model(
             }
         }
 
-        InferenceBackend::CandleCpu | InferenceBackend::CandleCuda => {
-            #[cfg(feature = "candle")]
-            {
-                candle_backend::create(config)
-            }
-            #[cfg(not(feature = "candle"))]
-            {
-                Err(OrbokError::Cache(
-                    "Candle inference is not compiled in. \
-                     Rebuild with: --features orbok-embed/candle"
-                        .into(),
-                ))
-            }
-        }
+        // RFC-046 (B1): the Candle backend is not implemented. The variants
+        // are retained in `orbok-models` for API stability and route here.
+        InferenceBackend::CandleCpu | InferenceBackend::CandleCuda => Err(OrbokError::Cache(
+            "Candle inference is not currently supported. Use the ONNX backend.".into(),
+        )),
     }
 }
 
@@ -142,6 +136,37 @@ mod tests {
         let vecs = model.embed_batch(&["hello world"]).unwrap();
         assert_eq!(vecs.len(), 1);
         assert_eq!(vecs[0].len(), model.dimension() as usize);
+    }
+
+    // RFC-046 (B1): Candle variants return a stable not-supported error and
+    // must NOT instruct the user to rebuild with the (removed) candle feature.
+    #[test]
+    fn candle_backends_return_not_supported_error() {
+        for backend in [InferenceBackend::CandleCpu, InferenceBackend::CandleCuda] {
+            let config = EmbeddingModelConfig {
+                weights_path: String::new(),
+                tokenizer_path: None,
+                dimension: 384,
+                max_seq_len: 512,
+                backend,
+                model_name: "test".into(),
+                model_version: "v1".into(),
+            };
+            match create_embedding_model(&config) {
+                Err(err) => {
+                    let msg = err.to_string();
+                    assert!(
+                        msg.contains("not currently supported"),
+                        "expected not-supported message, got: {msg}"
+                    );
+                    assert!(
+                        !msg.contains("--features"),
+                        "must not reference a rebuild feature flag, got: {msg}"
+                    );
+                }
+                Ok(_) => panic!("Candle backend should not construct a model"),
+            }
+        }
     }
 
     // RFC-021: Non-compiled backends return an informative error.

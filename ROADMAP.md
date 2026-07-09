@@ -2,11 +2,11 @@
 
 ## Current Status (2026-06-21)
 
-Shipped: **v0.21.0**. RFCs **000–045 implemented** (see
+Shipped: **v0.22.0**. RFCs **000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
 design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
 design) completed across v0.12.0–v0.14.0; the stabilization and
-search-foundation programs landed across v0.16.0–v0.21.0:
+search-foundation programs landed across v0.16.0–v0.22.0:
 
 - v0.16.0 — RFC-044 (orbok-extract production hardening).
 - v0.17.0 — RFC-036 (resource-aware scheduler and backpressure).
@@ -14,14 +14,20 @@ search-foundation programs landed across v0.16.0–v0.21.0:
 - v0.19.0 — RFC-043 (model download readiness), RFC-039 (privacy modes), RFC-040 (safe diagnostics).
 - v0.20.0 — RFC-045 (search-in-folder flow and friendly folder management).
 - v0.21.0 — RFC-042 (search history and reopen recent searches).
+- v0.22.0 — RFC-046 (Candle backend cleanup, Option B1).
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
 ## Forward Plan — All planned RFCs implemented
 
-Every RFC through 045 has shipped. There are no RFCs in `rfcs/proposed/`.
-Future work (new features, stabilization, or the v1.0.0 push) will be
-opened as new RFCs in creation order (RFC-000).
+Every RFC through 046 has shipped. There are no RFCs in `rfcs/proposed/`.
+
+One open finding is tracked for later investigation (not yet an RFC):
+`rfcs/appendices/FINDING-tract-feature-build.md` — the `--features tract`
+build currently fails on a pre-existing `SimplePlan` import error in
+`tract_backend.rs`, independent of RFC-046. Future work (new features,
+stabilization, or the v1.0.0 push) will be opened as new RFCs in creation
+order (RFC-000).
 
 ### v1.0.0 gate (unchanged — awaiting owner confirmation)
 

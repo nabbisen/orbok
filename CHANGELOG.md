@@ -11,6 +11,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.22.0] — 2026-06-21 — Candle Backend Cleanup (RFC-046, Option B1)
+
+Stabilization release. Removes the never-implemented Candle embedding
+backend wiring from `orbok-embed`. The `candle_backend` module it referenced
+has never existed in any release (v0.2–v0.21.0), so the `candle` feature
+never compiled, and the dangling `mod` declaration broke workspace-level
+`cargo fmt`. No shipped default behavior changes; the `tract` (ONNX) and
+`Mock` backends are untouched.
+
+### Changed / Removed
+
+- **`orbok-embed`:** removed the `#[cfg(feature = "candle")] mod
+  candle_backend;` declaration, the `candle` Cargo feature, and the optional
+  `candle-core` / `candle-nn` dependencies. The `CandleCpu | CandleCuda`
+  dispatch arm now returns an unconditional, stable error:
+  `"Candle inference is not currently supported. Use the ONNX backend."`
+  (no longer references rebuilding with a removed feature). Backend doc table
+  and package description updated.
+- **`orbok-models`:** `InferenceBackend::CandleCpu` / `CandleCuda` are
+  **retained** for API stability (Option B1, not B2), with a doc tracking
+  note pointing to RFC-046. Not `#[deprecated]`; a future backend-API RFC may
+  revisit them.
+- **Docs:** README semantic-search note, `architecture.md`, and `dep_audit.md`
+  updated to drop Candle; the candle-core deferred-upgrade row removed.
+
+### Fixed
+
+- Workspace `cargo fmt` / `cargo fmt --check` now succeed. (Previously aborted
+  on the missing `candle_backend.rs` module, since `rustfmt` walks `mod`
+  declarations regardless of `#[cfg]`.)
+
+### Tests
+
+- `orbok-embed`: +1 (`candle_backends_return_not_supported_error` — asserts
+  the stable error and that it does not reference a `--features` rebuild).
+- Workspace total: **388 tests / 0 failures.**
+
+### Documentation
+
+- RFC-046 (`Accepted` → `Implemented (v0.22.0)`) moved `proposed/` → `done/`;
+  decision §10 records Option B1.
+- HANDOFF-046 added. RFC-021 annotated (not rewritten) re Candle's status as
+  a feasibility criterion.
+- New finding note `rfcs/appendices/FINDING-tract-feature-build.md` records a
+  separate, pre-existing `--features tract` build issue (`SimplePlan`
+  unresolved in `tract_backend.rs`), out of RFC-046's scope, for its own
+  later investigation.
+
+---
+
 ## [0.21.0] — 2026-06-21 — Search History and Reopen Recent Searches (RFC-042)
 
 Local recent searches with "Search again" — no automatic result tabs.

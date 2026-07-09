@@ -38,7 +38,6 @@ Performed manually against crates.io / docs.rs.
 | Crate | Locked | Available | Reason deferred |
 |---|---|---|---|
 | zip | 2.4.2 | 8.6.0 | Breaking API rewrite across 6 major versions; `FileOptions` → `SimpleFileOptions` → new builder API. Spec `"2"` is intentional. Upgrade when time allows full API migration. |
-| candle-core | 0.9.2 | 0.10.2 | Behind `--features candle` flag; defer to candle activation milestone. |
 | generic-array | 0.14.7 | 0.14.9 | Pinned to exact `=0.14.7` by a transitive dep; cannot unilaterally update. |
 
 ## Author-owned crates (check with nabbisen)

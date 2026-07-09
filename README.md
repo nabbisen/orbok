@@ -86,8 +86,8 @@ Japanese segmentation is in the roadmap (RFC-014).
 
 ### Semantic search (optional)
 
-Local dense embedding via a pluggable Rust inference backend (planned:
-candle / ONNX Runtime). Model files stay on your machine. Switching
+Local dense embedding via a pluggable Rust inference backend (ONNX
+Runtime via tract). Model files stay on your machine. Switching
 models marks existing embeddings stale and queues a rebuild.
 
 ### Disk use
