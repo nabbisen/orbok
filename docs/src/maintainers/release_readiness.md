@@ -136,7 +136,7 @@ targets.
 - [ ] Archive name includes version: `orbok-vX.Y.Z.tar.gz`
 - [ ] Archive contains: `Cargo.toml`, all `crates/`, `rfcs/`, `docs/`, `scripts/`
 - [ ] Archive does **not** contain: `target/`, `.git/`, `.git-exclude/`,
-      `.agents/`, `.codex/`, `Cargo.lock`
+      `.agents/`, `.codex/`, `dist/`, `docs/book/`, `Cargo.lock`
 - [ ] `orbok --version` output matches the Cargo.toml version
 
 ---

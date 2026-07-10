@@ -26,5 +26,6 @@ target/
 *.sqlite3-wal
 orbok-data/
 /dist/
+/docs/book/
 *.tar.gz
 /.git-exclude/
