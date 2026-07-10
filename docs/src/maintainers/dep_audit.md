@@ -56,6 +56,7 @@ Performed manually against crates.io / docs.rs.
 | futures | 0.3 | Async stream for download progress |
 | tokio | 1.52.3 (orbok-app) | Async runtime for download |
 | iced_test | 0.14 (dev) | Headless view smoke tests |
+| tokenizers | 0.23.1 | Optional under `orbok-embed/tract`; `default-features = false` with `fancy-regex` instead of native `onig` |
 
 ## Deferred upgrades (intentional)
 

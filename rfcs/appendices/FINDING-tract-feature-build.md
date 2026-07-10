@@ -1,10 +1,11 @@
-# Finding Note: `tract` feature build recovery
+# Finding Note: `tract` feature recovery
 
 **Project:** orbok
 **Type:** Finding note. **Not an RFC. No decision recorded.**
 **Discovered:** 2026-06-30, during RFC-046 (candle backend) implementation.
 **Resolved:** 2026-07-10, by aligning the runnable plan type with `tract-core`
-0.23.3.
+0.23.3 and then replacing the placeholder embedding path with tokenizer-backed
+ONNX inference.
 **Related:** RFC-046 (candle backend); RFC-021 (embedding model selection).
 
 ---
@@ -59,13 +60,17 @@ The declared `tract` feature now compiles again:
 cargo check -p orbok-embed --features tract
 ```
 
-The fix is intentionally narrow: `tract_backend.rs` stores the loaded runnable
-as `Arc<TypedSimplePlan>`, matching the current `tract-core` API.
+The first fix was intentionally narrow: `tract_backend.rs` stores the loaded
+runnable as `Arc<TypedSimplePlan>`, matching the current `tract-core` API.
 
-This resolves the feature-build contract issue. It does **not** prove the
-backend is production-ready semantic inference. `embed_batch` still uses the
-documented placeholder vector path rather than running tokenizer output through
-the loaded ONNX graph.
+The follow-up implementation now requires `tokenizer_path`, loads
+`tokenizer.json` with the `tokenizers` crate, feeds transformer inputs into the
+ONNX graph, mean-pools token-level output when needed, and L2-normalizes the
+returned vectors.
+
+This resolves the placeholder implementation. It does **not** prove production
+quality by itself: full model validation still needs local `tokenizer.json` and
+`onnx/model.onnx`, plus recall and latency measurements.
 
 ## 4. Investigation result
 
@@ -85,7 +90,10 @@ The original open questions are now answered as follows:
 - `cargo check -p orbok-embed`
 - `cargo test -p orbok-embed --lib`
 - `cargo check -p orbok-embed --features tract`
+- `cargo test -p orbok-embed --features tract --lib`
+- `cargo test --workspace --lib`
+- `cargo audit`
 
-The broader real-inference work remains separate: configure tokenizer/model
-inputs, run the ONNX graph in `embed_batch`, and validate output quality and
-latency against the RFC-021 expectations.
+Remaining real-backend validation is empirical: run the recommended local model
+files, benchmark recall@5 and p99 latency, and decide whether query/passage
+prefixing requires an API-level text-role distinction.

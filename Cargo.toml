@@ -42,6 +42,7 @@ orbok-ui                    = { version = "0", path = "crates/ui" }
 # ai
 tract-onnx                  = { version = "0.23" }
 tract-core                  = { version = "0.23" }
+tokenizers                  = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 
 # database — pinned to 0.40 to match localcache 0.20.0
 # (single libsqlite3-sys rule; see RFC-002 amendment / Appendix A §21)

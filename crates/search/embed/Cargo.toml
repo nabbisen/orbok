@@ -12,7 +12,7 @@ repository.workspace    = true
 [features]
 # Enable the tract ONNX runtime backend (pure Rust, no C FFI).
 # Required for real embedding inference; adds ~150 MB of compile time.
-tract           = ["dep:tract-onnx", "dep:tract-core"]
+tract           = ["dep:tract-onnx", "dep:tract-core", "dep:tokenizers"]
 
 [dependencies]
 orbok-core                  = { workspace = true }
@@ -24,6 +24,7 @@ tracing                     = { workspace = true }
 # Optional heavy inference deps — only compiled with the named feature.
 tract-onnx                  = { workspace = true, optional = true }
 tract-core                  = { workspace = true, optional = true }
+tokenizers                  = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile                    = { workspace = true }
