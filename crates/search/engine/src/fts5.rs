@@ -5,7 +5,7 @@
 //! The `keyword_index_records.fts_rowid` column carries the only
 //! chunk ↔ fts mapping; deletion goes through it.
 
-use crate::query::build_match_expression;
+use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::{KeywordCandidate, KeywordDocument, KeywordSearchEngine};
 use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult, now_iso8601};
 use orbok_db::Catalog;
@@ -24,6 +24,52 @@ pub struct Fts5KeywordEngine<'a> {
 impl<'a> Fts5KeywordEngine<'a> {
     pub fn new(catalog: &'a Catalog) -> Self {
         Self { catalog }
+    }
+
+    pub fn search_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_expr(build_match_pair_expression(query), limit)
+    }
+
+    fn search_with_expr(
+        &self,
+        match_expr: Option<String>,
+        limit: u32,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        let Some(match_expr) = match_expr else {
+            return Ok(Vec::new());
+        };
+        let conn = self.catalog.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
+                 FROM chunk_fts \
+                 JOIN keyword_index_records r ON r.fts_rowid = chunk_fts.rowid \
+                 JOIN chunks c ON c.chunk_id = r.chunk_id \
+                 WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
+                   AND c.chunk_status = 'active' \
+                 ORDER BY score LIMIT ?2",
+            )
+            .map_err(db)?;
+        let rows = stmt
+            .query_map(params![match_expr, limit], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            })
+            .map_err(db)?;
+        let mut out = Vec::new();
+        for (i, row) in rows.enumerate() {
+            let (chunk_id, file_id, score) = row.map_err(db)?;
+            out.push(KeywordCandidate {
+                chunk_id: ChunkId::from_string(chunk_id),
+                file_id: FileId::from_string(file_id),
+                rank: (i + 1) as u32,
+                score,
+            });
+        }
+        Ok(out)
     }
 }
 
@@ -87,41 +133,7 @@ impl KeywordSearchEngine for Fts5KeywordEngine<'_> {
     }
 
     fn search(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        let Some(match_expr) = build_match_expression(query) else {
-            return Ok(Vec::new());
-        };
-        let conn = self.catalog.lock();
-        let mut stmt = conn
-            .prepare(
-                "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
-                 FROM chunk_fts \
-                 JOIN keyword_index_records r ON r.fts_rowid = chunk_fts.rowid \
-                 JOIN chunks c ON c.chunk_id = r.chunk_id \
-                 WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
-                   AND c.chunk_status = 'active' \
-                 ORDER BY score LIMIT ?2",
-            )
-            .map_err(db)?;
-        let rows = stmt
-            .query_map(params![match_expr, limit], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, f64>(2)?,
-                ))
-            })
-            .map_err(db)?;
-        let mut out = Vec::new();
-        for (i, row) in rows.enumerate() {
-            let (chunk_id, file_id, score) = row.map_err(db)?;
-            out.push(KeywordCandidate {
-                chunk_id: ChunkId::from_string(chunk_id),
-                file_id: FileId::from_string(file_id),
-                rank: (i + 1) as u32,
-                score,
-            });
-        }
-        Ok(out)
+        self.search_with_expr(build_match_expression(query), limit)
     }
 }
 

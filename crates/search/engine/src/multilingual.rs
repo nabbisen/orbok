@@ -14,7 +14,7 @@
 //! a future RFC when a suitable licensed crate is available.
 
 use crate::fts5::Fts5KeywordEngine;
-use crate::query::build_match_expression;
+use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::{KeywordCandidate, KeywordSearchEngine};
 use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
@@ -69,6 +69,10 @@ impl<'a> MultilingualKeywordEngine<'a> {
     pub fn new(catalog: &'a Catalog) -> Self {
         Self { catalog }
     }
+
+    pub fn search_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_pairs(query, limit)
+    }
 }
 
 impl KeywordSearchEngine for MultilingualKeywordEngine<'_> {
@@ -87,6 +91,16 @@ impl KeywordSearchEngine for MultilingualKeywordEngine<'_> {
     /// Search with query routing: CJK queries use trigram in addition to
     /// unicode61; English/identifier queries use unicode61 only.
     fn search(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_exact_terms(query, limit)
+    }
+}
+
+impl MultilingualKeywordEngine<'_> {
+    fn search_with_exact_terms(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
         let normalized = normalize_query(query);
         if normalized.is_empty() {
             return Ok(Vec::new());
@@ -113,11 +127,46 @@ impl KeywordSearchEngine for MultilingualKeywordEngine<'_> {
         }
         Ok(candidates)
     }
-}
 
-impl MultilingualKeywordEngine<'_> {
+    fn search_with_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
+        let normalized = normalize_query(query);
+        if normalized.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let kw = Fts5KeywordEngine::new(self.catalog);
+        let mut candidates = kw.search_pairs(&normalized, limit)?;
+
+        if contains_cjk(&normalized) {
+            let trigram_hits = self.search_trigram_pairs(&normalized, limit)?;
+            merge_candidates(&mut candidates, trigram_hits);
+            candidates.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            candidates.truncate(limit as usize);
+            for (i, c) in candidates.iter_mut().enumerate() {
+                c.rank = (i + 1) as u32;
+            }
+        }
+        Ok(candidates)
+    }
+
     fn search_trigram(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        let Some(match_expr) = build_match_expression(query) else {
+        self.search_trigram_with_expr(build_match_expression(query), limit)
+    }
+
+    fn search_trigram_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_trigram_with_expr(build_match_pair_expression(query), limit)
+    }
+
+    fn search_trigram_with_expr(
+        &self,
+        match_expr: Option<String>,
+        limit: u32,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        let Some(match_expr) = match_expr else {
             return Ok(Vec::new());
         };
         let conn = self.catalog.lock();

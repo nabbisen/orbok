@@ -7,6 +7,7 @@
 use orbok_core::{OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::ChunkRecord;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
@@ -44,38 +45,66 @@ pub fn chunk_record_for(
     catalog: &Catalog,
     chunk_id: &orbok_core::ChunkId,
 ) -> OrbokResult<Option<(ChunkRecord, String)>> {
-    let conn = catalog.lock();
-    let result = conn.query_row(
+    let mut records = chunk_records_for(catalog, std::slice::from_ref(chunk_id))?;
+    Ok(records.remove(chunk_id.as_str()))
+}
+
+/// Look up chunk location metadata for several chunks in one catalog query.
+pub fn chunk_records_for(
+    catalog: &Catalog,
+    chunk_ids: &[orbok_core::ChunkId],
+) -> OrbokResult<HashMap<String, (ChunkRecord, String)>> {
+    if chunk_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = std::iter::repeat_n("?", chunk_ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
         "SELECT c.chunk_id, c.file_id, c.chunk_ordinal, c.heading_path, \
                 cl.line_start, cl.line_end, cl.byte_start, cl.byte_end, cl.location_quality, \
                 f.canonical_path \
          FROM chunks c \
          LEFT JOIN chunk_locations cl ON cl.chunk_id = c.chunk_id \
          JOIN files f ON f.file_id = c.file_id \
-         WHERE c.chunk_id = ?1 AND c.chunk_status = 'active'",
-        rusqlite::params![chunk_id.as_str()],
-        |row| {
-            Ok((
-                ChunkRecord {
-                    chunk_id: orbok_core::ChunkId::from_string(row.get::<_, String>(0)?),
-                    file_id: orbok_core::FileId::from_string(row.get::<_, String>(1)?),
-                    chunk_ordinal: row.get::<_, i64>(2)? as u32,
-                    heading_path: row.get(3)?,
-                    line_start: row.get::<_, i64>(4).unwrap_or(1) as u32,
-                    line_end: row.get::<_, i64>(5).unwrap_or(1) as u32,
-                    byte_start: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
-                    byte_end: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
-                    location_quality: row.get(8).unwrap_or_else(|_| "unknown".to_string()),
-                },
-                row.get::<_, String>(9)?,
-            ))
-        },
+         WHERE c.chunk_id IN ({placeholders}) AND c.chunk_status = 'active'"
     );
-    match result {
-        Ok(v) => Ok(Some(v)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(OrbokError::Database(e.to_string())),
+    let conn = catalog.lock();
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| OrbokError::Database(e.to_string()))?;
+    let params = rusqlite::params_from_iter(chunk_ids.iter().map(|id| id.as_str()));
+    let rows = stmt
+        .query_map(params, row_to_chunk_record)
+        .map_err(|e| OrbokError::Database(e.to_string()))?;
+
+    let mut records = HashMap::with_capacity(chunk_ids.len());
+    for row in rows {
+        let (record, canonical_path) = row.map_err(|e| OrbokError::Database(e.to_string()))?;
+        records.insert(
+            record.chunk_id.as_str().to_string(),
+            (record, canonical_path),
+        );
     }
+    Ok(records)
+}
+
+fn row_to_chunk_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ChunkRecord, String)> {
+    Ok((
+        ChunkRecord {
+            chunk_id: orbok_core::ChunkId::from_string(row.get::<_, String>(0)?),
+            file_id: orbok_core::FileId::from_string(row.get::<_, String>(1)?),
+            chunk_ordinal: row.get::<_, i64>(2)? as u32,
+            heading_path: row.get(3)?,
+            line_start: row.get::<_, i64>(4).unwrap_or(1) as u32,
+            line_end: row.get::<_, i64>(5).unwrap_or(1) as u32,
+            byte_start: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+            byte_end: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
+            location_quality: row.get(8).unwrap_or_else(|_| "unknown".to_string()),
+        },
+        row.get::<_, String>(9)?,
+    ))
 }
 
 /// Sanitize a snippet for safe display in the UI (RFC-015 §18, FR-091).

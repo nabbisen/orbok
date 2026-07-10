@@ -125,8 +125,8 @@ showing:
 
 Current v0.22 evidence is tracked in
 [`benchmark_report.md`](benchmark_report.md). The latest 1,000-document
-release-mode snapshot meets recall and indexing throughput targets but does not
-yet meet the p99 latency target.
+release-mode snapshot meets recall, p99 latency, and indexing throughput
+targets.
 
 ---
 

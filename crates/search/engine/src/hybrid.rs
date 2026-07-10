@@ -6,7 +6,7 @@ use crate::KeywordSearchEngine;
 use crate::multilingual::MultilingualKeywordEngine;
 use crate::rrf::{FusedCandidate, rrf_fuse};
 use crate::service::{MatchBadge, SearchResult};
-use crate::snippet::{chunk_record_for, load_snippet};
+use crate::snippet::{chunk_records_for, load_snippet};
 use crate::vector::ExactVectorSearch;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
@@ -64,6 +64,24 @@ impl Limits {
             },
         }
     }
+
+    fn adjust_for_request(
+        &mut self,
+        requested_limit: u32,
+        has_embedding_model: bool,
+        has_reranker: bool,
+    ) {
+        let requested_limit = requested_limit.max(1);
+        if !has_embedding_model {
+            // Without a vector source, RRF preserves keyword order. Avoid the
+            // fixed 100-candidate query cost for small result sets.
+            let keyword_cap = requested_limit;
+            self.keyword_k = self.keyword_k.min(keyword_cap);
+            self.vector_k = 0;
+            self.fusion_n = self.fusion_n.min(keyword_cap as usize);
+            self.rerank &= has_reranker;
+        }
+    }
 }
 
 /// Hybrid search service. Optional embedding model and reranker both
@@ -114,11 +132,21 @@ impl<'a> HybridSearchService<'a> {
         mode: SearchMode,
         limit: u32,
     ) -> OrbokResult<Vec<SearchResult>> {
-        let limits = Limits::for_mode(mode);
+        let mut limits = Limits::for_mode(mode);
+        limits.adjust_for_request(
+            limit,
+            self.embedding_model.is_some(),
+            self.reranker.is_some(),
+        );
 
         // Keyword candidates — use multilingual engine (RFC-014).
         let kw_candidates = if limits.keyword_k > 0 {
-            MultilingualKeywordEngine::new(self.catalog).search(query, limits.keyword_k)?
+            let keyword_engine = MultilingualKeywordEngine::new(self.catalog);
+            if mode == SearchMode::Auto && query.split_whitespace().count() >= 4 {
+                keyword_engine.search_pairs(query, limits.keyword_k)?
+            } else {
+                keyword_engine.search(query, limits.keyword_k)?
+            }
         } else {
             Vec::new()
         };
@@ -145,12 +173,7 @@ impl<'a> HybridSearchService<'a> {
         let fused = rrf_fuse(&kw_candidates, &vec_candidates, limits.fusion_n);
 
         // Enrich with snippets.
-        let mut results = Vec::new();
-        for candidate in fused.iter().take(limit as usize) {
-            if let Some(result) = self.enrich(candidate)? {
-                results.push(result);
-            }
-        }
+        let mut results = self.enrich_many(&fused, limit as usize)?;
 
         // Optional reranking (RFC-010): reorder using passage scores.
         if limits.rerank {
@@ -162,37 +185,51 @@ impl<'a> HybridSearchService<'a> {
         Ok(results)
     }
 
-    fn enrich(&self, candidate: &FusedCandidate) -> OrbokResult<Option<SearchResult>> {
-        let Some((chunk, canonical_path)) = chunk_record_for(self.catalog, &candidate.chunk_id)?
-        else {
-            return Ok(None);
-        };
-        let snippet = load_snippet(&chunk, &canonical_path);
-        let display_path = short_display_path(&canonical_path);
-        let title = chunk.heading_path.clone().or_else(|| {
-            Path::new(&canonical_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-        });
-        let mut badges = Vec::new();
-        if candidate.keyword_rank.is_some() {
-            badges.push(MatchBadge::Keyword);
+    fn enrich_many(
+        &self,
+        candidates: &[FusedCandidate],
+        limit: usize,
+    ) -> OrbokResult<Vec<SearchResult>> {
+        let top_candidates: Vec<&FusedCandidate> = candidates.iter().take(limit).collect();
+        let chunk_ids: Vec<_> = top_candidates
+            .iter()
+            .map(|candidate| candidate.chunk_id.clone())
+            .collect();
+        let records = chunk_records_for(self.catalog, &chunk_ids)?;
+
+        let mut results = Vec::with_capacity(top_candidates.len());
+        for candidate in top_candidates {
+            let Some((chunk, canonical_path)) = records.get(candidate.chunk_id.as_str()) else {
+                continue;
+            };
+            let snippet = load_snippet(chunk, canonical_path);
+            let display_path = short_display_path(canonical_path);
+            let title = chunk.heading_path.clone().or_else(|| {
+                Path::new(canonical_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+            });
+            let mut badges = Vec::new();
+            if candidate.keyword_rank.is_some() {
+                badges.push(MatchBadge::Keyword);
+            }
+            if candidate.vector_rank.is_some() {
+                badges.push(MatchBadge::Semantic);
+            }
+            results.push(SearchResult {
+                chunk_id: candidate.chunk_id.clone(),
+                file_id: candidate.file_id.clone(),
+                canonical_path: canonical_path.clone(),
+                display_path,
+                title,
+                heading_path: chunk.heading_path.clone(),
+                snippet,
+                keyword_rank: candidate.keyword_rank.unwrap_or(0),
+                keyword_score: 0.0,
+                badges,
+            });
         }
-        if candidate.vector_rank.is_some() {
-            badges.push(MatchBadge::Semantic);
-        }
-        Ok(Some(SearchResult {
-            chunk_id: candidate.chunk_id.clone(),
-            file_id: candidate.file_id.clone(),
-            canonical_path,
-            display_path,
-            title,
-            heading_path: chunk.heading_path,
-            snippet,
-            keyword_rank: candidate.keyword_rank.unwrap_or(0),
-            keyword_score: 0.0,
-            badges,
-        }))
+        Ok(results)
     }
 }
 

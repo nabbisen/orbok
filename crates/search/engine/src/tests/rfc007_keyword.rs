@@ -2,6 +2,7 @@
 //! exact-term retrieval, identifiers, replace-on-reindex, deletion,
 //! contentless privacy, and query-injection neutralization.
 
+use crate::query::build_match_pair_expression;
 use crate::{Fts5KeywordEngine, KeywordDocument, KeywordSearchEngine, build_match_expression};
 use orbok_core::ChunkId;
 use orbok_db::Catalog;
@@ -151,6 +152,22 @@ fn query_syntax_is_neutralized() {
             .search("title: plain NEAR(x y)", 10)
             .unwrap()
             .is_empty()
+    );
+}
+
+#[test]
+fn long_auto_query_uses_safe_anchor_phrase() {
+    assert_eq!(
+        build_match_pair_expression("embedding model cosine similarity"),
+        Some("\"embedding model\"".into())
+    );
+    assert_eq!(
+        build_match_pair_expression("say \"hi\" then continue"),
+        Some("\"say \"\"hi\"\"\"".into())
+    );
+    assert_eq!(
+        build_match_pair_expression("source allowlist path"),
+        build_match_expression("source allowlist path")
     );
 }
 
