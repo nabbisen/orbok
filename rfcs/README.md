@@ -63,8 +63,8 @@ None. All RFCs through 046 are implemented. Future work will be opened
 here as new RFCs; **numbering is creation order, not dependency order**
 (RFC-000).
 
-Developer handoffs live in [`handoffs/`](handoffs/). A pre-investigation
-finding note for a separate `--features tract` build issue is in
+Developer handoffs live in [`handoffs/`](handoffs/). The resolved finding note
+for the separate `--features tract` build issue is in
 [`appendices/FINDING-tract-feature-build.md`](appendices/FINDING-tract-feature-build.md).
 
 ## Archive

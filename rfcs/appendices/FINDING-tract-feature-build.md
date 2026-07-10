@@ -1,13 +1,15 @@
-# Finding Note: `tract` feature does not compile (`SimplePlan` unresolved)
+# Finding Note: `tract` feature build recovery
 
 **Project:** orbok
-**Type:** Finding note (pre-investigation). **Not an RFC. No decision recorded.**
+**Type:** Finding note. **Not an RFC. No decision recorded.**
 **Discovered:** 2026-06-30, during RFC-046 (candle backend) implementation.
+**Resolved:** 2026-07-10, by aligning the runnable plan type with `tract-core`
+0.23.3.
 **Related:** RFC-046 (candle backend); RFC-021 (embedding model selection).
 
 ---
 
-## 1. What was observed
+## 1. What was observed originally
 
 While verifying RFC-046's acceptance criteria, `cargo check -p orbok-embed
 --features tract` failed:
@@ -19,8 +21,20 @@ error[E0425]: cannot find type `SimplePlan` in this scope
 30 |     model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
 ```
 
-`tract_backend.rs` imports `use tract_onnx::prelude::*;`, but `SimplePlan`
-is not brought into scope by that glob in the pinned `tract-onnx` 0.23.
+The source used an old/incorrect `SimplePlan` shape:
+
+```rust
+SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>
+```
+
+In the pinned `tract-core` 0.23.3 API, `SimplePlan` has two generic
+parameters, and the typed runnable alias is:
+
+```rust
+TypedSimplePlan = SimplePlan<TypedFact, Box<dyn TypedOp>>
+```
+
+`into_runnable()` returns this runnable behind `Arc`.
 
 ## 2. Scope boundary (why this is a separate note)
 
@@ -37,40 +51,41 @@ different backend with a different cause:
 `tract_backend.rs` was **not** modified by RFC-046. This breakage is
 pre-existing and independent.
 
-## 3. Current impact (stated neutrally)
+## 3. Current impact
 
-- Default builds and `cargo test --workspace --lib` are unaffected — the
-  `tract` feature is off by default, so `tract_backend` is not compiled.
-- `--features tract` does not currently compile.
-- The recommended default model (`multilingual-e5-small`, RFC-021) is an
-  ONNX model intended to run via the `tract` `OnnxRuntime` path. So unlike
-  candle (a never-built secondary slot), `tract` is the *intended real*
-  inference path — which makes its build state more consequential than
-  candle's, and worth its own careful investigation rather than a quick fix.
+The declared `tract` feature now compiles again:
 
-## 4. Not yet established (open for investigation)
+```sh
+cargo check -p orbok-embed --features tract
+```
 
-Mirroring the discipline applied to candle, the following should be checked
-before any change, **not** assumed:
+The fix is intentionally narrow: `tract_backend.rs` stores the loaded runnable
+as `Arc<TypedSimplePlan>`, matching the current `tract-core` API.
 
-1. Whether `SimplePlan` is the only unresolved symbol, or the first of
-   several (i.e. is `tract_backend.rs` one import short, or materially drifted
-   from `tract-onnx` 0.23's API?).
-2. Whether `--features tract` has *ever* compiled in any released version
-   (check release tarballs, as was done for candle), or whether it has been
-   latent like candle.
-3. What the CHANGELOG and RFC-021/RFC-008 actually scoped for the tract path
-   (selection criterion vs. delivered, verified backend).
-4. The correct fix surface: a one-line import, a broader API-drift update, or
-   a version re-pin.
+This resolves the feature-build contract issue. It does **not** prove the
+backend is production-ready semantic inference. `embed_batch` still uses the
+documented placeholder vector path rather than running tokenizer output through
+the loaded ONNX graph.
 
-## 5. Suggested disposition
+## 4. Investigation result
 
-Open a dedicated investigation (and, if a code/contract change is warranted,
-an RFC — next free number at that time) once RFC-046 has shipped. Apply the
-same feature-contract principle RFC-046 §12 records:
+The original open questions are now answered as follows:
 
-> A declared Cargo feature must compile, or it must not exist.
+1. `SimplePlan` was the only observed compile blocker in the feature build.
+2. The local Cargo registry contains earlier published `orbok-embed` sources
+   with the same old field type, suggesting the issue was latent across
+   releases that carried this source shape.
+3. RFC-046 remains correctly scoped to Candle; this fix is independent of the
+   Candle removal.
+4. The correct fix surface was a small API-drift update, not a `tract` re-pin.
 
-No fix is applied here, and no conclusion about cause is asserted. This note
-exists so the finding is not lost.
+## 5. Verification observed
+
+- `cargo fmt --check`
+- `cargo check -p orbok-embed`
+- `cargo test -p orbok-embed --lib`
+- `cargo check -p orbok-embed --features tract`
+
+The broader real-inference work remains separate: configure tokenizer/model
+inputs, run the ONNX graph in `embed_batch`, and validate output quality and
+latency against the RFC-021 expectations.

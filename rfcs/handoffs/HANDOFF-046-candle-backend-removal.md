@@ -79,11 +79,11 @@ preserved with annotation.
 
 **Acceptance:** `cargo fmt --check` passes at workspace level.
 
-> **Out of scope (separate finding):** `cargo check -p orbok-embed
-> --features tract` currently fails with a pre-existing `SimplePlan` import
-> error in `tract_backend.rs`, unrelated to candle and untouched by RFC-046.
-> Recorded in `rfcs/appendices/FINDING-tract-feature-build.md` for its own
-> investigation. RFC-046 does not address it.
+> **Out of scope (separate finding):** at RFC-046 handoff time, `cargo check
+> -p orbok-embed --features tract` failed with a pre-existing `SimplePlan`
+> type error in `tract_backend.rs`, unrelated to candle and untouched by
+> RFC-046. Recorded in `rfcs/appendices/FINDING-tract-feature-build.md`.
+> RFC-046 does not address it.
 
 ## 3. Tests
 

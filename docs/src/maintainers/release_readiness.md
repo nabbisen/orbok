@@ -40,9 +40,8 @@ documented as release-blocking for the v0.22 line:
 - `cargo audit` / `cargo deny` — not configured as a blocking gate yet.
 - `cargo run -p orbok -- --check` — useful headless smoke check, but not part
   of the current blocking gate set.
-- Feature matrix checks — `cargo check -p orbok-embed --features tract`
-  currently fails and is tracked separately in
-  `rfcs/appendices/FINDING-tract-feature-build.md`.
+- Feature matrix checks — `cargo check -p orbok-embed --features tract` is
+  useful coverage, but the required feature set is not yet a blocking policy.
 
 ## Future Gate Alignment
 
@@ -54,7 +53,7 @@ At minimum, the open decisions are:
 - Whether supply-chain checks use `cargo audit`, `cargo deny`, both, or a
   documented waiver.
 - Whether `orbok --check` is required for every release.
-- Which Cargo feature combinations must compile.
+- Which Cargo feature combinations must compile for every release.
 
 ---
 

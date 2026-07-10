@@ -27,7 +27,7 @@ pub fn create(config: &EmbeddingModelConfig) -> OrbokResult<Box<dyn EmbeddingMod
 }
 
 struct TractEmbeddingModel {
-    model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    _model: Arc<TypedSimplePlan>,
     dimension: u32,
     name: String,
     version: String,
@@ -43,7 +43,7 @@ impl TractEmbeddingModel {
             .into_runnable()
             .map_err(|e| OrbokError::Cache(format!("ONNX runnable failed: {e}")))?;
         Ok(Self {
-            model,
+            _model: model,
             dimension: config.dimension,
             name: config.model_name.clone(),
             version: config.model_version.clone(),
