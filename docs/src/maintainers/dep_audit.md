@@ -1,4 +1,28 @@
-# Dependency Audit — 2026-06-20
+# Dependency Audit
+
+## 2026-07-10 security baseline
+
+`cargo audit` is now configured as the supply-chain baseline. The repository
+keeps the waiver list in `.cargo/audit.toml`; unwaived vulnerabilities should
+fail CI.
+
+Fixes applied:
+
+- `lopdf`: 0.41.0 → 0.42.0 for RUSTSEC-2026-0187.
+- `crossbeam-epoch`: 0.9.18 → 0.9.20 for RUSTSEC-2026-0204.
+- `quinn-proto`: 0.11.14 → 0.11.16 for RUSTSEC-2026-0185.
+
+Temporary waivers:
+
+- RUSTSEC-2026-0194 and RUSTSEC-2026-0195 for `quick-xml` 0.39.4.
+  This crate is pulled through `wayland-scanner` 0.31.10, a proc-macro
+  dependency in the Linux GUI stack. `wayland-scanner` 0.31.10 is current and
+  still requires `quick-xml ^0.39`, so this cannot be updated independently.
+
+Observed remaining audit warnings are informational (`unmaintained` /
+`unsound`) and are not denied by the current baseline.
+
+## 2026-06-20 dependency currency audit
 
 Performed manually against crates.io / docs.rs.
 (`cargo-outdated` could not be installed in the build environment due to
@@ -20,7 +44,7 @@ Performed manually against crates.io / docs.rs.
 | dirs | 6.0.0 | 6.x | ✓ current |
 | time | 0.3.47 | 0.3.x | ✓ current |
 | tempfile | 3.27.0 | 3.27 | ✓ current |
-| **lopdf** | **0.41.0** | **0.41.0** | ✅ upgraded from 0.34 |
+| **lopdf** | **0.42.0** | **0.42.0** | ✅ upgraded from 0.41 for RustSec baseline |
 | **sha2** | **0.11.0** | **0.11.0** | ✅ upgraded from 0.10 |
 
 ## Added after initial audit

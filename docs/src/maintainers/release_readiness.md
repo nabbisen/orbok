@@ -26,6 +26,8 @@ These are the gates treated as release-blocking for the current v0.22 line:
   RFC numbers remain coherent.
 - Version and lockfile coherence — workspace version and `Cargo.lock` package
   versions agree.
+- Supply-chain vulnerability baseline — `cargo audit` passes with only
+  documented waivers from `.cargo/audit.toml`.
 - Release archive checks — archive name includes version, layout is flat, and
   generated checksums accompany the archive.
 
@@ -37,7 +39,9 @@ documented as release-blocking for the v0.22 line:
 - `cargo clippy --workspace --all-targets` — advisory today; warnings exist.
 - `cargo clippy --workspace --all-targets -- -D warnings` — target gate, not
   green yet.
-- `cargo audit` / `cargo deny` — not configured as a blocking gate yet.
+- `cargo audit --deny warnings` — informational advisories are visible but not
+  denied by the current baseline.
+- `cargo deny` — not configured as a blocking gate yet.
 - `cargo run -p orbok -- --check` — useful headless smoke check, but not part
   of the current blocking gate set.
 - Feature matrix checks — `cargo check -p orbok-embed --features tract` is
@@ -50,8 +54,8 @@ document in the same change that makes them green or explicitly waives them.
 At minimum, the open decisions are:
 
 - Whether clippy is advisory or `-D warnings`.
-- Whether supply-chain checks use `cargo audit`, `cargo deny`, both, or a
-  documented waiver.
+- Whether supply-chain checks add `cargo deny`, and whether `cargo audit`
+  should deny informational warnings.
 - Whether `orbok --check` is required for every release.
 - Which Cargo feature combinations must compile for every release.
 

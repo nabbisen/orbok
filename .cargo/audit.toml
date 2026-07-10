@@ -1,0 +1,8 @@
+[advisories]
+ignore = [
+    # quick-xml 0.39.4 is pulled through wayland-scanner 0.31.10, a proc-macro
+    # dependency in the Linux GUI stack. wayland-scanner 0.31.10 is current and
+    # still requires quick-xml ^0.39, so this cannot be updated independently.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
