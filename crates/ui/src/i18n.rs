@@ -51,16 +51,31 @@ impl Locale {
     pub fn from_env() -> Option<Locale> {
         for var in &["LANG", "LANGUAGE"] {
             if let Ok(val) = std::env::var(var) {
-                let lower = val.to_lowercase();
-                if lower.starts_with("ja") {
-                    return Some(Locale::Ja);
-                }
-                if lower.starts_with("en") {
-                    return Some(Locale::En);
+                if let Some(locale) = Self::parse_env_value(&val) {
+                    return Some(locale);
                 }
             }
         }
         None
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_env_values(lang: Option<&str>, language: Option<&str>) -> Option<Locale> {
+        [lang, language]
+            .into_iter()
+            .flatten()
+            .find_map(Self::parse_env_value)
+    }
+
+    fn parse_env_value(value: &str) -> Option<Locale> {
+        let lower = value.to_lowercase();
+        if lower.starts_with("ja") {
+            Some(Locale::Ja)
+        } else if lower.starts_with("en") {
+            Some(Locale::En)
+        } else {
+            None
+        }
     }
 
     /// Self-described language name, shown in the language picker.

@@ -53,39 +53,13 @@ fn locale_setting_round_trip() {
 // RFC-031 §3: OS locale detection — Japanese.
 #[test]
 fn locale_from_env_detects_japanese() {
-    let prev = std::env::var("LANG").ok();
-    unsafe {
-        std::env::set_var("LANG", "ja_JP.UTF-8");
-    }
-    let detected = Locale::from_env();
-    unsafe {
-        match prev {
-            Some(v) => std::env::set_var("LANG", v),
-            None => std::env::remove_var("LANG"),
-        }
-    }
+    let detected = Locale::from_env_values(Some("ja_JP.UTF-8"), None);
     assert_eq!(detected, Some(Locale::Ja));
 }
 
 // RFC-031 §3: non-Japanese LANG falls through to English.
 #[test]
 fn locale_from_env_english_fallback() {
-    let prev_lang = std::env::var("LANG").ok();
-    let prev_language = std::env::var("LANGUAGE").ok();
-    unsafe {
-        std::env::set_var("LANG", "en_US.UTF-8");
-        std::env::remove_var("LANGUAGE");
-    }
-    let detected = Locale::from_env();
-    unsafe {
-        match prev_lang {
-            Some(v) => std::env::set_var("LANG", v),
-            None => std::env::remove_var("LANG"),
-        }
-        match prev_language {
-            Some(v) => std::env::set_var("LANGUAGE", v),
-            None => std::env::remove_var("LANGUAGE"),
-        }
-    }
+    let detected = Locale::from_env_values(Some("en_US.UTF-8"), None);
     assert_eq!(detected, Some(Locale::En));
 }
