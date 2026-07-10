@@ -123,6 +123,11 @@ showing:
 - p99 search latency ≤ 200 ms on a 1,000-document corpus
 - indexing throughput ≥ 10 files/s on a modern laptop
 
+Current v0.22 evidence is tracked in
+[`benchmark_report.md`](benchmark_report.md). The latest 1,000-document
+release-mode snapshot meets recall and indexing throughput targets but does not
+yet meet the p99 latency target.
+
 ---
 
 ## Packaging Checklist (RFC-017)

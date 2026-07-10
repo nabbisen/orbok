@@ -239,17 +239,14 @@ Each query should have expected relevant document/chunk IDs.
 Recommended command:
 
 ```text
-orbok bench --suite retrieval
-orbok bench --suite indexing
-orbok bench --suite storage
-orbok bench --suite all
+cargo run -p orbok-bench --release -- 1000 target/orbok-bench/results
 ```
 
 Recommended output:
 
 ```text
-target/orbok-bench/results/<timestamp>.json
-target/orbok-bench/results/<timestamp>.md
+target/orbok-bench/results/orbok-bench-results.json
+target/orbok-bench/results/orbok-bench-report.md
 ```
 
 JSON is for tooling. Markdown is for human review.
