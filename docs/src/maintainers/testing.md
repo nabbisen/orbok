@@ -3,6 +3,9 @@
 ## Running tests
 
 ```sh
+# Standard workspace library gate
+cargo test --workspace --lib
+
 # All non-GUI crates (fast — no iced compile)
 cargo test --workspace --exclude orbok --exclude orbok-ui --exclude orbok-bench
 

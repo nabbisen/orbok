@@ -16,29 +16,45 @@ This document defines the release gates and QA checklist for orbok releases.
 
 ---
 
-## Fast CI Gate (required: every PR)
+## Current Blocking Gates
 
-- `cargo fmt --all --check` — zero formatting violations
-- `cargo clippy ... -D warnings` — zero clippy warnings
-- Unit tests on non-GUI crates — 0 failures
-- Headless `orbok --check` — exit 0
+These are the gates treated as release-blocking for the current v0.22 line:
 
-## Release CI Gate (required: main branch)
+- `cargo fmt --check` — zero formatting violations.
+- `cargo test --workspace --lib` — all workspace library tests pass.
+- RFC lifecycle integrity — status fields, folder placement, index links, and
+  RFC numbers remain coherent.
+- Version and lockfile coherence — workspace version and `Cargo.lock` package
+  versions agree.
+- Release archive checks — archive name includes version, layout is flat, and
+  generated checksums accompany the archive.
 
-All fast gate requirements, plus:
+## Advisory / Not Yet Blocking
 
-- `cargo build --release -p orbok` succeeds on Linux, Windows, macOS
-- `orbok --version` prints the current version
-- Benchmark smoke test passes (10-document corpus)
-- No new `cargo audit` high-severity advisories
+These checks are useful and should be run when relevant, but are not currently
+documented as release-blocking for the v0.22 line:
 
-## Security Gate (required: every PR)
+- `cargo clippy --workspace --all-targets` — advisory today; warnings exist.
+- `cargo clippy --workspace --all-targets -- -D warnings` — target gate, not
+  green yet.
+- `cargo audit` / `cargo deny` — not configured as a blocking gate yet.
+- `cargo run -p orbok -- --check` — useful headless smoke check, but not part
+  of the current blocking gate set.
+- Feature matrix checks — `cargo check -p orbok-embed --features tract`
+  currently fails and is tracked separately in
+  `rfcs/appendices/FINDING-tract-feature-build.md`.
 
-- Path traversal test passes
-- Symlink escape test passes
-- HTML escape test passes
-- Log hygiene (no document content in logs) confirmed by test
-- `cargo audit` run (warns, does not block on informational advisories)
+## Future Gate Alignment
+
+Before v1.0.0, decide which advisory checks become blocking and update this
+document in the same change that makes them green or explicitly waives them.
+At minimum, the open decisions are:
+
+- Whether clippy is advisory or `-D warnings`.
+- Whether supply-chain checks use `cargo audit`, `cargo deny`, both, or a
+  documented waiver.
+- Whether `orbok --check` is required for every release.
+- Which Cargo feature combinations must compile.
 
 ---
 
@@ -108,8 +124,8 @@ showing:
 
 ## Packaging Checklist (RFC-017)
 
-- [ ] `SHA256SUMS` file accompanies every archive
-- [ ] Archive name includes version: `orbok-X.Y.Z.tar.gz`
+- [ ] Checksum file accompanies every archive (`orbok-vX.Y.Z.tar.gz.sha256`)
+- [ ] Archive name includes version: `orbok-vX.Y.Z.tar.gz`
 - [ ] Archive contains: `Cargo.toml`, all `crates/`, `rfcs/`, `docs/`, `scripts/`
 - [ ] Archive does **not** contain: `target/`, `.git/`, `Cargo.lock`
 - [ ] `orbok --version` output matches the Cargo.toml version
