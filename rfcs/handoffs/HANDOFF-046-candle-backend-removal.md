@@ -51,9 +51,10 @@ After this change:
 - Remove the optional `candle-core` and `candle-nn` dependencies.
 - Update the package `description` if it names candle.
 
-**Acceptance:** `cargo check -p orbok-embed` and
-`cargo check -p orbok-embed --features tract` pass; no `candle` feature
-exists; default build unaffected.
+**Acceptance:** `cargo check -p orbok-embed` passes; no `candle` feature
+exists; default build unaffected. The separate `tract` feature check remains
+out of scope for RFC-046 and is tracked in
+`rfcs/appendices/FINDING-tract-feature-build.md`.
 
 ### PR 2 — Docs and RFC-021 annotation
 
