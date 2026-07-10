@@ -12,7 +12,7 @@
 use orbok_core::OrbokResult;
 use orbok_db::repo::SettingsRepository;
 use orbok_db::{CATALOG_FILE_NAME, Catalog};
-use orbok_embed::{create_embedding_model, recommended_config};
+use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
 use orbok_models::SearchCapability;
 use orbok_search::HybridSearchService;
@@ -165,8 +165,7 @@ pub(crate) fn run_search(
 ) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
     let settings = load_settings();
     let results = if let Some(dir) = &settings.embedding_model_dir {
-        let weights = format!("{dir}/onnx/model.onnx");
-        let config = recommended_config(weights);
+        let config = recommended_config_from_model_dir(dir);
         match create_embedding_model(&config) {
             Ok(model) => {
                 // Real model available — use hybrid search.

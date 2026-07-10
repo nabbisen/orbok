@@ -4,9 +4,9 @@
 //! via a `futures::channel::mpsc::Sender` so the UI can show live progress.
 //!
 //! The recommended model is `intfloat/multilingual-e5-small`:
-//! - Apache 2.0 license
-//! - ~93 MB total (ONNX weights + tokenizer)
-//! - Supports 100+ languages including Japanese
+//! - MIT license
+//! - ~490 MB total (ONNX weights + tokenizer)
+//! - Supports 94 languages including Japanese
 
 use futures::SinkExt as _;
 use futures::channel::mpsc::Sender;
@@ -29,8 +29,8 @@ pub struct ModelSpec {
 pub const RECOMMENDED: ModelSpec = ModelSpec {
     hf_repo: "intfloat/multilingual-e5-small",
     display_name: "multilingual-e5-small",
-    license: "Apache 2.0",
-    size_hint: "~93 MB",
+    license: "MIT",
+    size_hint: "~490 MB",
     files: &[
         (
             "tokenizer.json",

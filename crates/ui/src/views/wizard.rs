@@ -107,7 +107,7 @@ fn page_setup<'a>(
                 text(tr(locale, MessageKey::WizardDownloadAction)).size(theme::body_s(tokens, sc)),
             ]
             .spacing(tokens.spacing.sm),
-            text("multilingual-e5-small · Apache 2.0 · ~93 MB · 100+ languages")
+            text("multilingual-e5-small · MIT · ~490 MB · 94 languages")
                 .size(theme::meta_s(tokens, sc)),
             button(
                 row![
@@ -217,7 +217,7 @@ fn page_downloading<'a>(
             text(tr(locale, MessageKey::WizardDownloadProgress)).size(theme::title_s(tokens, sc)),
         ]
         .spacing(tokens.spacing.sm),
-        text("multilingual-e5-small · Apache 2.0").size(theme::meta_s(tokens, sc)),
+        text("multilingual-e5-small · MIT").size(theme::meta_s(tokens, sc)),
         text(overall_label).size(theme::meta_s(tokens, sc)),
         text(format!("↓  {current_file}")).size(theme::body_s(tokens, sc)),
         progress_bar(0.0..=1.0, frac),

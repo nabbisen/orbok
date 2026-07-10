@@ -64,7 +64,7 @@ fn recommended_config_meets_rfc021_spec() {
     // 384-dim selected for storage efficiency (RFC-021 evaluation).
     assert_eq!(cfg.dimension, RECOMMENDED_MODEL_DIMENSION);
     assert_eq!(cfg.dimension, 384, "multilingual-e5-small is 384-dim");
-    // Verified license via HF model card: Apache 2.0.
+    // Verified license via HF model card: MIT.
     assert!(cfg.model_name.contains("multilingual") || cfg.model_name == "multilingual-e5-small");
 }
 
@@ -86,7 +86,7 @@ fn storage_impact_384_dim_is_half_of_768() {
 #[test]
 fn multilingual_e5_small_is_the_recommendation() {
     // This test documents the decision. The recommended model supports
-    // 100 languages including Japanese, satisfying RFC-014 requirements.
+    // The model includes Japanese support, satisfying RFC-014 requirements.
     assert_eq!(
         orbok_embed::RECOMMENDED_HF_MODEL_ID,
         "intfloat/multilingual-e5-small"
@@ -299,13 +299,13 @@ fn model_registry_stores_license_summary() {
             model_version: "v1".into(),
             local_path: None,
             license_summary: Some(
-                "Apache 2.0 — https://huggingface.co/intfloat/multilingual-e5-small".into(),
+                "MIT — https://huggingface.co/intfloat/multilingual-e5-small".into(),
             ),
-            size_bytes: Some(118 * 1024 * 1024),
+            size_bytes: Some(490 * 1024 * 1024),
             backend: Some("onnx".into()),
             dimension: Some(384),
             status: ModelStatus::Missing,
         })
         .unwrap();
-    assert!(record.license_summary.unwrap().contains("Apache 2.0"));
+    assert!(record.license_summary.unwrap().contains("MIT"));
 }

@@ -33,7 +33,7 @@
 //! |---|---|---|---|---|---|
 //! | all-MiniLM-L6-v2 | 384 | ~22 MB | Apache 2.0 | Weak | Fast, widely supported |
 //! | nomic-embed-text-v1.5 | 768 | ~137 MB | Apache 2.0 | Moderate | Good multilingual |
-//! | multilingual-e5-small | 384 | ~118 MB | MIT | Strong | 100 languages including Japanese |
+//! | multilingual-e5-small | 384 | ~490 MB | MIT | Strong | 94 languages including Japanese |
 //!
 //! **Recommended default (RFC-021):** `multilingual-e5-small` for
 //! orbok's mixed Japanese-English use case (RFC-014). The 384-dim
@@ -45,6 +45,7 @@ mod tract_backend;
 
 use orbok_core::{OrbokError, OrbokResult};
 use orbok_models::{EmbeddingModel, EmbeddingModelConfig, InferenceBackend, MockEmbeddingModel};
+use std::path::{Path, PathBuf};
 
 /// Recommended default model configuration for new installations.
 ///
@@ -59,6 +60,8 @@ pub const RECOMMENDED_MODEL_MAX_SEQ_LEN: u32 = 512;
 pub const RECOMMENDED_HF_MODEL_ID: &str = "intfloat/multilingual-e5-small";
 /// Expected ONNX weights file name once downloaded.
 pub const RECOMMENDED_ONNX_FILE: &str = "onnx/model.onnx";
+/// Expected tokenizer file name once downloaded.
+pub const RECOMMENDED_TOKENIZER_FILE: &str = "tokenizer.json";
 
 /// Construct an embedding model from configuration.
 ///
@@ -105,15 +108,44 @@ pub fn create_embedding_model(
 /// placed (orbok does not download models without explicit user action,
 /// RFC-029).
 pub fn recommended_config(weights_path: impl Into<String>) -> EmbeddingModelConfig {
+    recommended_config_parts(weights_path.into(), None)
+}
+
+/// Build a default configuration from the recommended model directory layout.
+///
+/// The readiness and download flows require:
+///
+/// ```text
+/// tokenizer.json
+/// onnx/model.onnx
+/// ```
+///
+/// Use this helper when the caller has the model directory rather than an
+/// arbitrary ONNX file path.
+pub fn recommended_config_from_model_dir(model_dir: impl AsRef<Path>) -> EmbeddingModelConfig {
+    let model_dir = model_dir.as_ref();
+    let weights_path = path_to_string(model_dir.join(RECOMMENDED_ONNX_FILE));
+    let tokenizer_path = path_to_string(model_dir.join(RECOMMENDED_TOKENIZER_FILE));
+    recommended_config_parts(weights_path, Some(tokenizer_path))
+}
+
+fn recommended_config_parts(
+    weights_path: String,
+    tokenizer_path: Option<String>,
+) -> EmbeddingModelConfig {
     EmbeddingModelConfig {
-        weights_path: weights_path.into(),
-        tokenizer_path: None,
+        weights_path,
+        tokenizer_path,
         dimension: RECOMMENDED_MODEL_DIMENSION,
         max_seq_len: RECOMMENDED_MODEL_MAX_SEQ_LEN,
         backend: InferenceBackend::OnnxRuntime,
         model_name: RECOMMENDED_MODEL_NAME.to_string(),
         model_version: RECOMMENDED_MODEL_VERSION.to_string(),
     }
+}
+
+fn path_to_string(path: PathBuf) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -201,6 +233,14 @@ mod tests {
         assert_eq!(cfg.dimension, RECOMMENDED_MODEL_DIMENSION);
         assert_eq!(cfg.model_name, RECOMMENDED_MODEL_NAME);
         assert_eq!(cfg.max_seq_len, 512);
+        assert!(cfg.tokenizer_path.is_none());
+    }
+
+    #[test]
+    fn recommended_config_from_model_dir_sets_tokenizer_path() {
+        let cfg = recommended_config_from_model_dir("/models/multilingual-e5-small");
+        assert!(cfg.weights_path.ends_with("onnx/model.onnx"));
+        assert!(cfg.tokenizer_path.unwrap().ends_with("tokenizer.json"));
     }
 
     // RFC-021: storage impact calculation.

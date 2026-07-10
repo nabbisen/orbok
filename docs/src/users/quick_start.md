@@ -38,6 +38,6 @@ Override with `ORBOK_DATA_DIR=/path/to/dir`.
 ## First launch walkthrough
 
 1. **Add a source folder** — orbok only scans explicitly added folders.
-2. **Set up search by meaning (optional)** — the wizard offers to download a local AI model (~93 MB) or lets you skip and use keyword search only.
+2. **Set up search by meaning (optional)** — the wizard offers to download a local AI model (~490 MB) or lets you skip and use keyword search only.
 3. **Wait for indexing** — the Preparing view shows progress.
 4. **Search** — type an exact term or a natural-language question.
