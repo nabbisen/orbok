@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 010  
 **Title:** Optional Local Reranking  
-**Status.** Implemented (v0.4.0)
+**Status:** Implemented (v0.4.0)
 **Target Milestone:** M11  
 **Date:** 2026-06-06  
 

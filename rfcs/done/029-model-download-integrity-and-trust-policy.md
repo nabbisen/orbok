@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 029  
 **Title:** Model Download Integrity and Trust Policy  
-**Status.** Implemented (v0.7.0)
+**Status:** Implemented (v0.7.0)
 **Target Timing:** Before enabling automatic or semi-automatic model downloads  
 **Date:** 2026-06-06
 

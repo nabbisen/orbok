@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 026  
 **Title:** Encrypted Local Indexes  
-**Status.** Withdrawn — key management design requires dedicated security audit before encrypted indexes can be safely implemented. Deferred to post-v1.0.0.
+**Status:** Withdrawn — key management design requires dedicated security audit before encrypted indexes can be safely implemented. Deferred to post-v1.0.0.
 **Target Timing:** After lifecycle, storage, and key-management requirements are clarified  
 **Date:** 2026-06-06
 

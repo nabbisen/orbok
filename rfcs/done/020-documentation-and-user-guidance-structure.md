@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 020  
 **Title:** Documentation and User Guidance Structure  
-**Status.** Implemented (v0.6.0)
+**Status:** Implemented (v0.6.0)
 **Target Milestone:** M13  
 **Date:** 2026-06-06  
 

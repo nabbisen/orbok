@@ -1,6 +1,6 @@
 # RFC 000 — RFC lifecycle policy
 
-**Status.** Implemented
+**Status:** Implemented
 **Tracks.** Cross-cutting documentation policy. Not tied to any
 single feature; applies to the RFC directory itself.
 **Touches.** `rfcs/` folder structure, the index file at
@@ -162,7 +162,7 @@ shape:
 ```markdown
 # RFC NNN — Title
 
-**Status.** Proposed
+**Status:** Proposed
 **Tracks.** What this addresses.
 **Touches.** Where the work lands.
 ```
@@ -173,19 +173,19 @@ For Implemented RFCs, the Status field carries the version or
 release tag in which the work shipped:
 
 ```markdown
-**Status.** Implemented (v1.4.0)
+**Status:** Implemented (v1.4.0)
 ```
 
 For Superseded RFCs, the field names the replacement:
 
 ```markdown
-**Status.** Superseded by RFC 042
+**Status:** Superseded by RFC 042
 ```
 
 For Withdrawn RFCs, the field carries a one-line reason:
 
 ```markdown
-**Status.** Withdrawn — overlapped with RFC 035; merged there.
+**Status:** Withdrawn — overlapped with RFC 035; merged there.
 ```
 
 Two reasons to keep this redundancy with the folder:

@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 027
 **Title:** GUI Framework Finalization
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M0 (shell), M9 (Search UI MVP)
 **Date:** 2026-06-06
 **History:** Originally a deferred future RFC. Activated 2026-06-06 by

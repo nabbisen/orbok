@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 031
 **Title:** GUI Internationalization
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M0 (catalog skeleton), M9 (full Search UI coverage)
 **Date:** 2026-06-06
 

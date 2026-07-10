@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 030  
 **Title:** Portable Mode  
-**Status.** Implemented (v0.8.0)
+**Status:** Implemented (v0.8.0)
 **Target Timing:** When portable/USB/self-contained distribution becomes a concrete product goal  
 **Date:** 2026-06-06
 

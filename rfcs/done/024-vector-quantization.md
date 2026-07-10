@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 024  
 **Title:** Vector Quantization  
-**Status.** Implemented (v0.8.0)
+**Status:** Implemented (v0.8.0)
 **Target Timing:** After vector storage size is measured on realistic corpora  
 **Date:** 2026-06-06
 

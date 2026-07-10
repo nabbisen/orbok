@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 032
 **Title:** Design Token Foundation and Theming
-**Status.** Implemented (v0.12.0)
+**Status:** Implemented (v0.12.0)
 **Target Milestone:** M9 (Search UI), retroactive across all views
 **Date:** 2026-06-07
 **Depends on:** RFC-027 (GUI framework), RFC-031 (i18n)

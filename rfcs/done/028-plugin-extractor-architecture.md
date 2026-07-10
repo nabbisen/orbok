@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 028  
 **Title:** Plugin Extractor Architecture  
-**Status.** Implemented (v0.8.0)
+**Status:** Implemented (v0.8.0)
 **Target Timing:** After built-in extractors stabilize and external extension need is confirmed  
 **Date:** 2026-06-06
 

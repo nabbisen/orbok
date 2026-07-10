@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 001  
 **Title:** Local Data Classification and Lifecycle  
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M1  
 **Date:** 2026-06-06  
 

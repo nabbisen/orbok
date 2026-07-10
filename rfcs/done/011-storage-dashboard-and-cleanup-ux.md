@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 011  
 **Title:** Storage Dashboard and Cleanup UX  
-**Status.** Implemented (v0.4.0)
+**Status:** Implemented (v0.4.0)
 **Target Milestone:** M10  
 **Date:** 2026-06-06  
 

@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 023  
 **Title:** Vector ANN Indexing  
-**Status.** Implemented (v0.8.0)
+**Status:** Implemented (v0.8.0)
 **Target Timing:** After exact vector search benchmark shows unacceptable latency  
 **Date:** 2026-06-06
 

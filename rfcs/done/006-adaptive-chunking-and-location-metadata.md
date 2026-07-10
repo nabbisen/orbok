@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 006  
 **Title:** Adaptive Chunking and Location Metadata  
-**Status.** Implemented (v0.2.0)
+**Status:** Implemented (v0.2.0)
 **Target Milestone:** M5  
 **Date:** 2026-06-06  
 

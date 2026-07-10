@@ -135,7 +135,8 @@ targets.
 - [ ] Checksum file accompanies every archive (`orbok-vX.Y.Z.tar.gz.sha256`)
 - [ ] Archive name includes version: `orbok-vX.Y.Z.tar.gz`
 - [ ] Archive contains: `Cargo.toml`, all `crates/`, `rfcs/`, `docs/`, `scripts/`
-- [ ] Archive does **not** contain: `target/`, `.git/`, `Cargo.lock`
+- [ ] Archive does **not** contain: `target/`, `.git/`, `.git-exclude/`,
+      `.agents/`, `.codex/`, `Cargo.lock`
 - [ ] `orbok --version` output matches the Cargo.toml version
 
 ---

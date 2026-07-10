@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 022  
 **Title:** PDF Extraction Backend Selection  
-**Status.** Implemented (v0.7.0)
+**Status:** Implemented (v0.7.0)
 **Target Timing:** After baseline extraction pipeline and PDF fixtures exist  
 **Date:** 2026-06-06
 

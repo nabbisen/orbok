@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 012  
 **Title:** Model Registry and Installation Workflow  
-**Status.** Implemented (v0.5.0)
+**Status:** Implemented (v0.5.0)
 **Target Milestone:** M12  
 **Date:** 2026-06-06  
 

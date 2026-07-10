@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 005  
 **Title:** Document Extraction Pipeline  
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M4  
 **Date:** 2026-06-06  
 

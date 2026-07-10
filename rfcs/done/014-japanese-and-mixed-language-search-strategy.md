@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 014  
 **Title:** Japanese and Mixed-Language Search Strategy  
-**Status.** Implemented (v0.4.0)
+**Status:** Implemented (v0.4.0)
 **Target Milestone:** M6/M8 Supporting  
 **Date:** 2026-06-06  
 

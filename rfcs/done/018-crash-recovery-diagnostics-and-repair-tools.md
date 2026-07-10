@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 018  
 **Title:** Crash Recovery, Diagnostics, and Repair Tools  
-**Status.** Implemented (v0.5.0)
+**Status:** Implemented (v0.5.0)
 **Target Milestone:** M13  
 **Date:** 2026-06-06  
 

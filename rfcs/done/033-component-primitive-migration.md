@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 033
 **Title:** Component Primitive Migration
-**Status.** Implemented (v0.12.0)
+**Status:** Implemented (v0.12.0)
 **Target Milestone:** M9 (Search UI), M10 (Storage), M12 (Models)
 **Date:** 2026-06-07
 **Depends on:** RFC-032 (tokens must be threaded first)

@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 003  
 **Title:** Source Registration and File Access Boundary  
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M2  
 **Date:** 2026-06-06  
 

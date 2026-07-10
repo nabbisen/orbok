@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 004  
 **Title:** File Scanner and Change Detection  
-**Status.** Implemented (v0.1.0)
+**Status:** Implemented (v0.1.0)
 **Target Milestone:** M3  
 **Date:** 2026-06-06  
 

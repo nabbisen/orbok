@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 034
 **Title:** Accessibility Conformance
-**Status.** Implemented (v0.13.0)
+**Status:** Implemented (v0.13.0)
 **Target Milestone:** M9–M13 (cross-cutting), gate at M13
 **Date:** 2026-06-07
 **Depends on:** RFC-032 (token contrast), RFC-033 (accessible primitives)

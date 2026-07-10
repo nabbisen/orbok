@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 009  
 **Title:** Hybrid Search and RRF Fusion  
-**Status.** Implemented (v0.3.0)
+**Status:** Implemented (v0.3.0)
 **Target Milestone:** M8  
 **Date:** 2026-06-06  
 

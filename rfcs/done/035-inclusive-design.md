@@ -3,7 +3,7 @@
 **Project:** orbok
 **RFC:** 035
 **Title:** Inclusive Design
-**Status.** Implemented (v0.14.0)
+**Status:** Implemented (v0.14.0)
 **Target Milestone:** M9 (Settings surface), cross-cutting
 **Date:** 2026-06-07
 **Depends on:** RFC-032 (themes/tokens), RFC-033 (primitives), RFC-031 (i18n)

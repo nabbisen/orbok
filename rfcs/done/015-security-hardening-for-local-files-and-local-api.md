@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 015  
 **Title:** Security Hardening for Local Files and Local API  
-**Status.** Implemented (v0.5.0)
+**Status:** Implemented (v0.5.0)
 **Target Milestone:** M13 Supporting  
 **Date:** 2026-06-06  
 
