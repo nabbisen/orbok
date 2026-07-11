@@ -24,14 +24,14 @@ jobs:
         run: cargo fmt --all --check
 
       - name: clippy
-        run: cargo clippy --workspace --exclude orbok-app --exclude orbok-ui --exclude orbok-bench -- -D warnings
+        run: cargo clippy --workspace --exclude orbok --exclude orbok-ui --exclude orbok-bench -- -D warnings
 
       - name: unit tests (no GUI crates)
         env:
           ORBOK_DATA_DIR: /tmp/orbok-ci
         run: |
           cargo test --workspace \
-            --exclude orbok-app \
+            --exclude orbok \
             --exclude orbok-ui \
             --exclude orbok-bench \
             -- --test-threads=4
@@ -47,7 +47,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: build --release
-        run: cargo build --release --package orbok-app
+        run: cargo build --release --package orbok
 
       - name: --version
         run: ./target/release/orbok --version
