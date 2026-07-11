@@ -115,4 +115,8 @@ impl<'a> EmbeddingWorker<'a> {
     pub fn model_id(&self) -> &ModelId {
         &self.model_id
     }
+
+    pub fn model(&self) -> &dyn EmbeddingModel {
+        self.model.as_ref()
+    }
 }

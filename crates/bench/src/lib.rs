@@ -4,10 +4,30 @@ pub mod metrics;
 pub mod queries;
 pub mod report;
 
+use std::path::{Path, PathBuf};
+
+/// Benchmark options for release evidence runs.
+#[derive(Debug, Clone, Default)]
+pub struct BenchmarkOptions {
+    /// Optional recommended model directory containing `onnx/model.onnx` and
+    /// `tokenizer.json`. When set, the benchmark builds real embeddings and
+    /// measures hybrid search. Without it, the benchmark remains keyword-only.
+    pub model_dir: Option<PathBuf>,
+}
+
 /// Full benchmark run returning a `BenchmarkResult`. Used by CI and tests.
 pub fn run_bench(
     n_docs: usize,
-    work_dir: &std::path::Path,
+    work_dir: &Path,
+) -> Result<report::BenchmarkResult, Box<dyn std::error::Error>> {
+    run_bench_with_options(n_docs, work_dir, BenchmarkOptions::default())
+}
+
+/// Full benchmark run with explicit mode options.
+pub fn run_bench_with_options(
+    n_docs: usize,
+    work_dir: &Path,
+    options: BenchmarkOptions,
 ) -> Result<report::BenchmarkResult, Box<dyn std::error::Error>> {
     corpus::generate(work_dir, n_docs)?;
     let catalog = orbok_db::Catalog::open(work_dir.join("bench-catalog.sqlite3"))?;
@@ -52,15 +72,49 @@ pub fn run_bench(
     let extract = orbok_workers::ExtractionWorker::new(&catalog, &cache);
     let chunk = orbok_workers::ChunkAndIndexWorker::new(&catalog, &cache);
     orbok_workers::run_pending(&catalog, &extract, &chunk, None, n_docs as u32 * 4)?;
+
+    let mut real_model = None;
+    let mut model_id = None;
+    if let Some(model_dir) = options.model_dir.as_deref() {
+        let model = load_real_model(model_dir)?;
+        let id = orbok_core::ModelId::from_string(format!(
+            "embedding_{}-{}",
+            model.name(),
+            model.version()
+        ));
+        let embed = orbok_workers::EmbeddingWorker::with_model(&catalog, &cache, model, id.clone());
+        for file_id in indexed_file_ids(&catalog)? {
+            embed.run(&file_id)?;
+        }
+        model_id = Some(id.as_str().to_string());
+        real_model = Some(embed);
+    }
+
     let index_elapsed_ms = index_start.elapsed().as_millis() as u64;
     let catalog_size = std::fs::metadata(work_dir.join("bench-catalog.sqlite3"))
         .map(|m| m.len())
         .unwrap_or(0);
     let corpus_size = corpus::total_bytes(work_dir);
-    let latencies = metrics::measure_search_latency(&catalog, queries::LABELED_QUERIES)?;
-    let recall = metrics::compute_recall(&catalog, queries::LABELED_QUERIES)?;
+    let search_model = real_model.as_ref().map(|embed| embed.model());
+    let latencies = metrics::measure_search_latency(
+        &catalog,
+        queries::LABELED_QUERIES,
+        search_model,
+        model_id.as_deref(),
+    )?;
+    let recall = metrics::compute_recall(
+        &catalog,
+        queries::LABELED_QUERIES,
+        search_model,
+        model_id.as_deref(),
+    )?;
     Ok(report::BenchmarkResult {
         n_docs,
+        mode: if real_model.is_some() {
+            report::BenchmarkMode::HybridRealModel
+        } else {
+            report::BenchmarkMode::KeywordOnly
+        },
         corpus_bytes: corpus_size,
         catalog_bytes: catalog_size,
         index_elapsed_ms,
@@ -72,6 +126,42 @@ pub fn run_bench(
         search_latency_ms: latencies,
         recall_at_k: recall,
     })
+}
+
+fn load_real_model(
+    model_dir: &Path,
+) -> Result<Box<dyn orbok_models::EmbeddingModel>, Box<dyn std::error::Error>> {
+    match orbok_workers::verify_embedding_model(Some(&model_dir.to_string_lossy())) {
+        orbok_workers::VerifyOutcome::Ready => {}
+        outcome => {
+            return Err(format!(
+                "model directory is not ready: {}",
+                orbok_workers::verify_outcome_summary(&outcome)
+            )
+            .into());
+        }
+    }
+    let config = orbok_embed::recommended_config_from_model_dir(model_dir);
+    orbok_embed::create_embedding_model(&config).map_err(|err| err.into())
+}
+
+fn indexed_file_ids(
+    catalog: &orbok_db::Catalog,
+) -> orbok_core::OrbokResult<Vec<orbok_core::FileId>> {
+    let conn = catalog.lock();
+    let mut stmt = conn
+        .prepare("SELECT file_id FROM files WHERE file_status = 'indexed'")
+        .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?;
+    let mut ids = Vec::new();
+    for row in rows {
+        ids.push(orbok_core::FileId::from_string(
+            row.map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?,
+        ));
+    }
+    Ok(ids)
 }
 
 #[cfg(test)]

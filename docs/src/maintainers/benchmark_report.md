@@ -8,6 +8,8 @@ cargo run -p orbok-bench --release -- 1000 target/orbok-bench/results-0.23.0-pre
 
 Corpus: 1,000 deterministic synthetic Markdown documents. Search mode:
 keyword-only end-to-end result building, including source-file snippet loading.
+Generated benchmark reports now include an explicit `mode` field so
+keyword-only and real-model evidence are not mixed.
 
 ## Results
 
@@ -28,6 +30,13 @@ includes result enrichment and snippet loading, not just FTS query execution.
 This corpus still uses keyword-only search. Real `multilingual-e5-small`
 semantic recall and p99 latency require a local model artifact run and remain a
 separate validation item.
+
+Run real-model validation with:
+
+```sh
+cargo run -p orbok-bench --release --features orbok-embed/tract -- \
+  1000 target/orbok-bench/results-real-model --model-dir /path/to/multilingual-e5-small
+```
 
 ## RFC-023 Decision: Exact scan for v1.0.0
 

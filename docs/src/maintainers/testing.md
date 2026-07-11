@@ -16,6 +16,13 @@ cargo test -p orbok-embed --features tract --lib
 # Strict supply-chain audit gate
 cargo audit --deny warnings
 
+# Keyword-only benchmark evidence
+cargo run -p orbok-bench --release -- 1000 target/orbok-bench/results
+
+# Real-model benchmark evidence, using a local recommended model directory
+cargo run -p orbok-bench --release --features orbok-embed/tract -- \
+  1000 target/orbok-bench/results-real-model --model-dir /path/to/multilingual-e5-small
+
 # Headless backend gate, using a fresh scratch data directory
 rm -rf .git-exclude/tmp/orbok-check
 ORBOK_DATA_DIR=.git-exclude/tmp/orbok-check cargo run -p orbok -- --check

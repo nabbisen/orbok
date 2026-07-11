@@ -122,10 +122,12 @@ showing:
 - p99 search latency ≤ 200 ms on a 1,000-document corpus
 - indexing throughput ≥ 10 files/s on a modern laptop
 
-Current v0.22 evidence is tracked in
+Current v0.23 keyword-only evidence is tracked in
 [`benchmark_report.md`](benchmark_report.md). The latest 1,000-document
-release-mode snapshot meets recall, p99 latency, and indexing throughput
-targets.
+release-mode keyword-only snapshot meets recall, p99 latency, and indexing
+throughput targets. Real-model v1.0 validation uses the same benchmark command
+with `--features orbok-embed/tract -- --model-dir <model-dir>` and remains a
+separate required evidence item.
 
 ---
 

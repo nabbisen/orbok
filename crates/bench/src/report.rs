@@ -8,12 +8,30 @@ use std::path::Path;
 #[derive(Debug, serde::Serialize)]
 pub struct BenchmarkResult {
     pub n_docs: usize,
+    pub mode: BenchmarkMode,
     pub corpus_bytes: u64,
     pub catalog_bytes: u64,
     pub index_elapsed_ms: u64,
     pub indexing_files_per_sec: f64,
     pub search_latency_ms: LatencyMetrics,
     pub recall_at_k: RecallMetrics,
+}
+
+/// Benchmark search mode.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BenchmarkMode {
+    KeywordOnly,
+    HybridRealModel,
+}
+
+impl BenchmarkMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            BenchmarkMode::KeywordOnly => "keyword-only",
+            BenchmarkMode::HybridRealModel => "hybrid-real-model",
+        }
+    }
 }
 
 impl BenchmarkResult {
@@ -42,6 +60,7 @@ impl BenchmarkResult {
             "# orbok Benchmark Report\n\n\
              ## Corpus\n\n\
              | Metric | Value |\n|---|---|\n\
+             | Mode | {} |\n\
              | Documents | {} |\n\
              | Corpus size | {:.1} KiB |\n\
              | Catalog size | {:.1} KiB |\n\
@@ -67,6 +86,7 @@ impl BenchmarkResult {
              | Recall@{} | >= 75.0% | {:.1}% | {} |\n\
              | Search p99 | <= 200.00 ms | {:.2} ms | {} |\n\
              | Indexing throughput | >= 10.0 files/s | {:.1} files/s | {} |\n",
+            self.mode.label(),
             self.n_docs,
             self.corpus_bytes as f64 / 1024.0,
             self.catalog_bytes as f64 / 1024.0,
@@ -100,7 +120,7 @@ impl BenchmarkResult {
     pub fn print_summary(&self) {
         println!(
             "Docs: {}  |  Index: {} ms ({:.1} files/s)  |  \
-             p50: {:.2}ms  p99: {:.2}ms  |  Recall@{}: {:.0}%",
+             p50: {:.2}ms  p99: {:.2}ms  |  Recall@{}: {:.0}%  |  Mode: {}",
             self.n_docs,
             self.index_elapsed_ms,
             self.indexing_files_per_sec,
@@ -108,6 +128,7 @@ impl BenchmarkResult {
             self.search_latency_ms.p99_ms,
             self.recall_at_k.k,
             self.recall_at_k.recall * 100.0,
+            self.mode.label(),
         );
     }
 }

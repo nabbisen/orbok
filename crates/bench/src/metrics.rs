@@ -3,6 +3,7 @@
 use crate::queries::LabeledQuery;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
+use orbok_models::EmbeddingModel;
 use orbok_search::HybridSearchService;
 use std::time::Instant;
 
@@ -29,8 +30,10 @@ pub struct RecallMetrics {
 pub fn measure_search_latency(
     catalog: &Catalog,
     queries: &[LabeledQuery],
+    model: Option<&dyn EmbeddingModel>,
+    model_id: Option<&str>,
 ) -> OrbokResult<LatencyMetrics> {
-    let service = HybridSearchService::keyword_only(catalog);
+    let service = search_service(catalog, model, model_id);
     let mut latencies_ms: Vec<f64> = Vec::new();
     // 3 warm-up runs.
     for q in queries.iter().take(3) {
@@ -60,9 +63,14 @@ pub fn measure_search_latency(
 
 /// Compute recall@k: for each labeled query, check whether any of the
 /// top-k results matches an expected document pattern.
-pub fn compute_recall(catalog: &Catalog, queries: &[LabeledQuery]) -> OrbokResult<RecallMetrics> {
+pub fn compute_recall(
+    catalog: &Catalog,
+    queries: &[LabeledQuery],
+    model: Option<&dyn EmbeddingModel>,
+    model_id: Option<&str>,
+) -> OrbokResult<RecallMetrics> {
     const K: usize = 5;
-    let service = HybridSearchService::keyword_only(catalog);
+    let service = search_service(catalog, model, model_id);
     let mut hits = 0usize;
     let evaluated = queries.len();
     for q in queries {
@@ -85,4 +93,15 @@ pub fn compute_recall(catalog: &Catalog, queries: &[LabeledQuery]) -> OrbokResul
         queries_evaluated: evaluated,
         queries_with_any_hit: hits,
     })
+}
+
+fn search_service<'a>(
+    catalog: &'a Catalog,
+    model: Option<&'a dyn EmbeddingModel>,
+    model_id: Option<&str>,
+) -> HybridSearchService<'a> {
+    match (model, model_id) {
+        (Some(model), Some(model_id)) => HybridSearchService::with_model(catalog, model, model_id),
+        _ => HybridSearchService::keyword_only(catalog),
+    }
 }

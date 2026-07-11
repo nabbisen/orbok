@@ -23,6 +23,8 @@ orbok-db                    = { workspace = true }
 orbok-fs                    = { workspace = true }
 orbok-cache                 = { workspace = true }
 orbok-extract               = { workspace = true }
+orbok-embed                 = { workspace = true }
+orbok-models                = { workspace = true }
 orbok-search                = { workspace = true }
 orbok-workers               = { workspace = true }
 
