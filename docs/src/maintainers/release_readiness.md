@@ -18,7 +18,8 @@ This document defines the release gates and QA checklist for orbok releases.
 
 ## Current Blocking Gates
 
-These are the gates treated as release-blocking for the current v0.22 line:
+These are the gates treated as release-blocking for the active post-v0.23
+readiness track:
 
 - `cargo fmt --check` — zero formatting violations.
 - `cargo clippy --workspace --all-targets -- -D warnings` — zero clippy
@@ -40,7 +41,7 @@ These are the gates treated as release-blocking for the current v0.22 line:
 ## Advisory / Not Yet Blocking
 
 These checks are useful and should be run when relevant, but are not currently
-documented as release-blocking for the v0.22 line:
+documented as release-blocking for the active post-v0.23 readiness track:
 
 - `cargo deny` — useful for license, source, duplicate-version, and broader
   dependency-policy review, but not release-blocking until the project records
