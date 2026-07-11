@@ -1,5 +1,20 @@
 # Dependency Audit
 
+## 2026-07-11 cargo-deny deferral
+
+`cargo-deny` remains advisory for the current v0.22/v1.0 readiness track.
+Do not promote `cargo deny check` to a release-blocking gate until the project
+records the policy that would make a `deny.toml` durable:
+
+- acceptable license rationale
+- advisory-waiver ownership and review cadence
+- duplicate-version escalation rules
+- allowed registry and git source policy
+- maintenance expectations when dependency updates change the checked graph
+
+`cargo audit --deny warnings` remains the required lockfile-wide RustSec
+vulnerability baseline.
+
 ## 2026-07-10 security baseline
 
 `cargo audit --deny warnings` is now configured as the supply-chain baseline.

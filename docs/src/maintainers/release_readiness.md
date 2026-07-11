@@ -42,7 +42,10 @@ These are the gates treated as release-blocking for the current v0.22 line:
 These checks are useful and should be run when relevant, but are not currently
 documented as release-blocking for the v0.22 line:
 
-- `cargo deny` — not configured as a blocking gate yet.
+- `cargo deny` — useful for license, source, duplicate-version, and broader
+  dependency-policy review, but not release-blocking until the project records
+  acceptable license rationale, advisory-waiver ownership, duplicate-version
+  escalation rules, allowed source policy, and maintenance expectations.
 
 ## Future Gate Alignment
 
@@ -50,7 +53,8 @@ Before v1.0.0, decide which advisory checks become blocking and update this
 document in the same change that makes them green or explicitly waives them.
 At minimum, the open decisions are:
 
-- Whether supply-chain checks add `cargo deny`.
+- Whether `cargo deny` should become blocking after a formal
+  license/source/dependency policy exists.
 - Which Cargo feature combinations must compile for every release when new
   package features are added.
 
