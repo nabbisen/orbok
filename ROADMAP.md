@@ -2,7 +2,7 @@
 
 ## Current Status (2026-07-11)
 
-Prepared release: **v0.23.0**. Latest tagged release: **v0.22.0**. RFCs
+Shipped: **v0.23.0**. Latest tagged release: **0.23.0**. RFCs
 **000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
 design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
