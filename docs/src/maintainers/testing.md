@@ -6,7 +6,8 @@
 # Standard workspace library gate
 cargo test --workspace --lib
 
-# Headless backend gate, using a scratch data directory
+# Headless backend gate, using a fresh scratch data directory
+rm -rf .git-exclude/tmp/orbok-check
 ORBOK_DATA_DIR=.git-exclude/tmp/orbok-check cargo run -p orbok -- --check
 
 # All non-GUI crates (fast — no iced compile)
