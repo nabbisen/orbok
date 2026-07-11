@@ -9,6 +9,10 @@ cargo test --workspace --lib
 # Strict clippy gate
 cargo clippy --workspace --all-targets -- -D warnings
 
+# Current feature-matrix gate
+cargo check -p orbok-embed --features tract
+cargo test -p orbok-embed --features tract --lib
+
 # Headless backend gate, using a fresh scratch data directory
 rm -rf .git-exclude/tmp/orbok-check
 ORBOK_DATA_DIR=.git-exclude/tmp/orbok-check cargo run -p orbok -- --check
