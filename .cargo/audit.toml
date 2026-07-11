@@ -1,5 +1,36 @@
 [advisories]
 ignore = [
+    # bincode 2.0.1 is pulled through localcache 0.20.0, the pinned cache
+    # engine. The advisory is unmaintained status rather than a known
+    # vulnerability, and localcache cannot be moved independently here.
+    "RUSTSEC-2025-0141",
+
+    # paste 1.0.15 is pulled transitively by GUI/model-support crates
+    # (notably wgpu/metal and tokenizers macro helpers). The advisory is
+    # unmaintained status for a proc-macro helper with no direct orbok usage.
+    "RUSTSEC-2024-0436",
+
+    # proc-macro-error2 2.0.1 is retained in Cargo.lock through defmt-macros
+    # but is not present in the active all-target dependency tree. cargo audit
+    # scans the lockfile, so keep this explicit until the lockfile no longer
+    # carries that stale proc-macro branch.
+    "RUSTSEC-2026-0173",
+
+    # ttf-parser 0.25.1 is pulled by the GUI/font and PDF stacks
+    # (fontdb/cosmic-text/usvg/lopdf). The advisory is unmaintained status;
+    # replacement requires upstream GUI/PDF dependency movement.
+    "RUSTSEC-2026-0192",
+
+    # anyhow 1.0.102 is pulled by the tract/prost real embedding backend path.
+    # The advisory is an unsound downcast_mut warning; orbok does not directly
+    # call anyhow::Error::downcast_mut.
+    "RUSTSEC-2026-0190",
+
+    # memmap2 0.9.10 is pulled by GUI/windowing/font stacks and tract-onnx.
+    # The advisory is an unsound pointer-offset warning in transitive code;
+    # replacing it requires upstream dependency movement.
+    "RUSTSEC-2026-0186",
+
     # quick-xml 0.39.4 is pulled through wayland-scanner 0.31.10, a proc-macro
     # dependency in the Linux GUI stack. wayland-scanner 0.31.10 is current and
     # still requires quick-xml ^0.39, so this cannot be updated independently.

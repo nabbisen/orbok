@@ -13,6 +13,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo check -p orbok-embed --features tract
 cargo test -p orbok-embed --features tract --lib
 
+# Strict supply-chain audit gate
+cargo audit --deny warnings
+
 # Headless backend gate, using a fresh scratch data directory
 rm -rf .git-exclude/tmp/orbok-check
 ORBOK_DATA_DIR=.git-exclude/tmp/orbok-check cargo run -p orbok -- --check

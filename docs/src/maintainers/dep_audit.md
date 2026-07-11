@@ -2,9 +2,9 @@
 
 ## 2026-07-10 security baseline
 
-`cargo audit` is now configured as the supply-chain baseline. The repository
-keeps the waiver list in `.cargo/audit.toml`; unwaived vulnerabilities should
-fail CI.
+`cargo audit --deny warnings` is now configured as the supply-chain baseline.
+The repository keeps the waiver list in `.cargo/audit.toml`; unwaived
+vulnerabilities and warnings should fail CI.
 
 Fixes applied:
 
@@ -12,15 +12,18 @@ Fixes applied:
 - `crossbeam-epoch`: 0.9.18 → 0.9.20 for RUSTSEC-2026-0204.
 - `quinn-proto`: 0.11.14 → 0.11.16 for RUSTSEC-2026-0185.
 
-Temporary waivers:
+Active waivers:
 
-- RUSTSEC-2026-0194 and RUSTSEC-2026-0195 for `quick-xml` 0.39.4.
-  This crate is pulled through `wayland-scanner` 0.31.10, a proc-macro
-  dependency in the Linux GUI stack. `wayland-scanner` 0.31.10 is current and
-  still requires `quick-xml ^0.39`, so this cannot be updated independently.
-
-Observed remaining audit warnings are informational (`unmaintained` /
-`unsound`) and are not denied by the current baseline.
+| Advisory | Crate | Reason |
+|---|---|---|
+| RUSTSEC-2025-0141 | `bincode` 2.0.1 | Pulled through `localcache` 0.20.0; advisory is unmaintained status and the cache engine is pinned. |
+| RUSTSEC-2024-0436 | `paste` 1.0.15 | Transitive proc-macro helper in GUI/model-support paths; no direct orbok usage. |
+| RUSTSEC-2026-0173 | `proc-macro-error2` 2.0.1 | Retained in `Cargo.lock` through a stale `defmt-macros` branch; not present in the active all-target dependency tree. |
+| RUSTSEC-2026-0192 | `ttf-parser` 0.25.1 | Pulled by GUI/font and PDF stacks; replacement requires upstream dependency movement. |
+| RUSTSEC-2026-0190 | `anyhow` 1.0.102 | Pulled by tract/prost real embedding paths; orbok does not directly call `anyhow::Error::downcast_mut`. |
+| RUSTSEC-2026-0186 | `memmap2` 0.9.10 | Pulled by GUI/windowing/font stacks and `tract-onnx`; replacement requires upstream dependency movement. |
+| RUSTSEC-2026-0194 | `quick-xml` 0.39.4 | Pulled through `wayland-scanner` 0.31.10 in the Linux GUI stack; `wayland-scanner` still requires `quick-xml ^0.39`. |
+| RUSTSEC-2026-0195 | `quick-xml` 0.39.4 | Same `wayland-scanner` path as RUSTSEC-2026-0194. |
 
 ## 2026-06-20 dependency currency audit
 

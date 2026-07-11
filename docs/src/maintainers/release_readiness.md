@@ -32,7 +32,7 @@ These are the gates treated as release-blocking for the current v0.22 line:
   RFC numbers remain coherent.
 - Version and lockfile coherence — workspace version and `Cargo.lock` package
   versions agree.
-- Supply-chain vulnerability baseline — `cargo audit` passes with only
+- Supply-chain vulnerability baseline — `cargo audit --deny warnings` passes with only
   documented waivers from `.cargo/audit.toml`.
 - Release archive checks — archive name includes version, layout is flat, and
   generated checksums accompany the archive.
@@ -42,8 +42,6 @@ These are the gates treated as release-blocking for the current v0.22 line:
 These checks are useful and should be run when relevant, but are not currently
 documented as release-blocking for the v0.22 line:
 
-- `cargo audit --deny warnings` — informational advisories are visible but not
-  denied by the current baseline.
 - `cargo deny` — not configured as a blocking gate yet.
 
 ## Future Gate Alignment
@@ -52,8 +50,7 @@ Before v1.0.0, decide which advisory checks become blocking and update this
 document in the same change that makes them green or explicitly waives them.
 At minimum, the open decisions are:
 
-- Whether supply-chain checks add `cargo deny`, and whether `cargo audit`
-  should deny informational warnings.
+- Whether supply-chain checks add `cargo deny`.
 - Which Cargo feature combinations must compile for every release when new
   package features are added.
 
