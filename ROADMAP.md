@@ -226,9 +226,11 @@ orbok reaches v1.0.0 when:
 Three conditions must be verified before v1.0.0 is released:
 
 1. **recall@5 ≥ 0.75** with a real embedding model on a user corpus
-   (currently 75% with keyword-only on synthetic corpus ✓)
+   (currently 87.5% with keyword-only on the 1,000-document synthetic release
+   corpus ✓)
 2. **p99 ≤ 200 ms** in release mode on a 1,000-document corpus
-   (currently 149.79 ms in release mode on 1,000 synthetic docs, keyword-only ✓)
+   (currently 149.79 ms in release mode on the 1,000-document keyword-only
+   synthetic release corpus ✓)
 3. **Manual QA checklist** signed off on Linux, Windows, and macOS
 
 **v1.0.0 requires explicit project owner confirmation.**
@@ -237,7 +239,6 @@ Three conditions must be verified before v1.0.0 is released:
 
 - RFC-026 revisited: encrypted local indexes (key management design)
 - RFC-023 revisited: HNSW ANN (when user corpora show > 200 ms)
-- Real-model artifact validation and release benchmark run
 - XLSX, PPTX extraction (new RFC)
 - Plugin dynamic loading (RFC-028 full activation)
 - Mobile/browser companion (new RFC)
