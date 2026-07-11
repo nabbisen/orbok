@@ -3,6 +3,9 @@
 ## Running tests
 
 ```sh
+# Workspace formatting gate
+cargo fmt --all --check
+
 # Standard workspace library gate
 cargo test --workspace --lib
 

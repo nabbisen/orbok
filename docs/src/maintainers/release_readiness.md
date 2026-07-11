@@ -21,7 +21,7 @@ This document defines the release gates and QA checklist for orbok releases.
 These are the gates treated as release-blocking for the active post-v0.23
 readiness track:
 
-- `cargo fmt --check` — zero formatting violations.
+- `cargo fmt --all --check` — zero formatting violations across the workspace.
 - `cargo clippy --workspace --all-targets -- -D warnings` — zero clippy
   warnings across workspace library, binary, and test targets.
 - `cargo test --workspace --lib` — all workspace library tests pass.
