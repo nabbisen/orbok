@@ -21,7 +21,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: fmt
-        run: cargo fmt --all -- --check
+        run: cargo fmt --all --check
 
       - name: clippy
         run: cargo clippy --workspace --exclude orbok-app --exclude orbok-ui --exclude orbok-bench -- -D warnings
