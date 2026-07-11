@@ -11,6 +11,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.23.0] — 2026-07-11 — Release Gate and Real Embedding Hardening
+
+Release-readiness stabilization after RFC-046. This release recovers and
+promotes the real ONNX embedding feature path, makes the automated release gate
+story reproducible, and refreshes benchmark evidence. v1.0.0 is still not
+released; it remains gated on project-owner confirmation, manual QA, and real
+local model artifact validation.
+
+### Added
+
+- **Real `tract` embedding inference:** `orbok-embed --features tract` now uses
+  `tokenizer.json`, runs the ONNX graph with `tract`, supports the recommended
+  transformer input tensors, mean-pools token output when needed, checks output
+  dimensions, and L2-normalizes embeddings.
+- **Feature-matrix gate:** `cargo check -p orbok-embed --features tract` is now
+  documented as a blocking release gate for the workspace's only declared
+  package feature.
+- **Fresh headless backend gate:** `ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p
+  orbok -- --check` is now documented as a blocking release gate and the
+  maintainer guide removes the scratch directory before running it.
+- **Strict audit baseline:** `cargo audit --deny warnings` is now the documented
+  supply-chain gate, with explicit waiver rationale in `.cargo/audit.toml` and
+  `docs/src/maintainers/dep_audit.md`.
+
+### Changed
+
+- **Release gates:** strict clippy (`cargo clippy --workspace --all-targets -- -D warnings`),
+  workspace library tests, feature-matrix checks, fresh headless checks, strict
+  audit, RFC lifecycle checks, version/lockfile coherence, and archive checks
+  are now aligned across maintainer docs.
+- **Benchmark evidence:** the executable benchmark path now produces release
+  JSON/Markdown output. The latest 1,000-document release-mode keyword-only
+  run reports p99 149.79 ms, recall@5 87.5%, and indexing throughput 1,027.7
+  files/s, meeting the documented keyword-only readiness thresholds.
+- **Model metadata:** active `multilingual-e5-small` metadata now matches the
+  current model artifact shape: MIT license, approximately 490 MB, 94
+  languages, and both `onnx/model.onnx` and `tokenizer.json`.
+- **`cargo-deny` policy:** kept advisory/deferred. The docs now state that it
+  should not become blocking until the project records license, source,
+  advisory-waiver, duplicate-version, and maintenance policy rationale.
+
+### Fixed
+
+- **`tract` feature build:** updated the retained runnable model type to the
+  current `tract-core` 0.23 API (`Arc<TypedSimplePlan>`), resolving the
+  pre-existing `SimplePlan` feature-build failure.
+- **Keyword search p99:** capped keyword-only Auto candidates when no embedding
+  model is configured, preserved explicit reranker behavior, routed long Auto
+  keyword queries through a safe anchor phrase, batched chunk metadata
+  enrichment, and added rowid indexes for contentless FTS joins.
+- **Release archive hygiene:** packaging now creates temporary archives inside
+  `dist/`, is compatible with `set -o pipefail`, and excludes `.git-exclude/`,
+  `.agents/`, `.codex/`, `target/`, `dist/`, `docs/book/`, `.git/`, and
+  `Cargo.lock`.
+- **i18n test determinism:** locale environment tests no longer race under
+  parallel `cargo test --workspace --lib`.
+
+### Tests
+
+- Fresh release-prep gates for this package are recorded in
+  `.git-exclude/review-request/020-v0.23.0-release-prep.md`.
+- Previous 0.23.0 preparation packages observed green evidence for:
+  `cargo test --workspace --lib`, strict clippy, the `tract` feature matrix,
+  `cargo audit --deny warnings`, fresh `orbok --check`, and the 1,000-document
+  release-mode benchmark gates.
+
+---
+
 ## [0.22.0] — 2026-06-21 — Candle Backend Cleanup (RFC-046, Option B1)
 
 Stabilization release. Removes the never-implemented Candle embedding

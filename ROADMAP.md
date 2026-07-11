@@ -1,12 +1,13 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-06-21)
+## Current Status (2026-07-11)
 
-Shipped: **v0.22.0**. RFCs **000–046 implemented** (see
+Prepared release: **v0.23.0**. Latest tagged release: **v0.22.0**. RFCs
+**000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
 design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
 design) completed across v0.12.0–v0.14.0; the stabilization and
-search-foundation programs landed across v0.16.0–v0.22.0:
+search-foundation programs landed across v0.16.0–v0.23.0:
 
 - v0.16.0 — RFC-044 (orbok-extract production hardening).
 - v0.17.0 — RFC-036 (resource-aware scheduler and backpressure).
@@ -15,6 +16,8 @@ search-foundation programs landed across v0.16.0–v0.22.0:
 - v0.20.0 — RFC-045 (search-in-folder flow and friendly folder management).
 - v0.21.0 — RFC-042 (search history and reopen recent searches).
 - v0.22.0 — RFC-046 (Candle backend cleanup, Option B1).
+- v0.23.0 — release gate stabilization, real `tract` ONNX inference, and
+  keyword-only benchmark p99 stabilization.
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
@@ -22,17 +25,19 @@ Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
 Every RFC through 046 has shipped. There are no RFCs in `rfcs/proposed/`.
 
-One open finding is tracked for later investigation (not yet an RFC):
-`rfcs/appendices/FINDING-tract-feature-build.md` — the `--features tract`
-build currently fails on a pre-existing `SimplePlan` import error in
-`tract_backend.rs`, independent of RFC-046. Future work (new features,
-stabilization, or the v1.0.0 push) will be opened as new RFCs in creation
-order (RFC-000).
+The `tract` feature build finding is resolved: `cargo check -p orbok-embed
+--features tract` is now a blocking release gate, and `orbok-embed` contains
+real tokenizer-backed local ONNX inference. Empirical validation with a local
+`multilingual-e5-small` artifact remains separate from the repository-only
+automated gate. Future work (new features, stabilization, or the v1.0.0 push)
+will be opened as new RFCs in creation order (RFC-000).
 
 ### v1.0.0 gate (unchanged — awaiting owner confirmation)
 
 1. recall@5 ≥ 0.75 with a real embedding model on a user corpus.
-2. p99 ≤ 200 ms in release mode on a 1,000-document corpus.
+2. p99 ≤ 200 ms in release mode on a 1,000-document corpus. Current
+   keyword-only evidence is green; real-model artifact validation remains
+   separate.
 3. Manual QA checklist signed off on Linux, Windows, and macOS.
 
 v1.0.0 is not released without explicit project-owner confirmation.
@@ -200,6 +205,7 @@ orbok reaches v1.0.0 when:
 **v1.0.0 gate (3 conditions — awaiting confirmation):**
 1. recall@5 ≥ 0.75 on labeled query set with real model
 2. p99 search latency ≤ 200 ms on 1,000-doc corpus
+   (green for keyword-only release-mode benchmark; real-model run pending)
 3. Manual QA checklist signed off on Linux + Windows + macOS
 
 > v1.0.0 will not be released without explicit project owner confirmation.
@@ -222,7 +228,7 @@ Three conditions must be verified before v1.0.0 is released:
 1. **recall@5 ≥ 0.75** with a real embedding model on a user corpus
    (currently 75% with keyword-only on synthetic corpus ✓)
 2. **p99 ≤ 200 ms** in release mode on a 1,000-document corpus
-   (currently 31 ms in debug mode on 100 docs ✓)
+   (currently 149.79 ms in release mode on 1,000 synthetic docs, keyword-only ✓)
 3. **Manual QA checklist** signed off on Linux, Windows, and macOS
 
 **v1.0.0 requires explicit project owner confirmation.**
@@ -231,7 +237,7 @@ Three conditions must be verified before v1.0.0 is released:
 
 - RFC-026 revisited: encrypted local indexes (key management design)
 - RFC-023 revisited: HNSW ANN (when user corpora show > 200 ms)
-- Real candle/ONNX tokenizer integration (RFC-021 full)
+- Real-model artifact validation and release benchmark run
 - XLSX, PPTX extraction (new RFC)
 - Plugin dynamic loading (RFC-028 full activation)
 - Mobile/browser companion (new RFC)
@@ -251,7 +257,8 @@ Three conditions must be verified before v1.0.0 is released:
 
 - [ ] Real embedding model installed and validated
 - [ ] Benchmark with real model: recall@5 ≥ 0.75
-- [ ] Release build p99 ≤ 200 ms on 1,000-document corpus
+- [x] Release build p99 ≤ 200 ms on 1,000-document keyword-only corpus
+- [ ] Benchmark with real model artifact on release hardware
 - [ ] Manual QA signed off: Linux
 - [ ] Manual QA signed off: macOS
 - [ ] Manual QA signed off: Windows
