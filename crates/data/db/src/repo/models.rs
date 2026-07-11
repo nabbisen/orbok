@@ -311,7 +311,7 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<ModelRecord> {
 pub fn verify_model_sha256(path: &str, expected_hash: &str) -> OrbokResult<bool> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
-    let mut file = std::fs::File::open(path).map_err(|e| orbok_core::OrbokError::Io(e))?;
+    let mut file = std::fs::File::open(path).map_err(orbok_core::OrbokError::Io)?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
     loop {

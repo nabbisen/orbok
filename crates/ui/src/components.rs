@@ -100,6 +100,7 @@ pub fn status_badge<'a>(tokens: &Tokens, label: &str, tone: Tone) -> Element<'a,
 /// Uses `card::selected` (accent border) when this result is the active
 /// selection, `card::surface` otherwise. Wrapped in an invisible button so the
 /// whole card surface is clickable and keyboard-reachable.
+#[allow(clippy::too_many_arguments)]
 pub fn result_card<'a>(
     tokens: &'a Tokens,
     title: String,

@@ -62,7 +62,7 @@ fn plan_replaces_invalid_files() {
 #[test]
 fn concurrency_does_not_exceed_maximum() {
     // RFC-043 §11.1: bounded concurrency.
-    assert!(DEFAULT_MODEL_DOWNLOAD_CONCURRENCY <= 2);
+    const { assert!(DEFAULT_MODEL_DOWNLOAD_CONCURRENCY <= 2) };
 }
 
 #[test]

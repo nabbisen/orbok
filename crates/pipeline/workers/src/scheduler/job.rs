@@ -15,20 +15,15 @@ use serde::{Deserialize, Serialize};
 /// Higher variants are dispatched first. `Ord` is derived so that
 /// `UserBlocking > UserVisible > NormalBackground > LowBackground >
 /// Maintenance`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkPriority {
     Maintenance = 0,
     LowBackground = 1,
+    #[default]
     NormalBackground = 2,
     UserVisible = 3,
     UserBlocking = 4,
-}
-
-impl Default for WorkPriority {
-    fn default() -> Self {
-        WorkPriority::NormalBackground
-    }
 }
 
 impl WorkPriority {

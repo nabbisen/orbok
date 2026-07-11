@@ -181,6 +181,7 @@ fn page_setup<'a>(
 
 // ── Page: download progress ──────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn page_downloading<'a>(
     tokens: &Tokens,
     sc: crate::theme::TextScale,

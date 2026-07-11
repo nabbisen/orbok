@@ -101,7 +101,7 @@ impl<'a> EmbeddingWorker<'a> {
         let vectors = self.model.embed_batch(&text_refs)?;
 
         let embeddings = EmbeddingRepository::new(self.catalog);
-        for (chunk, vector) in chunks.iter().zip(vectors.into_iter()) {
+        for (chunk, vector) in chunks.iter().zip(vectors) {
             embeddings.upsert(&NewEmbedding {
                 chunk_id: chunk.chunk_id.clone(),
                 model_id: self.model_id.clone(),

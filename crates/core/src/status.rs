@@ -143,18 +143,21 @@ catalog_enum!(
     }
 );
 
+#[allow(clippy::derivable_impls)]
 impl Default for HiddenFilePolicy {
     fn default() -> Self {
         HiddenFilePolicy::Exclude
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SymlinkPolicy {
     fn default() -> Self {
         SymlinkPolicy::Ignore
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for IndexMode {
     fn default() -> Self {
         IndexMode::Balanced

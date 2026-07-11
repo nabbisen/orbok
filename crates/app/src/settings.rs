@@ -113,7 +113,7 @@ impl OrbokSettings {
     /// applying strict-mode overrides (RFC-039 §9, RFC-042 §14).
     pub fn privacy_settings(&self) -> orbok_core::PrivacySettings {
         orbok_core::PrivacySettings {
-            mode: orbok_core::PrivacyMode::from_str(&self.privacy_mode),
+            mode: orbok_core::PrivacyMode::parse(&self.privacy_mode),
             remember_recent_searches: self.remember_recent_searches,
             persist_snippets: self.persist_snippets,
             clear_temporary_previews_on_exit: self.clear_temporary_previews_on_exit,

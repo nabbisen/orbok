@@ -10,14 +10,16 @@ use orbok_search::filter::{ActiveFilter, ChangedFilter, KindFilter};
 #[test]
 fn apply_suggested_adds_filter() {
     use orbok_search::filter::SuggestedFilter;
-    let mut state = SearchUiState::default();
-    state.suggested_filters = vec![SuggestedFilter {
-        filter: ActiveFilter::Kind {
-            value: KindFilter::Pdfs,
-            label: "PDFs".into(),
-        },
-        estimated_result_count: 5,
-    }];
+    let mut state = SearchUiState {
+        suggested_filters: vec![SuggestedFilter {
+            filter: ActiveFilter::Kind {
+                value: KindFilter::Pdfs,
+                label: "PDFs".into(),
+            },
+            estimated_result_count: 5,
+        }],
+        ..Default::default()
+    };
     state.apply_suggested(0);
     assert_eq!(state.active_filters.len(), 1);
 }
@@ -43,17 +45,19 @@ fn apply_suggested_does_not_duplicate() {
 
 #[test]
 fn remove_filter_removes_only_that_index() {
-    let mut state = SearchUiState::default();
-    state.active_filters = vec![
-        ActiveFilter::Kind {
-            value: KindFilter::Pdfs,
-            label: "PDFs".into(),
-        },
-        ActiveFilter::Changed {
-            value: ChangedFilter::ThisWeek,
-            label: "This week".into(),
-        },
-    ];
+    let mut state = SearchUiState {
+        active_filters: vec![
+            ActiveFilter::Kind {
+                value: KindFilter::Pdfs,
+                label: "PDFs".into(),
+            },
+            ActiveFilter::Changed {
+                value: ChangedFilter::ThisWeek,
+                label: "This week".into(),
+            },
+        ],
+        ..Default::default()
+    };
     state.remove_filter(0);
     assert_eq!(state.active_filters.len(), 1);
     assert!(matches!(
@@ -65,8 +69,10 @@ fn remove_filter_removes_only_that_index() {
 #[test]
 fn clear_filters_leaves_text_untouched() {
     // RFC-041 §15.3: Clear does not clear search text.
-    let mut state = SearchUiState::default();
-    state.text = "authentication token".into();
+    let mut state = SearchUiState {
+        text: "authentication token".into(),
+        ..Default::default()
+    };
     state.active_filters.push(ActiveFilter::Kind {
         value: KindFilter::Pdfs,
         label: "PDFs".into(),
@@ -102,9 +108,14 @@ fn query_changed_message_updates_both_query_and_search_ui_text() {
 
 #[test]
 fn clear_filters_message_clears_without_touching_text() {
-    let mut state = AppState::default();
-    state.query = "token".into();
-    state.search_ui.text = "token".into();
+    let mut state = AppState {
+        query: "token".into(),
+        search_ui: SearchUiState {
+            text: "token".into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     state.search_ui.active_filters.push(ActiveFilter::Kind {
         value: KindFilter::Pdfs,
         label: "PDFs".into(),
@@ -128,8 +139,10 @@ fn open_more_ways_message_opens_panel() {
 
 #[test]
 fn submit_search_sets_searching_status() {
-    let mut state = AppState::default();
-    state.query = "auth".into();
+    let mut state = AppState {
+        query: "auth".into(),
+        ..Default::default()
+    };
     state.update(&Message::SubmitSearch);
     assert!(matches!(
         state.search_ui.results_status,

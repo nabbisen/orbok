@@ -135,8 +135,10 @@ fn set_scope_is_noop_without_selection() {
 #[test]
 fn clearing_location_preserves_query_text() {
     // RFC-045 §11.3: clearing the chip keeps the typed query.
-    let mut app = AppState::default();
-    app.query = "renewal policy".to_string();
+    let mut app = AppState {
+        query: "renewal policy".to_string(),
+        ..Default::default()
+    };
     app.search_location.selected = Some(sample_location());
 
     app.search_location.clear();

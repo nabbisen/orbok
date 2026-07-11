@@ -243,8 +243,7 @@ impl ModelManifest {
     /// Persist the manifest to the model directory.
     pub fn save(&self, model_dir: &Path) -> std::io::Result<()> {
         let path = model_dir.join("orbok-manifest.json");
-        let json = serde_json::to_vec_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let json = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(&path, &json)
     }
 

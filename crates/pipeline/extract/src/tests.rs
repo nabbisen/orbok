@@ -225,8 +225,6 @@ fn short_text_becomes_one_document_chunk() {
     let specs = chunk(&output, "doc.txt");
     assert!(!specs.is_empty());
     assert_eq!(specs[0].chunk_kind, "document");
-    // A very short doc may have only the parent chunk.
-    assert!(specs.len() >= 1);
 }
 
 // RFC-006 §20 test 2: long text → multiple fallback chunks.

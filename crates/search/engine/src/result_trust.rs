@@ -121,10 +121,11 @@ impl SearchResultTrust {
             .collect();
 
         // PartlyPrepared always offers ViewDetails in advanced mode.
-        if state == ResultTrustState::PartlyPrepared && !warnings.is_empty() {
-            if !actions.contains(&ResultRecoveryAction::ViewDetails) {
-                actions.push(ResultRecoveryAction::ViewDetails);
-            }
+        if state == ResultTrustState::PartlyPrepared
+            && !warnings.is_empty()
+            && !actions.contains(&ResultRecoveryAction::ViewDetails)
+        {
+            actions.push(ResultRecoveryAction::ViewDetails);
         }
 
         Self {

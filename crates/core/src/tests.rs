@@ -192,7 +192,7 @@ fn privacy_mode_roundtrip() {
         PrivacyMode::Portable,
         PrivacyMode::Diagnostics,
     ] {
-        assert_eq!(PrivacyMode::from_str(mode.as_str()), mode);
+        assert_eq!(PrivacyMode::parse(mode.as_str()), mode);
     }
 }
 

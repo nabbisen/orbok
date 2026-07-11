@@ -91,17 +91,9 @@ impl Default for ExtractLimits {
 }
 
 /// Context passed into every extractor call (RFC-044 §9.3).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ExtractContext {
     pub limits: ExtractLimits,
-}
-
-impl Default for ExtractContext {
-    fn default() -> Self {
-        Self {
-            limits: ExtractLimits::default(),
-        }
-    }
 }
 
 // ── Structured warnings ─────────────────────────────────────────────────

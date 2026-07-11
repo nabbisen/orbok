@@ -41,13 +41,18 @@ impl PrivacyMode {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "strict" => PrivacyMode::Strict,
             "portable" => PrivacyMode::Portable,
             "diagnostics" => PrivacyMode::Diagnostics,
             _ => PrivacyMode::Standard,
         }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Self {
+        Self::parse(s)
     }
 
     /// Whether recent searches should be stored in this mode (RFC-039 §10).
@@ -202,8 +207,8 @@ impl DiagnosticsPolicy {
     pub fn from_privacy(settings: &PrivacySettings) -> Self {
         let strict = settings.mode == PrivacyMode::Strict;
         Self {
-            include_raw_paths: false, // never enabled by default
-            include_folder_names: if strict { false } else { false }, // opt-in only
+            include_raw_paths: false,    // never enabled by default
+            include_folder_names: false, // opt-in only
             include_recent_searches: if strict {
                 false
             } else {

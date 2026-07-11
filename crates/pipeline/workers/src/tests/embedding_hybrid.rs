@@ -163,8 +163,7 @@ fn vector_search_returns_nearest_candidate() {
     assert!(
         results[0]
             .badges
-            .iter()
-            .any(|b| *b == orbok_search::MatchBadge::Semantic)
+            .contains(&orbok_search::MatchBadge::Semantic)
     );
 }
 

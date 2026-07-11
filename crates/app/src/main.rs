@@ -307,7 +307,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
                     if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                        if let Some(entry) = history::get_entry(&catalog, &id) {
+                        if let Some(entry) = history::get_entry(&catalog, id) {
                             // Restore search text immediately (RFC-042 §9 step 1).
                             app.state.query = entry.search_text.clone();
                             app.state.search_ui.text = entry.search_text.clone();
@@ -347,7 +347,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // RFC-042: remove one entry.
                 Message::RemoveRecentSearch(id) => {
                     if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                        let refreshed = history::remove_entry(&catalog, &id);
+                        let refreshed = history::remove_entry(&catalog, id);
                         app.update(message.clone());
                         app.update(Message::HistoryLoaded(refreshed));
                     }

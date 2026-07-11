@@ -9,9 +9,10 @@ use orbok_search::{ActiveFilter, ResultRecoveryAction, ResultTrustState, Suggest
 // ── Results status ────────────────────────────────────────────────────
 
 /// Search results lifecycle in the UI (RFC-041 §16.4).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum ResultsStatus {
     /// User has never submitted a search yet.
+    #[default]
     NotSearchedYet,
     /// Background preparation is running before the first search.
     Preparing,
@@ -29,12 +30,6 @@ pub enum ResultsStatus {
     EmptyAfterFiltering,
     /// Something went wrong; `friendly_message` is safe to show directly.
     Problem { friendly_message: String },
-}
-
-impl Default for ResultsStatus {
-    fn default() -> Self {
-        ResultsStatus::NotSearchedYet
-    }
 }
 
 // ── Trust display ─────────────────────────────────────────────────────

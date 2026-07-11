@@ -29,12 +29,13 @@ pub fn run_startup_recovery(
     catalog: &Catalog,
     cache_db_path: &Path,
 ) -> OrbokResult<RecoveryReport> {
-    let mut report = RecoveryReport::default();
-    report.jobs_reset = reset_interrupted_jobs(catalog)?;
-    report.jobs_pending = count_pending_jobs(catalog)?;
     let cache_status = ensure_cache_db(cache_db_path)?;
-    report.cache_recreated = cache_status == CacheDbStatus::Recreated;
-    report.cache_rebuilt = cache_status == CacheDbStatus::Rebuilt;
+    let report = RecoveryReport {
+        jobs_reset: reset_interrupted_jobs(catalog)?,
+        jobs_pending: count_pending_jobs(catalog)?,
+        cache_recreated: cache_status == CacheDbStatus::Recreated,
+        cache_rebuilt: cache_status == CacheDbStatus::Rebuilt,
+    };
     if report.jobs_reset > 0 {
         tracing::warn!(
             reset = report.jobs_reset,
@@ -132,21 +133,21 @@ impl IntegrityReport {
 /// Read-only — does not repair, only reports.
 pub fn check_catalog_integrity(catalog: &Catalog) -> OrbokResult<IntegrityReport> {
     let conn = catalog.lock();
-    let mut report = IntegrityReport::default();
     let q = |sql: &str| -> OrbokResult<u64> {
         let n: i64 = conn
             .query_row(sql, [], |r| r.get(0))
             .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?;
         Ok(n as u64)
     };
-    report.orphaned_child_chunks = q("SELECT COUNT(*) FROM chunks c \
-         WHERE c.parent_chunk_id IS NOT NULL \
-         AND NOT EXISTS (SELECT 1 FROM chunks p WHERE p.chunk_id = c.parent_chunk_id)")?;
-    report.orphaned_kw_records = q("SELECT COUNT(*) FROM keyword_index_records k \
-         WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.chunk_id = k.chunk_id)")?;
-    report.orphaned_embedding_records = q("SELECT COUNT(*) FROM embeddings e \
-         WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.chunk_id = e.chunk_id)")?;
-    report.orphaned_files = q("SELECT COUNT(*) FROM files f \
-         WHERE NOT EXISTS (SELECT 1 FROM sources s WHERE s.source_id = f.source_id)")?;
-    Ok(report)
+    Ok(IntegrityReport {
+        orphaned_child_chunks: q("SELECT COUNT(*) FROM chunks c \
+             WHERE c.parent_chunk_id IS NOT NULL \
+             AND NOT EXISTS (SELECT 1 FROM chunks p WHERE p.chunk_id = c.parent_chunk_id)")?,
+        orphaned_kw_records: q("SELECT COUNT(*) FROM keyword_index_records k \
+             WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.chunk_id = k.chunk_id)")?,
+        orphaned_embedding_records: q("SELECT COUNT(*) FROM embeddings e \
+             WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.chunk_id = e.chunk_id)")?,
+        orphaned_files: q("SELECT COUNT(*) FROM files f \
+             WHERE NOT EXISTS (SELECT 1 FROM sources s WHERE s.source_id = f.source_id)")?,
+    })
 }

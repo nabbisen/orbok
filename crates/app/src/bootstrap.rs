@@ -101,24 +101,32 @@ pub fn load_initial_state() -> Result<AppState, Box<dyn std::error::Error>> {
 
     let health = get_health(&catalog);
     let sources = get_sources(&catalog);
-    let mut state = AppState::default();
-    state.locale = locale;
-    state.theme = stored_theme;
-    state.tokens = resolved_theme.tokens();
-    state.text_scale = TextScale::parse(&settings.text_scale).unwrap_or_default();
-    state.reduced_motion = settings.reduced_motion || resolve_os_reduced_motion();
-    state.capability = capability;
-    state.wizard = wizard;
-    state.health = health;
-    state.sources = sources;
     // RFC-042: reflect the persisted history setting and load entries.
-    state.remember_recent_searches = settings.remember_recent_searches;
     let privacy = settings.privacy_settings();
-    if privacy.effective_recent_searches() {
-        state.search_ui.history = orbok_db::repo::SearchHistoryRepository::new(&catalog)
+    let history = if privacy.effective_recent_searches() {
+        orbok_db::repo::SearchHistoryRepository::new(&catalog)
             .list()
-            .unwrap_or_default();
-    }
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let state = AppState {
+        locale,
+        theme: stored_theme,
+        tokens: resolved_theme.tokens(),
+        text_scale: TextScale::parse(&settings.text_scale).unwrap_or_default(),
+        reduced_motion: settings.reduced_motion || resolve_os_reduced_motion(),
+        capability,
+        wizard,
+        health,
+        sources,
+        remember_recent_searches: settings.remember_recent_searches,
+        search_ui: orbok_ui::state::search::SearchUiState {
+            history,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     Ok(state)
 }
 
@@ -299,9 +307,9 @@ pub fn add_source(
         return Err("path is empty".into());
     }
     // Resolve tilde and canonicalize.
-    let expanded = if raw.starts_with('~') {
+    let expanded = if let Some(stripped) = raw.strip_prefix('~') {
         let home = std::env::var("HOME").unwrap_or_default();
-        format!("{home}{}", &raw[1..])
+        format!("{home}{stripped}")
     } else {
         raw.to_string()
     };

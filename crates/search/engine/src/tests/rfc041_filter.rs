@@ -7,11 +7,10 @@ use crate::filter::{
 
 #[test]
 fn active_filter_can_be_added() {
-    let mut filters: Vec<ActiveFilter> = Vec::new();
-    filters.push(ActiveFilter::Kind {
+    let filters: Vec<ActiveFilter> = vec![ActiveFilter::Kind {
         value: KindFilter::Pdfs,
         label: "PDFs".into(),
-    });
+    }];
     assert_eq!(filters.len(), 1);
 }
 

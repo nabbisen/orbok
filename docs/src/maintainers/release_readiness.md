@@ -21,6 +21,8 @@ This document defines the release gates and QA checklist for orbok releases.
 These are the gates treated as release-blocking for the current v0.22 line:
 
 - `cargo fmt --check` — zero formatting violations.
+- `cargo clippy --workspace --all-targets -- -D warnings` — zero clippy
+  warnings across workspace library, binary, and test targets.
 - `cargo test --workspace --lib` — all workspace library tests pass.
 - Headless backend check —
   `ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p orbok -- --check` exits 0.
@@ -38,9 +40,6 @@ These are the gates treated as release-blocking for the current v0.22 line:
 These checks are useful and should be run when relevant, but are not currently
 documented as release-blocking for the v0.22 line:
 
-- `cargo clippy --workspace --all-targets` — advisory today; warnings exist.
-- `cargo clippy --workspace --all-targets -- -D warnings` — target gate, not
-  green yet.
 - `cargo audit --deny warnings` — informational advisories are visible but not
   denied by the current baseline.
 - `cargo deny` — not configured as a blocking gate yet.
@@ -53,7 +52,6 @@ Before v1.0.0, decide which advisory checks become blocking and update this
 document in the same change that makes them green or explicitly waives them.
 At minimum, the open decisions are:
 
-- Whether clippy is advisory or `-D warnings`.
 - Whether supply-chain checks add `cargo deny`, and whether `cargo audit`
   should deny informational warnings.
 - Which Cargo feature combinations must compile for every release.

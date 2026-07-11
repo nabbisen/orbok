@@ -30,8 +30,10 @@ fn text_file_over_size_limit_returns_too_large() {
     let file = dir.path().join("big.txt");
     fs::write(&file, "Hello world.\n").unwrap();
 
-    let mut limits = ExtractLimits::default();
-    limits.max_file_bytes = 5; // 5 bytes — smaller than the file
+    let limits = ExtractLimits {
+        max_file_bytes: 5, // 5 bytes — smaller than the file
+        ..Default::default()
+    };
     let ctx = ctx_with_limits(limits);
 
     let result = ExtractorRegistry::default().extract_with_context(&validated(&file), &ctx);
@@ -53,8 +55,10 @@ fn markdown_segment_limit_enforced_with_warning() {
     let content: String = (0..50).map(|i| format!("Paragraph {i}.\n\n")).collect();
     fs::write(&file, &content).unwrap();
 
-    let mut limits = ExtractLimits::default();
-    limits.max_segments = 5; // cap at 5
+    let limits = ExtractLimits {
+        max_segments: 5, // cap at 5
+        ..Default::default()
+    };
     let ctx = ctx_with_limits(limits);
 
     let output = ExtractorRegistry::default()
@@ -84,8 +88,10 @@ fn char_limit_truncates_output_with_warning() {
     let content = "a".repeat(10_000);
     fs::write(&file, &content).unwrap();
 
-    let mut limits = ExtractLimits::default();
-    limits.max_extracted_chars = 100;
+    let limits = ExtractLimits {
+        max_extracted_chars: 100,
+        ..Default::default()
+    };
     let ctx = ctx_with_limits(limits);
 
     let output = ExtractorRegistry::default()
@@ -113,8 +119,10 @@ fn html_byte_limit_returns_too_large() {
     let file = dir.path().join("big.html");
     fs::write(&file, "<p>Hello world.</p>").unwrap();
 
-    let mut limits = ExtractLimits::default();
-    limits.max_html_bytes = 3;
+    let limits = ExtractLimits {
+        max_html_bytes: 3,
+        ..Default::default()
+    };
     let ctx = ctx_with_limits(limits);
 
     let result = ExtractorRegistry::default().extract_with_context(&validated(&file), &ctx);
@@ -135,8 +143,10 @@ fn docx_zip_entry_limit_enforced() {
     // A real DOCX is a ZIP; this fake file triggers the file-size check.
     fs::write(&file, b"PK\x03\x04fake docx data".repeat(10).as_slice()).unwrap();
 
-    let mut limits = ExtractLimits::default();
-    limits.max_zip_entry_bytes = 5; // tiny limit
+    let limits = ExtractLimits {
+        max_zip_entry_bytes: 5, // tiny limit
+        ..Default::default()
+    };
     let ctx = ctx_with_limits(limits);
 
     let result = ExtractorRegistry::default().extract_with_context(&validated(&file), &ctx);

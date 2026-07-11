@@ -671,7 +671,7 @@ impl AppState {
                 // entry is loaded; RecentSearchRestored finalises the state.
             }
             Message::RecentSearchRestored(id) => {
-                if self.search_ui.restoring_history_id.as_ref() == Some(&id) {
+                if self.search_ui.restoring_history_id.as_ref() == Some(id) {
                     self.search_ui.restoring_history_id = None;
                 }
             }
