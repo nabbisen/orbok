@@ -22,6 +22,8 @@ These are the gates treated as release-blocking for the current v0.22 line:
 
 - `cargo fmt --check` — zero formatting violations.
 - `cargo test --workspace --lib` — all workspace library tests pass.
+- Headless backend check —
+  `ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p orbok -- --check` exits 0.
 - RFC lifecycle integrity — status fields, folder placement, index links, and
   RFC numbers remain coherent.
 - Version and lockfile coherence — workspace version and `Cargo.lock` package
@@ -42,8 +44,6 @@ documented as release-blocking for the v0.22 line:
 - `cargo audit --deny warnings` — informational advisories are visible but not
   denied by the current baseline.
 - `cargo deny` — not configured as a blocking gate yet.
-- `cargo run -p orbok -- --check` — useful headless smoke check, but not part
-  of the current blocking gate set.
 - Feature matrix checks — `cargo check -p orbok-embed --features tract` is
   useful coverage, but the required feature set is not yet a blocking policy.
 
@@ -56,7 +56,6 @@ At minimum, the open decisions are:
 - Whether clippy is advisory or `-D warnings`.
 - Whether supply-chain checks add `cargo deny`, and whether `cargo audit`
   should deny informational warnings.
-- Whether `orbok --check` is required for every release.
 - Which Cargo feature combinations must compile for every release.
 
 ---
