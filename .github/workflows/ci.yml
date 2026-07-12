@@ -60,6 +60,9 @@ jobs:
       - name: version and lockfile coherence
         run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
 
+      - name: RFC lifecycle integrity
+        run: bash scripts/check-rfc-lifecycle.sh
+
       - name: build --release
         run: cargo build --release --package orbok
 

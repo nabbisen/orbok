@@ -16,6 +16,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo check -p orbok-embed --features tract
 cargo test -p orbok-embed --features tract --lib
 
+# RFC lifecycle integrity gate
+bash scripts/check-rfc-lifecycle.sh
+
 # Strict supply-chain audit gate
 cargo audit --deny warnings
 

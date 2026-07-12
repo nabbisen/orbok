@@ -29,8 +29,8 @@ readiness track:
   `ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p orbok -- --check` exits 0.
 - Feature matrix — `cargo check -p orbok-embed --features tract` passes for
   the workspace's only currently declared package feature.
-- RFC lifecycle integrity — status fields, folder placement, index links, and
-  RFC numbers remain coherent.
+- RFC lifecycle integrity — `bash scripts/check-rfc-lifecycle.sh` verifies that
+  status fields, folder placement, index links, and RFC numbers remain coherent.
 - Version and lockfile coherence — workspace version and `Cargo.lock` package
   versions agree.
 - Supply-chain vulnerability baseline — `cargo audit --deny warnings` passes with only
