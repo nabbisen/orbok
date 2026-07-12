@@ -54,6 +54,12 @@ jobs:
       - name: strict clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: workspace library tests
+        run: cargo test --workspace --lib
+
+      - name: version and lockfile coherence
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
       - name: build --release
         run: cargo build --release --package orbok
 
@@ -71,6 +77,26 @@ jobs:
         env:
           ORBOK_DATA_DIR: /tmp/orbok-bench
         run: cargo test -p orbok-workers benchmark_corpus -- --nocapture
+
+      - name: release archive checks
+        run: |
+          version="$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test -n "$version"
+          ./scripts/package.sh "$version"
+          (
+            cd dist
+            sha256sum -c "orbok-v${version}.tar.gz.sha256"
+          )
+          tar tf "dist/orbok-v${version}.tar.gz" > target/release-archive-contents.txt
+          grep -qx './Cargo.toml' target/release-archive-contents.txt
+          grep -q '^./crates/' target/release-archive-contents.txt
+          grep -q '^./rfcs/' target/release-archive-contents.txt
+          grep -q '^./docs/' target/release-archive-contents.txt
+          grep -q '^./scripts/' target/release-archive-contents.txt
+          if grep -E '^\./(target|\.git|\.git-exclude|\.agents|\.codex|dist|docs/book)(/|$)|^\./Cargo\.lock$' target/release-archive-contents.txt; then
+            echo "release archive contains forbidden paths" >&2
+            exit 1
+          fi
 
   # ── Security gate: mandatory on every PR ─────────────────────────
   security:
