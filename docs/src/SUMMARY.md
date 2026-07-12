@@ -25,3 +25,4 @@
 - [Testing Guide](maintainers/testing.md)
 - [RFC Index](maintainers/rfcs.md)
 - [Release Readiness](maintainers/release_readiness.md)
+- [v1.0.0 Readiness Ledger](maintainers/v1_0_readiness.md)
