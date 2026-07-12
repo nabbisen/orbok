@@ -45,9 +45,10 @@ different backend with a different cause:
 
 - **Candle:** the module file never existed; `--features candle` could never
   resolve the `mod`. (Resolved by RFC-046 / B1.)
-- **tract:** the module file *exists* and is wired, but its source does not
-  compile under the feature due to an unresolved import (and possibly other
-  drift against the pinned `tract-onnx` version — not yet fully checked).
+- **tract:** at discovery time, the module file *existed* and was wired, but
+  its source did not compile under the feature due to an unresolved import. At
+  that point, broader API drift against the pinned `tract-onnx` version had not
+  yet been checked. The later investigation result is recorded in §4.
 
 `tract_backend.rs` was **not** modified by RFC-046. This breakage is
 pre-existing and independent.
