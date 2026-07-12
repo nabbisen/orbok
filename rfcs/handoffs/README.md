@@ -68,6 +68,12 @@ already taken by the design-system program). Dependencies flow from cross-
 references, not numeric order — 036–040 reference 041–045, which is expected
 under RFC-000.
 
+## v1.0.0 readiness program (RFC-047) — proposed
+
+| RFC | Handoff | Theme |
+|-----|---------|-------|
+| 047 | HANDOFF-047-v1-rc-evidence-collection | v1.0.0 RC evidence collection and review |
+
 ## Upstream requests
 
 - `snora-request-contrast-facade-v0.25.1.md` — request that produced the

@@ -59,9 +59,9 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 
 ## Proposed
 
-None. All RFCs through 046 are implemented. Future work will be opened
-here as new RFCs; **numbering is creation order, not dependency order**
-(RFC-000).
+| ID | Title | Status |
+|---|---|---|
+| 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
