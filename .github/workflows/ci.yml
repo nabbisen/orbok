@@ -58,7 +58,9 @@ jobs:
       - name: --check headless
         env:
           ORBOK_DATA_DIR: /tmp/orbok-release-check
-        run: ./target/release/orbok --check
+        run: |
+          rm -rf "$ORBOK_DATA_DIR"
+          ./target/release/orbok --check
 
       - name: benchmark smoke (10 docs)
         env:
