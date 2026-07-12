@@ -75,6 +75,7 @@ pub fn run_bench_with_options(
 
     let mut real_model = None;
     let mut model_id = None;
+    let mut model_evidence = None;
     if let Some(model_dir) = options.model_dir.as_deref() {
         let model = load_real_model(model_dir)?;
         let id = orbok_core::ModelId::from_string(format!(
@@ -82,6 +83,12 @@ pub fn run_bench_with_options(
             model.name(),
             model.version()
         ));
+        model_evidence = Some(report::BenchmarkModelEvidence {
+            model_id: id.as_str().to_string(),
+            name: model.name().to_string(),
+            version: model.version().to_string(),
+            dimension: model.dimension(),
+        });
         let embed = orbok_workers::EmbeddingWorker::with_model(&catalog, &cache, model, id.clone());
         for file_id in indexed_file_ids(&catalog)? {
             embed.run(&file_id)?;
@@ -115,6 +122,7 @@ pub fn run_bench_with_options(
         } else {
             report::BenchmarkMode::KeywordOnly
         },
+        model: model_evidence,
         corpus_bytes: corpus_size,
         catalog_bytes: catalog_size,
         index_elapsed_ms,

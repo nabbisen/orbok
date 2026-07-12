@@ -146,7 +146,9 @@ Current v0.23 keyword-only evidence is tracked in
 release-mode keyword-only snapshot meets recall, p99 latency, and indexing
 throughput targets. Real-model v1.0 validation uses the same benchmark command
 with `--features orbok-embed/tract -- --model-dir <model-dir>` and remains a
-separate required evidence item.
+separate required evidence item. Its JSON report must show
+`"mode": "hybrid-real-model"` and a non-null `model` object recording model id,
+name, version, and dimension.
 
 ---
 
