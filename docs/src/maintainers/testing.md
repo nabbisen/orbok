@@ -23,11 +23,14 @@ bash scripts/check-rfc-lifecycle.sh
 cargo audit --deny warnings
 
 # Keyword-only benchmark evidence
-cargo run -p orbok-bench --release -- 1000 target/orbok-bench/results
+cargo run -p orbok-bench --release -- \
+  1000 target/orbok-bench/results --expect-mode keyword-only
 
 # Real-model benchmark evidence, using a local recommended model directory
 cargo run -p orbok-bench --release --features orbok-embed/tract -- \
-  1000 target/orbok-bench/results-real-model --model-dir /path/to/multilingual-e5-small
+  1000 target/orbok-bench/results-real-model \
+  --model-dir /path/to/multilingual-e5-small \
+  --expect-mode hybrid-real-model
 
 # Headless backend gate, using a fresh scratch data directory
 rm -rf .git-exclude/tmp/orbok-check

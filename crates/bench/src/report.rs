@@ -28,7 +28,7 @@ pub struct BenchmarkModelEvidence {
 }
 
 /// Benchmark search mode.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BenchmarkMode {
     KeywordOnly,
