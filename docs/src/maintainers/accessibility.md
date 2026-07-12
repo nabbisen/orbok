@@ -63,7 +63,7 @@ at the ≥ 3.0:1 threshold.
 
 Every action is keyboard-operable. The shortcut map is implemented in
 `key_to_message` (`crates/ui/src/shell.rs`) and wired via
-`iced::keyboard::listen()` in `orbok-app`. No action is mouse-only.
+`iced::keyboard::listen()` in the `orbok` app crate. No action is mouse-only.
 
 Shortcut map:
 

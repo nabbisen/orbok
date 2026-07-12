@@ -86,13 +86,14 @@ The original open questions are now answered as follows:
 
 ## 5. Verification observed
 
-- `cargo fmt --check`
+- `cargo fmt --all --check`
 - `cargo check -p orbok-embed`
 - `cargo test -p orbok-embed --lib`
 - `cargo check -p orbok-embed --features tract`
 - `cargo test -p orbok-embed --features tract --lib`
 - `cargo test --workspace --lib`
-- `cargo audit`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo audit --deny warnings`
 
 Remaining real-backend validation is empirical: run the recommended local model
 files, benchmark recall@5 and p99 latency, and decide whether query/passage
