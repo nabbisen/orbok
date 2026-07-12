@@ -50,6 +50,48 @@ Archive both generated files for release review:
 - `orbok-bench-results.json`
 - `orbok-bench-report.md`
 
+## Manual QA Evidence Template
+
+Record one entry per platform. This template is for owner evidence capture; it
+does not replace the checklist in [`release_readiness.md`](release_readiness.md)
+or add new release gates.
+
+```text
+Platform:
+OS version:
+orbok version / commit:
+Build or archive tested:
+Date:
+Tester:
+
+Checklist source:
+- docs/src/maintainers/release_readiness.md
+- docs/src/maintainers/accessibility.md
+
+Result:
+- [ ] Pass
+- [ ] Pass with notes
+- [ ] Fail
+
+Evidence summary:
+- First launch:
+- Search:
+- Storage:
+- Models:
+- Settings:
+- Privacy:
+- Accessibility:
+
+Blocking issues:
+- None / list issue references
+
+Notes:
+-
+
+Owner sign-off:
+- [ ] This platform is accepted for v1.0.0 release readiness.
+```
+
 ## Stop Rule
 
 Do not start new product/design implementation from this ledger. If new work is
