@@ -141,14 +141,16 @@ v1.0.0 is not released without explicit project-owner confirmation.
 | RFC-017 | Packaging and Distribution | ✓ |
 | RFC-018 | Crash Recovery and Diagnostics | ✓ |
 
-## v0.6 targets
+## v0.6 targets (historical)
 
 - **RFC-019**: Test Matrix and Release Readiness — cross-platform CI definition, integration test scenarios, release gate criteria.
 - **RFC-020**: Documentation and User Guidance — complete mdbook docs, API reference, tutorial content for new/intermediate/maintainer paths.
 - **RFC-019/020 complete**: these are the final RFCs in Part 4 (operational).
 - **M10 complete**: Storage cleanup actions fully wired — CleanupService combining catalog + cache, one-click cleanup triggering both.
 - **M12 complete**: Real embedding model loading via candle/ONNX backend (replaces MockEmbeddingModel in production paths).
-- **Remaining Part 5 RFCs** (021–030): deferred future work including ANN, quantization, OCR, email archives, plugins, model trust, portable mode.
+- **Remaining Part 5 RFCs** (021–030): at this point in the historical plan,
+  these were deferred future work. Current RFC state is tracked in
+  [`rfcs/README.md`](rfcs/README.md).
 
 ## v0.6 status — All Part 1–4 RFCs complete ✓
 
@@ -159,9 +161,10 @@ v1.0.0 is not released without explicit project-owner confirmation.
 | M10 | Storage Cleanup (CleanupService end-to-end) | ✓ v0.6 |
 | M12 | Backend Config (EmbeddingModelConfig, RerankerConfig) | ✓ v0.6 |
 
-## v0.7+ — Part 5 Deferred Future Work (draft RFCs)
+## v0.7+ — Part 5 Deferred Future Work (historical)
 
-These RFCs are in `rfcs/draft/` and target future versions:
+At this point in the historical plan, these RFCs were tracked as deferred
+future work. Current RFC state is tracked in [`rfcs/README.md`](rfcs/README.md).
 
 | RFC | Title | Priority |
 |---|---|---|
@@ -175,9 +178,9 @@ These RFCs are in `rfcs/draft/` and target future versions:
 | RFC-029 | Model Download Integrity and Trust | Medium |
 | RFC-030 | Portable Mode | Low |
 
-## v1.0.0 readiness
+## v1.0.0 readiness (historical criteria)
 
-orbok reaches v1.0.0 when:
+At this point in the historical plan, orbok was expected to reach v1.0.0 when:
 1. RFC-021 (real embedding model) and RFC-022 (PDF backend) are implemented.
 2. Benchmarks meet RFC-019 targets: recall@5 ≥ 0.75, p99 ≤ 200 ms.
 3. All three platforms (Linux/Windows/macOS) pass the manual QA checklist.
@@ -192,9 +195,9 @@ orbok reaches v1.0.0 when:
 | RFC-029 Model Integrity + Trust | ✓ |
 | orbok-embed crate (feature-flagged backends) | ✓ |
 
-## v0.8 targets (path to v1.0.0)
+## v0.8 targets (historical path to v1.0.0)
 
-**Remaining draft RFCs (7):**
+**Remaining draft RFCs at this point in the historical plan:**
 - RFC-023: Vector ANN Indexing (HNSW for > 100k chunks)
 - RFC-024: Vector Quantization (INT8 / binary)
 - RFC-025: OCR Pipeline (image PDFs, screenshots)
