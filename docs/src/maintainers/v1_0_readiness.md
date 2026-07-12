@@ -50,6 +50,47 @@ Archive both generated files for release review:
 - `orbok-bench-results.json`
 - `orbok-bench-report.md`
 
+## Real-Model Benchmark Evidence Template
+
+Record one entry for the accepted real-model run. This template is for release
+evidence capture; it does not change the thresholds in
+[`release_readiness.md`](release_readiness.md).
+
+```text
+Run date:
+Runner:
+Host OS / hardware:
+orbok version / commit:
+Command:
+Output directory:
+
+Generated artifacts:
+- orbok-bench-results.json:
+- orbok-bench-report.md:
+
+JSON evidence:
+- mode: hybrid-real-model
+- model.model_id:
+- model.name:
+- model.version:
+- model.dimension:
+
+Gate results:
+- recall@5:
+- p99 search latency:
+- indexing throughput:
+
+Result:
+- [ ] Pass
+- [ ] Fail
+
+Blocking issues:
+- None / list issue references
+
+Notes:
+-
+```
+
 ## Manual QA Evidence Template
 
 Record one entry per platform. This template is for owner evidence capture; it
