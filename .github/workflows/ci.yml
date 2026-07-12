@@ -45,9 +45,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: feature matrix (tract)
         run: cargo check -p orbok-embed --features tract
+
+      - name: strict clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: build --release
         run: cargo build --release --package orbok
