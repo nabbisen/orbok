@@ -38,6 +38,24 @@ readiness track:
 - Release archive checks — archive name includes version, layout is flat, and
   generated checksums accompany the archive.
 
+## Automation Coverage
+
+The CI workflow covers the repository-verifiable blocking gates. Release
+publication, platform sign-off, and real-model evidence still require owner
+review before a release is cut.
+
+| Gate | CI coverage | Manual / owner evidence |
+|---|---|---|
+| Formatting | `fast` job: `fmt` | None. |
+| Strict clippy | `release` job: `strict clippy` | None. |
+| Workspace library tests | `release` job: `workspace library tests` | None. |
+| Headless backend check | `release` job: `--check headless` with a fresh `ORBOK_DATA_DIR` | Local release-prep rerun may be recorded when cutting an RC. |
+| Feature matrix | `release` job: `feature matrix (tract)` | Real-model benchmark evidence remains separate. |
+| RFC lifecycle integrity | `release` job: `RFC lifecycle integrity` | None. |
+| Version and lockfile coherence | `release` job: `version and lockfile coherence`, plus `--version` after release build | Tag and release-note correctness remain owner responsibilities. |
+| Supply-chain vulnerability baseline | `security` job: `audit dependencies` | Advisory `cargo deny` policy is not blocking. |
+| Release archive checks | `release` job: `release archive checks` | Publishing the archive and checksum remains manual. |
+
 ## Advisory / Not Yet Blocking
 
 These checks are useful and should be run when relevant, but are not currently
