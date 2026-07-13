@@ -78,11 +78,7 @@ pub fn run_bench_with_options(
     let mut model_evidence = None;
     if let Some(model_dir) = options.model_dir.as_deref() {
         let model = load_real_model(model_dir)?;
-        let id = orbok_core::ModelId::from_string(format!(
-            "embedding_{}-{}",
-            model.name(),
-            model.version()
-        ));
+        let id = register_benchmark_model(&catalog, model.as_ref(), model_dir)?;
         model_evidence = Some(report::BenchmarkModelEvidence {
             model_id: id.as_str().to_string(),
             name: model.name().to_string(),
@@ -153,6 +149,27 @@ fn load_real_model(
     orbok_embed::create_embedding_model(&config).map_err(|err| err.into())
 }
 
+fn register_benchmark_model(
+    catalog: &orbok_db::Catalog,
+    model: &dyn orbok_models::EmbeddingModel,
+    model_dir: &Path,
+) -> orbok_core::OrbokResult<orbok_core::ModelId> {
+    use orbok_db::repo::{ModelRepository, ModelRole, ModelStatus, NewModel};
+
+    let record = ModelRepository::new(catalog).insert(NewModel {
+        role: ModelRole::Embedding,
+        model_name: model.name().to_string(),
+        model_version: model.version().to_string(),
+        local_path: Some(model_dir.to_string_lossy().into_owned()),
+        license_summary: None,
+        size_bytes: None,
+        backend: Some("tract".to_string()),
+        dimension: Some(model.dimension()),
+        status: ModelStatus::Available,
+    })?;
+    Ok(record.model_id)
+}
+
 fn indexed_file_ids(
     catalog: &orbok_db::Catalog,
 ) -> orbok_core::OrbokResult<Vec<orbok_core::FileId>> {
@@ -175,6 +192,27 @@ fn indexed_file_ids(
 #[cfg(test)]
 mod bench_tests {
     use super::*;
+    use orbok_models::EmbeddingModel;
+
+    #[test]
+    fn real_model_benchmark_registers_model_before_embedding() {
+        let dir = tempfile::tempdir().unwrap();
+        let catalog = orbok_db::Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
+        let model = orbok_models::MockEmbeddingModel;
+
+        let model_id = register_benchmark_model(&catalog, &model, dir.path()).unwrap();
+        let record = orbok_db::repo::ModelRepository::new(&catalog)
+            .get(&model_id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(record.model_id.as_str(), model_id.as_str());
+        assert_eq!(record.role, orbok_db::repo::ModelRole::Embedding);
+        assert_eq!(record.model_name, "mock");
+        assert_eq!(record.model_version, "v1");
+        assert_eq!(record.dimension, Some(model.dimension()));
+        assert_eq!(record.status, orbok_db::repo::ModelStatus::Available);
+    }
 
     // RFC-016 §17 / RFC-023 baseline: benchmark with 100 synthetic documents.
     // Results inform the ANN and quantization decisions.
