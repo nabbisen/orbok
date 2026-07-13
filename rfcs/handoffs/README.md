@@ -73,6 +73,7 @@ under RFC-000.
 | RFC | Handoff | Theme |
 |-----|---------|-------|
 | 047 | HANDOFF-047-v1-rc-evidence-collection | v1.0.0 RC evidence collection and review |
+| 048 | HANDOFF-048-real-model-performance-recovery | real-model benchmark performance recovery |
 
 ## Upstream requests
 

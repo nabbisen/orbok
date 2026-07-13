@@ -62,6 +62,7 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
+| 048 | [Real-Model Benchmark Performance Recovery](proposed/048-real-model-performance-recovery.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
