@@ -2,7 +2,7 @@
 
 ## 2026-07-11 cargo-deny deferral
 
-`cargo-deny` remains advisory for the active post-v0.23/v1.0 readiness track.
+`cargo-deny` remains advisory for the active post-v0.24/v1.0 readiness track.
 Do not promote `cargo deny check` to a release-blocking gate until the project
 records the policy that would make a `deny.toml` durable:
 

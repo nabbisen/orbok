@@ -1,6 +1,6 @@
 # orbok RFC Index
 
-Managed by RFC-000. Last updated: 2026-07-13 (v0.24.0 prep).
+Managed by RFC-000. Last updated: 2026-07-13 (v0.24.0).
 
 The folder an RFC lives in is the source of truth for its state
 (`done/` = Implemented, `proposed/` = under review, `archive/` =

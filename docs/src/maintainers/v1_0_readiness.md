@@ -10,7 +10,7 @@ Controlling scope:
 - RFC-016: benchmark and retrieval evidence.
 - ROADMAP: v1.0.0 requires explicit project-owner confirmation.
 
-Status as of 2026-07-13: v0.24.0 release-prep, pre-v1.0.0.
+Status as of 2026-07-13: post-v0.24.0, pre-v1.0.0.
 
 ## Current State
 

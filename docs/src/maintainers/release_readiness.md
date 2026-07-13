@@ -59,7 +59,7 @@ review before a release is cut.
 ## Advisory / Not Yet Blocking
 
 These checks are useful and should be run when relevant, but are not currently
-documented as release-blocking for the active post-v0.23 readiness track:
+documented as release-blocking for the active post-v0.24 readiness track:
 
 - `cargo deny` — useful for license, source, duplicate-version, and broader
   dependency-policy review, but not release-blocking until the project records
