@@ -37,7 +37,7 @@ pub use filter::{
     SuggestedFilter,
 };
 pub use fts5::Fts5KeywordEngine;
-pub use hybrid::{HybridSearchService, SearchMode};
+pub use hybrid::{HybridSearchService, SearchMode, SearchProfile, SearchTiming};
 pub use multilingual::{MultilingualKeywordEngine, contains_cjk, normalize_query};
 pub use query::build_match_expression;
 pub use result_trust::{

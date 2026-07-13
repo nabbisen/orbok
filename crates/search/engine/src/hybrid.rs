@@ -12,6 +12,7 @@ use orbok_core::OrbokResult;
 use orbok_db::Catalog;
 use orbok_models::{CrossEncoderReranker, EmbeddingModel, RerankCandidate, l2_normalize};
 use std::path::Path;
+use std::time::Instant;
 
 /// Search mode selector (RFC-009 §8, GUI design §7.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -92,6 +93,25 @@ pub struct HybridSearchService<'a> {
     reranker: Option<&'a dyn CrossEncoderReranker>,
 }
 
+/// Timing breakdown for one search execution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SearchTiming {
+    pub total_ms: f64,
+    pub keyword_ms: f64,
+    pub query_embedding_ms: f64,
+    pub vector_scan_ms: f64,
+    pub fusion_ms: f64,
+    pub enrichment_ms: f64,
+    pub rerank_ms: f64,
+}
+
+/// Search results plus timing evidence for benchmark diagnostics.
+#[derive(Debug)]
+pub struct SearchProfile {
+    pub results: Vec<SearchResult>,
+    pub timing: SearchTiming,
+}
+
 impl<'a> HybridSearchService<'a> {
     /// Keyword-only mode (no embedding model).
     pub fn keyword_only(catalog: &'a Catalog) -> Self {
@@ -132,6 +152,18 @@ impl<'a> HybridSearchService<'a> {
         mode: SearchMode,
         limit: u32,
     ) -> OrbokResult<Vec<SearchResult>> {
+        Ok(self.search_profile(query, mode, limit)?.results)
+    }
+
+    /// Execute a search and return timing evidence for benchmark diagnostics.
+    pub fn search_profile(
+        &self,
+        query: &str,
+        mode: SearchMode,
+        limit: u32,
+    ) -> OrbokResult<SearchProfile> {
+        let total_start = Instant::now();
+        let mut timing = SearchTiming::default();
         let mut limits = Limits::for_mode(mode);
         limits.adjust_for_request(
             limit,
@@ -140,6 +172,7 @@ impl<'a> HybridSearchService<'a> {
         );
 
         // Keyword candidates — use multilingual engine (RFC-014).
+        let keyword_start = Instant::now();
         let kw_candidates = if limits.keyword_k > 0 {
             let keyword_engine = MultilingualKeywordEngine::new(self.catalog);
             if mode == SearchMode::Auto && query.split_whitespace().count() >= 4 {
@@ -150,18 +183,26 @@ impl<'a> HybridSearchService<'a> {
         } else {
             Vec::new()
         };
+        timing.keyword_ms = elapsed_ms(keyword_start);
 
         // Vector candidates.
         let vec_candidates = if limits.vector_k > 0 {
             if let Some((model, model_id)) = &self.embedding_model {
+                let query_embedding_start = Instant::now();
                 let mut query_vec = model.embed_batch(&[query])?.remove(0);
                 l2_normalize(&mut query_vec);
+                timing.query_embedding_ms = elapsed_ms(query_embedding_start);
+
+                let vector_scan_start = Instant::now();
                 ExactVectorSearch {
                     catalog: self.catalog,
                     model_id: model_id.clone(),
                     dimension: model.dimension(),
                 }
-                .search(&query_vec, limits.vector_k)?
+                .search(&query_vec, limits.vector_k)
+                .inspect(|_| {
+                    timing.vector_scan_ms = elapsed_ms(vector_scan_start);
+                })?
             } else {
                 Vec::new()
             }
@@ -170,19 +211,26 @@ impl<'a> HybridSearchService<'a> {
         };
 
         // Fuse.
+        let fusion_start = Instant::now();
         let fused = rrf_fuse(&kw_candidates, &vec_candidates, limits.fusion_n);
+        timing.fusion_ms = elapsed_ms(fusion_start);
 
         // Enrich with snippets.
+        let enrichment_start = Instant::now();
         let mut results = self.enrich_many(&fused, limit as usize)?;
+        timing.enrichment_ms = elapsed_ms(enrichment_start);
 
         // Optional reranking (RFC-010): reorder using passage scores.
+        let rerank_start = Instant::now();
         if limits.rerank {
             if let Some(reranker) = self.reranker {
                 results = rerank_results(reranker, query, results)?;
             }
         }
+        timing.rerank_ms = elapsed_ms(rerank_start);
+        timing.total_ms = elapsed_ms(total_start);
 
-        Ok(results)
+        Ok(SearchProfile { results, timing })
     }
 
     fn enrich_many(
@@ -231,6 +279,10 @@ impl<'a> HybridSearchService<'a> {
         }
         Ok(results)
     }
+}
+
+fn elapsed_ms(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1000.0
 }
 
 /// Rerank enriched results using the reranker model (RFC-010 §8).

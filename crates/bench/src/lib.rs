@@ -29,7 +29,9 @@ pub fn run_bench_with_options(
     work_dir: &Path,
     options: BenchmarkOptions,
 ) -> Result<report::BenchmarkResult, Box<dyn std::error::Error>> {
+    let corpus_start = std::time::Instant::now();
     corpus::generate(work_dir, n_docs)?;
+    let corpus_generation_ms = elapsed_ms(corpus_start);
     let catalog = orbok_db::Catalog::open(work_dir.join("bench-catalog.sqlite3"))?;
     let cache = orbok_cache::CacheService::new(work_dir);
     {
@@ -72,13 +74,18 @@ pub fn run_bench_with_options(
     let extract = orbok_workers::ExtractionWorker::new(&catalog, &cache);
     let chunk = orbok_workers::ChunkAndIndexWorker::new(&catalog, &cache);
     orbok_workers::run_pending(&catalog, &extract, &chunk, None, n_docs as u32 * 4)?;
+    let extraction_chunking_keyword_index_ms = elapsed_ms(index_start);
 
     let mut real_model = None;
     let mut model_id = None;
     let mut model_evidence = None;
+    let mut model_load_ms = 0;
+    let mut document_embedding_ms = 0;
     if let Some(model_dir) = options.model_dir.as_deref() {
+        let model_load_start = std::time::Instant::now();
         let model = load_real_model(model_dir)?;
         let id = register_benchmark_model(&catalog, model.as_ref(), model_dir)?;
+        model_load_ms = elapsed_ms(model_load_start);
         model_evidence = Some(report::BenchmarkModelEvidence {
             model_id: id.as_str().to_string(),
             name: model.name().to_string(),
@@ -86,25 +93,29 @@ pub fn run_bench_with_options(
             dimension: model.dimension(),
         });
         let embed = orbok_workers::EmbeddingWorker::with_model(&catalog, &cache, model, id.clone());
+        let document_embedding_start = std::time::Instant::now();
         for file_id in indexed_file_ids(&catalog)? {
             embed.run(&file_id)?;
         }
+        document_embedding_ms = elapsed_ms(document_embedding_start);
         model_id = Some(id.as_str().to_string());
         real_model = Some(embed);
     }
 
-    let index_elapsed_ms = index_start.elapsed().as_millis() as u64;
+    let index_elapsed_ms =
+        extraction_chunking_keyword_index_ms + model_load_ms + document_embedding_ms;
     let catalog_size = std::fs::metadata(work_dir.join("bench-catalog.sqlite3"))
         .map(|m| m.len())
         .unwrap_or(0);
     let corpus_size = corpus::total_bytes(work_dir);
     let search_model = real_model.as_ref().map(|embed| embed.model());
-    let latencies = metrics::measure_search_latency(
+    let search_timing = metrics::measure_search_timing(
         &catalog,
         queries::LABELED_QUERIES,
         search_model,
         model_id.as_deref(),
     )?;
+    let latencies = search_timing.total_ms.clone();
     let recall = metrics::compute_recall(
         &catalog,
         queries::LABELED_QUERIES,
@@ -119,6 +130,13 @@ pub fn run_bench_with_options(
             report::BenchmarkMode::KeywordOnly
         },
         model: model_evidence,
+        timing_ms: report::BenchmarkTimingBreakdown {
+            corpus_generation_ms,
+            extraction_chunking_keyword_index_ms,
+            model_load_ms,
+            document_embedding_ms,
+            search: search_timing,
+        },
         corpus_bytes: corpus_size,
         catalog_bytes: catalog_size,
         index_elapsed_ms,
@@ -130,6 +148,10 @@ pub fn run_bench_with_options(
         search_latency_ms: latencies,
         recall_at_k: recall,
     })
+}
+
+fn elapsed_ms(start: std::time::Instant) -> u64 {
+    start.elapsed().as_millis() as u64
 }
 
 fn load_real_model(

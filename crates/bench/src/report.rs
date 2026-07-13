@@ -1,6 +1,6 @@
 //! Benchmark report writer (RFC-016 §12): JSON and Markdown output.
 
-use crate::metrics::{LatencyMetrics, RecallMetrics};
+use crate::metrics::{LatencyMetrics, RecallMetrics, SearchTimingMetrics};
 use std::fs;
 use std::path::Path;
 
@@ -10,12 +10,23 @@ pub struct BenchmarkResult {
     pub n_docs: usize,
     pub mode: BenchmarkMode,
     pub model: Option<BenchmarkModelEvidence>,
+    pub timing_ms: BenchmarkTimingBreakdown,
     pub corpus_bytes: u64,
     pub catalog_bytes: u64,
     pub index_elapsed_ms: u64,
     pub indexing_files_per_sec: f64,
     pub search_latency_ms: LatencyMetrics,
     pub recall_at_k: RecallMetrics,
+}
+
+/// Machine-readable timing breakdown for benchmark diagnostics.
+#[derive(Debug, serde::Serialize)]
+pub struct BenchmarkTimingBreakdown {
+    pub corpus_generation_ms: u64,
+    pub extraction_chunking_keyword_index_ms: u64,
+    pub model_load_ms: u64,
+    pub document_embedding_ms: u64,
+    pub search: SearchTimingMetrics,
 }
 
 /// Non-secret model identity recorded for release evidence.
@@ -89,7 +100,11 @@ impl BenchmarkResult {
              ## Indexing\n\n\
              | Metric | Value |\n|---|---|\n\
              | Total time | {} ms |\n\
-             | Throughput | {:.1} files/s |\n\n\
+             | Throughput | {:.1} files/s |\n\
+             | Corpus generation | {} ms |\n\
+             | Extraction/chunking/keyword indexing | {} ms |\n\
+             | Model load | {} ms |\n\
+             | Document embedding | {} ms |\n\n\
              ## Search Latency\n\n\
              | Percentile | Latency |\n|---|---|\n\
              | p50 | {:.2} ms |\n\
@@ -97,6 +112,15 @@ impl BenchmarkResult {
              | p99 | {:.2} ms |\n\
              | min | {:.2} ms |\n\
              | max | {:.2} ms |\n\n\
+             ## Search Timing Breakdown (p99)\n\n\
+             | Component | p99 |\n|---|---:|\n\
+             | Total | {:.2} ms |\n\
+             | Keyword retrieval | {:.2} ms |\n\
+             | Query embedding | {:.2} ms |\n\
+             | Vector scan | {:.2} ms |\n\
+             | Fusion | {:.2} ms |\n\
+             | Result enrichment | {:.2} ms |\n\
+             | Rerank | {:.2} ms |\n\n\
              ## Retrieval Quality\n\n\
              | Metric | Value |\n|---|---|\n\
              | Recall@{} | {:.1}% |\n\
@@ -119,11 +143,22 @@ impl BenchmarkResult {
             },
             self.index_elapsed_ms,
             self.indexing_files_per_sec,
+            self.timing_ms.corpus_generation_ms,
+            self.timing_ms.extraction_chunking_keyword_index_ms,
+            self.timing_ms.model_load_ms,
+            self.timing_ms.document_embedding_ms,
             self.search_latency_ms.p50_ms,
             self.search_latency_ms.p95_ms,
             self.search_latency_ms.p99_ms,
             self.search_latency_ms.min_ms,
             self.search_latency_ms.max_ms,
+            self.timing_ms.search.total_ms.p99_ms,
+            self.timing_ms.search.keyword_ms.p99_ms,
+            self.timing_ms.search.query_embedding_ms.p99_ms,
+            self.timing_ms.search.vector_scan_ms.p99_ms,
+            self.timing_ms.search.fusion_ms.p99_ms,
+            self.timing_ms.search.enrichment_ms.p99_ms,
+            self.timing_ms.search.rerank_ms.p99_ms,
             self.recall_at_k.k,
             self.recall_at_k.recall * 100.0,
             self.recall_at_k.queries_evaluated,
@@ -158,7 +193,7 @@ impl BenchmarkResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{LatencyMetrics, RecallMetrics};
+    use crate::metrics::{LatencyMetrics, RecallMetrics, SearchTimingMetrics};
 
     #[test]
     fn markdown_records_model_evidence_without_paths() {
@@ -172,6 +207,7 @@ mod tests {
                 version: "v1".to_string(),
                 dimension: 384,
             }),
+            timing_ms: timing_breakdown(),
             corpus_bytes: 1024,
             catalog_bytes: 2048,
             index_elapsed_ms: 100,
@@ -196,6 +232,8 @@ mod tests {
         let markdown = std::fs::read_to_string(markdown_path).unwrap();
 
         assert!(markdown.contains("| Mode | hybrid-real-model |"));
+        assert!(markdown.contains("## Search Timing Breakdown (p99)"));
+        assert!(markdown.contains("| Query embedding | 3.00 ms |"));
         assert!(markdown.contains(
             "| Embedding model | embedding_multilingual-e5-small-v1 \
              (multilingual-e5-small v1, 384 dims) |"
@@ -208,10 +246,43 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(json_path).unwrap()).unwrap();
         assert_eq!(json["mode"], "hybrid-real-model");
+        assert_eq!(json["timing_ms"]["document_embedding_ms"], 25);
+        assert_eq!(
+            json["timing_ms"]["search"]["query_embedding_ms"]["p99_ms"],
+            3.0
+        );
         assert_eq!(
             json["model"]["model_id"],
             "embedding_multilingual-e5-small-v1"
         );
         assert_eq!(json["model"]["dimension"], 384);
+    }
+
+    fn timing_breakdown() -> BenchmarkTimingBreakdown {
+        BenchmarkTimingBreakdown {
+            corpus_generation_ms: 10,
+            extraction_chunking_keyword_index_ms: 20,
+            model_load_ms: 15,
+            document_embedding_ms: 25,
+            search: SearchTimingMetrics {
+                total_ms: latency(),
+                keyword_ms: latency(),
+                query_embedding_ms: latency(),
+                vector_scan_ms: latency(),
+                fusion_ms: latency(),
+                enrichment_ms: latency(),
+                rerank_ms: latency(),
+            },
+        }
+    }
+
+    fn latency() -> LatencyMetrics {
+        LatencyMetrics {
+            p50_ms: 1.0,
+            p95_ms: 2.0,
+            p99_ms: 3.0,
+            min_ms: 0.5,
+            max_ms: 4.0,
+        }
     }
 }
