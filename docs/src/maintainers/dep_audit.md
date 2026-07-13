@@ -39,6 +39,7 @@ Active waivers:
 | RUSTSEC-2026-0186 | `memmap2` 0.9.10 | Pulled by GUI/windowing/font stacks and `tract-onnx`; replacement requires upstream dependency movement. |
 | RUSTSEC-2026-0194 | `quick-xml` 0.39.4 | Pulled through `wayland-scanner` 0.31.10 in the Linux GUI stack; `wayland-scanner` still requires `quick-xml ^0.39`. |
 | RUSTSEC-2026-0195 | `quick-xml` 0.39.4 | Same `wayland-scanner` path as RUSTSEC-2026-0194. |
+| RUSTSEC-2026-0206 | `rustybuzz` 0.20.1 | Pulled through the GUI SVG/text rendering stack (`iced` → `resvg`/`usvg`); advisory is unmaintained status and `cargo info rustybuzz` reports 0.20.1 as the current crate version. |
 
 ## 2026-06-20 dependency currency audit
 

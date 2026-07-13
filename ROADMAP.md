@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-07-11)
+## Current Status (2026-07-13)
 
-Shipped: **v0.23.0**. Latest tagged release: **0.23.0**. RFCs
+Prepared: **v0.24.0**. Latest tagged release: **0.23.0**. RFCs
 **000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
 design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
@@ -18,26 +18,31 @@ search-foundation programs landed across v0.16.0–v0.23.0:
 - v0.22.0 — RFC-046 (Candle backend cleanup, Option B1).
 - v0.23.0 — release gate stabilization, real `tract` ONNX inference, and
   keyword-only benchmark p99 stabilization.
+- v0.24.0 — v1.0.0 evidence workflow, CI/release-gate alignment, real-model
+  benchmark guards, model evidence, and timing diagnostics.
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
-## Forward Plan — All planned RFCs implemented
+## Forward Plan — v1.0.0 readiness RFCs in progress
 
-Every RFC through 046 has shipped. There are no RFCs in `rfcs/proposed/`.
+Every RFC through 046 has shipped. RFC-047 and RFC-048 are proposed v1.0.0
+readiness RFCs; they define evidence collection and performance recovery work
+but do not mark v1.0.0 ready.
 
 The `tract` feature build finding is resolved: `cargo check -p orbok-embed
 --features tract` is now a blocking release gate, and `orbok-embed` contains
 real tokenizer-backed local ONNX inference. Empirical validation with a local
-`multilingual-e5-small` artifact remains separate from the repository-only
-automated gate. Future work (new features, stabilization, or the v1.0.0 push)
-will be opened as new RFCs in creation order (RFC-000).
+`multilingual-e5-small` artifact has identified real-model p99 and indexing
+throughput failures. RFC-048 tracks the measurement-first recovery path.
+Future work (new features, stabilization, or the v1.0.0 push) will be opened
+as new RFCs in creation order (RFC-000).
 
 ### v1.0.0 gate (unchanged — awaiting owner confirmation)
 
 1. recall@5 ≥ 0.75 with a real embedding model on a user corpus.
-2. p99 ≤ 200 ms in release mode on a 1,000-document corpus. Current
-   keyword-only evidence is green; real-model artifact validation remains
-   separate.
+2. p99 ≤ 200 ms and indexing throughput ≥ 10 files/s in release mode on a
+   1,000-document corpus. Current keyword-only evidence is green; real-model
+   artifact validation is blocked on RFC-048 performance recovery.
 3. Manual QA checklist signed off on Linux, Windows, and macOS.
 
 v1.0.0 is not released without explicit project-owner confirmation.

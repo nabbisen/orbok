@@ -10,7 +10,7 @@ Controlling scope:
 - RFC-016: benchmark and retrieval evidence.
 - ROADMAP: v1.0.0 requires explicit project-owner confirmation.
 
-Status as of 2026-07-13: post-v0.23.0, pre-v1.0.0.
+Status as of 2026-07-13: v0.24.0 release-prep, pre-v1.0.0.
 
 ## Current State
 
@@ -26,7 +26,7 @@ Status as of 2026-07-13: post-v0.23.0, pre-v1.0.0.
 
 | Item | Required evidence | Current state |
 |---|---|---|
-| Real-model benchmark | `orbok-bench-results.json` with `"mode": "hybrid-real-model"` and non-null `model`; recall@5 >= 0.75; p99 <= 200 ms; indexing throughput >= 10 files/s | Pending owner/local model run |
+| Real-model benchmark | `orbok-bench-results.json` with `"mode": "hybrid-real-model"` and non-null `model`; recall@5 >= 0.75; p99 <= 200 ms; indexing throughput >= 10 files/s | Failing p99/indexing evidence recorded; RFC-048 recovery in progress |
 | Manual QA: Linux | Completed checklist from [`release_readiness.md`](release_readiness.md), including accessibility items | Pending owner sign-off |
 | Manual QA: macOS | Completed checklist from [`release_readiness.md`](release_readiness.md), including accessibility items | Pending owner sign-off |
 | Manual QA: Windows | Completed checklist from [`release_readiness.md`](release_readiness.md), including accessibility items | Pending owner sign-off |

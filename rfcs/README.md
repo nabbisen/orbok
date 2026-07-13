@@ -1,6 +1,6 @@
 # orbok RFC Index
 
-Managed by RFC-000. Last updated: 2026-07-11 (v0.23.0).
+Managed by RFC-000. Last updated: 2026-07-13 (v0.24.0 prep).
 
 The folder an RFC lives in is the source of truth for its state
 (`done/` = Implemented, `proposed/` = under review, `archive/` =
@@ -67,6 +67,8 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
 [`appendices/FINDING-tract-feature-build.md`](appendices/FINDING-tract-feature-build.md).
+The v0.24.0 readiness trail is represented by proposed RFC-047 and RFC-048
+plus their handoffs.
 
 ## Archive
 

@@ -18,7 +18,7 @@ This document defines the release gates and QA checklist for orbok releases.
 
 ## Current Blocking Gates
 
-These are the gates treated as release-blocking for the active post-v0.23
+These are the gates treated as release-blocking for the active post-v0.24
 readiness track:
 
 - `cargo fmt --all --check` — zero formatting violations across the workspace.

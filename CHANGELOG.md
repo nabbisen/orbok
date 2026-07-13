@@ -11,6 +11,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.24.0] — 2026-07-13 — v1.0.0 Readiness Evidence and Benchmark Diagnostics
+
+Release-readiness checkpoint after v0.23.0. This release tightens the
+repository-verifiable gate story, adds v1.0.0 evidence collection structure,
+and instruments the real-model benchmark path so performance recovery can
+follow measured bottlenecks. v1.0.0 is still not released; it remains gated on
+passing real-model benchmark thresholds, manual QA, and explicit project-owner
+confirmation.
+
+### Added
+
+- **v1.0.0 readiness ledger:** added maintainer evidence templates for the
+  remaining real-model benchmark, manual QA, release publication, and owner
+  decision evidence.
+- **Real-model benchmark guard:** `orbok-bench` now supports
+  `--expect-mode hybrid-real-model`, preventing keyword-only runs from
+  accidentally satisfying the real-model evidence slot.
+- **Benchmark model evidence:** benchmark JSON and Markdown now record
+  non-secret model identity (`model_id`, name, version, and dimension) when a
+  real embedding model is used.
+- **Benchmark timing diagnostics:** benchmark results now include structured
+  `timing_ms` evidence for corpus generation, extraction/chunking/keyword
+  indexing, model load, document embedding, query embedding, vector scan,
+  fusion, enrichment, rerank, and total search latency.
+- **RFC-047 / RFC-048 readiness trail:** added proposed RFCs and handoffs for
+  v1.0.0 RC evidence collection and real-model performance recovery.
+
+### Changed
+
+- **CI release gate coverage:** aligned CI release jobs with the documented
+  blocking gates, including strict clippy, workspace library tests, fresh
+  headless `--check`, `tract` feature matrix, RFC lifecycle integrity, strict
+  audit, version/lockfile coherence, and archive checks.
+- **Release documentation:** refreshed package names, command names, format
+  commands, audit commands, and roadmap wording so maintainer docs match the
+  current release-gate practice.
+- **Audit baseline:** documented the new `rustybuzz` unmaintained-status waiver
+  after confirming it is a transitive GUI rendering dependency with no newer
+  crate version available.
+- **RFC lifecycle automation:** extended lifecycle checks to cover proposed RFC
+  index rows as well as implemented and archived RFCs.
+- **Readiness wording:** clarified historical RFC and `tract` finding wording
+  so current v1.0.0 status is not confused with older roadmap milestones.
+
+### Fixed
+
+- **Real-model benchmark model registration:** fixed a foreign-key failure by
+  registering the loaded benchmark embedding model before writing embeddings.
+
+### Tests
+
+- 0.24.0 release-prep evidence is recorded in
+  `.git-exclude/review-request/051-v0.24.0-release-prep.md`.
+
+---
+
 ## [0.23.0] — 2026-07-11 — Release Gate and Real Embedding Hardening
 
 Release-readiness stabilization after RFC-046. This release recovers and

@@ -36,4 +36,10 @@ ignore = [
     # still requires quick-xml ^0.39, so this cannot be updated independently.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+
+    # rustybuzz 0.20.1 is pulled by the GUI SVG/text rendering stack
+    # (iced -> resvg/usvg). The advisory is unmaintained status; cargo info
+    # reports 0.20.1 as the current crate version, so there is no direct
+    # dependency update available in this release prep.
+    "RUSTSEC-2026-0206",
 ]
