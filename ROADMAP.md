@@ -1,6 +1,6 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-07-13)
+## Current Status (2026-07-14)
 
 Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
 **000–046 implemented** (see
@@ -23,11 +23,14 @@ search-foundation programs landed across v0.16.0–v0.24.0:
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
-## Forward Plan — v1.0.0 readiness RFCs in progress
+## Forward Plan — v1.0.0 readiness and stabilization RFCs in progress
 
-Every RFC through 046 has shipped. RFC-047 and RFC-048 are proposed v1.0.0
-readiness RFCs; they define evidence collection and performance recovery work
-but do not mark v1.0.0 ready.
+Every RFC through 046 has shipped. RFC-047 through RFC-052 are proposed
+v1.0.0 readiness/stabilization RFCs. RFC-047 defines evidence collection and
+RFC-048 tracks real-model performance recovery. RFC-049 through RFC-052 address
+the architecture review's release blockers: portable runtime isolation,
+trusted atomic model delivery, reviewed-source packaging, and complete UI
+localization/design-gate enforcement. None marks v1.0.0 ready.
 
 The `tract` feature build finding is resolved: `cargo check -p orbok-embed
 --features tract` is now a blocking release gate, and `orbok-embed` contains
@@ -36,6 +39,14 @@ real tokenizer-backed local ONNX inference. Empirical validation with a local
 throughput failures. RFC-048 tracks the measurement-first recovery path.
 Future work (new features, stabilization, or the v1.0.0 push) will be opened
 as new RFCs in creation order (RFC-000).
+
+### Stabilization order before RC evidence collection
+
+1. Review and accept RFC-049 through RFC-052 and their handoffs.
+2. Implement and independently review the four stabilization boundaries.
+3. Continue RFC-048 measured performance recovery until real-model thresholds
+   pass or a later accepted RFC changes policy.
+4. Resume RFC-047 evidence collection only after those blockers are closed.
 
 ### v1.0.0 gate (unchanged — awaiting owner confirmation)
 

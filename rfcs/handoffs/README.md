@@ -68,12 +68,20 @@ already taken by the design-system program). Dependencies flow from cross-
 references, not numeric order — 036–040 reference 041–045, which is expected
 under RFC-000.
 
-## v1.0.0 readiness program (RFC-047) — proposed
+## v1.0.0 readiness and stabilization program (RFC-047 → 052) — proposed
 
 | RFC | Handoff | Theme |
 |-----|---------|-------|
 | 047 | HANDOFF-047-v1-rc-evidence-collection | v1.0.0 RC evidence collection and review |
 | 048 | HANDOFF-048-real-model-performance-recovery | real-model benchmark performance recovery |
+| 049 | HANDOFF-049-portable-runtime-data-isolation | one runtime data context and standard/portable isolation |
+| 050 | HANDOFF-050-trusted-atomic-model-delivery | trusted manifest, plan execution, and atomic model promotion |
+| 051 | HANDOFF-051-reproducible-reviewed-source-packaging | reviewed tracked inputs, lockfile, and deterministic archives |
+| 052 | HANDOFF-052-ui-localization-and-design-gate-compliance | complete En/Ja UI copy and mandatory token/i18n gates |
+
+RFC-047 evidence collection and release-candidate promotion remain paused
+while the RFC-049–052 stabilization blockers and RFC-048 performance gate are
+unresolved.
 
 ## Upstream requests
 

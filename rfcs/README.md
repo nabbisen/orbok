@@ -1,6 +1,6 @@
 # orbok RFC Index
 
-Managed by RFC-000. Last updated: 2026-07-13 (v0.24.0).
+Managed by RFC-000. Last updated: 2026-07-14 (v0.24.0).
 
 The folder an RFC lives in is the source of truth for its state
 (`done/` = Implemented, `proposed/` = under review, `archive/` =
@@ -63,12 +63,18 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
 | 048 | [Real-Model Benchmark Performance Recovery](proposed/048-real-model-performance-recovery.md) | Proposed |
+| 049 | [Portable Runtime Data Isolation](proposed/049-portable-runtime-data-isolation.md) | Proposed |
+| 050 | [Trusted Atomic Model Delivery](proposed/050-trusted-atomic-model-delivery.md) | Proposed |
+| 051 | [Reproducible Reviewed-Source Packaging](proposed/051-reproducible-reviewed-source-packaging.md) | Proposed |
+| 052 | [UI Localization and Design-Gate Compliance](proposed/052-ui-localization-and-design-gate-compliance.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
 [`appendices/FINDING-tract-feature-build.md`](appendices/FINDING-tract-feature-build.md).
-The v0.24.0 readiness trail is represented by proposed RFC-047 and RFC-048
-plus their handoffs.
+The v0.24.0 readiness trail is represented by RFC-047 and RFC-048. The
+architecture preparation review opened RFC-049 through RFC-052 for the
+portable-data, model-delivery, release-provenance, and UI-compliance blockers
+that must be resolved before release-candidate promotion.
 
 ## Archive
 
