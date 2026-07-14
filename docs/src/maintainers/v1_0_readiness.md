@@ -50,6 +50,63 @@ Archive both generated files for release review:
 - `orbok-bench-results.json`
 - `orbok-bench-report.md`
 
+## RFC-048 Timing Evidence Checklist
+
+Use this checklist when rerunning the real-model benchmark for RFC-048 Phase 2
+bottleneck classification.
+
+Pre-run:
+
+- Confirm the model directory contains `onnx/model.onnx` and `tokenizer.json`.
+- Use a fresh output directory, for example
+  `target/orbok-bench/results-real-model-rfc048`.
+- Record the commit hash or release tag used for the run.
+- Record host OS/hardware and runner name.
+- Record the model artifact name; do not record a private full filesystem path
+  if it is sensitive.
+
+Run:
+
+```sh
+cargo run -p orbok-bench --release --features orbok-embed/tract -- \
+  1000 target/orbok-bench/results-real-model-rfc048 \
+  --model-dir /path/to/multilingual-e5-small \
+  --expect-mode hybrid-real-model
+```
+
+Required generated files:
+
+- `target/orbok-bench/results-real-model-rfc048/orbok-bench-results.json`
+- `target/orbok-bench/results-real-model-rfc048/orbok-bench-report.md`
+
+Gate checks:
+
+- `mode` is `hybrid-real-model`.
+- `model` is non-null and records `model_id`, `name`, `version`, and
+  `dimension`.
+- `recall_at_k.recall >= 0.75`.
+- `search_latency_ms.p99_ms <= 200`.
+- `indexing_files_per_sec >= 10`.
+
+Timing fields to inspect:
+
+- `timing_ms.corpus_generation_ms`
+- `timing_ms.extraction_chunking_keyword_index_ms`
+- `timing_ms.model_load_ms`
+- `timing_ms.document_embedding_ms`
+- `timing_ms.search.query_embedding_ms.p99_ms`
+- `timing_ms.search.vector_scan_ms.p99_ms`
+- `timing_ms.search.enrichment_ms.p99_ms`
+- `timing_ms.search.total_ms.p99_ms`
+
+Evidence to bring back for RFC-048 review:
+
+- command used;
+- terminal summary line;
+- generated artifact paths;
+- key JSON values for mode, model identity, recall, p99 search latency,
+  indexing throughput, and the full `timing_ms` object.
+
 ## Real-Model Benchmark Evidence Template
 
 Record one entry for the accepted real-model run. This template is for release

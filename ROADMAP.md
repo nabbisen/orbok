@@ -47,6 +47,14 @@ as new RFCs in creation order (RFC-000).
 
 v1.0.0 is not released without explicit project-owner confirmation.
 
+### Future process hardening candidates
+
+- Reusable owner-run evidence checklist template: extract the pattern from the
+  RFC-048 timing evidence checklist so future owner-run benchmarks, manual QA,
+  and release evidence requests are recorded in project files instead of only
+  in chat. Open a dedicated RFC only if the template changes release policy or
+  adds new gates.
+
 ---
 
 > The sections below are historical milestone tracking (v0.1–v0.9 RC), retained
