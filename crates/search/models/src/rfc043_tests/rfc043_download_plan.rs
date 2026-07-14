@@ -1,10 +1,14 @@
 //! RFC-043 download plan unit tests (§22.2 test plan).
 
+use super::TEST_MANIFEST;
 use crate::download_plan::{
-    DEFAULT_MODEL_DOWNLOAD_CONCURRENCY, DownloadAction, FriendlyDownloadProblem,
-    build_download_plan,
+    DEFAULT_MODEL_DOWNLOAD_CONCURRENCY, DownloadAction, DownloadPlanError, FriendlyDownloadProblem,
+    build_download_plan, build_download_plan_against,
 };
-use crate::readiness::check_model_readiness;
+use crate::readiness::{
+    check_app_managed_model_readiness, check_app_managed_model_readiness_against,
+    check_model_readiness,
+};
 
 #[test]
 fn plan_skips_ready_files() {
@@ -12,8 +16,8 @@ fn plan_skips_ready_files() {
     std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
     std::fs::create_dir_all(dir.path().join("onnx")).unwrap();
     std::fs::write(dir.path().join("onnx/model.onnx"), b"\x00").unwrap();
-    let report = check_model_readiness(dir.path());
-    let plan = build_download_plan(&report);
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    let plan = build_download_plan_against(&report, &TEST_MANIFEST).unwrap();
     assert!(!plan.has_work());
     assert!(plan.files_to_download().is_empty());
     assert_eq!(plan.files_to_skip().len(), 2);
@@ -22,8 +26,8 @@ fn plan_skips_ready_files() {
 #[test]
 fn plan_downloads_missing_files() {
     let dir = tempfile::tempdir().unwrap();
-    let report = check_model_readiness(dir.path());
-    let plan = build_download_plan(&report);
+    let report = check_app_managed_model_readiness(dir.path());
+    let plan = build_download_plan(&report).unwrap();
     assert!(plan.has_work());
     assert_eq!(plan.files_to_download().len(), 2);
     for f in plan.files_to_download() {
@@ -35,8 +39,8 @@ fn plan_downloads_missing_files() {
 fn plan_retries_partial_files() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("tokenizer.json.part"), b"partial").unwrap();
-    let report = check_model_readiness(dir.path());
-    let plan = build_download_plan(&report);
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    let plan = build_download_plan_against(&report, &TEST_MANIFEST).unwrap();
     let tokenizer = plan
         .files
         .iter()
@@ -49,8 +53,8 @@ fn plan_retries_partial_files() {
 fn plan_replaces_invalid_files() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("tokenizer.json"), b"").unwrap(); // empty = invalid
-    let report = check_model_readiness(dir.path());
-    let plan = build_download_plan(&report);
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    let plan = build_download_plan_against(&report, &TEST_MANIFEST).unwrap();
     let tokenizer = plan
         .files
         .iter()
@@ -68,8 +72,8 @@ fn concurrency_does_not_exceed_maximum() {
 #[test]
 fn temp_path_has_part_suffix() {
     let dir = tempfile::tempdir().unwrap();
-    let report = check_model_readiness(dir.path());
-    let plan = build_download_plan(&report);
+    let report = check_app_managed_model_readiness(dir.path());
+    let plan = build_download_plan(&report).unwrap();
     for f in &plan.files {
         let temp = f.temp_path(dir.path());
         assert!(
@@ -77,6 +81,33 @@ fn temp_path_has_part_suffix() {
             "temp path must end with .part"
         );
     }
+}
+
+#[test]
+fn plan_uses_only_pinned_manifest_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let report = check_app_managed_model_readiness(dir.path());
+    let plan = build_download_plan(&report).unwrap();
+    assert_eq!(plan.manifest_id, "multilingual-e5-small-hf-614241f6");
+    for file in &plan.files {
+        assert!(!file.remote_url.contains("/resolve/main/"));
+        assert!(
+            file.remote_url
+                .contains("614241f622f53c4eeff9890bdc4f31cfecc418b3")
+        );
+        assert_eq!(file.expected_sha256.len(), 64);
+        assert!(file.exact_size_bytes <= file.max_transfer_bytes);
+    }
+}
+
+#[test]
+fn trusted_plan_refuses_user_supplied_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let report = check_model_readiness(dir.path());
+    assert!(matches!(
+        build_download_plan(&report),
+        Err(DownloadPlanError::UserSuppliedFolder)
+    ));
 }
 
 #[test]

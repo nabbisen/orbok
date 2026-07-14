@@ -3687,8 +3687,10 @@ version = "0.24.0"
 dependencies = [
  "orbok-core",
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "url",
 ]
 
 [[package]]

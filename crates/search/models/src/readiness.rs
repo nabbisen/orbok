@@ -4,10 +4,13 @@
 //! avoids re-downloading files that are already present and valid,
 //! and prevents treating partially downloaded files as usable.
 //!
-//! The readiness check is intentionally lightweight (P0): existence,
-//! regular-file check, and non-empty. Checksum validation (P1) is
-//! layered on top when a manifest is available.
+//! User-supplied folders receive the intentionally lightweight RFC-043 check.
+//! App-managed folders additionally require the exact sizes and SHA-256 values
+//! from RFC-050 Appendix B. Provenance and local integrity remain separate.
 
+use crate::trust::{DEFAULT_TRUSTED_MODEL, TrustedModelFile, TrustedModelManifest};
+use sha2::{Digest, Sha256};
+use std::io::Read as _;
 use std::path::Path;
 
 // ── Per-file status ───────────────────────────────────────────────────
@@ -32,6 +35,28 @@ pub enum LocalFileStatus {
     Invalid,
     /// File access failed unexpectedly (permissions etc.).
     CannotCheck,
+}
+
+/// Whether local bytes were authenticated against the reviewed trust root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalFileIntegrity {
+    /// Exact size and SHA-256 match reviewed source-controlled metadata.
+    TrustedDigest,
+    /// A user-supplied file passed only the lightweight usability check.
+    Unverified,
+    /// No complete usable file was available for integrity checking.
+    NotAvailable,
+    /// Complete bytes were present but did not match trusted metadata.
+    Mismatch,
+}
+
+/// Origin boundary for a readiness report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelProvenance {
+    /// Files in orbok's managed store, governed by Appendix B.
+    AppManaged,
+    /// A folder selected by the user and never mutated by trusted delivery.
+    UserSupplied,
 }
 
 impl LocalFileStatus {
@@ -63,6 +88,8 @@ pub struct FileReadiness {
     pub relative_path: &'static str,
     /// Current status of the local file.
     pub status: LocalFileStatus,
+    /// Byte-integrity claim, kept separate from file usability/provenance.
+    pub integrity: LocalFileIntegrity,
 }
 
 // ── Model-level readiness ─────────────────────────────────────────────
@@ -85,6 +112,7 @@ pub enum ModelReadiness {
 /// Full readiness report for a model directory (RFC-043 §7.2–7.3).
 #[derive(Debug, Clone)]
 pub struct ModelReadinessReport {
+    pub provenance: ModelProvenance,
     pub overall: ModelReadiness,
     pub files: Vec<FileReadiness>,
 }
@@ -111,14 +139,6 @@ impl ModelReadinessReport {
     }
 }
 
-// ── Required files ────────────────────────────────────────────────────
-
-/// Required files for the current default model (RFC-043 §6).
-const REQUIRED_FILES: &[(&str, &str)] = &[
-    ("tokenizer", "tokenizer.json"),
-    ("model", "onnx/model.onnx"),
-];
-
 // ── Readiness check ───────────────────────────────────────────────────
 
 /// Check local model files and return a readiness report (RFC-043 §7).
@@ -126,49 +146,128 @@ const REQUIRED_FILES: &[(&str, &str)] = &[
 /// Called: at startup, before the wizard, before download, after
 /// download, after the user chooses an existing folder, and on retry.
 ///
-/// This is a pure filesystem check — no network access.
+/// This is a user-supplied-folder check: it performs no network access and
+/// makes no app-verified integrity claim.
 pub fn check_model_readiness(model_dir: &Path) -> ModelReadinessReport {
+    check_model_readiness_inner(
+        model_dir,
+        &DEFAULT_TRUSTED_MODEL,
+        ModelProvenance::UserSupplied,
+    )
+}
+
+/// Check orbok-managed files against the normative Appendix B trust root.
+pub fn check_app_managed_model_readiness(model_dir: &Path) -> ModelReadinessReport {
+    check_app_managed_model_readiness_against(model_dir, &DEFAULT_TRUSTED_MODEL)
+}
+
+/// Manifest-injected app-managed readiness check, exposed for exact policy and
+/// small-fixture tests. Production callers use [`check_app_managed_model_readiness`].
+pub fn check_app_managed_model_readiness_against(
+    model_dir: &Path,
+    manifest: &'static TrustedModelManifest,
+) -> ModelReadinessReport {
+    check_model_readiness_inner(model_dir, manifest, ModelProvenance::AppManaged)
+}
+
+fn check_model_readiness_inner(
+    model_dir: &Path,
+    manifest: &'static TrustedModelManifest,
+    provenance: ModelProvenance,
+) -> ModelReadinessReport {
     let mut files = Vec::new();
 
-    for (logical_name, relative_path) in REQUIRED_FILES {
-        let full_path = model_dir.join(relative_path);
-        let part_path = model_dir.join(format!("{relative_path}.part"));
-        let status = check_single_file(&full_path, &part_path);
+    for trusted_file in manifest.files {
+        let full_path = model_dir.join(trusted_file.relative_path);
+        let part_path = model_dir.join(format!("{}.part", trusted_file.relative_path));
+        let (status, integrity) =
+            check_single_file(&full_path, &part_path, trusted_file, provenance);
         files.push(FileReadiness {
-            logical_name,
-            relative_path,
+            logical_name: trusted_file.logical_name,
+            relative_path: trusted_file.relative_path,
             status,
+            integrity,
         });
     }
 
     let overall = derive_overall_readiness(&files);
-    ModelReadinessReport { overall, files }
+    ModelReadinessReport {
+        provenance,
+        overall,
+        files,
+    }
 }
 
-fn check_single_file(path: &Path, part_path: &Path) -> LocalFileStatus {
+fn check_single_file(
+    path: &Path,
+    part_path: &Path,
+    trusted_file: &TrustedModelFile,
+    provenance: ModelProvenance,
+) -> (LocalFileStatus, LocalFileIntegrity) {
     // Check the final path first.
     match std::fs::metadata(path) {
         Ok(meta) => {
             if !meta.is_file() {
-                return LocalFileStatus::Invalid;
+                return (LocalFileStatus::Invalid, LocalFileIntegrity::Mismatch);
             }
             if meta.len() == 0 {
-                return LocalFileStatus::Invalid;
+                return (LocalFileStatus::Invalid, LocalFileIntegrity::Mismatch);
             }
-            // P0 validation passes: file exists, is a regular file, is non-empty.
-            LocalFileStatus::Ready
+            if provenance == ModelProvenance::UserSupplied {
+                return (LocalFileStatus::Ready, LocalFileIntegrity::Unverified);
+            }
+            if meta.len() != trusted_file.exact_size_bytes {
+                return (LocalFileStatus::Invalid, LocalFileIntegrity::Mismatch);
+            }
+            match sha256_file(path) {
+                Ok(digest) if digest == trusted_file.sha256 => {
+                    (LocalFileStatus::Ready, LocalFileIntegrity::TrustedDigest)
+                }
+                Ok(_) => (LocalFileStatus::Invalid, LocalFileIntegrity::Mismatch),
+                Err(_) => (
+                    LocalFileStatus::CannotCheck,
+                    LocalFileIntegrity::NotAvailable,
+                ),
+            }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Final file missing — check for a .part file.
             if part_path.exists() {
-                LocalFileStatus::Partial
+                (LocalFileStatus::Partial, LocalFileIntegrity::NotAvailable)
             } else {
-                LocalFileStatus::Missing
+                (LocalFileStatus::Missing, LocalFileIntegrity::NotAvailable)
             }
         }
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => LocalFileStatus::CannotCheck,
-        Err(_) => LocalFileStatus::CannotCheck,
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => (
+            LocalFileStatus::CannotCheck,
+            LocalFileIntegrity::NotAvailable,
+        ),
+        Err(_) => (
+            LocalFileStatus::CannotCheck,
+            LocalFileIntegrity::NotAvailable,
+        ),
     }
+}
+
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity(64);
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for byte in digest {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(encoded)
 }
 
 fn derive_overall_readiness(files: &[FileReadiness]) -> ModelReadiness {

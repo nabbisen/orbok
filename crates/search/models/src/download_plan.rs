@@ -5,7 +5,8 @@
 //! always derived from a fresh `ModelReadinessReport`; nothing is
 //! downloaded without a plan.
 
-use crate::readiness::{LocalFileStatus, ModelReadinessReport};
+use crate::readiness::{LocalFileStatus, ModelProvenance, ModelReadinessReport};
+use crate::trust::{DEFAULT_TRUSTED_MODEL, TrustedModelManifest};
 use std::path::PathBuf;
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -44,6 +45,9 @@ pub struct ModelFilePlan {
     pub logical_name: &'static str,
     pub relative_path: &'static str,
     pub remote_url: &'static str,
+    pub expected_sha256: &'static str,
+    pub exact_size_bytes: u64,
+    pub max_transfer_bytes: u64,
     pub local_status: LocalFileStatus,
     pub action: DownloadAction,
     /// Temporary path used during download (RFC-043 §9.1).
@@ -67,6 +71,8 @@ impl ModelFilePlan {
 /// Complete download plan for a model (RFC-043 §10.1).
 #[derive(Debug, Clone)]
 pub struct DownloadPlan {
+    /// Source-controlled trust-root identity used to construct this plan.
+    pub manifest_id: &'static str,
     /// Maximum concurrent file downloads (RFC-043 §11).
     pub max_concurrent: usize,
     pub files: Vec<ModelFilePlan>,
@@ -95,48 +101,84 @@ impl DownloadPlan {
     }
 }
 
-// ── File URLs (current recommended model) ────────────────────────────
-
-const TOKENIZER_URL: &str =
-    "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/tokenizer.json";
-const MODEL_URL: &str =
-    "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/model.onnx";
-
 // ── Plan builder ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadPlanError {
+    UserSuppliedFolder,
+    ReadinessManifestMismatch,
+    InvalidTrustedManifest,
+}
 
 /// Build a download plan from a fresh readiness report (RFC-043 §10.4).
 ///
-/// Called after every `check_model_readiness`. The plan is always
-/// derived from the current on-disk state; nothing is assumed from
-/// a previous session.
-pub fn build_download_plan(report: &ModelReadinessReport) -> DownloadPlan {
-    let urls: std::collections::HashMap<&str, &str> = [
-        ("tokenizer.json", TOKENIZER_URL),
-        ("onnx/model.onnx", MODEL_URL),
-    ]
-    .into_iter()
-    .collect();
+/// Called after every app-managed readiness check. The plan is always derived
+/// from current local state plus the reviewed manifest; user-supplied folders
+/// are rejected.
+pub fn build_download_plan(
+    report: &ModelReadinessReport,
+) -> Result<DownloadPlan, DownloadPlanError> {
+    build_download_plan_against(report, &DEFAULT_TRUSTED_MODEL)
+}
+
+/// Manifest-injected pure planner used for exact small-fixture tests.
+pub fn build_download_plan_against(
+    report: &ModelReadinessReport,
+    manifest: &'static TrustedModelManifest,
+) -> Result<DownloadPlan, DownloadPlanError> {
+    manifest
+        .validate()
+        .map_err(|_| DownloadPlanError::InvalidTrustedManifest)?;
+    if report.provenance != ModelProvenance::AppManaged {
+        return Err(DownloadPlanError::UserSuppliedFolder);
+    }
+    if report.files.len() != manifest.files.len()
+        || report.files.iter().any(|readiness| {
+            manifest
+                .file_by_path(readiness.relative_path)
+                .is_none_or(|trusted| trusted.logical_name != readiness.logical_name)
+        })
+        || manifest.files.iter().any(|trusted| {
+            report
+                .files
+                .iter()
+                .filter(|readiness| {
+                    readiness.relative_path == trusted.relative_path
+                        && readiness.logical_name == trusted.logical_name
+                })
+                .count()
+                != 1
+        })
+    {
+        return Err(DownloadPlanError::ReadinessManifestMismatch);
+    }
 
     let files = report
         .files
         .iter()
-        .map(|f| {
-            let action = plan_action(&f.status);
+        .map(|readiness| {
+            let trusted = manifest
+                .file_by_path(readiness.relative_path)
+                .expect("readiness file set was validated against the manifest");
             ModelFilePlan {
-                logical_name: f.logical_name,
-                relative_path: f.relative_path,
-                remote_url: urls.get(f.relative_path).copied().unwrap_or(""),
-                local_status: f.status.clone(),
-                action,
+                logical_name: trusted.logical_name,
+                relative_path: trusted.relative_path,
+                remote_url: trusted.url,
+                expected_sha256: trusted.sha256,
+                exact_size_bytes: trusted.exact_size_bytes,
+                max_transfer_bytes: trusted.max_transfer_bytes,
+                local_status: readiness.status.clone(),
+                action: plan_action(&readiness.status),
                 temp_path_suffix: ".part",
             }
         })
         .collect();
 
-    DownloadPlan {
+    Ok(DownloadPlan {
+        manifest_id: manifest.manifest_id,
         max_concurrent: DEFAULT_MODEL_DOWNLOAD_CONCURRENCY,
         files,
-    }
+    })
 }
 
 fn plan_action(status: &LocalFileStatus) -> DownloadAction {

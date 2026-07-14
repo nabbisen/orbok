@@ -10,14 +10,23 @@
 
 pub mod download_plan;
 pub mod readiness;
+pub mod trust;
 
 pub use download_plan::{
-    DEFAULT_MODEL_DOWNLOAD_CONCURRENCY, DownloadAction, DownloadPlan, FileDownloadProgress,
-    FileDownloadStatus, FriendlyDownloadProblem, ModelFilePlan, OverallDownloadProgress,
-    build_download_plan,
+    DEFAULT_MODEL_DOWNLOAD_CONCURRENCY, DownloadAction, DownloadPlan, DownloadPlanError,
+    FileDownloadProgress, FileDownloadStatus, FriendlyDownloadProblem, ModelFilePlan,
+    OverallDownloadProgress, build_download_plan, build_download_plan_against,
 };
 pub use readiness::{
-    FileReadiness, LocalFileStatus, ModelReadiness, ModelReadinessReport, check_model_readiness,
+    FileReadiness, LocalFileIntegrity, LocalFileStatus, ModelProvenance, ModelReadiness,
+    ModelReadinessReport, check_app_managed_model_readiness,
+    check_app_managed_model_readiness_against, check_model_readiness,
+};
+pub use trust::{
+    DEFAULT_TRUSTED_MODEL, HeaderDisposition, HttpClientPolicy, PRODUCTION_HTTP_CLIENT_POLICY,
+    TrustPolicyError, TrustedModelFile, TrustedModelIdentity, TrustedModelManifest,
+    TrustedTransportPolicy, redirect_header_disposition, validate_initial_url,
+    validate_redirect_url,
 };
 
 use serde::{Deserialize, Serialize};

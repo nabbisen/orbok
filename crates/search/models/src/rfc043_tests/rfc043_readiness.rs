@@ -1,6 +1,10 @@
 //! RFC-043 model readiness unit tests (§22.1 test plan).
 
-use crate::readiness::{LocalFileStatus, ModelReadiness, check_model_readiness};
+use super::TEST_MANIFEST;
+use crate::readiness::{
+    LocalFileIntegrity, LocalFileStatus, ModelProvenance, ModelReadiness,
+    check_app_managed_model_readiness_against, check_model_readiness,
+};
 
 #[test]
 fn missing_model_dir_reports_needs_download() {
@@ -25,12 +29,48 @@ fn complete_valid_files_report_ready() {
     std::fs::write(dir.path().join("onnx/model.onnx"), b"\x00\x01\x02\x03").unwrap();
     let report = check_model_readiness(dir.path());
     assert_eq!(report.overall, ModelReadiness::Ready);
+    assert_eq!(report.provenance, ModelProvenance::UserSupplied);
     assert!(
         report
             .files
             .iter()
             .all(|f| f.status == LocalFileStatus::Ready)
     );
+    assert!(
+        report
+            .files
+            .iter()
+            .all(|f| f.integrity == LocalFileIntegrity::Unverified)
+    );
+}
+
+#[test]
+fn app_managed_files_require_exact_trusted_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+    std::fs::create_dir_all(dir.path().join("onnx")).unwrap();
+    std::fs::write(dir.path().join("onnx/model.onnx"), b"\0").unwrap();
+
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    assert_eq!(report.provenance, ModelProvenance::AppManaged);
+    assert_eq!(report.overall, ModelReadiness::Ready);
+    assert!(
+        report
+            .files
+            .iter()
+            .all(|file| file.integrity == LocalFileIntegrity::TrustedDigest)
+    );
+
+    std::fs::write(dir.path().join("tokenizer.json"), b"[]").unwrap();
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    let tokenizer = report
+        .files
+        .iter()
+        .find(|file| file.logical_name == "tokenizer")
+        .unwrap();
+    assert_eq!(tokenizer.status, LocalFileStatus::Invalid);
+    assert_eq!(tokenizer.integrity, LocalFileIntegrity::Mismatch);
+    assert_eq!(report.overall, ModelReadiness::NeedsRepair);
 }
 
 #[test]
