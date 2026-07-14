@@ -9,6 +9,8 @@
 //! it never involves document contents.
 
 pub mod download_plan;
+pub mod generation;
+pub mod model_store;
 pub mod readiness;
 pub mod trust;
 
@@ -16,6 +18,15 @@ pub use download_plan::{
     DEFAULT_MODEL_DOWNLOAD_CONCURRENCY, DownloadAction, DownloadPlan, DownloadPlanError,
     FileDownloadProgress, FileDownloadStatus, FriendlyDownloadProblem, ModelFilePlan,
     OverallDownloadProgress, build_download_plan,
+};
+pub use generation::{
+    GenerationTransitionError, GenerationValueError, ManagedGenerationId, ManagedGenerationRecord,
+    ManagedGenerationSnapshot, ManagedGenerationState, ManagedProfileState, ModelStoreProfileId,
+    StartupEpoch,
+};
+pub use model_store::{
+    ExclusiveAccess, MODEL_STORE_LOCK_FILE, ModelStoreLockError, ModelStoreMutationGuard,
+    SharedAccess,
 };
 pub use readiness::{
     FileReadiness, LocalFileIntegrity, LocalFileStatus, ModelProvenance, ModelReadiness,

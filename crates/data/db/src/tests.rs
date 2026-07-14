@@ -2,6 +2,7 @@
 //! and the RFC-001 cleanup invariants against the design specs.
 
 mod rfc042_history;
+mod rfc050_generations;
 
 use crate::Catalog;
 use crate::migrations;

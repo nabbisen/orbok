@@ -7,6 +7,7 @@ pub mod embeddings;
 pub mod events;
 pub mod files;
 pub mod jobs;
+pub mod managed_generations;
 pub mod models;
 pub mod search_history;
 pub mod settings;
@@ -19,6 +20,7 @@ pub use embeddings::{EmbeddingRecord, EmbeddingRepository, NewEmbedding};
 pub use events::{EventRepository, Severity};
 pub use files::{FileRecord, FileRepository, NewFile, ObservedMetadata};
 pub use jobs::{IndexJobRepository, JobRecord};
+pub use managed_generations::{GenerationCatalogError, ManagedGenerationRepository};
 pub use models::{
     ModelRecord, ModelRepository, ModelRole, ModelStatus, NewModel, verify_model_sha256,
 };

@@ -68,6 +68,7 @@ impl<'a> CleanupExecutor<'a> {
             "app_events",
             "storage_accounting",
             "cache_engines",
+            "managed_model_profiles",
             "models",
         ] {
             deleted += tx
