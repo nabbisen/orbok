@@ -69,6 +69,11 @@ the context exists.
 - `ORBOK_DATA_DIR` remains the explicit test/development override for standard
   mode. Supplying both `--portable` and a non-empty `ORBOK_DATA_DIR` is rejected
   as an ambiguous configuration; orbok must not silently choose either path.
+- An absent or empty `ORBOK_DATA_DIR` is unset.
+- `./orbok-data` means the startup current working directory joined with
+  `orbok-data`. The startup directory is resolved to one absolute normalized
+  anchor and frozen in `RuntimeContext`; later current-directory changes cannot
+  redirect the profile. Failure to resolve the startup anchor fails closed.
 - No migration between standard and portable profiles is introduced here.
 - Source paths remain governed by RFC-003 and RFC-030.
 
@@ -78,6 +83,12 @@ The selected profile is a privacy boundary. Cross-profile reads can reveal
 source names, recent searches, model configuration, and storage state; writes
 can migrate or recover the wrong database. Tests must therefore detect reads
 and writes, not only compare the final directory string.
+
+Runtime path opening must pass through an injectable access seam (narrow opener
+traits/functions or an equivalent subprocess-deny boundary). Tests assert zero
+open/probe calls for every inactive-profile catalog, settings, cache, model,
+recovery, and diagnostics path. Unchanged sentinels remain a second line of
+evidence; they do not prove absence of reads.
 
 ## 7. Non-Goals
 
@@ -101,6 +112,10 @@ and writes, not only compare the final directory string.
 7. Argument tests prove standard mode honors `ORBOK_DATA_DIR`, portable mode
    uses `./orbok-data`, and the combined configuration is rejected before any
    profile is opened.
+8. Access-seam tests assert zero inactive-profile open/probe calls across
+   initial state, recovery, `--check`, and representative later operations.
+9. A current-directory change after context construction does not change any
+   resolved path.
 
 ## 9. Acceptance Criteria
 

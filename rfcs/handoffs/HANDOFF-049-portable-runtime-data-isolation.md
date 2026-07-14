@@ -22,12 +22,18 @@
 
 1. Add a small argument/runtime-mode type and a resolved runtime-context type.
 2. Parse arguments before `load_initial_state` or `run_check`.
-3. Resolve the data directory once; derive catalog, cache, models, settings,
+3. Treat an empty `ORBOK_DATA_DIR` as unset and reject a non-empty override with
+   `--portable` before profile filesystem access.
+4. Resolve the startup current directory to an absolute frozen anchor;
+   `--portable` joins `orbok-data` to that anchor.
+5. Resolve the data directory once; derive catalog, cache, models, settings,
    diagnostics, and temporary paths from it.
-4. Change bootstrap/check/settings entry points to accept explicit context or
+6. Introduce a narrow injectable access seam used by later catalog/settings/
+   cache/model/recovery opens so tests can count or deny inactive-profile probes.
+7. Change bootstrap/check/settings entry points to accept explicit context or
    explicit paths. Remove internal default-path re-resolution on those paths.
-5. Capture the context in the iced application/update closures.
-6. Make invalid portable setup fail closed.
+8. Capture the context in the iced application/update closures.
+9. Make invalid portable setup fail closed.
 
 The context should be immutable after construction and avoid becoming a general
 service locator. It contains runtime locations/mode, not open repositories or
@@ -40,16 +46,19 @@ mutable application state.
    sentinel settings, sources, history, and queued jobs.
 3. Exercise initial-state load and recovery in each mode.
 4. Exercise `--check` in each mode.
-5. Assert the inactive profile is logically unchanged and no files are created
-   beneath it.
-6. Exercise an unwritable/invalid portable directory and prove no fallback.
+5. Use the access seam to assert zero open/probe calls for the inactive profile;
+   separately assert its sentinels are unchanged and no files are created.
+6. Change current directory after context construction and prove all paths stay
+   anchored to the startup directory.
+7. Exercise an unwritable/invalid portable directory and prove no fallback.
 
 Avoid process-global environment races: isolate environment mutation in a
 single-threaded subprocess test or inject the override into the resolver.
 
 ## 4. Review Slices
 
-1. Runtime types, precedence tests, and path resolution.
+1. Runtime types, precedence tests, frozen path resolution, and injectable
+   access-seam definition (no persistent opens).
 2. Bootstrap/main/check propagation plus isolation tests.
 3. Documentation and full-gate evidence.
 
@@ -75,4 +84,3 @@ One context controls the complete process, standard and portable sentinels
 cannot cross-contaminate, `--check` obeys the selected mode, failure is closed,
 documentation matches behavior, and an implementation review package records
 the observed tests.
-

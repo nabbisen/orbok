@@ -74,7 +74,9 @@ finding note for the separate `--features tract` recovery is in
 The v0.24.0 readiness trail is represented by RFC-047 and RFC-048. The
 architecture preparation review opened RFC-049 through RFC-052 for the
 portable-data, model-delivery, release-provenance, and UI-compliance blockers
-that must be resolved before release-candidate promotion.
+that must be resolved before release-candidate promotion. RFC-050's proposed
+normative model trust data and provenance evidence are recorded in
+[`APPENDIX-B-default-model-trust-root.md`](appendices/APPENDIX-B-default-model-trust-root.md).
 
 ## Archive
 

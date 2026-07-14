@@ -75,7 +75,7 @@ under RFC-000.
 | 047 | HANDOFF-047-v1-rc-evidence-collection | v1.0.0 RC evidence collection and review |
 | 048 | HANDOFF-048-real-model-performance-recovery | real-model benchmark performance recovery |
 | 049 | HANDOFF-049-portable-runtime-data-isolation | one runtime data context and standard/portable isolation |
-| 050 | HANDOFF-050-trusted-atomic-model-delivery | trusted manifest, plan execution, and atomic model promotion |
+| 050 | HANDOFF-050-trusted-atomic-model-delivery + Appendix B | trusted manifest, generation transaction, and crash recovery |
 | 051 | HANDOFF-051-reproducible-reviewed-source-packaging | reviewed tracked inputs, lockfile, and deterministic archives |
 | 052 | HANDOFF-052-ui-localization-and-design-gate-compliance | complete En/Ja UI copy and mandatory token/i18n gates |
 

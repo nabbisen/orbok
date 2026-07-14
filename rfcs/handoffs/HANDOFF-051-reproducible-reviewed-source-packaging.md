@@ -22,7 +22,8 @@
 
 1. Define included/excluded tracked paths in one policy consumed by packaging
    and CI.
-2. Fail release packaging on a dirty tree.
+2. Fail release packaging on dirty tracked content. Ignore untracked/ignored
+   files structurally because they are absent from commit-derived input.
 3. Obtain archive inputs from the release commit's tracked file set, filtered
    through the reviewed policy; do not feed `tar` the repository directory.
 4. Include `Cargo.lock` and required license/build metadata.
@@ -30,16 +31,18 @@
 6. Write to a temporary artifact, verify it, then move to the final versioned
    path and generate its checksum.
 7. Keep the flat archive layout.
+8. Reject tracked symlinks under the initial no-exception policy.
+9. Emit exactly one `./` root entry and canonical `./<path>` entries.
 
-Prefer a portable, reviewable shell implementation using standard Git/tar/gzip
-capabilities available in the documented release environment. If platform tar
-differences prevent a stable contract, define a pinned builder environment
-rather than silently weakening determinism.
+Use the RFC-pinned builder image, GNU tar 1.35 POSIX/PAX output, and gzip 1.12.
+The script records the builder digest/tool versions and deletes nondeterministic
+PAX time keys. Do not substitute host tar/gzip for release evidence.
 
 ## 3. Independent CI Verification
 
-CI derives the expected list independently and performs exact set equality
-against archive entries. It also:
+CI uses a verifier code path separate from the producer. It derives the expected
+list from `git ls-tree` plus the shared policy, never from producer output, and
+performs exact canonical set and multiplicity equality. It also:
 
 - rejects absolute, traversal, duplicate, forbidden, and unexpected paths;
 - requires `Cargo.lock`, `Cargo.toml`, `LICENSE`, `NOTICE`, source, docs, RFCs,
@@ -51,9 +54,11 @@ against archive entries. It also:
 ## 4. Adversarial Tests
 
 Plant an untracked file, an ignored file, a forbidden local directory, and a
-filename containing spaces; prove only reviewed tracked inputs are packaged.
-Prove dirty tracked content blocks packaging. Test executable-bit preservation
-for scripts and stable ordinary-file modes.
+filename containing spaces; prove only reviewed tracked inputs are packaged and
+untracked/ignored files do not block the run. Prove dirty tracked content blocks
+packaging. Add a tracked symlink and prove rejection. Test executable-bit
+preservation, stable ordinary-file modes, canonical `./` naming, multiplicity,
+and planted producer/policy disagreement.
 
 ## 5. Validation
 
@@ -77,4 +82,3 @@ Only reviewed tracked files enter the archive, the audited lock is present,
 dirty/untracked material cannot leak, repeated clean builds are byte-identical,
 CI checks exact contents independently, and maintainer docs match the observed
 commands.
-

@@ -25,13 +25,17 @@
 
 1. Produce a complete inventory of visible literals in UI/platform integration
    files and classify display copy versus technical/data strings.
-2. Define an explicit checked-file set that includes future view modules.
-3. Add clean and planted-violation fixtures for the token and literal-copy
+2. Discover tracked files under the designated UI/platform-integration
+   directories and compare them exactly with a classified allowlist.
+3. Give every technical/data exception an individual reason; prohibit broad
+   file or line-pattern exclusions.
+4. Add clean and planted-violation fixtures for the token and literal-copy
    checkers.
-4. Make checkers fail closed when expected source paths are missing or new view
-   files are uncovered.
+5. Make checkers fail closed when expected paths are missing or a new tracked
+   file is unclassified.
 
-Review point: approve classifications before bulk catalog edits.
+Mandatory review point: approve the complete inventory, classifications,
+exception reasons, discovery roots, and fixtures before bulk catalog edits.
 
 ## 3. Phase 2 — Catalog and View Migration
 
@@ -41,8 +45,9 @@ Review point: approve classifications before bulk catalog edits.
 3. Replace literals in wizard, search, sources, indexing, models, settings,
    dialogs, empty states, and accessibility labels.
 4. Pass localized native-dialog titles from the active locale into `orbok-app`.
-5. Remove redundant zero padding or route structural values through an approved
-   token/helper; do not whitelist the current violation.
+5. Remove the current redundant zero padding. Add no helper for it. A future
+   genuine structural-zero helper requires documented semantics outside the
+   banned view/component locations and separate review.
 
 Keep each slice small enough for English/Japanese copy review. Splitting the
 oversized view/i18n files by stable responsibility is encouraged when directly
@@ -81,4 +86,3 @@ Snora token, or a UI workflow/layout change becomes necessary.
 All visible copy and accessibility labels switch with locale, token and literal
 policy checks pass production plus planted tests, CI/release gates run them,
 manual Japanese QA is recorded, and documentation matches the final UI.
-

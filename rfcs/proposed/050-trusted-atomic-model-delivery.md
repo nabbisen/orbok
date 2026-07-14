@@ -9,6 +9,8 @@
 **Related RFCs:** RFC-012 Model Registry; RFC-021 Default Embedding Model; RFC-029 Model Download Integrity and Trust; RFC-043 Model Download Readiness  
 **Handoff:** [`HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 
+**Trust root:** [`APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
+
 ---
 
 ## 1. Summary
@@ -36,10 +38,12 @@ These are v1.0.0-blocking reliability and supply-chain findings.
 ## 3. Trust Decision
 
 The app-managed default model remains
-`intfloat/multilingual-e5-small`, selected by RFC-021. It is identified at a
-full immutable Hugging Face commit revision (never `main`) by an
-application-trusted manifest distributed with orbok. For each required file the
-manifest records:
+`intfloat/multilingual-e5-small`, selected by RFC-021. The exact full revision,
+URLs, SHA-256 digests, sizes, transfer limits, license, model identity, and host
+policy are normative in Appendix B. That reviewed artifact, embedded into the
+application, is the root of trust; production code does not fetch or invent it.
+
+For each required file the manifest records:
 
 - logical name and final relative path;
 - immutable revision-qualified HTTPS source;
@@ -47,7 +51,7 @@ manifest records:
 - expected size when stable and available;
 - model id, version/revision, role, dimension, and license summary.
 
-The trusted manifest must be reviewed source material. Downloaded metadata,
+The trusted manifest is reviewed source material. Downloaded metadata,
 redirect responses, or a manifest stored beside downloaded files cannot replace
 it as the root of trust. Updating a trusted digest or source revision is a
 reviewed repository change.
@@ -56,34 +60,87 @@ Manual/offline model placement remains supported, but the UI must distinguish
 `App verified` from `User supplied / provenance not verified` rather than
 claiming equivalent trust.
 
-## 4. Atomic Delivery State Machine
+## 4. Generation Transaction Boundary
+
+Atomicity is per complete manifest generation, not per file. A generation is a
+unique immutable directory containing every required file, the trusted manifest
+identity, and a completion marker. A file is never promoted into the currently
+active generation.
+
+Managed layout:
+
+```text
+models/multilingual-e5-small/
+  .staging/<install-id>/...
+  generations/<install-id>/
+    tokenizer.json
+    onnx/model.onnx
+    trusted-manifest.json
+    COMPLETE
+```
+
+`<install-id>` is unique even when reinstalling the same revision. The catalog
+stores the current and previous active generation ids in one SQLite transaction.
+Runtime model loading resolves only the catalog's current generation. Manual
+user-supplied folders remain outside this managed generation store and are never
+modified by the downloader.
+
+## 5. Staging and Activation State Machine
 
 For every app-managed installation or repair:
 
 ```text
 fresh readiness report
   -> DownloadPlan (skip / download / replace / retry)
-  -> bounded transfers (maximum 2)
-  -> write only to .part paths
-  -> flush and close
-  -> verify size and trusted SHA-256
-  -> atomically rename into the final path
-  -> re-run readiness and deep verification
-  -> publish Ready only if every required file passes
+  -> create same-filesystem .staging/<install-id>
+  -> bounded transfers (maximum 2) into .part files
+  -> flush, close, verify exact size and trusted SHA-256 for every file
+  -> rename .part files to their staged names
+  -> write trusted-manifest.json and COMPLETE
+  -> flush files and staging directory
+  -> rename the complete directory to generations/<install-id>
+  -> flush the generations parent where supported
+  -> validate the immutable generation again
+  -> atomically update catalog current + previous generation ids
+  -> publish Ready only after the catalog transaction commits
 ```
 
-A valid final file is never truncated or deleted before its replacement has
-passed verification. Where replacement cannot be an atomic rename on a target
-platform, implementation must use a same-filesystem backup/rollback protocol
-and test the failure path.
+A valid generation is never changed or deleted during install/repair/update.
+Directory rename is same-filesystem and targets a new non-existing name, so it
+does not depend on replacing an open file or directory on Windows. The only
+activation switch is the SQLite transaction after the new generation is fully
+durable and verified.
 
-## 5. Network and Source Policy
+## 6. Crash Recovery and Durability
+
+Startup recovery runs before model loading:
+
+| Observed state | Recovery |
+|---|---|
+| incomplete `.staging/<id>` | never ready; remove or quarantine |
+| complete generation not referenced by catalog | validate, then retain as inactive or remove; never auto-activate |
+| crash before catalog commit | SQLite keeps old current generation; new complete generation remains inactive |
+| crash during catalog commit | SQLite atomicity yields either old or new current/previous pair |
+| current generation missing or invalid | do not report Ready; atomically roll back to the recorded previous generation only after it verifies |
+| cleanup interrupted | active and previous generations remain; extra inactive data is safe |
+
+Every downloaded file is `sync_all`'d after verification. The manifest and
+completion marker are also flushed. Directory metadata is synced where the
+platform exposes a supported operation. The catalog activation transaction uses
+the project's durable SQLite policy. The previous verified generation is
+retained through at least one successful subsequent startup; cleanup never
+removes current or rollback generations.
+
+If the platform cannot provide the required rename/durability behavior, the
+worker fails closed before activation. No `.bak` replacement protocol is used.
+
+## 7. Network and Source Policy
 
 - Downloads require an explicit user action and display model identity, source,
   approximate size, license, storage location, verification status, and the
   local-only privacy statement.
-- Redirects are limited. Every permitted artifact host is recorded in the
-  reviewed trusted-manifest/source policy; any other redirect is rejected.
+- Redirect behavior, permitted hosts, header stripping, and credential policy
+  are exactly those in Appendix B.
 - HTTP is forbidden.
 - No credentials, document content, queries, source paths, or local model paths
   are sent with model requests.
@@ -91,7 +148,7 @@ and test the failure path.
   query strings or local paths under strict privacy.
 - Timeouts, size limits, and bounded concurrency are mandatory.
 
-## 6. Parser Threat Boundary
+## 8. Parser Threat Boundary
 
 Checksum verification establishes that bytes match the reviewed artifact; it
 does not make model formats intrinsically safe. The threat model must record
@@ -105,17 +162,21 @@ ONNX and tokenizer parsing as untrusted-input processing and preserve:
 Sandboxing model inference is not required by this RFC, but any remaining
 parser risk must be stated in release security documentation.
 
-## 7. Failure and Recovery Rules
+## 9. Failure and Recovery Rules
 
 - Interrupted `.part` files are never treated as ready.
 - Retry may discard and restart a partial file unless safe resumable semantics
   are separately designed.
 - Digest, size, redirect-policy, filesystem, or parser validation failure keeps
-  the prior valid final file and presents a localized recoverable error.
+  the prior coherent generation active and presents a localized recoverable
+  error.
 - A process restart begins with a new readiness report and plan.
 - The application must not synthesize new expected digests from received bytes.
+- No recoverable failure may destroy the last coherent verified generation.
+- Mixed-revision file sets are impossible because activation points to one
+  immutable generation directory.
 
-## 8. Non-Goals
+## 10. Non-Goals
 
 - Silent model download or update.
 - Arbitrary user-provided download URLs.
@@ -123,20 +184,27 @@ parser risk must be stated in release security documentation.
 - Remote document/query validation.
 - A general package-signing framework beyond the reviewed embedded manifest.
 
-## 9. Testing Requirements
+## 11. Testing Requirements
 
 Tests must cover skip, fresh download, invalid replacement, interrupted retry,
 checksum mismatch, size overflow, redirect rejection, network failure, atomic
-promotion, rollback/preservation of a valid model, bounded concurrency, restart
-recovery, and final readiness recheck. At least one end-to-end app-layer test
-must exercise the same worker invoked by the GUI against a local mock server.
+promotion, bounded concurrency, and every crash state in §6. Tests must prove
+the old generation remains active before commit, the complete new generation
+becomes active after commit, invalid current state rolls back only to a verified
+previous generation, and no mixed generation can be loaded. Windows tests must
+exercise directory promotion while the old generation is open and recovery
+after each injected activation crash point. At least one end-to-end app-layer
+test must exercise the same worker invoked by the GUI against a local mock
+server.
 
-## 10. Acceptance Criteria
+## 12. Acceptance Criteria
 
-This RFC is accepted when the immutable-revision manifest policy,
-manual-model trust vocabulary, and atomic replacement behavior are approved.
+This RFC is accepted when Appendix B passes independent security/design review,
+and the immutable-generation activation and crash-recovery protocol are
+approved.
 
 It is implemented when the GUI uses the readiness/plan worker, app-managed
-files verify against reviewed metadata before promotion, failures preserve
-valid files, user-visible trust status is localized, the threat model is
-updated, and the end-to-end failure/recovery suite passes.
+files verify against reviewed metadata before generation activation, failures
+preserve the last coherent generation, every recoverable disk state is handled,
+user-visible trust status is localized, the threat model is updated, and the
+cross-platform end-to-end failure/recovery suite passes.

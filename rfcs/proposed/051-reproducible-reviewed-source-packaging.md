@@ -50,9 +50,14 @@ license, documentation, RFC, CI, and script files. It excludes local-only paths
 even if accidentally tracked; the exact policy is maintained in one
 machine-readable place used by packaging and CI.
 
-Packaging from a dirty tree must fail by default. An explicit maintainer-only
-override is out of scope for the release gate and must not be used for published
-artifacts.
+Packaging from dirty tracked content must fail by default. Untracked and ignored
+files neither enter the commit-derived input set nor cause failure. An explicit
+maintainer-only dirty-tracked override is out of scope for the release gate and
+must not be used for published artifacts.
+
+Tracked symbolic links are rejected unless a later reviewed exception identifies
+a concrete need and proves the target cannot escape the archive on extraction.
+The initial policy has no symlink exceptions.
 
 ## 5. Determinism Rules
 
@@ -65,10 +70,24 @@ artifacts.
 - Record the source commit identifier in release evidence, not necessarily as
   a file inside the archive.
 
+The canonical builder uses GNU tar 1.35 in POSIX/PAX format and gzip 1.12 with
+timestamp/name suppression. CI runs them in a builder image pinned by immutable
+digest and records the image digest plus tool versions in release evidence.
+PAX access/change-time keys are deleted. Changing the builder image, tar format,
+or tool version is a reviewed release-toolchain change.
+
+Canonical entry names contain one leading `./`; the archive includes one `./`
+root entry and then `./<repository-relative-path>` entries. Verifiers normalize
+only this declared representation and reject alternate absolute, repeated-slash,
+dot-dot, or duplicate spellings.
+
 ## 6. CI Verification
 
-CI must independently derive the expected path list and compare it exactly with
-the archive path list. It must also verify:
+CI must independently run a verifier implementation over `git ls-tree` for the
+release commit plus the shared path policy. The verifier must not consume the
+producer's emitted input/path list. It canonicalizes names and compares exact
+sets and multiplicities with the archive. Planted producer and policy violations
+must prove this independence. CI must also verify:
 
 - required roots and legal files are present;
 - `Cargo.lock` is present and `cargo metadata --locked` succeeds after unpack;
@@ -86,10 +105,12 @@ the archive path list. It must also verify:
 
 ## 8. Testing Requirements
 
-Tests must plant an untracked file and prove it is excluded, modify a tracked
-file and prove dirty-tree packaging fails, verify `Cargo.lock` inclusion, check
-exact path equality, reject traversal/forbidden paths, unpack and run locked
-metadata validation, and demonstrate deterministic repeated output.
+Tests must plant untracked and ignored files and prove they are structurally
+excluded without blocking packaging; modify a tracked file and prove packaging
+fails; add a tracked symlink and prove rejection; verify `Cargo.lock` inclusion;
+check exact path/multiplicity equality; reject traversal/forbidden/duplicate
+paths; unpack and run locked metadata validation; inject producer/policy errors;
+and demonstrate deterministic repeated output with the pinned builder.
 
 ## 9. Acceptance Criteria
 
@@ -100,4 +121,3 @@ It is implemented when packaging and CI share the reviewed selection policy,
 the archive exactly matches it, `Cargo.lock` is present, repeated clean builds
 are byte-reproducible, release documentation is updated, and a release review
 records the source commit plus checksum.
-

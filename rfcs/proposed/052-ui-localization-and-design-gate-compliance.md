@@ -55,9 +55,10 @@ enforced.
 ## 5. Design-Token Rules
 
 RFC-032 remains authoritative: view/component modules contain no literal font
-size, padding, spacing, radius, or color. Structural zero must be represented by
-an approved token/helper or removed when redundant; ad hoc literal exceptions
-are not added merely to satisfy the checker.
+size, padding, spacing, radius, or color. The current zero padding is redundant
+and must be removed. A future genuine structural zero may use a narrowly named,
+documented central helper outside the banned view/component locations; a helper
+that merely hides an arbitrary literal is non-compliant.
 
 The existing checker may be improved for precision, but any change must retain
 planted-violation tests for each forbidden category.
@@ -71,9 +72,16 @@ CI fast and release gates must run:
   files;
 - exhaustive En/Ja catalog tests.
 
-The source file set is explicit and fails closed when a new view/component file
-is added. Checker scripts must have self-tests or fixtures proving both clean
+The checker discovers tracked files under designated UI and platform-integration
+directories and compares that set exactly with a classified allowlist. Every
+data/technical exception records its reason and classification; broad file or
+line-pattern exclusions are forbidden. A new unclassified tracked file fails
+the gate. Checker scripts must have self-tests or fixtures proving both clean
 and planted-violation behavior. Release documentation lists the commands.
+
+The complete Phase 1 literal inventory, display/data classifications, and
+exception reasons require a separate review and acceptance before bulk catalog
+migration begins.
 
 ## 7. Scope
 
@@ -107,6 +115,8 @@ Out of scope:
    literals and passes the production tree.
 7. Manual Japanese QA covers wizard, search, sources, indexing, models,
    settings, dialogs, progress, empty states, and accessibility labels.
+8. Discovery/allowlist equality fails on an unclassified tracked UI file and
+   accepts only individually reasoned data/technical exceptions.
 
 ## 9. Acceptance Criteria
 
@@ -117,4 +127,3 @@ It is implemented when the production UI contains no uncatalogued visible
 copy, En/Ja behavior is manually reviewed, both policy scripts pass and run in
 CI/release gates, documentation matches the commands, and accessibility QA
 finds no English-only control in Japanese mode.
-

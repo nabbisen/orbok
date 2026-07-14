@@ -6,11 +6,20 @@
 **Primary owners:** model registry/readiness, app download worker, security  
 **RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)
 
+**Trust root:** [`../appendices/APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
+
 > **Scope rule:** Preserve valid model files until a trusted replacement has
 > passed verification. Never derive expected integrity metadata from the bytes
 > being accepted.
 
-## 1. Expected Change Surface
+## 1. Approval Gate
+
+Do not implement production network or activation code until Appendix B and
+RFC-050's generation protocol receive independent security/design approval.
+Phase 1 may encode the already-reviewed data only after that approval; it may
+not discover or substitute trust values at runtime.
+
+## 2. Expected Change Surface
 
 - `crates/search/models/src/readiness.rs`
 - `crates/search/models/src/download_plan.rs`
@@ -18,38 +27,61 @@
 - `crates/app/src/download.rs`
 - `crates/app/src/main.rs`
 - `crates/pipeline/workers/src/model_verifier.rs`
+- catalog migration/repository support for current and previous generation ids
 - wizard/model UI state and i18n keys
 - security/threat-model and model user documentation
 
-## 2. Phase 1 — Trusted Metadata and State Model
+## 3. Phase 1 — Trusted Metadata and State Model
 
-1. Define the embedded/reviewed manifest schema and the default model entry.
-2. Record immutable revision URLs, SHA-256 digests, size bounds, identity,
-   dimension, and license.
+1. Encode Appendix B as typed immutable application data and add a test proving
+   exact field parity with the normative artifact.
+2. Reject moving revisions, unknown hosts, relative redirects, extra redirects,
+   credentials, and manifest/size overflow at the type/validation boundary.
 3. Separate provenance status from local byte-integrity status.
-4. Extend readiness/plan inputs so app-managed files are checked against trusted
+4. Define typed managed-generation ids/states and catalog current/previous
+   activation records.
+5. Extend readiness/plan inputs so app-managed files are checked against trusted
    metadata; preserve a clear manual-model state.
-5. Add pure tests for manifest parsing, plan actions, and status vocabulary.
+6. Add pure tests for manifest parity, host/redirect policy, generation state,
+   plan actions, and status vocabulary.
 
 Review point: security/design review of trust root and UI claims before network
 worker changes.
 
-## 3. Phase 2 — Atomic Plan Executor
+## 4. Phase 2 — Generation Stager and Plan Executor
 
 1. Replace direct GUI `download::run(dest)` semantics with a worker receiving a
    fresh `ModelReadinessReport`, `DownloadPlan`, and trusted manifest.
-2. Execute only non-skip actions with maximum concurrency 2.
-3. Stream to same-filesystem `.part` files with byte limits and timeouts.
-4. Flush/close, then verify trusted size/digest.
-5. Promote atomically. Preserve/restore an existing valid final file on all
-   replacement failures.
-6. Re-run readiness/deep verification before emitting Ready.
-7. Clean or safely ignore stale partials on restart.
+2. Allocate a unique same-filesystem `.staging/<install-id>` directory; never
+   write into current or previous generations.
+3. Execute only non-skip actions with maximum concurrency 2.
+4. Stream to `.part` files with exact/max byte enforcement and timeouts.
+5. Flush/close and verify trusted size/digest for the complete required set.
+6. Write the manifest snapshot and completion marker, flush the staged tree,
+   and rename it to a new immutable `generations/<install-id>` directory.
+7. Re-verify the immutable generation, then update current and previous ids in
+   one durable catalog transaction.
+8. Emit Ready only after transaction commit and final active-generation check.
+9. Retain the previous generation through a successful subsequent startup.
 
 Use a local mock HTTP server in tests. Do not rely on external network services
 for acceptance evidence.
 
-## 4. Phase 3 — Consent, Localization, and Threat Model
+## 5. Phase 3 — Recovery and Crash Matrix
+
+1. Recover/quarantine incomplete staging directories without activating them.
+2. Leave complete unreferenced generations inactive.
+3. Inject crashes before/after each file flush, staged rename, parent sync, and
+   catalog transaction boundary.
+4. Validate current generation at startup; roll back atomically only to the
+   recorded previous generation after full verification.
+5. Keep current/previous generations out of cleanup plans.
+6. Run the activation/recovery matrix on Windows as well as Unix-like targets.
+
+Review point: generation transaction and injected-crash evidence before GUI
+integration.
+
+## 6. Phase 4 — Consent, Localization, and Threat Model
 
 1. Show source/provider, immutable revision, size, license, location, and
    verification status before download.
@@ -58,7 +90,7 @@ for acceptance evidence.
 4. Document redirects, request metadata, parser risks, dependency patching,
    size/tensor bounds, and residual risk.
 
-## 5. Required Failure Tests
+## 7. Required Failure Tests
 
 - already-valid skip;
 - missing-file install;
@@ -68,12 +100,15 @@ for acceptance evidence.
 - disallowed redirect/host;
 - timeout and mid-stream failure;
 - concurrent transfer bound;
-- promotion/rename failure;
-- valid-final preservation and rollback;
+- staging-directory promotion/rename failure;
+- crash at every activation point;
+- complete-set preservation and verified previous-generation rollback;
+- mixed-generation rejection;
+- current/previous cleanup protection;
 - process restart and final readiness recheck;
 - GUI-triggered end-to-end worker path.
 
-## 6. Validation
+## 8. Validation
 
 - narrow model/app/worker tests including mock-server tests
 - `cargo test --workspace --lib`
@@ -82,17 +117,18 @@ for acceptance evidence.
 - RFC-052 UI policy gates once available
 - `git diff --check`
 
-## 7. Stop Conditions
+## 9. Stop Conditions
 
 Return to design/security review if the provider cannot offer immutable
 artifacts, atomic replacement is unavailable on a target platform without a
-new recovery protocol, model selection must change, or implementation would
-claim that checksums make parsers safe.
+new recovery protocol, SQLite cannot durably represent the generation switch,
+model selection must change, or implementation would claim that checksums make
+parsers safe.
 
-## 8. Definition of Done
+## 10. Definition of Done
 
-The GUI executes the reviewed plan, only authenticated temporary files reach
-final paths, valid files survive every simulated failure, manual provenance is
-represented honestly, consent and errors are localized, and the updated threat
-model plus end-to-end evidence pass independent security review.
-
+The GUI executes the reviewed plan, only authenticated complete generations can
+activate, the last coherent verified generation survives every simulated
+failure, mixed revisions cannot load, manual provenance is represented honestly,
+consent and errors are localized, and the updated threat model plus
+cross-platform end-to-end evidence pass independent security review.
