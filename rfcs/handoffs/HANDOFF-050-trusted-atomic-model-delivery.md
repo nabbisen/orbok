@@ -4,6 +4,7 @@
 **RFC:** 050  
 **Lifecycle stage:** Design + handoff  
 **Primary owners:** model registry/readiness, app download worker, security  
+**Last revised:** 2026-07-15
 **RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`../appendices/APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
@@ -16,8 +17,9 @@
 
 Do not implement production network or activation code until Appendix B and
 RFC-050's generation protocol receive independent security/design approval.
-Phase 1 may encode the already-reviewed data only after that approval; it may
-not discover or substitute trust values at runtime.
+The pure manifest/policy subset in §3A is already approved. Generation schema,
+filesystem, catalog mutation, production HTTP, recovery, cleanup, and GUI work
+remain blocked until the revised serialization/lifecycle protocol is reviewed.
 
 ## 2. Expected Change Surface
 
@@ -31,52 +33,78 @@ not discover or substitute trust values at runtime.
 - wizard/model UI state and i18n keys
 - security/threat-model and model user documentation
 
-## 3. Phase 1 — Trusted Metadata and State Model
+## 3A. Approved Pure Phase 1 — Trusted Manifest and Policy
 
 1. Encode Appendix B as typed immutable application data and add a test proving
    exact field parity with the normative artifact.
 2. Reject moving revisions, unknown hosts, relative redirects, extra redirects,
    credentials, and manifest/size overflow at the type/validation boundary.
 3. Separate provenance status from local byte-integrity status.
-4. Define typed managed-generation ids/states and catalog current/previous
-   activation records.
+4. Define pure URL/redirect/header-policy decisions, including the no-proxy
+   construction requirement, without building a production HTTP client.
 5. Extend readiness/plan inputs so app-managed files are checked against trusted
    metadata; preserve a clear manual-model state.
-6. Add pure tests for manifest parity, host/redirect policy, generation state,
-   plan actions, and status vocabulary.
+6. Add pure tests for manifest parity, host/redirect/header/proxy policy, plan
+   actions, and status vocabulary.
 
-Review point: security/design review of trust root and UI claims before network
-worker changes.
+Review point: pure manifest/policy implementation review. Stop before schema,
+network client, or filesystem work.
 
-## 4. Phase 2 — Generation Stager and Plan Executor
+## 3B. Post-Amendment Phase — Generation State and Serialization Types
 
-1. Replace direct GUI `download::run(dest)` semantics with a worker receiving a
+1. Define typed managed-generation ids and lifecycle states.
+2. Define catalog records for current/previous ids, activation epoch,
+   later-startup validation epoch, and invalid/inactive status.
+3. Define `ModelStoreMutationGuard` with shared-reader/exclusive-writer modes
+   over `<models-dir>/.model-store.lock`.
+4. Enforce lock ordering: model-store guard before catalog transaction.
+5. Add pure/state-machine and cross-process lock tests before mutation code.
+
+Review point: schema/locking slice before download or generation promotion.
+
+## 4. Phase 2 — Serialized Generation Stager and Plan Executor
+
+1. Acquire the exclusive cross-process mutation guard with bounded timeout;
+   fail closed if unavailable.
+2. Replace direct GUI `download::run(dest)` semantics with a worker receiving a
    fresh `ModelReadinessReport`, `DownloadPlan`, and trusted manifest.
-2. Allocate a unique same-filesystem `.staging/<install-id>` directory; never
+3. Allocate a unique same-filesystem `.staging/<install-id>` directory; never
    write into current or previous generations.
-3. Execute only non-skip actions with maximum concurrency 2.
-4. Stream to `.part` files with exact/max byte enforcement and timeouts.
-5. Flush/close and verify trusted size/digest for the complete required set.
-6. Write the manifest snapshot and completion marker, flush the staged tree,
-   and rename it to a new immutable `generations/<install-id>` directory.
-7. Re-verify the immutable generation, then update current and previous ids in
-   one durable catalog transaction.
-8. Emit Ready only after transaction commit and final active-generation check.
-9. Retain the previous generation through a successful subsequent startup.
+4. Execute only non-skip actions with maximum concurrency 2 using a production
+   client with environment/system proxy discovery disabled.
+5. Stream to `.part` files with exact/max byte enforcement and timeouts.
+6. Flush/close and verify trusted size/digest for the complete required set.
+7. Rename staged files, sync `onnx/` then generation root, write/sync manifest
+   and `COMPLETE`, and sync the generation root again.
+8. Rename to a new immutable `generations/<install-id>`, then sync `.staging/`,
+   `generations/`, and model root in that order.
+9. Re-verify the immutable generation.
+10. While still holding the guard, open one catalog transaction, read current,
+    derive previous from that value, and activate the new generation.
+11. Emit Ready only after transaction commit and final active-generation check.
 
 Use a local mock HTTP server in tests. Do not rely on external network services
 for acceptance evidence.
 
-## 5. Phase 3 — Recovery and Crash Matrix
+## 5. Phase 3 — Serialized Recovery and Lifecycle Matrix
 
-1. Recover/quarantine incomplete staging directories without activating them.
-2. Leave complete unreferenced generations inactive.
-3. Inject crashes before/after each file flush, staged rename, parent sync, and
-   catalog transaction boundary.
-4. Validate current generation at startup; roll back atomically only to the
-   recorded previous generation after full verification.
-5. Keep current/previous generations out of cleanup plans.
-6. Run the activation/recovery matrix on Windows as well as Unix-like targets.
+1. Increment and record the profile startup epoch under the exclusive guard.
+2. Recover/quarantine incomplete staging directories without activating them.
+3. Leave complete unreferenced generations inactive.
+4. Inject crashes before/after each file flush, nested-directory sync, staged
+   rename, both rename-parent syncs, model-root sync, and catalog transaction.
+5. For invalid `B` and verified previous `A`, atomically produce
+   `(current=A, previous=NULL)` and mark `B` invalid; if both fail, produce
+   `(NULL, NULL)`.
+6. Perform later-startup trusted digest plus tokenizer/ONNX load/dimension
+   validation before recording `validated_startup_epoch`.
+7. Reject a second activation until current has later-startup validation; an
+   initial activation from `current=NULL` has no predecessor to validate.
+8. Keep current/previous generations out of cleanup; make previous eligible
+   only after current's later-startup validation is durable.
+9. Run installer/recovery/rollback/cleanup adversarial interleavings from
+   separate processes under the same lock.
+10. Run the activation/recovery matrix on Windows as well as Unix-like targets.
 
 Review point: generation transaction and injected-crash evidence before GUI
 integration.
@@ -101,12 +129,20 @@ integration.
 - timeout and mid-stream failure;
 - concurrent transfer bound;
 - staging-directory promotion/rename failure;
+- mutation-lock timeout and crashed-owner release;
+- cleanup versus promoted-pre-activation generation interleaving;
+- activation deriving previous from commit-time current;
 - crash at every activation point;
 - complete-set preservation and verified previous-generation rollback;
+- exact `(A, NULL)` / `(NULL, NULL)` rollback outcomes;
+- second-activation rejection before later-startup validation;
+- startup-epoch and cleanup-eligibility durability;
 - mixed-generation rejection;
 - current/previous cleanup protection;
 - process restart and final readiness recheck;
-- GUI-triggered end-to-end worker path.
+- GUI-triggered end-to-end worker path;
+- credential-bearing proxy environment variables cannot influence routing or
+  emit proxy authorization.
 
 ## 8. Validation
 
@@ -122,8 +158,9 @@ integration.
 Return to design/security review if the provider cannot offer immutable
 artifacts, atomic replacement is unavailable on a target platform without a
 new recovery protocol, SQLite cannot durably represent the generation switch,
-model selection must change, or implementation would claim that checksums make
-parsers safe.
+the cross-process locking contract is unavailable on a target, directory sync
+cannot meet the reviewed contract, model selection must change, or
+implementation would claim that checksums make parsers safe.
 
 ## 10. Definition of Done
 

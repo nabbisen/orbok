@@ -6,6 +6,7 @@
 **Status:** Proposed  
 **Target milestone:** v1.0.0 security stabilization  
 **Date:** 2026-07-14  
+**Last revised:** 2026-07-15
 **Related RFCs:** RFC-012 Model Registry; RFC-021 Default Embedding Model; RFC-029 Model Download Integrity and Trust; RFC-043 Model Download Readiness  
 **Handoff:** [`HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 
@@ -85,23 +86,58 @@ Runtime model loading resolves only the catalog's current generation. Manual
 user-supplied folders remain outside this managed generation store and are never
 modified by the downloader.
 
-## 5. Staging and Activation State Machine
+## 5. Serialized Model-Store Mutation
+
+Every managed model-store mutation for one profile runs under one cross-process
+lock rooted at that profile's model directory. The conceptual API is a
+`ModelStoreMutationGuard`; implementation may use a reviewed cross-platform
+file-lock crate or equivalent OS primitive.
+
+The lock file is `<models-dir>/.model-store.lock`. It is persistent metadata,
+but lock ownership is OS-backed and automatically released on process exit. The
+worker uses a bounded wait and fails closed on timeout; it never deletes a lock
+file to recover ownership.
+
+The exclusive mutation guard spans the complete operation:
+
+- staging creation and partial cleanup;
+- generation-directory promotion and post-promotion verification;
+- catalog activation or rollback transaction;
+- startup recovery classification and mutation;
+- generation cleanup and cleanup-eligibility decisions.
+
+All processes and code paths that mutate the managed store must acquire this
+same guard. Runtime generation resolution and initial file opening acquire a
+shared guard; after the model is fully loaded into memory the shared guard may
+be released because generations are immutable. Lock ordering is always model-
+store guard first, catalog transaction second. No code may wait for the model-
+store guard while holding a catalog transaction.
+
+Cleanup decides eligibility only while holding the exclusive guard. Activation
+reads the catalog's current generation inside its commit transaction while the
+guard is held and derives `previous` from that value; a readiness report
+captured earlier is not authoritative for the pointer switch. Concurrent
+install, recovery, rollback, and cleanup operations are therefore serialized
+across both filesystem and catalog state.
+
+## 6. Staging and Activation State Machine
 
 For every app-managed installation or repair:
 
 ```text
-fresh readiness report
+exclusive model-store mutation guard
+  -> fresh readiness report
   -> DownloadPlan (skip / download / replace / retry)
   -> create same-filesystem .staging/<install-id>
   -> bounded transfers (maximum 2) into .part files
   -> flush, close, verify exact size and trusted SHA-256 for every file
   -> rename .part files to their staged names
   -> write trusted-manifest.json and COMPLETE
-  -> flush files and staging directory
+  -> sync the staged tree bottom-up
   -> rename the complete directory to generations/<install-id>
-  -> flush the generations parent where supported
+  -> sync both rename parents and model root
   -> validate the immutable generation again
-  -> atomically update catalog current + previous generation ids
+  -> in one transaction read current, then set new current + derived previous
   -> publish Ready only after the catalog transaction commits
 ```
 
@@ -109,9 +145,10 @@ A valid generation is never changed or deleted during install/repair/update.
 Directory rename is same-filesystem and targets a new non-existing name, so it
 does not depend on replacing an open file or directory on Windows. The only
 activation switch is the SQLite transaction after the new generation is fully
-durable and verified.
+durable and verified. The guard remains held until activation/rollback and
+post-commit state checks complete.
 
-## 6. Crash Recovery and Durability
+## 7. Crash Recovery, Durability, and Lifecycle
 
 Startup recovery runs before model loading:
 
@@ -121,26 +158,81 @@ Startup recovery runs before model loading:
 | complete generation not referenced by catalog | validate, then retain as inactive or remove; never auto-activate |
 | crash before catalog commit | SQLite keeps old current generation; new complete generation remains inactive |
 | crash during catalog commit | SQLite atomicity yields either old or new current/previous pair |
-| current generation missing or invalid | do not report Ready; atomically roll back to the recorded previous generation only after it verifies |
+| current `B`, previous `A`; `B` missing/invalid and `A` verifies | mark `B` invalid and atomically set `(current=A, previous=NULL)` |
+| current and previous both missing/invalid | mark invalid records, atomically set `(current=NULL, previous=NULL)`, and do not report Ready |
 | cleanup interrupted | active and previous generations remain; extra inactive data is safe |
 
-Every downloaded file is `sync_all`'d after verification. The manifest and
-completion marker are also flushed. Directory metadata is synced where the
-platform exposes a supported operation. The catalog activation transaction uses
-the project's durable SQLite policy. The previous verified generation is
-retained through at least one successful subsequent startup; cleanup never
-removes current or rollback generations.
+### 7.1. Exact Sync Order
+
+All paths are on the model store's filesystem. Where the platform supports
+directory syncing, the required order is:
+
+1. Create `.staging/`, `generations/`, and the unique staging tree; sync newly
+   modified parent directories before transfer begins.
+2. After download and trusted verification, call `sync_all` on every `.part`
+   file before renaming it to its staged final name.
+3. After file renames, sync each modified nested directory bottom-up: `onnx/`
+   first, then the staging generation root.
+4. Write and `sync_all` `trusted-manifest.json`, then `COMPLETE`; sync the
+   staging generation root again.
+5. Rename `.staging/<id>` to `generations/<id>` using a new non-existing target.
+6. Sync the source parent `.staging/`, then destination parent `generations/`,
+   then the model root.
+7. Re-verify the promoted generation before opening the catalog transaction.
+
+A platform helper encapsulates directory sync semantics and is tested on Unix
+and Windows. If a target cannot provide the required rename/durability contract,
+installation fails before activation. The design does not promise that the
+latest activation survives power loss beyond the catalog's existing WAL plus
+`synchronous=NORMAL` policy; the safe permitted outcome is the prior coherent
+catalog pointer and an inactive complete generation.
+
+### 7.2. Durable Startup Validation
+
+The catalog stores a monotonically increasing per-profile `startup_epoch` and,
+for each managed generation, its `activation_epoch` plus optional
+`validated_startup_epoch`.
+
+- Activation records `activation_epoch = current_startup_epoch` and clears
+  `validated_startup_epoch` for the new current generation.
+- A later process startup increments and durably records `startup_epoch` under
+  the exclusive guard before recovery.
+- The new current becomes startup-validated only when
+  `current_startup_epoch > activation_epoch` and that startup completes trusted
+  digest verification plus tokenizer/ONNX load and dimension checks.
+- Only then is `validated_startup_epoch` recorded.
+- A second activation is rejected while the current generation lacks this
+  later-startup validation. An initial activation from `current=NULL` is not a
+  second activation and does not require a predecessor validation record.
+- Current and previous ids are never cleanup-eligible. A previous generation
+  becomes ordinary inactive data only after the current generation has a
+  recorded later-startup validation. Cleanup rechecks all conditions under the
+  exclusive guard.
+
+This durable epoch rule prevents a second activation in the original process
+from discarding the last generation known to survive a real restart.
+
+### 7.3. Rollback Pair Semantics
+
+Rollback validates the recorded previous generation while holding the exclusive
+guard. For `(current=B, previous=A)`, verified `A`, and invalid `B`, one catalog
+transaction marks `B` invalid and writes `(current=A, previous=NULL)`. Invalid
+`B` is never retained as a rollback target; current and previous may not be
+equal. If `A` also fails verification, the transaction writes
+`(current=NULL, previous=NULL)` and the model is not Ready.
 
 If the platform cannot provide the required rename/durability behavior, the
 worker fails closed before activation. No `.bak` replacement protocol is used.
 
-## 7. Network and Source Policy
+## 8. Network and Source Policy
 
 - Downloads require an explicit user action and display model identity, source,
   approximate size, license, storage location, verification status, and the
   local-only privacy statement.
 - Redirect behavior, permitted hosts, header stripping, and credential policy
   are exactly those in Appendix B.
+- The production client disables automatic environment/system proxy discovery
+  and configures no proxy, credential, cookie store, or automatic referer.
 - HTTP is forbidden.
 - No credentials, document content, queries, source paths, or local model paths
   are sent with model requests.
@@ -148,7 +240,7 @@ worker fails closed before activation. No `.bak` replacement protocol is used.
   query strings or local paths under strict privacy.
 - Timeouts, size limits, and bounded concurrency are mandatory.
 
-## 8. Parser Threat Boundary
+## 9. Parser Threat Boundary
 
 Checksum verification establishes that bytes match the reviewed artifact; it
 does not make model formats intrinsically safe. The threat model must record
@@ -162,7 +254,7 @@ ONNX and tokenizer parsing as untrusted-input processing and preserve:
 Sandboxing model inference is not required by this RFC, but any remaining
 parser risk must be stated in release security documentation.
 
-## 9. Failure and Recovery Rules
+## 10. Failure and Recovery Rules
 
 - Interrupted `.part` files are never treated as ready.
 - Retry may discard and restart a partial file unless safe resumable semantics
@@ -175,8 +267,10 @@ parser risk must be stated in release security documentation.
 - No recoverable failure may destroy the last coherent verified generation.
 - Mixed-revision file sets are impossible because activation points to one
   immutable generation directory.
+- Mutation timeout or lock failure leaves the store unchanged and does not fall
+  back to an unlocked path.
 
-## 10. Non-Goals
+## 11. Non-Goals
 
 - Silent model download or update.
 - Arbitrary user-provided download URLs.
@@ -184,11 +278,11 @@ parser risk must be stated in release security documentation.
 - Remote document/query validation.
 - A general package-signing framework beyond the reviewed embedded manifest.
 
-## 11. Testing Requirements
+## 12. Testing Requirements
 
 Tests must cover skip, fresh download, invalid replacement, interrupted retry,
 checksum mismatch, size overflow, redirect rejection, network failure, atomic
-promotion, bounded concurrency, and every crash state in §6. Tests must prove
+promotion, bounded concurrency, and every crash state in §7. Tests must prove
 the old generation remains active before commit, the complete new generation
 becomes active after commit, invalid current state rolls back only to a verified
 previous generation, and no mixed generation can be loaded. Windows tests must
@@ -197,11 +291,25 @@ after each injected activation crash point. At least one end-to-end app-layer
 test must exercise the same worker invoked by the GUI against a local mock
 server.
 
-## 12. Acceptance Criteria
+Adversarial concurrency tests must interleave installer, recovery, rollback,
+and cleanup attempts from separate processes. They must prove exclusive mutation
+ownership, shared-reader/exclusive-writer behavior, cleanup cannot remove a
+promoted pre-activation generation, activation derives `previous` at commit
+time, lock timeout fails closed, and a crashed owner releases the OS lock.
+
+Lifecycle tests must cover exact rollback pairs, startup-epoch persistence,
+rejection of a second activation before later-startup validation, eligibility
+only after digest plus real backend-load validation on a later startup, and
+cleanup protection for current/previous generations. Proxy tests set
+credential-bearing `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` values and prove
+the production client neither connects to the proxy nor emits proxy
+authorization.
+
+## 13. Acceptance Criteria
 
 This RFC is accepted when Appendix B passes independent security/design review,
-and the immutable-generation activation and crash-recovery protocol are
-approved.
+and the serialized immutable-generation activation, durability, and
+crash-recovery protocol are approved.
 
 It is implemented when the GUI uses the readiness/plan worker, app-managed
 files verify against reviewed metadata before generation activation, failures

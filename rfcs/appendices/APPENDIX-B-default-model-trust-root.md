@@ -85,6 +85,11 @@ The client starts only at the exact URLs above and implements redirects itself:
    `Range` when deliberately supported, and orbok's non-identifying user agent.
 9. Never log redirect query parameters; Xet artifact URLs contain temporary
    signed query values.
+10. Construct the production HTTP client with automatic environment/system
+    proxy discovery disabled and configure no explicit proxy. Credential-bearing
+    `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and platform proxy settings must
+    not affect routing or emit `Proxy-Authorization`. Enterprise proxy support,
+    if later required, needs a separate reviewed credential/privacy policy.
 
 Any provider change that requires another host or redirect changes this
 reviewed policy before code follows it.
