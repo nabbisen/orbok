@@ -5,6 +5,7 @@
 //! production client must obey.
 
 use serde::Serialize;
+use sha2::Digest as _;
 use url::Url;
 
 pub const DEFAULT_MODEL_REVISION: &str = "614241f622f53c4eeff9890bdc4f31cfecc418b3";
@@ -138,6 +139,58 @@ impl TrustedModelManifest {
     }
 }
 
+/// Opaque identity of every trust-root field used by readiness and planning.
+/// It is crate-private so public callers cannot mint trusted readiness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TrustRootBinding {
+    manifest_id: &'static str,
+    fingerprint: [u8; 32],
+}
+
+pub(crate) fn trust_root_binding(manifest: &'static TrustedModelManifest) -> TrustRootBinding {
+    let mut hasher = sha2::Sha256::new();
+    hash_u64(&mut hasher, u64::from(manifest.schema_version));
+    hash_str(&mut hasher, manifest.manifest_id);
+    hash_str(&mut hasher, manifest.model.id);
+    hash_str(&mut hasher, manifest.model.display_name);
+    hash_str(&mut hasher, manifest.model.revision);
+    hash_str(&mut hasher, manifest.model.role);
+    hash_u64(&mut hasher, u64::from(manifest.model.dimension));
+    hash_str(&mut hasher, manifest.model.license);
+    hash_bool(&mut hasher, manifest.transport.https_only);
+    hash_bool(&mut hasher, manifest.transport.credentials_allowed);
+    hash_u64(&mut hasher, u64::from(manifest.transport.max_redirects));
+    hash_str(&mut hasher, manifest.transport.initial_host);
+    hash_u64(
+        &mut hasher,
+        manifest.transport.permitted_redirect_hosts.len() as u64,
+    );
+    for host in manifest.transport.permitted_redirect_hosts {
+        hash_str(&mut hasher, host);
+    }
+    hash_bool(&mut hasher, manifest.transport.relative_redirects_allowed);
+    hash_bool(
+        &mut hasher,
+        manifest.transport.strip_sensitive_headers_on_redirect,
+    );
+    hash_u64(&mut hasher, manifest.files.len() as u64);
+    for file in manifest.files {
+        hash_str(&mut hasher, file.logical_name);
+        hash_str(&mut hasher, file.relative_path);
+        hash_str(&mut hasher, file.url);
+        hash_str(&mut hasher, file.sha256);
+        hash_u64(&mut hasher, file.exact_size_bytes);
+        hash_u64(&mut hasher, file.max_transfer_bytes);
+    }
+    let digest = hasher.finalize();
+    let mut fingerprint = [0_u8; 32];
+    fingerprint.copy_from_slice(&digest);
+    TrustRootBinding {
+        manifest_id: manifest.manifest_id,
+        fingerprint,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct TrustedModelIdentity {
     pub id: &'static str,
@@ -233,7 +286,17 @@ pub fn validate_initial_url(
     if parsed.host_str() != Some(manifest.transport.initial_host) {
         return Err(TrustPolicyError::UntrustedInitialHost);
     }
-    if !parsed.path().contains(manifest.model.revision) {
+    if parsed.query().is_some() {
+        return Err(TrustPolicyError::UnexpectedInitialUrlComponent);
+    }
+    let expected_url = format!(
+        "https://{}/{}/resolve/{}/{}",
+        manifest.transport.initial_host,
+        manifest.model.id,
+        manifest.model.revision,
+        file.relative_path
+    );
+    if candidate != expected_url {
         return Err(TrustPolicyError::MovingOrInvalidRevision);
     }
     Ok(parsed)
@@ -280,6 +343,7 @@ pub enum TrustPolicyError {
     CredentialsForbidden,
     AlternatePortForbidden,
     FragmentForbidden,
+    UnexpectedInitialUrlComponent,
 }
 
 fn validate_common_url(url: &Url) -> Result<(), TrustPolicyError> {
@@ -322,6 +386,19 @@ fn validate_sha256(digest: &str) -> Result<(), TrustPolicyError> {
     Ok(())
 }
 
+fn hash_str(hasher: &mut sha2::Sha256, value: &str) {
+    hash_u64(hasher, value.len() as u64);
+    hasher.update(value.as_bytes());
+}
+
+fn hash_u64(hasher: &mut sha2::Sha256, value: u64) {
+    hasher.update(value.to_be_bytes());
+}
+
+fn hash_bool(hasher: &mut sha2::Sha256, value: bool) {
+    hasher.update([u8::from(value)]);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +431,97 @@ mod tests {
                 Err(TrustPolicyError::UntrustedInitialUrl)
             );
         }
+    }
+
+    #[test]
+    fn initial_url_requires_exact_immutable_resolver_structure() {
+        let base = DEFAULT_TRUSTED_MODEL.files[0];
+        let moving_selector = TrustedModelFile {
+            url: "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer.json",
+            ..base
+        };
+        assert_eq!(
+            validate_initial_url(
+                &DEFAULT_TRUSTED_MODEL,
+                &moving_selector,
+                moving_selector.url
+            ),
+            Err(TrustPolicyError::MovingOrInvalidRevision)
+        );
+
+        let wrong_model = TrustedModelFile {
+            url: "https://huggingface.co/another/model/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer.json",
+            ..base
+        };
+        assert_eq!(
+            validate_initial_url(&DEFAULT_TRUSTED_MODEL, &wrong_model, wrong_model.url),
+            Err(TrustPolicyError::MovingOrInvalidRevision)
+        );
+
+        let wrong_file = TrustedModelFile {
+            url: "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/config.json",
+            ..base
+        };
+        assert_eq!(
+            validate_initial_url(&DEFAULT_TRUSTED_MODEL, &wrong_file, wrong_file.url),
+            Err(TrustPolicyError::MovingOrInvalidRevision)
+        );
+
+        let query = TrustedModelFile {
+            url: "https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/tokenizer.json?download=1",
+            ..base
+        };
+        assert_eq!(
+            validate_initial_url(&DEFAULT_TRUSTED_MODEL, &query, query.url),
+            Err(TrustPolicyError::UnexpectedInitialUrlComponent)
+        );
+    }
+
+    #[test]
+    fn manifest_validation_rejects_invalid_path_and_digest() {
+        let invalid_path = manifest_with_files(vec![TrustedModelFile {
+            relative_path: "../tokenizer.json",
+            ..DEFAULT_TRUSTED_MODEL.files[0]
+        }]);
+        assert_eq!(
+            invalid_path.validate(),
+            Err(TrustPolicyError::InvalidRelativePath)
+        );
+
+        let invalid_digest = manifest_with_files(vec![TrustedModelFile {
+            sha256: "not-a-sha256",
+            ..DEFAULT_TRUSTED_MODEL.files[0]
+        }]);
+        assert_eq!(
+            invalid_digest.validate(),
+            Err(TrustPolicyError::InvalidDigest)
+        );
+    }
+
+    #[test]
+    fn manifest_validation_rejects_duplicates_and_size_overflow() {
+        let duplicate = manifest_with_files(vec![
+            DEFAULT_TRUSTED_MODEL.files[0],
+            DEFAULT_TRUSTED_MODEL.files[0],
+        ]);
+        assert_eq!(
+            duplicate.validate(),
+            Err(TrustPolicyError::DuplicateFileIdentity)
+        );
+
+        let overflow = manifest_with_files(vec![
+            TrustedModelFile {
+                exact_size_bytes: u64::MAX,
+                max_transfer_bytes: u64::MAX,
+                ..DEFAULT_TRUSTED_MODEL.files[0]
+            },
+            TrustedModelFile {
+                exact_size_bytes: u64::MAX,
+                max_transfer_bytes: u64::MAX,
+                ..DEFAULT_TRUSTED_MODEL.files[1]
+            },
+        ]);
+        assert_eq!(overflow.validate(), Err(TrustPolicyError::SizeOverflow));
     }
 
     #[test]
@@ -437,5 +605,12 @@ mod tests {
                 automatic_referer: false,
             }
         );
+    }
+
+    fn manifest_with_files(files: Vec<TrustedModelFile>) -> TrustedModelManifest {
+        TrustedModelManifest {
+            files: Box::leak(files.into_boxed_slice()),
+            ..DEFAULT_TRUSTED_MODEL
+        }
     }
 }

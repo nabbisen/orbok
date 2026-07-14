@@ -8,7 +8,10 @@
 //! App-managed folders additionally require the exact sizes and SHA-256 values
 //! from RFC-050 Appendix B. Provenance and local integrity remain separate.
 
-use crate::trust::{DEFAULT_TRUSTED_MODEL, TrustedModelFile, TrustedModelManifest};
+use crate::trust::{
+    DEFAULT_TRUSTED_MODEL, TrustRootBinding, TrustedModelFile, TrustedModelManifest,
+    trust_root_binding,
+};
 use sha2::{Digest, Sha256};
 use std::io::Read as _;
 use std::path::Path;
@@ -23,7 +26,7 @@ use std::path::Path;
 /// - `Partial`     → "Needs to finish"
 /// - `Invalid`     → "Needs to be replaced"
 /// - `CannotCheck` → "Could not check"
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalFileStatus {
     /// File exists, is non-empty, and passes available validation.
     Ready,
@@ -83,19 +86,37 @@ impl LocalFileStatus {
 #[derive(Debug, Clone)]
 pub struct FileReadiness {
     /// Logical name (e.g. "tokenizer", "model").
-    pub logical_name: &'static str,
+    logical_name: &'static str,
     /// Relative path within the model directory.
-    pub relative_path: &'static str,
+    relative_path: &'static str,
     /// Current status of the local file.
-    pub status: LocalFileStatus,
+    status: LocalFileStatus,
     /// Byte-integrity claim, kept separate from file usability/provenance.
-    pub integrity: LocalFileIntegrity,
+    integrity: LocalFileIntegrity,
+}
+
+impl FileReadiness {
+    pub fn logical_name(&self) -> &'static str {
+        self.logical_name
+    }
+
+    pub fn relative_path(&self) -> &'static str {
+        self.relative_path
+    }
+
+    pub fn status(&self) -> LocalFileStatus {
+        self.status
+    }
+
+    pub fn integrity(&self) -> LocalFileIntegrity {
+        self.integrity
+    }
 }
 
 // ── Model-level readiness ─────────────────────────────────────────────
 
 /// Overall model readiness (RFC-043 §7.3).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelReadiness {
     /// Every required file is present and valid.
     Ready,
@@ -112,12 +133,25 @@ pub enum ModelReadiness {
 /// Full readiness report for a model directory (RFC-043 §7.2–7.3).
 #[derive(Debug, Clone)]
 pub struct ModelReadinessReport {
-    pub provenance: ModelProvenance,
-    pub overall: ModelReadiness,
-    pub files: Vec<FileReadiness>,
+    provenance: ModelProvenance,
+    overall: ModelReadiness,
+    files: Vec<FileReadiness>,
+    trust_root: Option<TrustRootBinding>,
 }
 
 impl ModelReadinessReport {
+    pub fn provenance(&self) -> ModelProvenance {
+        self.provenance
+    }
+
+    pub fn overall(&self) -> ModelReadiness {
+        self.overall
+    }
+
+    pub fn files(&self) -> &[FileReadiness] {
+        &self.files
+    }
+
     /// Files that require download or repair.
     pub fn files_needing_work(&self) -> Vec<&FileReadiness> {
         self.files
@@ -136,6 +170,34 @@ impl ModelReadinessReport {
 
     pub fn total_count(&self) -> usize {
         self.files.len()
+    }
+
+    pub(crate) fn matches_trust_root(&self, binding: TrustRootBinding) -> bool {
+        self.trust_root == Some(binding)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_file_state_for_test(
+        &mut self,
+        relative_path: &str,
+        status: LocalFileStatus,
+        integrity: LocalFileIntegrity,
+    ) {
+        let file = self
+            .files
+            .iter_mut()
+            .find(|file| file.relative_path == relative_path)
+            .expect("test file must exist");
+        file.status = status;
+        file.integrity = integrity;
+        self.overall = derive_overall_readiness(&self.files);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove_file_for_test(&mut self, relative_path: &str) {
+        self.files
+            .retain(|file| file.relative_path != relative_path);
+        self.overall = derive_overall_readiness(&self.files);
     }
 }
 
@@ -156,14 +218,30 @@ pub fn check_model_readiness(model_dir: &Path) -> ModelReadinessReport {
     )
 }
 
-/// Check orbok-managed files against the normative Appendix B trust root.
-pub fn check_app_managed_model_readiness(model_dir: &Path) -> ModelReadinessReport {
-    check_app_managed_model_readiness_against(model_dir, &DEFAULT_TRUSTED_MODEL)
+/// Explicit name for the user-supplied-folder readiness boundary.
+pub fn check_user_supplied_model_readiness(model_dir: &Path) -> ModelReadinessReport {
+    check_model_readiness(model_dir)
 }
 
-/// Manifest-injected app-managed readiness check, exposed for exact policy and
-/// small-fixture tests. Production callers use [`check_app_managed_model_readiness`].
-pub fn check_app_managed_model_readiness_against(
+/// Check orbok-managed files against the normative Appendix B trust root.
+///
+/// Alternate-manifest injection is deliberately absent from the public API:
+///
+/// ```compile_fail
+/// use orbok_models::check_app_managed_model_readiness_against;
+/// ```
+pub fn check_app_managed_model_readiness(model_dir: &Path) -> ModelReadinessReport {
+    check_model_readiness_inner(
+        model_dir,
+        &DEFAULT_TRUSTED_MODEL,
+        ModelProvenance::AppManaged,
+    )
+}
+
+/// Test-only manifest injection. It is absent from normal production builds
+/// and cannot mint trusted provenance for another crate.
+#[cfg(test)]
+pub(crate) fn check_app_managed_model_readiness_against(
     model_dir: &Path,
     manifest: &'static TrustedModelManifest,
 ) -> ModelReadinessReport {
@@ -195,6 +273,8 @@ fn check_model_readiness_inner(
         provenance,
         overall,
         files,
+        trust_root: (provenance == ModelProvenance::AppManaged)
+            .then(|| trust_root_binding(manifest)),
     }
 }
 

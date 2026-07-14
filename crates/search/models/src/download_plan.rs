@@ -5,8 +5,10 @@
 //! always derived from a fresh `ModelReadinessReport`; nothing is
 //! downloaded without a plan.
 
-use crate::readiness::{LocalFileStatus, ModelProvenance, ModelReadinessReport};
-use crate::trust::{DEFAULT_TRUSTED_MODEL, TrustedModelManifest};
+use crate::readiness::{
+    LocalFileIntegrity, LocalFileStatus, ModelProvenance, ModelReadinessReport,
+};
+use crate::trust::{DEFAULT_TRUSTED_MODEL, TrustedModelManifest, trust_root_binding};
 use std::path::PathBuf;
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -106,7 +108,10 @@ impl DownloadPlan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadPlanError {
     UserSuppliedFolder,
+    TrustRootMismatch,
     ReadinessManifestMismatch,
+    IncoherentReadiness,
+    CannotCheckFiles,
     InvalidTrustedManifest,
 }
 
@@ -118,33 +123,44 @@ pub enum DownloadPlanError {
 pub fn build_download_plan(
     report: &ModelReadinessReport,
 ) -> Result<DownloadPlan, DownloadPlanError> {
-    build_download_plan_against(report, &DEFAULT_TRUSTED_MODEL)
+    build_download_plan_for_manifest(report, &DEFAULT_TRUSTED_MODEL)
 }
 
-/// Manifest-injected pure planner used for exact small-fixture tests.
-pub fn build_download_plan_against(
+/// Test-only manifest injection. It is absent from normal production builds.
+#[cfg(test)]
+pub(crate) fn build_download_plan_against(
+    report: &ModelReadinessReport,
+    manifest: &'static TrustedModelManifest,
+) -> Result<DownloadPlan, DownloadPlanError> {
+    build_download_plan_for_manifest(report, manifest)
+}
+
+fn build_download_plan_for_manifest(
     report: &ModelReadinessReport,
     manifest: &'static TrustedModelManifest,
 ) -> Result<DownloadPlan, DownloadPlanError> {
     manifest
         .validate()
         .map_err(|_| DownloadPlanError::InvalidTrustedManifest)?;
-    if report.provenance != ModelProvenance::AppManaged {
+    if report.provenance() != ModelProvenance::AppManaged {
         return Err(DownloadPlanError::UserSuppliedFolder);
     }
-    if report.files.len() != manifest.files.len()
-        || report.files.iter().any(|readiness| {
+    if !report.matches_trust_root(trust_root_binding(manifest)) {
+        return Err(DownloadPlanError::TrustRootMismatch);
+    }
+    if report.files().len() != manifest.files.len()
+        || report.files().iter().any(|readiness| {
             manifest
-                .file_by_path(readiness.relative_path)
-                .is_none_or(|trusted| trusted.logical_name != readiness.logical_name)
+                .file_by_path(readiness.relative_path())
+                .is_none_or(|trusted| trusted.logical_name != readiness.logical_name())
         })
         || manifest.files.iter().any(|trusted| {
             report
-                .files
+                .files()
                 .iter()
                 .filter(|readiness| {
-                    readiness.relative_path == trusted.relative_path
-                        && readiness.logical_name == trusted.logical_name
+                    readiness.relative_path() == trusted.relative_path
+                        && readiness.logical_name() == trusted.logical_name
                 })
                 .count()
                 != 1
@@ -154,25 +170,26 @@ pub fn build_download_plan_against(
     }
 
     let files = report
-        .files
+        .files()
         .iter()
-        .map(|readiness| {
+        .map(|readiness| -> Result<ModelFilePlan, DownloadPlanError> {
             let trusted = manifest
-                .file_by_path(readiness.relative_path)
+                .file_by_path(readiness.relative_path())
                 .expect("readiness file set was validated against the manifest");
-            ModelFilePlan {
+            let action = plan_action(readiness.status(), readiness.integrity())?;
+            Ok(ModelFilePlan {
                 logical_name: trusted.logical_name,
                 relative_path: trusted.relative_path,
                 remote_url: trusted.url,
                 expected_sha256: trusted.sha256,
                 exact_size_bytes: trusted.exact_size_bytes,
                 max_transfer_bytes: trusted.max_transfer_bytes,
-                local_status: readiness.status.clone(),
-                action: plan_action(&readiness.status),
+                local_status: readiness.status(),
+                action,
                 temp_path_suffix: ".part",
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(DownloadPlan {
         manifest_id: manifest.manifest_id,
@@ -181,13 +198,19 @@ pub fn build_download_plan_against(
     })
 }
 
-fn plan_action(status: &LocalFileStatus) -> DownloadAction {
-    match status {
-        LocalFileStatus::Ready => DownloadAction::Skip,
-        LocalFileStatus::Missing => DownloadAction::Download,
-        LocalFileStatus::Partial => DownloadAction::Retry,
-        LocalFileStatus::Invalid => DownloadAction::Replace,
-        LocalFileStatus::CannotCheck => DownloadAction::Skip, // surface via friendly problem
+fn plan_action(
+    status: LocalFileStatus,
+    integrity: LocalFileIntegrity,
+) -> Result<DownloadAction, DownloadPlanError> {
+    match (status, integrity) {
+        (LocalFileStatus::Ready, LocalFileIntegrity::TrustedDigest) => Ok(DownloadAction::Skip),
+        (LocalFileStatus::Missing, LocalFileIntegrity::NotAvailable) => {
+            Ok(DownloadAction::Download)
+        }
+        (LocalFileStatus::Partial, LocalFileIntegrity::NotAvailable) => Ok(DownloadAction::Retry),
+        (LocalFileStatus::Invalid, LocalFileIntegrity::Mismatch) => Ok(DownloadAction::Replace),
+        (LocalFileStatus::CannotCheck, _) => Err(DownloadPlanError::CannotCheckFiles),
+        _ => Err(DownloadPlanError::IncoherentReadiness),
     }
 }
 

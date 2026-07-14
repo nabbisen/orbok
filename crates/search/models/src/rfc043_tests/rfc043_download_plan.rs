@@ -6,8 +6,8 @@ use crate::download_plan::{
     build_download_plan, build_download_plan_against,
 };
 use crate::readiness::{
-    check_app_managed_model_readiness, check_app_managed_model_readiness_against,
-    check_model_readiness,
+    LocalFileIntegrity, LocalFileStatus, check_app_managed_model_readiness,
+    check_app_managed_model_readiness_against, check_model_readiness,
 };
 
 #[test]
@@ -107,6 +107,59 @@ fn trusted_plan_refuses_user_supplied_folder() {
     assert!(matches!(
         build_download_plan(&report),
         Err(DownloadPlanError::UserSuppliedFolder)
+    ));
+}
+
+#[test]
+fn trusted_plan_rejects_cross_manifest_readiness() {
+    let dir = tempfile::tempdir().unwrap();
+    let report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    assert!(matches!(
+        build_download_plan(&report),
+        Err(DownloadPlanError::TrustRootMismatch)
+    ));
+}
+
+#[test]
+fn trusted_plan_rejects_forged_ready_integrity() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+    std::fs::create_dir_all(dir.path().join("onnx")).unwrap();
+    std::fs::write(dir.path().join("onnx/model.onnx"), b"\0").unwrap();
+
+    for integrity in [LocalFileIntegrity::Unverified, LocalFileIntegrity::Mismatch] {
+        let mut report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+        report.set_file_state_for_test("tokenizer.json", LocalFileStatus::Ready, integrity);
+        assert!(matches!(
+            build_download_plan_against(&report, &TEST_MANIFEST),
+            Err(DownloadPlanError::IncoherentReadiness)
+        ));
+    }
+}
+
+#[test]
+fn trusted_plan_fails_closed_when_files_cannot_be_checked() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    report.set_file_state_for_test(
+        "tokenizer.json",
+        LocalFileStatus::CannotCheck,
+        LocalFileIntegrity::NotAvailable,
+    );
+    assert!(matches!(
+        build_download_plan_against(&report, &TEST_MANIFEST),
+        Err(DownloadPlanError::CannotCheckFiles)
+    ));
+}
+
+#[test]
+fn trusted_plan_rejects_stale_or_incomplete_file_sets() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut report = check_app_managed_model_readiness_against(dir.path(), &TEST_MANIFEST);
+    report.remove_file_for_test("onnx/model.onnx");
+    assert!(matches!(
+        build_download_plan_against(&report, &TEST_MANIFEST),
+        Err(DownloadPlanError::ReadinessManifestMismatch)
     ));
 }
 
