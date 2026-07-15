@@ -1,9 +1,24 @@
 use crate::Catalog;
-use crate::repo::{GenerationCatalogError, ManagedGenerationRepository};
+use crate::repo::{CleanupExecutor, GenerationCatalogError, ManagedGenerationRepository};
+use orbok_core::{CleanupAction, CleanupPlan};
 use orbok_models::{
     ManagedGenerationId, ManagedGenerationState, ModelStoreMutationGuard, ModelStoreProfileId,
 };
 use std::time::Duration;
+
+fn validate_after_restart(
+    repository: &ManagedGenerationRepository<'_>,
+    guard: &orbok_models::ModelStoreMutationGuard<orbok_models::ExclusiveAccess>,
+    generation_id: &ManagedGenerationId,
+) {
+    let later = repository.advance_startup_epoch(guard).unwrap();
+    let evidence = later
+        .observe_current_for_startup_validation(generation_id)
+        .unwrap();
+    repository
+        .validate_current_after_startup(guard, &evidence)
+        .unwrap();
+}
 
 #[test]
 fn migration_enforces_pointer_epoch_and_unique_role_constraints() {
@@ -117,9 +132,10 @@ fn repository_round_trips_guarded_state_transitions() {
         ManagedGenerationState::Current
     );
 
-    repository.advance_startup_epoch(&guard).unwrap();
+    let later = repository.advance_startup_epoch(&guard).unwrap();
+    let evidence = later.observe_current_for_startup_validation(&a).unwrap();
     let stored = repository
-        .validate_current_after_startup(&guard, &a)
+        .validate_current_after_startup(&guard, &evidence)
         .unwrap();
     assert!(stored.generations[&a].validated_startup_epoch.is_some());
 }
@@ -139,9 +155,10 @@ fn repository_persists_exact_activation_and_rollback_pairs() {
         .register_inactive(&guard, a.clone(), "manifest")
         .unwrap();
     repository.activate(&guard, &a).unwrap();
-    repository.advance_startup_epoch(&guard).unwrap();
+    let later = repository.advance_startup_epoch(&guard).unwrap();
+    let evidence = later.observe_current_for_startup_validation(&a).unwrap();
     repository
-        .validate_current_after_startup(&guard, &a)
+        .validate_current_after_startup(&guard, &evidence)
         .unwrap();
     repository
         .register_inactive(&guard, b.clone(), "manifest")
@@ -200,6 +217,41 @@ fn repository_rejects_stale_revision_and_wrong_profile_guard() {
 }
 
 #[test]
+fn repository_rejects_stale_same_generation_activation_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = ModelStoreProfileId::default_embedding();
+    let catalog = Catalog::open_in_memory().unwrap();
+    let repository = ManagedGenerationRepository::new(&catalog);
+    let guard =
+        ModelStoreMutationGuard::acquire_exclusive(temp.path(), profile, Duration::from_secs(1))
+            .unwrap();
+    let a = ManagedGenerationId::generate();
+    let b = ManagedGenerationId::generate();
+    let c = ManagedGenerationId::generate();
+    for generation_id in [&a, &b, &c] {
+        repository
+            .register_inactive(&guard, generation_id.clone(), "manifest")
+            .unwrap();
+    }
+    let active_a = repository.activate(&guard, &a).unwrap();
+    let stale_evidence = active_a.observe_current_for_startup_validation(&a).unwrap();
+    validate_after_restart(&repository, &guard, &a);
+    repository.activate(&guard, &b).unwrap();
+    validate_after_restart(&repository, &guard, &b);
+    repository.activate(&guard, &c).unwrap();
+    validate_after_restart(&repository, &guard, &c);
+    repository.activate(&guard, &a).unwrap();
+    repository.advance_startup_epoch(&guard).unwrap();
+
+    assert!(matches!(
+        repository.validate_current_after_startup(&guard, &stale_evidence),
+        Err(GenerationCatalogError::InvalidTransition(
+            orbok_models::GenerationTransitionError::StaleValidationResult
+        ))
+    ));
+}
+
+#[test]
 fn shared_guard_reads_after_exclusive_mutation_finishes() {
     let temp = tempfile::tempdir().unwrap();
     let profile = ModelStoreProfileId::default_embedding();
@@ -220,4 +272,26 @@ fn shared_guard_reads_after_exclusive_mutation_finishes() {
         ModelStoreMutationGuard::acquire_shared(temp.path(), profile, Duration::from_secs(1))
             .unwrap();
     assert_eq!(repository.load_shared(&shared).unwrap(), next);
+}
+
+#[test]
+fn catalog_reset_preserves_guarded_generation_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = ModelStoreProfileId::default_embedding();
+    let catalog = Catalog::open_in_memory().unwrap();
+    let repository = ManagedGenerationRepository::new(&catalog);
+    let guard =
+        ModelStoreMutationGuard::acquire_exclusive(temp.path(), profile, Duration::from_secs(1))
+            .unwrap();
+    let generation_id = ManagedGenerationId::generate();
+    let before = repository
+        .register_inactive(&guard, generation_id, "manifest")
+        .unwrap();
+
+    let plan = CleanupPlan::for_action(CleanupAction::ResetCatalog, 0);
+    CleanupExecutor::new(&catalog)
+        .run_reset_catalog(&plan, true)
+        .unwrap();
+
+    assert_eq!(repository.load_exclusive(&guard).unwrap(), before);
 }

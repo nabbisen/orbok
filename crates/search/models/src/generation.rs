@@ -136,6 +136,24 @@ pub struct ManagedGenerationRecord {
     pub validated_startup_epoch: Option<StartupEpoch>,
 }
 
+/// Catalog identity observed for the generation that completed startup load
+/// validation. Both fields must still match when validation is recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupValidationEvidence {
+    generation_id: ManagedGenerationId,
+    activation_epoch: StartupEpoch,
+}
+
+impl StartupValidationEvidence {
+    pub fn generation_id(&self) -> &ManagedGenerationId {
+        &self.generation_id
+    }
+
+    pub fn activation_epoch(&self) -> StartupEpoch {
+        self.activation_epoch
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedProfileState {
     pub profile_id: ModelStoreProfileId,
@@ -313,22 +331,46 @@ impl ManagedGenerationSnapshot {
         Ok(next)
     }
 
-    pub fn validate_current_after_startup(
+    pub fn observe_current_for_startup_validation(
         &self,
         loaded_generation_id: &ManagedGenerationId,
-    ) -> Result<Self, GenerationTransitionError> {
+    ) -> Result<StartupValidationEvidence, GenerationTransitionError> {
         self.validate()?;
         if self.profile.current_generation_id.as_ref() != Some(loaded_generation_id) {
+            return Err(GenerationTransitionError::StaleValidationResult);
+        }
+        let current = self
+            .generations
+            .get(loaded_generation_id)
+            .ok_or(GenerationTransitionError::PointerStateMismatch)?;
+        let activation_epoch = current
+            .activation_epoch
+            .ok_or(GenerationTransitionError::InvalidEpochPair)?;
+        Ok(StartupValidationEvidence {
+            generation_id: loaded_generation_id.clone(),
+            activation_epoch,
+        })
+    }
+
+    pub fn validate_current_after_startup(
+        &self,
+        evidence: &StartupValidationEvidence,
+    ) -> Result<Self, GenerationTransitionError> {
+        self.validate()?;
+        if self.profile.current_generation_id.as_ref() != Some(&evidence.generation_id) {
             return Err(GenerationTransitionError::StaleValidationResult);
         }
         let mut next = self.clone();
         let current = next
             .generations
-            .get_mut(loaded_generation_id)
+            .get_mut(&evidence.generation_id)
             .ok_or(GenerationTransitionError::PointerStateMismatch)?;
         let activation = current
             .activation_epoch
             .ok_or(GenerationTransitionError::InvalidEpochPair)?;
+        if activation != evidence.activation_epoch {
+            return Err(GenerationTransitionError::StaleValidationResult);
+        }
         if next.profile.startup_epoch <= activation {
             return Err(GenerationTransitionError::ValidationNotFromLaterStartup);
         }
@@ -437,6 +479,17 @@ mod tests {
         ManagedGenerationId::generate()
     }
 
+    fn validate_after_restart(
+        state: ManagedGenerationSnapshot,
+        generation_id: &ManagedGenerationId,
+    ) -> ManagedGenerationSnapshot {
+        let later = state.advance_startup_epoch().unwrap();
+        let evidence = later
+            .observe_current_for_startup_validation(generation_id)
+            .unwrap();
+        later.validate_current_after_startup(&evidence).unwrap()
+    }
+
     #[test]
     fn identifiers_are_path_safe_and_strict() {
         let generated = ManagedGenerationId::generate();
@@ -465,13 +518,7 @@ mod tests {
             state.activate(&b),
             Err(GenerationTransitionError::CurrentNotStartupValidated)
         );
-        let state = state
-            .advance_startup_epoch()
-            .unwrap()
-            .validate_current_after_startup(&a)
-            .unwrap()
-            .activate(&b)
-            .unwrap();
+        let state = validate_after_restart(state, &a).activate(&b).unwrap();
         assert_eq!(state.profile.current_generation_id, Some(b));
         assert_eq!(state.profile.previous_generation_id, Some(a));
     }
@@ -485,13 +532,40 @@ mod tests {
             .unwrap()
             .activate(&a)
             .unwrap();
+        let evidence = state.observe_current_for_startup_validation(&a).unwrap();
         assert_eq!(
-            state.validate_current_after_startup(&a),
+            state.validate_current_after_startup(&evidence),
             Err(GenerationTransitionError::ValidationNotFromLaterStartup)
         );
         let later = state.advance_startup_epoch().unwrap();
         assert_eq!(
-            later.validate_current_after_startup(&other),
+            later.observe_current_for_startup_validation(&other),
+            Err(GenerationTransitionError::StaleValidationResult)
+        );
+    }
+
+    #[test]
+    fn stale_same_generation_activation_evidence_is_rejected() {
+        let a = new_id();
+        let b = new_id();
+        let c = new_id();
+        let active_a = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
+            .register_inactive(a.clone(), "manifest")
+            .unwrap()
+            .register_inactive(b.clone(), "manifest")
+            .unwrap()
+            .register_inactive(c.clone(), "manifest")
+            .unwrap()
+            .activate(&a)
+            .unwrap();
+        let stale_evidence = active_a.observe_current_for_startup_validation(&a).unwrap();
+        let active_b = validate_after_restart(active_a, &a).activate(&b).unwrap();
+        let active_c = validate_after_restart(active_b, &b).activate(&c).unwrap();
+        let active_a_again = validate_after_restart(active_c, &c).activate(&a).unwrap();
+        let later = active_a_again.advance_startup_epoch().unwrap();
+
+        assert_eq!(
+            later.validate_current_after_startup(&stale_evidence),
             Err(GenerationTransitionError::StaleValidationResult)
         );
     }
@@ -500,19 +574,14 @@ mod tests {
     fn rollback_never_keeps_invalid_current_as_previous() {
         let a = new_id();
         let b = new_id();
-        let active_b = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
+        let active_a = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
             .register_inactive(a.clone(), "manifest")
             .unwrap()
             .register_inactive(b.clone(), "manifest")
             .unwrap()
             .activate(&a)
-            .unwrap()
-            .advance_startup_epoch()
-            .unwrap()
-            .validate_current_after_startup(&a)
-            .unwrap()
-            .activate(&b)
             .unwrap();
+        let active_b = validate_after_restart(active_a, &a).activate(&b).unwrap();
         let rolled_back = active_b.rollback_invalid_current(true).unwrap();
         assert_eq!(rolled_back.profile.current_generation_id, Some(a.clone()));
         assert_eq!(rolled_back.profile.previous_generation_id, None);
@@ -530,19 +599,14 @@ mod tests {
     fn rollback_with_two_invalid_generations_clears_both_pointers() {
         let a = new_id();
         let b = new_id();
-        let active_b = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
+        let active_a = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
             .register_inactive(a.clone(), "manifest")
             .unwrap()
             .register_inactive(b.clone(), "manifest")
             .unwrap()
             .activate(&a)
-            .unwrap()
-            .advance_startup_epoch()
-            .unwrap()
-            .validate_current_after_startup(&a)
-            .unwrap()
-            .activate(&b)
             .unwrap();
+        let active_b = validate_after_restart(active_a, &a).activate(&b).unwrap();
         let rolled_back = active_b.rollback_invalid_current(false).unwrap();
         assert_eq!(rolled_back.profile.current_generation_id, None);
         assert_eq!(rolled_back.profile.previous_generation_id, None);

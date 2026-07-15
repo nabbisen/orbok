@@ -22,7 +22,7 @@ pub use download_plan::{
 pub use generation::{
     GenerationTransitionError, GenerationValueError, ManagedGenerationId, ManagedGenerationRecord,
     ManagedGenerationSnapshot, ManagedGenerationState, ManagedProfileState, ModelStoreProfileId,
-    StartupEpoch,
+    StartupEpoch, StartupValidationEvidence,
 };
 pub use model_store::{
     ExclusiveAccess, MODEL_STORE_LOCK_FILE, ModelStoreLockError, ModelStoreMutationGuard,

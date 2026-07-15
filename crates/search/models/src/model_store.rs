@@ -193,6 +193,14 @@ mod tests {
                 );
                 assert!(matches!(result, Err(ModelStoreLockError::Timeout)));
             }
+            "expect-exclusive-timeout" => {
+                let result = ModelStoreMutationGuard::acquire_exclusive(
+                    &models_dir,
+                    profile,
+                    Duration::from_millis(100),
+                );
+                assert!(matches!(result, Err(ModelStoreLockError::Timeout)));
+            }
             "exclusive-hold" => {
                 let _guard = ModelStoreMutationGuard::acquire_exclusive(
                     &models_dir,
@@ -210,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn separate_process_shared_locks_coexist_and_exclusive_blocks() {
+    fn separate_process_lock_mode_matrix_is_enforced() {
         let temp = tempfile::tempdir().unwrap();
         let marker = temp.path().join("child-ready");
         let profile = ModelStoreProfileId::default_embedding();
@@ -225,6 +233,10 @@ mod tests {
             .unwrap();
         assert!(status.success());
         assert!(marker.exists());
+        let status = spawn_child("expect-exclusive-timeout", temp.path(), &marker)
+            .wait()
+            .unwrap();
+        assert!(status.success());
         drop(shared);
 
         let exclusive = ModelStoreMutationGuard::acquire_exclusive(
@@ -234,6 +246,10 @@ mod tests {
         )
         .unwrap();
         let status = spawn_child("expect-shared-timeout", temp.path(), &marker)
+            .wait()
+            .unwrap();
+        assert!(status.success());
+        let status = spawn_child("expect-exclusive-timeout", temp.path(), &marker)
             .wait()
             .unwrap();
         assert!(status.success());

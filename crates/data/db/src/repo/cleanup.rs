@@ -68,7 +68,9 @@ impl<'a> CleanupExecutor<'a> {
             "app_events",
             "storage_accounting",
             "cache_engines",
-            "managed_model_profiles",
+            // Managed generations are paired with immutable files outside the
+            // catalog. Preserve them until reset is integrated with the
+            // exclusive model-store guard in a later RFC-050 phase.
             "models",
         ] {
             deleted += tx

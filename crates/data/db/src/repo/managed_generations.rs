@@ -6,6 +6,7 @@ use orbok_models::{
     ExclusiveAccess, GenerationTransitionError, ManagedGenerationId, ManagedGenerationRecord,
     ManagedGenerationSnapshot, ManagedGenerationState, ManagedProfileState,
     ModelStoreMutationGuard, ModelStoreProfileId, SharedAccess, StartupEpoch,
+    StartupValidationEvidence,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::BTreeMap;
@@ -71,10 +72,10 @@ impl<'a> ManagedGenerationRepository<'a> {
     pub fn validate_current_after_startup(
         &self,
         guard: &ModelStoreMutationGuard<ExclusiveAccess>,
-        loaded_generation_id: &ManagedGenerationId,
+        evidence: &StartupValidationEvidence,
     ) -> Result<ManagedGenerationSnapshot, GenerationCatalogError> {
         self.transition(guard, |current| {
-            current.validate_current_after_startup(loaded_generation_id)
+            current.validate_current_after_startup(evidence)
         })
     }
 
