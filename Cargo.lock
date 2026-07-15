@@ -3748,6 +3748,7 @@ dependencies = [
  "orbok-fs",
  "orbok-models",
  "orbok-search",
+ "prost",
  "reqwest",
  "rusqlite",
  "serde",
@@ -3757,6 +3758,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "tract-onnx",
  "zip",
 ]
 

@@ -415,6 +415,42 @@ impl ManagedGenerationSnapshot {
         Ok(next)
     }
 
+    /// Release the rollback generation only after the current generation has
+    /// durably survived later-startup validation.
+    pub fn release_previous_after_startup_validation(
+        &self,
+    ) -> Result<Self, GenerationTransitionError> {
+        self.validate()?;
+        let current_id = self
+            .profile
+            .current_generation_id
+            .as_ref()
+            .ok_or(GenerationTransitionError::NoCurrentGeneration)?;
+        let current = self
+            .generations
+            .get(current_id)
+            .ok_or(GenerationTransitionError::PointerStateMismatch)?;
+        if current.validated_startup_epoch.is_none() {
+            return Err(GenerationTransitionError::CurrentNotStartupValidated);
+        }
+        let previous_id = self
+            .profile
+            .previous_generation_id
+            .as_ref()
+            .ok_or(GenerationTransitionError::NoPreviousGeneration)?
+            .clone();
+
+        let mut next = self.clone();
+        next.profile.previous_generation_id = None;
+        next.generations
+            .get_mut(&previous_id)
+            .ok_or(GenerationTransitionError::PointerStateMismatch)?
+            .state = ManagedGenerationState::Inactive;
+        next.bump_revision()?;
+        next.validate()?;
+        Ok(next)
+    }
+
     fn bump_revision(&mut self) -> Result<(), GenerationTransitionError> {
         self.profile.state_revision = self
             .profile
@@ -458,6 +494,7 @@ pub enum GenerationTransitionError {
     StaleValidationResult,
     ValidationNotFromLaterStartup,
     NoCurrentGeneration,
+    NoPreviousGeneration,
     EmptyManifestId,
     EpochExhausted,
     RevisionExhausted,
@@ -617,6 +654,35 @@ mod tests {
         assert_eq!(
             rolled_back.generations[&b].state,
             ManagedGenerationState::Invalid
+        );
+    }
+
+    #[test]
+    fn previous_is_released_only_after_current_survives_later_startup() {
+        let a = new_id();
+        let b = new_id();
+        let active_a = ManagedGenerationSnapshot::empty(ModelStoreProfileId::default_embedding())
+            .register_inactive(a.clone(), "manifest")
+            .unwrap()
+            .register_inactive(b.clone(), "manifest")
+            .unwrap()
+            .activate(&a)
+            .unwrap();
+        let active_b = validate_after_restart(active_a, &a).activate(&b).unwrap();
+        assert_eq!(
+            active_b.release_previous_after_startup_validation(),
+            Err(GenerationTransitionError::CurrentNotStartupValidated)
+        );
+
+        let validated_b = validate_after_restart(active_b, &b);
+        let released = validated_b
+            .release_previous_after_startup_validation()
+            .unwrap();
+        assert_eq!(released.profile.current_generation_id, Some(b));
+        assert_eq!(released.profile.previous_generation_id, None);
+        assert_eq!(
+            released.generations[&a].state,
+            ManagedGenerationState::Inactive
         );
     }
 }

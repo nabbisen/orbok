@@ -24,6 +24,7 @@ pub mod cleanup_service;
 mod embedding;
 mod extract;
 pub mod model_delivery;
+pub mod model_lifecycle;
 pub mod model_verifier;
 pub mod recovery;
 pub mod scheduler;
@@ -38,6 +39,10 @@ pub use embedding::EmbeddingWorker;
 pub use extract::ExtractionWorker;
 pub use model_delivery::{
     ModelDeliveryError, ModelDeliveryEvent, ModelDeliveryOutcome, install_default_model,
+};
+pub use model_lifecycle::{
+    ManagedModelCleanupOutcome, ManagedModelStartupOutcome, ModelLifecycleError,
+    cleanup_managed_model_generations, run_managed_model_startup,
 };
 pub use model_verifier::{
     FileIssue, FileIssueKind, VerifyOutcome, verify_embedding_model, verify_outcome_summary,

@@ -181,6 +181,47 @@ fn repository_persists_exact_activation_and_rollback_pairs() {
 }
 
 #[test]
+fn repository_durably_releases_validated_currents_previous_generation() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalog = Catalog::open_in_memory().unwrap();
+    let repository = ManagedGenerationRepository::new(&catalog);
+    let guard = ModelStoreMutationGuard::acquire_exclusive(
+        temp.path(),
+        ModelStoreProfileId::default_embedding(),
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    let a = ManagedGenerationId::generate();
+    let b = ManagedGenerationId::generate();
+    repository
+        .register_inactive(&guard, a.clone(), "manifest")
+        .unwrap();
+    repository
+        .register_inactive(&guard, b.clone(), "manifest")
+        .unwrap();
+    repository.activate(&guard, &a).unwrap();
+    validate_after_restart(&repository, &guard, &a);
+    repository.activate(&guard, &b).unwrap();
+    assert!(
+        repository
+            .release_previous_after_startup_validation(&guard)
+            .is_err()
+    );
+    validate_after_restart(&repository, &guard, &b);
+
+    let released = repository
+        .release_previous_after_startup_validation(&guard)
+        .unwrap();
+    assert_eq!(released.profile.current_generation_id, Some(b));
+    assert_eq!(released.profile.previous_generation_id, None);
+    assert_eq!(
+        released.generations[&a].state,
+        ManagedGenerationState::Inactive
+    );
+    assert_eq!(repository.load_exclusive(&guard).unwrap(), released);
+}
+
+#[test]
 fn repository_rejects_stale_revision_and_wrong_profile_guard() {
     let temp = tempfile::tempdir().unwrap();
     let profile = ModelStoreProfileId::default_embedding();

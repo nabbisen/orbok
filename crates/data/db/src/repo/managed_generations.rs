@@ -94,6 +94,16 @@ impl<'a> ManagedGenerationRepository<'a> {
         })
     }
 
+    pub fn release_previous_after_startup_validation(
+        &self,
+        guard: &ModelStoreMutationGuard<ExclusiveAccess>,
+    ) -> Result<ManagedGenerationSnapshot, GenerationCatalogError> {
+        self.transition(
+            guard,
+            ManagedGenerationSnapshot::release_previous_after_startup_validation,
+        )
+    }
+
     fn transition(
         &self,
         guard: &ModelStoreMutationGuard<ExclusiveAccess>,

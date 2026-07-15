@@ -33,9 +33,10 @@ fn mock_backend_embeds_without_model_files() {
     assert_eq!(v[0].len(), 8);
 }
 
-// RFC-021 AC: ONNX backend returns informative error when not compiled.
+// RFC-021/RFC-050 AC: the worker's real ONNX backend fails closed for a
+// missing model instead of silently constructing a placeholder.
 #[test]
-fn onnx_backend_returns_feature_error_when_not_compiled() {
+fn onnx_backend_rejects_missing_model() {
     let config = EmbeddingModelConfig {
         weights_path: "/nonexistent.onnx".into(),
         tokenizer_path: None,
@@ -49,11 +50,11 @@ fn onnx_backend_returns_feature_error_when_not_compiled() {
         Err(e) => {
             let msg = e.to_string();
             assert!(
-                msg.contains("tract") || msg.contains("compiled"),
-                "error should name the feature flag: {msg}"
+                msg.contains("model weights not found"),
+                "unexpected error: {msg}"
             );
         }
-        Ok(_) => panic!("should fail without tract feature"),
+        Ok(_) => panic!("missing ONNX weights must fail"),
     }
 }
 

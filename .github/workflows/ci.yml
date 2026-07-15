@@ -136,3 +136,9 @@ jobs:
         env:
           ORBOK_DATA_DIR: /tmp/orbok-cross
         run: cargo test -p orbok-core -p orbok-db -p orbok-fs
+
+      - name: RFC-050 lifecycle matrix
+        run: cargo test -p orbok-workers model_lifecycle --lib
+
+      - name: RFC-050 abrupt-exit recovery matrix
+        run: cargo test -p orbok-workers abrupt_process_exit_at_each_durability_boundary_recovers_coherently --lib

@@ -186,18 +186,30 @@ where
     verify_generation_validity(&staging, plan, manifest, manifest.manifest_id).await?;
 
     before_promotion(&promoted);
+    crash_point("before_staged_rename");
     std::fs::rename(&staging, &promoted).map_err(|_| ModelDeliveryError::Filesystem)?;
+    crash_point("after_staged_rename");
+    crash_point("before_staging_parent_sync");
     sync_directory(&staging_parent)?;
+    crash_point("after_staging_parent_sync");
+    crash_point("before_generations_parent_sync");
     sync_directory(&generations_parent)?;
+    crash_point("after_generations_parent_sync");
+    crash_point("before_model_root_sync");
     sync_directory(store.models_dir())?;
+    crash_point("after_model_root_sync");
     verify_generation_validity(&promoted, plan, manifest, manifest.manifest_id).await?;
 
+    crash_point("before_inactive_registration_transaction");
     repository
         .register_inactive(guard, generation_id.clone(), manifest.manifest_id)
         .map_err(|_| ModelDeliveryError::Catalog)?;
+    crash_point("after_inactive_registration_transaction");
+    crash_point("before_activation_transaction");
     repository
         .activate(guard, &generation_id)
         .map_err(|_| ModelDeliveryError::Catalog)?;
+    crash_point("after_activation_transaction");
     after_activation(&promoted);
     let final_check =
         confirm_active_generation(repository, guard, &generation_id, &promoted, plan, manifest)
@@ -346,10 +358,12 @@ async fn download_file(
             })
             .await;
     }
+    crash_point(&format!("before_file_flush:{}", file.logical_name));
     output
         .flush()
         .await
         .map_err(|_| ModelDeliveryError::Filesystem)?;
+    crash_point(&format!("after_file_flush:{}", file.logical_name));
     output
         .sync_all()
         .await
@@ -487,7 +501,9 @@ fn sync_staged_tree(staging: &Path, plan: &DownloadPlan) -> Result<(), ModelDeli
     parents.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
     parents.dedup();
     for parent in parents {
+        crash_point("before_nested_directory_sync");
         sync_directory(&parent)?;
+        crash_point("after_nested_directory_sync");
     }
     sync_directory(staging)
 }
@@ -509,14 +525,20 @@ fn verify_generation_metadata(
 ) -> Result<(), ModelDeliveryError> {
     let expected =
         serde_json::to_vec_pretty(manifest).map_err(|_| ModelDeliveryError::Integrity)?;
-    let actual = std::fs::read(generation_dir.join(TRUSTED_MANIFEST_FILE))
-        .map_err(|_| ModelDeliveryError::Integrity)?;
-    let complete = std::fs::read(generation_dir.join(COMPLETE_FILE))
-        .map_err(|_| ModelDeliveryError::Integrity)?;
+    let actual = read_regular_file(&generation_dir.join(TRUSTED_MANIFEST_FILE))?;
+    let complete = read_regular_file(&generation_dir.join(COMPLETE_FILE))?;
     if actual != expected || complete != b"complete\n" {
         return Err(ModelDeliveryError::Integrity);
     }
     Ok(())
+}
+
+fn read_regular_file(path: &Path) -> Result<Vec<u8>, ModelDeliveryError> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| ModelDeliveryError::Integrity)?;
+    if !metadata.file_type().is_file() {
+        return Err(ModelDeliveryError::Integrity);
+    }
+    std::fs::read(path).map_err(|_| ModelDeliveryError::Integrity)
 }
 
 fn write_and_sync(path: &Path, bytes: &[u8]) -> Result<(), ModelDeliveryError> {
@@ -528,14 +550,14 @@ fn write_and_sync(path: &Path, bytes: &[u8]) -> Result<(), ModelDeliveryError> {
 }
 
 #[cfg(unix)]
-fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
     std::fs::File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|_| ModelDeliveryError::Filesystem)
 }
 
 #[cfg(windows)]
-fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
     use std::os::windows::fs::OpenOptionsExt as _;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
     std::fs::OpenOptions::new()
@@ -547,7 +569,7 @@ fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn sync_directory(_path: &Path) -> Result<(), ModelDeliveryError> {
+pub(crate) fn sync_directory(_path: &Path) -> Result<(), ModelDeliveryError> {
     Err(ModelDeliveryError::Filesystem)
 }
 
@@ -559,6 +581,16 @@ fn map_lock_error(error: ModelStoreLockError) -> ModelDeliveryError {
         }
     }
 }
+
+#[cfg(test)]
+fn crash_point(point: &str) {
+    if std::env::var("ORBOK_RFC050_CRASH_POINT").as_deref() == Ok(point) {
+        std::process::abort();
+    }
+}
+
+#[cfg(not(test))]
+fn crash_point(_point: &str) {}
 
 #[cfg(test)]
 mod tests {
@@ -1205,6 +1237,167 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.text().await.unwrap(), "ok");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn abrupt_process_exit_at_each_durability_boundary_recovers_coherently() {
+        const CRASH_POINTS: &[&str] = &[
+            "before_file_flush:tokenizer",
+            "after_file_flush:tokenizer",
+            "before_file_flush:onnx-model",
+            "after_file_flush:onnx-model",
+            "before_nested_directory_sync",
+            "after_nested_directory_sync",
+            "before_staged_rename",
+            "after_staged_rename",
+            "before_staging_parent_sync",
+            "after_staging_parent_sync",
+            "before_generations_parent_sync",
+            "after_generations_parent_sync",
+            "before_model_root_sync",
+            "after_model_root_sync",
+            "before_inactive_registration_transaction",
+            "after_inactive_registration_transaction",
+            "before_activation_transaction",
+            "after_activation_transaction",
+        ];
+
+        for crash_point in CRASH_POINTS {
+            let tokenizer = b"trusted-tokenizer".to_vec();
+            let model = b"trusted-onnx-model".to_vec();
+            let server =
+                MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())])
+                    .await;
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("model-store");
+            std::fs::create_dir(&root).unwrap();
+            let catalog_path = temp.path().join("catalog.sqlite3");
+            drop(Catalog::open(&catalog_path).unwrap());
+            let executable = std::env::current_exe().unwrap();
+            let base_url = server.base_url.clone();
+            let root_for_child = root.clone();
+            let catalog_for_child = catalog_path.clone();
+            let point = crash_point.to_string();
+            let output = tokio::task::spawn_blocking(move || {
+                Command::new(executable)
+                    .args([
+                        "--exact",
+                        "model_delivery::tests::crash_injection_child",
+                        "--ignored",
+                        "--nocapture",
+                    ])
+                    .env("ORBOK_RFC050_CRASH_POINT", &point)
+                    .env("ORBOK_RFC050_TEST_BASE_URL", base_url)
+                    .env("ORBOK_RFC050_TEST_STORE", root_for_child)
+                    .env("ORBOK_RFC050_TEST_CATALOG", catalog_for_child)
+                    .output()
+                    .unwrap()
+            })
+            .await
+            .unwrap();
+            server.finish().await;
+            assert!(
+                !output.status.success(),
+                "failpoint {crash_point} did not abort"
+            );
+
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            let store = ManagedModelStore::default_embedding(&root);
+            let recovery = crate::model_lifecycle::run_managed_model_startup_with(
+                &catalog,
+                &store,
+                "test-manifest",
+                |path| path.join(COMPLETE_FILE).is_file(),
+            )
+            .unwrap();
+            let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+            let snapshot = ManagedGenerationRepository::new(&catalog)
+                .load_shared(&guard)
+                .unwrap();
+            snapshot.validate().unwrap();
+            if *crash_point == "after_activation_transaction" {
+                assert!(recovery.current_generation_id.is_some());
+                assert_eq!(snapshot.generations.len(), 1);
+                assert_eq!(
+                    snapshot.generations.values().next().unwrap().state,
+                    ManagedGenerationState::Current
+                );
+            } else if matches!(
+                *crash_point,
+                "before_file_flush:tokenizer"
+                    | "after_file_flush:tokenizer"
+                    | "before_file_flush:onnx-model"
+                    | "after_file_flush:onnx-model"
+                    | "before_nested_directory_sync"
+                    | "after_nested_directory_sync"
+            ) {
+                assert_eq!(recovery.current_generation_id, None);
+                assert_eq!(recovery.quarantined_staging, 1);
+                assert!(snapshot.generations.is_empty());
+            } else if matches!(
+                *crash_point,
+                "after_inactive_registration_transaction" | "before_activation_transaction"
+            ) {
+                assert_eq!(recovery.current_generation_id, None);
+                assert_eq!(recovery.recovered_inactive, 0);
+                assert_eq!(snapshot.generations.len(), 1);
+                assert_eq!(
+                    snapshot.generations.values().next().unwrap().state,
+                    ManagedGenerationState::Inactive
+                );
+            } else {
+                assert_eq!(recovery.current_generation_id, None);
+                assert_eq!(recovery.recovered_inactive, 1);
+                assert_eq!(snapshot.generations.len(), 1);
+                assert_eq!(
+                    snapshot.generations.values().next().unwrap().state,
+                    ManagedGenerationState::Inactive
+                );
+            }
+            assert!(
+                std::fs::read_dir(root.join(STAGING_DIR))
+                    .unwrap()
+                    .next()
+                    .is_none(),
+                "staging was not fully classified after {crash_point}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "separate-process helper"]
+    async fn crash_injection_child() {
+        let base_url = std::env::var("ORBOK_RFC050_TEST_BASE_URL").unwrap();
+        let root = PathBuf::from(std::env::var_os("ORBOK_RFC050_TEST_STORE").unwrap());
+        let catalog_path = PathBuf::from(std::env::var_os("ORBOK_RFC050_TEST_CATALOG").unwrap());
+        let fixture = fixture(
+            &base_url,
+            b"trusted-tokenizer".to_vec(),
+            b"trusted-onnx-model".to_vec(),
+            None,
+        );
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open(catalog_path).unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+        let _ = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &root,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            |_| {},
+            |_| {},
+        )
+        .await;
+        panic!("configured crash point was not reached");
     }
 
     struct Fixture {

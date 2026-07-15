@@ -160,7 +160,7 @@ fn is_within_model_store(candidate: &std::path::Path, store_root: &std::path::Pa
 /// model verification. Activates the wizard when any required model
 /// file is missing or not yet configured.
 pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std::error::Error>> {
-    ensure_default_model_store(dir)?;
+    let model_store_root = ensure_default_model_store(dir)?;
     let catalog = open_catalog(dir)?;
 
     // RFC-018: reset any jobs left running from a crashed session.
@@ -172,6 +172,19 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
             "reset interrupted jobs on startup"
         );
     }
+
+    // RFC-050: epoch advancement, staged-generation recovery, and real
+    // later-startup load validation precede any managed runtime resolution.
+    let model_store = ManagedModelStore::default_embedding(model_store_root);
+    let model_recovery = orbok_workers::run_managed_model_startup(&catalog, &model_store)?;
+    tracing::info!(
+        startup_epoch = model_recovery.startup_epoch,
+        recovered_inactive = model_recovery.recovered_inactive,
+        quarantined_staging = model_recovery.quarantined_staging,
+        quarantined_generations = model_recovery.quarantined_generations,
+        rolled_back = model_recovery.rolled_back,
+        "managed model startup recovery completed"
+    );
 
     // Load persisted OrbokSettings (app-json-settings).
     let settings = load_settings();
@@ -693,6 +706,21 @@ pub fn reset_catalog(
 #[cfg(test)]
 mod managed_resolution_tests {
     use super::*;
+
+    #[test]
+    fn initial_state_advances_managed_model_startup_epoch() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let _state = load_initial_state(temp.path()).unwrap();
+
+        let catalog = open_catalog(temp.path()).unwrap();
+        let store = ManagedModelStore::default_embedding(default_model_store_root(temp.path()));
+        let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+        let snapshot = orbok_db::repo::ManagedGenerationRepository::new(&catalog)
+            .load_shared(&guard)
+            .unwrap();
+        assert_eq!(snapshot.profile.startup_epoch.get(), 1);
+    }
 
     #[test]
     fn exclusive_owner_prevents_managed_path_from_falling_back_as_manual() {
