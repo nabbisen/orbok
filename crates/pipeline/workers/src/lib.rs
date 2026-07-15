@@ -23,6 +23,7 @@ mod chunk_and_index;
 pub mod cleanup_service;
 mod embedding;
 mod extract;
+pub mod model_delivery;
 pub mod model_verifier;
 pub mod recovery;
 pub mod scheduler;
@@ -35,6 +36,9 @@ pub use chunk_and_index::ChunkAndIndexWorker;
 pub use cleanup_service::{CleanupService, FullCleanupOutcome};
 pub use embedding::EmbeddingWorker;
 pub use extract::ExtractionWorker;
+pub use model_delivery::{
+    ModelDeliveryError, ModelDeliveryEvent, ModelDeliveryOutcome, install_default_model,
+};
 pub use model_verifier::{
     FileIssue, FileIssueKind, VerifyOutcome, verify_embedding_model, verify_outcome_summary,
 };

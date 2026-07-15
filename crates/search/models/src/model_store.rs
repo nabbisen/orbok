@@ -10,6 +10,48 @@ use std::time::{Duration, Instant};
 pub const MODEL_STORE_LOCK_FILE: &str = ".model-store.lock";
 const LOCK_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+/// Canonical binding between one managed profile and its model-store root.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedModelStore {
+    models_dir: PathBuf,
+    profile_id: ModelStoreProfileId,
+}
+
+impl ManagedModelStore {
+    pub fn default_embedding(models_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            models_dir: models_dir.into(),
+            profile_id: ModelStoreProfileId::default_embedding(),
+        }
+    }
+
+    pub fn models_dir(&self) -> &Path {
+        &self.models_dir
+    }
+
+    pub fn profile_id(&self) -> &ModelStoreProfileId {
+        &self.profile_id
+    }
+
+    pub fn acquire_shared(
+        &self,
+        timeout: Duration,
+    ) -> Result<ModelStoreMutationGuard<SharedAccess>, ModelStoreLockError> {
+        ModelStoreMutationGuard::acquire_shared(&self.models_dir, self.profile_id.clone(), timeout)
+    }
+
+    pub fn acquire_exclusive(
+        &self,
+        timeout: Duration,
+    ) -> Result<ModelStoreMutationGuard<ExclusiveAccess>, ModelStoreLockError> {
+        ModelStoreMutationGuard::acquire_exclusive(
+            &self.models_dir,
+            self.profile_id.clone(),
+            timeout,
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct SharedAccess;
 

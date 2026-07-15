@@ -3581,7 +3581,6 @@ dependencies = [
  "orbok-search",
  "orbok-ui",
  "orbok-workers",
- "reqwest",
  "rfd",
  "serde",
  "serde_json",
@@ -3738,6 +3737,7 @@ name = "orbok-workers"
 version = "0.24.0"
 dependencies = [
  "dirs",
+ "futures",
  "orbok-bench",
  "orbok-cache",
  "orbok-core",
@@ -3747,11 +3747,14 @@ dependencies = [
  "orbok-fs",
  "orbok-models",
  "orbok-search",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "zip",
 ]

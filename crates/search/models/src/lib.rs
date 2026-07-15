@@ -25,8 +25,8 @@ pub use generation::{
     StartupEpoch, StartupValidationEvidence,
 };
 pub use model_store::{
-    ExclusiveAccess, MODEL_STORE_LOCK_FILE, ModelStoreLockError, ModelStoreMutationGuard,
-    SharedAccess,
+    ExclusiveAccess, MODEL_STORE_LOCK_FILE, ManagedModelStore, ModelStoreLockError,
+    ModelStoreMutationGuard, SharedAccess,
 };
 pub use readiness::{
     FileReadiness, LocalFileIntegrity, LocalFileStatus, ModelProvenance, ModelReadiness,

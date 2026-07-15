@@ -24,6 +24,10 @@ serde                       = { workspace = true }
 serde_json                  = { workspace = true }
 sha2                        = { workspace = true }
 tracing                     = { workspace = true }
+futures                     = { workspace = true }
+reqwest                     = { workspace = true }
+thiserror                   = { workspace = true }
+tokio                       = { workspace = true, features = ["fs", "io-util", "net", "sync", "time"] }
 
 [dev-dependencies]
 orbok-bench                 = { path = "../../bench" }

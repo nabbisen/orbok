@@ -39,4 +39,3 @@ tracing-subscriber          = { workspace = true }
 
 dirs                        = { workspace = true }
 futures                     = { workspace = true }
-reqwest                     = { workspace = true }

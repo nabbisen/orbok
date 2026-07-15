@@ -42,6 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = bootstrap::load_initial_state()?;
     let data_dir = bootstrap::data_dir_for_args(portable);
+    bootstrap::ensure_default_model_store(&data_dir)?;
     let catalog_path = data_dir.join(orbok_db::CATALOG_FILE_NAME);
 
     iced::application(
@@ -50,12 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Handle backend effects before passing message to UI state.
             match &message {
                 Message::DownloadModel => {
-                    let dest = data_dir.join("models").join("multilingual-e5-small");
-                    std::fs::create_dir_all(&dest).ok();
+                    let dest = bootstrap::default_model_store_root(&data_dir);
                     let dest_str = dest.to_string_lossy().to_string();
                     app.update(Message::DownloadStarted { dest_dir: dest_str });
                     let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
-                    tokio::spawn(download::run(dest, tx));
+                    tokio::spawn(download::run(dest, catalog_path.clone(), tx));
                     return iced::Task::stream(rx);
                 }
                 Message::WizardValidate => {

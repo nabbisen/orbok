@@ -15,6 +15,7 @@ use orbok_db::{CATALOG_FILE_NAME, Catalog};
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
 use orbok_models::SearchCapability;
+use orbok_models::{ManagedModelStore, ModelStoreMutationGuard, SharedAccess};
 use orbok_search::HybridSearchService;
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
@@ -22,6 +23,7 @@ use orbok_ui::state::{WizardFileCheck, WizardState};
 use orbok_ui::theme::{TextScale, Theme};
 use orbok_workers::{VerifyOutcome, verify_embedding_model};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::settings::{OrbokSettings, load_settings};
 
@@ -48,6 +50,33 @@ pub fn data_dir_for_args(portable: bool) -> PathBuf {
 pub fn open_catalog(data_dir: &std::path::Path) -> OrbokResult<Catalog> {
     std::fs::create_dir_all(data_dir)?;
     Catalog::open(data_dir.join(CATALOG_FILE_NAME))
+}
+
+pub fn default_model_store_root(data_dir: &std::path::Path) -> PathBuf {
+    data_dir.join("models").join("multilingual-e5-small")
+}
+
+pub fn ensure_default_model_store(data_dir: &std::path::Path) -> std::io::Result<PathBuf> {
+    let root = default_model_store_root(data_dir);
+    std::fs::create_dir_all(&root)?;
+    Ok(root)
+}
+
+fn managed_current_model_dir(
+    catalog: &Catalog,
+) -> Option<(ModelStoreMutationGuard<SharedAccess>, PathBuf)> {
+    let data_dir = catalog.path().parent()?;
+    let store = ManagedModelStore::default_embedding(default_model_store_root(data_dir));
+    let guard = store.acquire_shared(Duration::from_secs(5)).ok()?;
+    let snapshot = orbok_db::repo::ManagedGenerationRepository::new(catalog)
+        .load_shared(&guard)
+        .ok()?;
+    let generation_id = snapshot.profile.current_generation_id?;
+    let generation_dir = store
+        .models_dir()
+        .join("generations")
+        .join(generation_id.as_str());
+    Some((guard, generation_dir))
 }
 
 /// Build the initial `AppState` from persisted settings and startup
@@ -85,7 +114,12 @@ pub fn load_initial_state() -> Result<AppState, Box<dyn std::error::Error>> {
         .unwrap_or_default();
 
     // Verify embedding model files (design §startup-verify).
-    let outcome = verify_embedding_model(settings.embedding_model_dir.as_deref());
+    let managed_model = managed_current_model_dir(&catalog);
+    let effective_model_dir = managed_model
+        .as_ref()
+        .map(|(_, path)| path.to_string_lossy().to_string())
+        .or_else(|| settings.embedding_model_dir.clone());
+    let outcome = verify_embedding_model(effective_model_dir.as_deref());
     tracing::info!("{}", orbok_workers::verify_outcome_summary(&outcome));
 
     let (capability, wizard) = build_capability_and_wizard(outcome, &settings);
@@ -172,7 +206,12 @@ pub(crate) fn run_search(
     limit: u32,
 ) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
     let settings = load_settings();
-    let results = if let Some(dir) = &settings.embedding_model_dir {
+    let managed_model = managed_current_model_dir(catalog);
+    let effective_model_dir = managed_model
+        .as_ref()
+        .map(|(_, path)| path.to_string_lossy().to_string())
+        .or(settings.embedding_model_dir);
+    let results = if let Some(dir) = &effective_model_dir {
         let config = recommended_config_from_model_dir(dir);
         match create_embedding_model(&config) {
             Ok(model) => {
@@ -227,7 +266,12 @@ pub fn run_check() -> Result<(), Box<dyn std::error::Error>> {
 
     // Report model status in --check output.
     let settings = load_settings();
-    let outcome = verify_embedding_model(settings.embedding_model_dir.as_deref());
+    let managed_model = managed_current_model_dir(&catalog);
+    let effective_model_dir = managed_model
+        .as_ref()
+        .map(|(_, path)| path.to_string_lossy().to_string())
+        .or(settings.embedding_model_dir);
+    let outcome = verify_embedding_model(effective_model_dir.as_deref());
     println!(
         "orbok --check OK  data_dir={}  schema_version={}  model={}",
         dir.display(),

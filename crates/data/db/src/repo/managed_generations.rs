@@ -64,7 +64,12 @@ impl<'a> ManagedGenerationRepository<'a> {
         guard: &ModelStoreMutationGuard<ExclusiveAccess>,
         generation_id: &ManagedGenerationId,
     ) -> Result<ManagedGenerationSnapshot, GenerationCatalogError> {
-        self.transition(guard, |current| current.activate(generation_id))
+        let current = self.load_exclusive(guard)?;
+        let expected_revision = current.profile.state_revision;
+        let next = current
+            .activate(generation_id)
+            .map_err(GenerationCatalogError::InvalidTransition)?;
+        self.apply_snapshot(guard, expected_revision, &next, Some(generation_id))
     }
 
     /// Record later-startup validation only if the loaded identity is still the
@@ -99,7 +104,7 @@ impl<'a> ManagedGenerationRepository<'a> {
         let current = self.load_exclusive(guard)?;
         let expected_revision = current.profile.state_revision;
         let next = build(&current).map_err(GenerationCatalogError::InvalidTransition)?;
-        self.apply_snapshot(guard, expected_revision, &next)
+        self.apply_snapshot(guard, expected_revision, &next, None)
     }
 
     /// Persist one already-validated pure state transition atomically.
@@ -112,6 +117,7 @@ impl<'a> ManagedGenerationRepository<'a> {
         guard: &ModelStoreMutationGuard<ExclusiveAccess>,
         expected_revision: u64,
         next: &ManagedGenerationSnapshot,
+        commit_activation: Option<&ManagedGenerationId>,
     ) -> Result<ManagedGenerationSnapshot, GenerationCatalogError> {
         if guard.profile_id() != &next.profile.profile_id {
             return Err(GenerationCatalogError::GuardProfileMismatch);
@@ -133,6 +139,17 @@ impl<'a> ManagedGenerationRepository<'a> {
         if current.profile.state_revision != expected_revision {
             return Err(GenerationCatalogError::StateConflict);
         }
+        // Activation must derive `previous` from the current pointer read in
+        // this transaction, not from readiness or a pre-transaction snapshot.
+        let commit_next;
+        let next = if let Some(generation_id) = commit_activation {
+            commit_next = current
+                .activate(generation_id)
+                .map_err(GenerationCatalogError::InvalidTransition)?;
+            &commit_next
+        } else {
+            next
+        };
         if current.profile.startup_epoch > next.profile.startup_epoch
             || current
                 .generations
@@ -243,7 +260,7 @@ impl<'a> ManagedGenerationRepository<'a> {
         expected_revision: u64,
         next: &ManagedGenerationSnapshot,
     ) -> Result<ManagedGenerationSnapshot, GenerationCatalogError> {
-        self.apply_snapshot(guard, expected_revision, next)
+        self.apply_snapshot(guard, expected_revision, next, None)
     }
 }
 
