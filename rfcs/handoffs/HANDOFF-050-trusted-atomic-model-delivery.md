@@ -105,6 +105,12 @@ for acceptance evidence.
 9. Run installer/recovery/rollback/cleanup adversarial interleavings from
    separate processes under the same lock.
 10. Run the activation/recovery matrix on Windows as well as Unix-like targets.
+11. Make local mock-server shutdown tolerate a client cancelling one concurrent
+    transfer after another transfer fails; a cancelled request must not leave a
+    fixture waiting forever for an unaccepted connection.
+12. Preserve the executed-test count with platform evidence. A command that
+    exits successfully after filtering out every requested test is not passing
+    evidence for this phase.
 
 Review point: generation transaction and injected-crash evidence before GUI
 integration.

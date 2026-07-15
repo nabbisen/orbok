@@ -604,6 +604,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::oneshot;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn mock_server_install_promotes_complete_generation_and_activates_it() {
@@ -713,6 +714,28 @@ mod tests {
             std::fs::read_dir(root.join(STAGING_DIR)).unwrap().count(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn mock_server_finish_tolerates_a_cancelled_pending_request() {
+        let server = MockServer::start([
+            ("/completed", b"completed".to_vec()),
+            ("/cancelled", b"cancelled".to_vec()),
+        ])
+        .await;
+
+        let response = base_client_builder()
+            .build()
+            .unwrap()
+            .get(format!("{}/completed", server.base_url))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.bytes().await.unwrap(), b"completed".as_slice());
+
+        tokio::time::timeout(Duration::from_secs(1), server.finish())
+            .await
+            .expect("mock server shutdown must not wait for a cancelled request");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1521,6 +1544,7 @@ mod tests {
     struct MockServer {
         base_url: String,
         max_active: Arc<AtomicUsize>,
+        shutdown: oneshot::Sender<()>,
         task: tokio::task::JoinHandle<()>,
     }
 
@@ -1561,10 +1585,17 @@ mod tests {
             let max_active = Arc::new(AtomicUsize::new(0));
             let active_task = active.clone();
             let max_task = max_active.clone();
+            let (shutdown, mut shutdown_requested) = oneshot::channel();
             let task = tokio::spawn(async move {
                 let mut children = Vec::new();
                 for _ in 0..N {
-                    let (stream, _) = listener.accept().await.unwrap();
+                    let accepted = tokio::select! {
+                        result = listener.accept() => Some(result.unwrap()),
+                        _ = &mut shutdown_requested => None,
+                    };
+                    let Some((stream, _)) = accepted else {
+                        break;
+                    };
                     let responses = responses.clone();
                     let active = active_task.clone();
                     let max_active = max_task.clone();
@@ -1579,11 +1610,13 @@ mod tests {
             Self {
                 base_url: format!("http://{address}"),
                 max_active,
+                shutdown,
                 task,
             }
         }
 
         async fn finish(self) {
+            let _ = self.shutdown.send(());
             self.task.await.unwrap();
         }
     }
@@ -1595,10 +1628,16 @@ mod tests {
         max_active: Arc<AtomicUsize>,
     ) {
         let mut request = vec![0_u8; 2048];
-        let read = stream.read(&mut request).await.unwrap();
+        let Ok(read) = stream.read(&mut request).await else {
+            return;
+        };
         let request = String::from_utf8_lossy(&request[..read]);
-        let path = request.split_whitespace().nth(1).unwrap();
-        let body = responses.get(path).unwrap();
+        let Some(path) = request.split_whitespace().nth(1) else {
+            return;
+        };
+        let Some(body) = responses.get(path) else {
+            return;
+        };
         let now = active.fetch_add(1, Ordering::SeqCst) + 1;
         max_active.fetch_max(now, Ordering::SeqCst);
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1606,9 +1645,10 @@ mod tests {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        stream.write_all(response.as_bytes()).await.unwrap();
-        stream.write_all(body).await.unwrap();
-        stream.shutdown().await.unwrap();
+        if stream.write_all(response.as_bytes()).await.is_ok() {
+            let _ = stream.write_all(body).await;
+        }
+        let _ = stream.shutdown().await;
         active.fetch_sub(1, Ordering::SeqCst);
     }
 }
