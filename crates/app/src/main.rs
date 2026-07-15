@@ -40,9 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return bootstrap::run_check();
     }
 
-    let state = bootstrap::load_initial_state()?;
     let data_dir = bootstrap::data_dir_for_args(portable);
-    bootstrap::ensure_default_model_store(&data_dir)?;
+    let state = bootstrap::load_initial_state(&data_dir)?;
     let catalog_path = data_dir.join(orbok_db::CATALOG_FILE_NAME);
 
     iced::application(
@@ -71,10 +70,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Message::WizardAccept => {
                     // Persist the accepted model directory to OrbokSettings.
-                    if let Some(orbok_ui::state::WizardState::Ready { model_dir }) =
-                        &app.state.wizard
+                    if let Some(orbok_ui::state::WizardState::Ready {
+                        model_dir,
+                        provenance,
+                    }) = &app.state.wizard
                     {
-                        if let Err(e) = bootstrap::persist_model_dir(model_dir.as_str()) {
+                        let persisted = match provenance {
+                            orbok_ui::state::WizardModelProvenance::Manual => {
+                                bootstrap::persist_model_dir(model_dir.as_str())
+                            }
+                            orbok_ui::state::WizardModelProvenance::Managed => {
+                                bootstrap::remove_managed_model_dir_setting(&data_dir)
+                            }
+                        };
+                        if let Err(e) = persisted {
                             tracing::error!("failed to save model dir: {e}");
                         }
                     }

@@ -248,9 +248,9 @@ impl<'a> ManagedGenerationRepository<'a> {
         if updated != 1 {
             return Err(GenerationCatalogError::StateConflict);
         }
+        let committed = next.clone();
         tx.commit().map_err(GenerationCatalogError::database)?;
-        drop(conn);
-        self.load_exclusive(guard)
+        Ok(committed)
     }
 
     #[cfg(test)]

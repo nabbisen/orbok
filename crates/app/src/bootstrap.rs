@@ -15,7 +15,7 @@ use orbok_db::{CATALOG_FILE_NAME, Catalog};
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
 use orbok_models::SearchCapability;
-use orbok_models::{ManagedModelStore, ModelStoreMutationGuard, SharedAccess};
+use orbok_models::{ManagedModelStore, ModelStoreLockError, ModelStoreMutationGuard, SharedAccess};
 use orbok_search::HybridSearchService;
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
@@ -62,29 +62,106 @@ pub fn ensure_default_model_store(data_dir: &std::path::Path) -> std::io::Result
     Ok(root)
 }
 
-fn managed_current_model_dir(
+#[derive(Debug)]
+enum ManagedModelResolutionError {
+    CatalogPath,
+    StoreLock(ModelStoreLockError),
+    Catalog,
+}
+
+impl std::fmt::Display for ManagedModelResolutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CatalogPath => formatter.write_str("managed model catalog path is unavailable"),
+            Self::StoreLock(error) => {
+                write!(formatter, "managed model store is unavailable: {error}")
+            }
+            Self::Catalog => formatter.write_str("managed model catalog state is unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for ManagedModelResolutionError {}
+
+struct ResolvedModelDir {
+    _guard: Option<ModelStoreMutationGuard<SharedAccess>>,
+    path: Option<String>,
+}
+
+fn managed_current_model_dir_timeout(
     catalog: &Catalog,
-) -> Option<(ModelStoreMutationGuard<SharedAccess>, PathBuf)> {
-    let data_dir = catalog.path().parent()?;
+    timeout: Duration,
+) -> Result<Option<(ModelStoreMutationGuard<SharedAccess>, PathBuf)>, ManagedModelResolutionError> {
+    let data_dir = catalog
+        .path()
+        .parent()
+        .ok_or(ManagedModelResolutionError::CatalogPath)?;
     let store = ManagedModelStore::default_embedding(default_model_store_root(data_dir));
-    let guard = store.acquire_shared(Duration::from_secs(5)).ok()?;
+    let guard = store
+        .acquire_shared(timeout)
+        .map_err(ManagedModelResolutionError::StoreLock)?;
     let snapshot = orbok_db::repo::ManagedGenerationRepository::new(catalog)
         .load_shared(&guard)
-        .ok()?;
-    let generation_id = snapshot.profile.current_generation_id?;
+        .map_err(|_| ManagedModelResolutionError::Catalog)?;
+    let Some(generation_id) = snapshot.profile.current_generation_id else {
+        return Ok(None);
+    };
     let generation_dir = store
         .models_dir()
         .join("generations")
         .join(generation_id.as_str());
-    Some((guard, generation_dir))
+    Ok(Some((guard, generation_dir)))
+}
+
+fn resolve_model_dir(
+    catalog: &Catalog,
+    settings: &OrbokSettings,
+) -> Result<ResolvedModelDir, ManagedModelResolutionError> {
+    resolve_model_dir_with_timeout(catalog, settings, Duration::from_secs(5))
+}
+
+fn resolve_model_dir_with_timeout(
+    catalog: &Catalog,
+    settings: &OrbokSettings,
+    timeout: Duration,
+) -> Result<ResolvedModelDir, ManagedModelResolutionError> {
+    let data_dir = catalog
+        .path()
+        .parent()
+        .ok_or(ManagedModelResolutionError::CatalogPath)?;
+    if let Some((guard, path)) = managed_current_model_dir_timeout(catalog, timeout)? {
+        return Ok(ResolvedModelDir {
+            _guard: Some(guard),
+            path: Some(path.to_string_lossy().into_owned()),
+        });
+    }
+    let store_root = default_model_store_root(data_dir);
+    let manual = settings
+        .embedding_model_dir
+        .as_ref()
+        .filter(|path| !is_within_model_store(std::path::Path::new(path), &store_root))
+        .cloned();
+    Ok(ResolvedModelDir {
+        _guard: None,
+        path: manual,
+    })
+}
+
+fn is_within_model_store(candidate: &std::path::Path, store_root: &std::path::Path) -> bool {
+    fn comparable(path: &std::path::Path) -> PathBuf {
+        path.canonicalize()
+            .or_else(|_| std::path::absolute(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+    comparable(candidate).starts_with(comparable(store_root))
 }
 
 /// Build the initial `AppState` from persisted settings and startup
 /// model verification. Activates the wizard when any required model
 /// file is missing or not yet configured.
-pub fn load_initial_state() -> Result<AppState, Box<dyn std::error::Error>> {
-    let dir = data_dir();
-    let catalog = open_catalog(&dir)?;
+pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std::error::Error>> {
+    ensure_default_model_store(dir)?;
+    let catalog = open_catalog(dir)?;
 
     // RFC-018: reset any jobs left running from a crashed session.
     let cache_path = dir.join(orbok_db::CACHE_FILE_NAME);
@@ -114,12 +191,17 @@ pub fn load_initial_state() -> Result<AppState, Box<dyn std::error::Error>> {
         .unwrap_or_default();
 
     // Verify embedding model files (design §startup-verify).
-    let managed_model = managed_current_model_dir(&catalog);
-    let effective_model_dir = managed_model
-        .as_ref()
-        .map(|(_, path)| path.to_string_lossy().to_string())
-        .or_else(|| settings.embedding_model_dir.clone());
-    let outcome = verify_embedding_model(effective_model_dir.as_deref());
+    let resolved_model = match resolve_model_dir(&catalog, &settings) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            tracing::warn!(category = %error, "managed model resolution failed closed");
+            ResolvedModelDir {
+                _guard: None,
+                path: None,
+            }
+        }
+    };
+    let outcome = verify_embedding_model(resolved_model.path.as_deref());
     tracing::info!("{}", orbok_workers::verify_outcome_summary(&outcome));
 
     let (capability, wizard) = build_capability_and_wizard(outcome, &settings);
@@ -206,12 +288,17 @@ pub(crate) fn run_search(
     limit: u32,
 ) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
     let settings = load_settings();
-    let managed_model = managed_current_model_dir(catalog);
-    let effective_model_dir = managed_model
-        .as_ref()
-        .map(|(_, path)| path.to_string_lossy().to_string())
-        .or(settings.embedding_model_dir);
-    let results = if let Some(dir) = &effective_model_dir {
+    let resolved_model = match resolve_model_dir(catalog, &settings) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            tracing::warn!(category = %error, "managed model resolution failed closed");
+            ResolvedModelDir {
+                _guard: None,
+                path: None,
+            }
+        }
+    };
+    let results = if let Some(dir) = &resolved_model.path {
         let config = recommended_config_from_model_dir(dir);
         match create_embedding_model(&config) {
             Ok(model) => {
@@ -256,6 +343,7 @@ pub(crate) fn run_search(
 /// Headless backend validation (`--check` mode, RFC-017).
 pub fn run_check() -> Result<(), Box<dyn std::error::Error>> {
     let dir = data_dir();
+    ensure_default_model_store(&dir)?;
     tracing::info!(path = %dir.display(), "opening catalog");
     let catalog = open_catalog(&dir)?;
     let version = catalog.schema_version()?;
@@ -266,12 +354,8 @@ pub fn run_check() -> Result<(), Box<dyn std::error::Error>> {
 
     // Report model status in --check output.
     let settings = load_settings();
-    let managed_model = managed_current_model_dir(&catalog);
-    let effective_model_dir = managed_model
-        .as_ref()
-        .map(|(_, path)| path.to_string_lossy().to_string())
-        .or(settings.embedding_model_dir);
-    let outcome = verify_embedding_model(effective_model_dir.as_deref());
+    let resolved_model = resolve_model_dir(&catalog, &settings)?;
+    let outcome = verify_embedding_model(resolved_model.path.as_deref());
     println!(
         "orbok --check OK  data_dir={}  schema_version={}  model={}",
         dir.display(),
@@ -331,6 +415,23 @@ pub fn persist_model_dir(model_dir: &str) -> Result<(), Box<dyn std::error::Erro
     settings.embedding_model_dir = Some(model_dir.to_string());
     crate::settings::save_settings(&settings)
         .map_err(|e| format!("settings save failed: {e:?}"))?;
+    Ok(())
+}
+
+pub fn remove_managed_model_dir_setting(
+    data_dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut settings = load_settings();
+    if settings.embedding_model_dir.as_ref().is_some_and(|path| {
+        is_within_model_store(
+            std::path::Path::new(path),
+            &default_model_store_root(data_dir),
+        )
+    }) {
+        settings.embedding_model_dir = None;
+        crate::settings::save_settings(&settings)
+            .map_err(|e| format!("settings save failed: {e:?}"))?;
+    }
     Ok(())
 }
 
@@ -587,4 +688,71 @@ pub fn reset_catalog(
     let plan = CleanupPlan::for_action(CleanupAction::ResetCatalog, 0);
     CleanupService::new(catalog, cache, cache_db_path).run_reset(&plan, true)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod managed_resolution_tests {
+    use super::*;
+
+    #[test]
+    fn exclusive_owner_prevents_managed_path_from_falling_back_as_manual() {
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = temp.path();
+        let root = ensure_default_model_store(data_dir).unwrap();
+        let catalog = open_catalog(data_dir).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let _exclusive = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let settings = OrbokSettings {
+            embedding_model_dir: Some(
+                root.join("generations")
+                    .join("persisted-managed-path")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ..OrbokSettings::default()
+        };
+
+        let result = resolve_model_dir_with_timeout(&catalog, &settings, Duration::from_millis(20));
+
+        assert!(matches!(
+            result,
+            Err(ManagedModelResolutionError::StoreLock(
+                ModelStoreLockError::Timeout
+            ))
+        ));
+    }
+
+    #[test]
+    fn managed_setting_is_not_treated_as_manual_without_a_catalog_current() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = ensure_default_model_store(temp.path()).unwrap();
+        let catalog = open_catalog(temp.path()).unwrap();
+        let managed_path = root.join("generations").join("old-managed-path");
+        let settings = OrbokSettings {
+            embedding_model_dir: Some(managed_path.to_string_lossy().into_owned()),
+            ..OrbokSettings::default()
+        };
+
+        let resolved = resolve_model_dir(&catalog, &settings).unwrap();
+
+        assert!(resolved.path.is_none());
+        assert!(resolved._guard.is_none());
+    }
+
+    #[test]
+    fn genuine_manual_setting_remains_available_when_no_managed_current_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        ensure_default_model_store(temp.path()).unwrap();
+        let catalog = open_catalog(temp.path()).unwrap();
+        let manual = temp.path().join("user-model");
+        let settings = OrbokSettings {
+            embedding_model_dir: Some(manual.to_string_lossy().into_owned()),
+            ..OrbokSettings::default()
+        };
+
+        let resolved = resolve_model_dir(&catalog, &settings).unwrap();
+
+        assert_eq!(resolved.path.as_deref(), manual.to_str());
+        assert!(resolved._guard.is_none());
+    }
 }

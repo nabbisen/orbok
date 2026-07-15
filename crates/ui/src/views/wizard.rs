@@ -80,7 +80,7 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             checks,
             all_ok,
         } => page_checked(locale, state, model_dir, checks, *all_ok),
-        WizardState::Ready { model_dir } => page_ready(tokens, sc, locale, model_dir),
+        WizardState::Ready { model_dir, .. } => page_ready(tokens, sc, locale, model_dir),
     }
 }
 

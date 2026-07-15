@@ -125,7 +125,10 @@ pub enum WizardState {
         all_ok: bool,
     },
     /// All files verified — ready to proceed.
-    Ready { model_dir: String },
+    Ready {
+        model_dir: String,
+        provenance: WizardModelProvenance,
+    },
     /// HuggingFace download in progress.
     Downloading {
         dest_dir: String,
@@ -136,6 +139,12 @@ pub enum WizardState {
         files_done: u32,
         files_total: u32,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WizardModelProvenance {
+    Manual,
+    Managed,
 }
 
 /// The whole-app view model.
@@ -511,6 +520,7 @@ impl AppState {
                 self.wizard = Some(if *all_ok {
                     WizardState::Ready {
                         model_dir: model_dir.clone(),
+                        provenance: WizardModelProvenance::Manual,
                     }
                 } else {
                     WizardState::Checked {
@@ -573,6 +583,7 @@ impl AppState {
                 // Switch directly to wizard-accepted flow.
                 self.wizard = Some(WizardState::Ready {
                     model_dir: dest_dir.clone(),
+                    provenance: WizardModelProvenance::Managed,
                 });
             }
             Message::DownloadFailed(_reason) => {

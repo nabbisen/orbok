@@ -1,6 +1,6 @@
 //! AppState transitions, notice handling, theme, and navigation tests.
 
-use crate::state::{AppState, Message, ViewId};
+use crate::state::{AppState, Message, ViewId, WizardModelProvenance, WizardState};
 use crate::theme::{TextScale, Theme};
 
 #[test]
@@ -23,6 +23,23 @@ fn navigation_order_is_search_first() {
         ViewId::ALL[0],
         ViewId::Search,
         "Search must be the first view (GUI external design §3.1)"
+    );
+}
+
+#[test]
+fn downloaded_model_ready_state_retains_managed_provenance() {
+    let mut state = AppState::default();
+
+    state.update(&Message::DownloadAllComplete {
+        dest_dir: "/managed/generation".into(),
+    });
+
+    assert_eq!(
+        state.wizard,
+        Some(WizardState::Ready {
+            model_dir: "/managed/generation".into(),
+            provenance: WizardModelProvenance::Managed,
+        })
     );
 }
 

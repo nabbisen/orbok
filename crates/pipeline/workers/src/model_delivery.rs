@@ -4,9 +4,10 @@ use futures::{SinkExt as _, StreamExt as _};
 use orbok_db::Catalog;
 use orbok_db::repo::ManagedGenerationRepository;
 use orbok_models::{
-    DEFAULT_TRUSTED_MODEL, DownloadAction, DownloadPlan, ManagedGenerationId, ManagedModelStore,
-    ModelReadiness, ModelStoreLockError, TrustedModelManifest, build_download_plan,
-    check_app_managed_model_readiness, validate_initial_url, validate_redirect_url,
+    DEFAULT_TRUSTED_MODEL, DownloadAction, DownloadPlan, ManagedGenerationId,
+    ManagedGenerationSnapshot, ManagedModelStore, ModelReadiness, ModelStoreLockError,
+    TrustedModelManifest, build_download_plan, check_app_managed_model_readiness,
+    validate_initial_url, validate_redirect_url,
 };
 use sha2::Digest as _;
 use std::path::{Path, PathBuf};
@@ -95,11 +96,15 @@ pub async fn install_default_model(
     let plan = build_download_plan(&report).map_err(|_| ModelDeliveryError::Plan)?;
 
     if report.overall() == ModelReadiness::Ready {
-        if let Some(current_id) = snapshot.profile.current_generation_id {
-            return Ok(ModelDeliveryOutcome {
-                generation_dir: source_dir,
-                generation_id: current_id,
-            });
+        if let Some(current_id) = snapshot.profile.current_generation_id.clone() {
+            return verify_ready_current(
+                &snapshot,
+                current_id,
+                source_dir,
+                &plan,
+                &DEFAULT_TRUSTED_MODEL,
+            )
+            .await;
         }
     }
 
@@ -113,12 +118,32 @@ pub async fn install_default_model(
         &DEFAULT_TRUSTED_MODEL,
         &client,
         events,
+        |_| {},
+        |_| {},
     )
     .await
 }
 
+async fn verify_ready_current(
+    snapshot: &ManagedGenerationSnapshot,
+    generation_id: ManagedGenerationId,
+    generation_dir: PathBuf,
+    plan: &DownloadPlan,
+    manifest: &TrustedModelManifest,
+) -> Result<ModelDeliveryOutcome, ModelDeliveryError> {
+    let record = snapshot
+        .generations
+        .get(&generation_id)
+        .ok_or(ModelDeliveryError::Integrity)?;
+    verify_generation_validity(&generation_dir, plan, manifest, &record.manifest_id).await?;
+    Ok(ModelDeliveryOutcome {
+        generation_id,
+        generation_dir,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
-async fn execute_generation(
+async fn execute_generation<B, A>(
     store: &ManagedModelStore,
     guard: &orbok_models::ModelStoreMutationGuard<orbok_models::ExclusiveAccess>,
     repository: &ManagedGenerationRepository<'_>,
@@ -127,7 +152,13 @@ async fn execute_generation(
     manifest: &'static TrustedModelManifest,
     client: &reqwest::Client,
     events: futures::channel::mpsc::Sender<ModelDeliveryEvent>,
-) -> Result<ModelDeliveryOutcome, ModelDeliveryError> {
+    before_promotion: B,
+    after_activation: A,
+) -> Result<ModelDeliveryOutcome, ModelDeliveryError>
+where
+    B: FnOnce(&Path),
+    A: FnOnce(&Path),
+{
     if plan.manifest_id != manifest.manifest_id || plan.max_concurrent > 2 {
         return Err(ModelDeliveryError::Plan);
     }
@@ -149,17 +180,17 @@ async fn execute_generation(
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
-    verify_complete_set(&staging, plan).await?;
+    verify_payload_files(&staging, plan).await?;
     sync_staged_tree(&staging, plan)?;
     write_metadata(&staging, manifest)?;
-    verify_generation_metadata(&staging, manifest)?;
+    verify_generation_validity(&staging, plan, manifest, manifest.manifest_id).await?;
 
+    before_promotion(&promoted);
     std::fs::rename(&staging, &promoted).map_err(|_| ModelDeliveryError::Filesystem)?;
     sync_directory(&staging_parent)?;
     sync_directory(&generations_parent)?;
     sync_directory(store.models_dir())?;
-    verify_complete_set(&promoted, plan).await?;
-    verify_generation_metadata(&promoted, manifest)?;
+    verify_generation_validity(&promoted, plan, manifest, manifest.manifest_id).await?;
 
     repository
         .register_inactive(guard, generation_id.clone(), manifest.manifest_id)
@@ -167,20 +198,48 @@ async fn execute_generation(
     repository
         .activate(guard, &generation_id)
         .map_err(|_| ModelDeliveryError::Catalog)?;
-    let final_snapshot = repository
-        .load_exclusive(guard)
-        .map_err(|_| ModelDeliveryError::FinalCheck)?;
-    if final_snapshot.profile.current_generation_id.as_ref() != Some(&generation_id) {
+    after_activation(&promoted);
+    let final_check =
+        confirm_active_generation(repository, guard, &generation_id, &promoted, plan, manifest)
+            .await;
+    if final_check.is_err() {
+        let previous_verified =
+            verify_previous_for_rollback(store, repository, guard, plan, manifest).await;
+        repository
+            .rollback_invalid_current(guard, previous_verified)
+            .map_err(|_| ModelDeliveryError::Catalog)?;
         return Err(ModelDeliveryError::FinalCheck);
     }
-    verify_complete_set(&promoted, plan)
-        .await
-        .map_err(|_| ModelDeliveryError::FinalCheck)?;
 
     Ok(ModelDeliveryOutcome {
         generation_id,
         generation_dir: promoted,
     })
+}
+
+async fn verify_previous_for_rollback(
+    store: &ManagedModelStore,
+    repository: &ManagedGenerationRepository<'_>,
+    guard: &orbok_models::ModelStoreMutationGuard<orbok_models::ExclusiveAccess>,
+    plan: &DownloadPlan,
+    manifest: &TrustedModelManifest,
+) -> bool {
+    let Ok(snapshot) = repository.load_exclusive(guard) else {
+        return false;
+    };
+    let Some(previous_id) = snapshot.profile.previous_generation_id else {
+        return false;
+    };
+    let Some(record) = snapshot.generations.get(&previous_id) else {
+        return false;
+    };
+    let previous_dir = store
+        .models_dir()
+        .join(GENERATIONS_DIR)
+        .join(previous_id.as_str());
+    verify_generation_validity(&previous_dir, plan, manifest, &record.manifest_id)
+        .await
+        .is_ok()
 }
 
 async fn stage_files(
@@ -305,22 +364,59 @@ async fn download_file(
     Ok(())
 }
 
-async fn verify_complete_set(
+async fn verify_payload_files(
     generation_dir: &Path,
     plan: &DownloadPlan,
 ) -> Result<(), ModelDeliveryError> {
     for file in &plan.files {
         let path = file.final_path(generation_dir);
-        let metadata = tokio::fs::metadata(&path)
+        let metadata = tokio::fs::symlink_metadata(&path)
             .await
             .map_err(|_| ModelDeliveryError::Integrity)?;
-        if metadata.len() != file.exact_size_bytes
+        if !metadata.file_type().is_file()
+            || metadata.len() != file.exact_size_bytes
             || sha256_file(&path).await? != file.expected_sha256
         {
             return Err(ModelDeliveryError::Integrity);
         }
     }
     Ok(())
+}
+
+async fn verify_generation_validity(
+    generation_dir: &Path,
+    plan: &DownloadPlan,
+    manifest: &TrustedModelManifest,
+    catalog_manifest_id: &str,
+) -> Result<(), ModelDeliveryError> {
+    if plan.manifest_id != manifest.manifest_id || catalog_manifest_id != manifest.manifest_id {
+        return Err(ModelDeliveryError::Integrity);
+    }
+    verify_payload_files(generation_dir, plan).await?;
+    verify_generation_metadata(generation_dir, manifest)
+}
+
+async fn confirm_active_generation(
+    repository: &ManagedGenerationRepository<'_>,
+    guard: &orbok_models::ModelStoreMutationGuard<orbok_models::ExclusiveAccess>,
+    generation_id: &ManagedGenerationId,
+    generation_dir: &Path,
+    plan: &DownloadPlan,
+    manifest: &TrustedModelManifest,
+) -> Result<(), ModelDeliveryError> {
+    let final_snapshot = repository
+        .load_exclusive(guard)
+        .map_err(|_| ModelDeliveryError::FinalCheck)?;
+    if final_snapshot.profile.current_generation_id.as_ref() != Some(generation_id) {
+        return Err(ModelDeliveryError::FinalCheck);
+    }
+    let record = final_snapshot
+        .generations
+        .get(generation_id)
+        .ok_or(ModelDeliveryError::FinalCheck)?;
+    verify_generation_validity(generation_dir, plan, manifest, &record.manifest_id)
+        .await
+        .map_err(|_| ModelDeliveryError::FinalCheck)
 }
 
 async fn sha256_file(path: &Path) -> Result<String, ModelDeliveryError> {
@@ -468,8 +564,8 @@ fn map_lock_error(error: ModelStoreLockError) -> ModelDeliveryError {
 mod tests {
     use super::*;
     use orbok_models::{
-        DownloadAction, LocalFileStatus, ModelFilePlan, TrustedModelFile, TrustedModelIdentity,
-        TrustedTransportPolicy,
+        DownloadAction, LocalFileStatus, ManagedGenerationState, ModelFilePlan, TrustedModelFile,
+        TrustedModelIdentity, TrustedTransportPolicy,
     };
     use std::collections::HashMap;
     use std::process::Command;
@@ -483,7 +579,7 @@ mod tests {
         let model = b"trusted-onnx-model".to_vec();
         let server =
             MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
-        let fixture = fixture(&server, tokenizer, model, None);
+        let fixture = fixture(&server.base_url, tokenizer.clone(), model.clone(), None);
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("model-store");
         std::fs::create_dir(&root).unwrap();
@@ -505,6 +601,8 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            |_| {},
+            |_| {},
         )
         .await
         .unwrap();
@@ -531,7 +629,12 @@ mod tests {
         let model = b"corrupt-model".to_vec();
         let server =
             MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
-        let fixture = fixture(&server, tokenizer, model, Some(leak("0".repeat(64))));
+        let fixture = fixture(
+            &server.base_url,
+            tokenizer,
+            model,
+            Some(leak("0".repeat(64))),
+        );
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("model-store");
         std::fs::create_dir(&root).unwrap();
@@ -553,6 +656,8 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            |_| {},
+            |_| {},
         )
         .await;
         server.finish().await;
@@ -572,6 +677,53 @@ mod tests {
                 .count(),
             0
         );
+        assert_eq!(
+            std::fs::read_dir(root.join(STAGING_DIR)).unwrap().count(),
+            0
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn promotion_rename_failure_never_registers_or_activates_generation() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let server =
+            MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
+        let fixture = fixture(&server.base_url, tokenizer, model, None);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("model-store");
+        std::fs::create_dir(&root).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open_in_memory().unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+
+        let result = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &root,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            |promoted| {
+                std::fs::create_dir(promoted).unwrap();
+                std::fs::write(promoted.join("collision"), b"occupied").unwrap();
+            },
+            |_| {},
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::Filesystem)));
+        let snapshot = repository.load_exclusive(&guard).unwrap();
+        assert!(snapshot.profile.current_generation_id.is_none());
+        assert!(snapshot.generations.is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -579,7 +731,7 @@ mod tests {
         let tokenizer = b"trusted-tokenizer".to_vec();
         let model = b"trusted-onnx-model".to_vec();
         let server = MockServer::start([("/model", model.clone())]).await;
-        let mut fixture = fixture(&server, tokenizer.clone(), model, None);
+        let mut fixture = fixture(&server.base_url, tokenizer.clone(), model, None);
         fixture.plan.files[0].action = DownloadAction::Skip;
         fixture.plan.files[0].local_status = LocalFileStatus::Ready;
         let temp = tempfile::tempdir().unwrap();
@@ -604,6 +756,8 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            |_| {},
+            |_| {},
         )
         .await
         .unwrap();
@@ -613,6 +767,382 @@ mod tests {
             std::fs::read(outcome.generation_dir.join("tokenizer.json")).unwrap(),
             b"trusted-tokenizer"
         );
+    }
+
+    #[tokio::test]
+    async fn ready_current_rejects_missing_complete_marker_and_corrupt_manifest() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let fixture = fixture("http://127.0.0.1:1", tokenizer.clone(), model.clone(), None);
+        let temp = tempfile::tempdir().unwrap();
+        let generation_dir = temp.path().join("generation");
+        write_fixture_generation(&generation_dir, fixture.manifest, &tokenizer, &model);
+        let generation_id = ManagedGenerationId::generate();
+        let snapshot = ManagedGenerationSnapshot::empty(
+            orbok_models::ModelStoreProfileId::default_embedding(),
+        )
+        .register_inactive(generation_id.clone(), fixture.manifest.manifest_id)
+        .unwrap()
+        .activate(&generation_id)
+        .unwrap();
+
+        std::fs::remove_file(generation_dir.join(COMPLETE_FILE)).unwrap();
+        let missing_marker = verify_ready_current(
+            &snapshot,
+            generation_id.clone(),
+            generation_dir.clone(),
+            &fixture.plan,
+            fixture.manifest,
+        )
+        .await;
+        assert!(matches!(missing_marker, Err(ModelDeliveryError::Integrity)));
+
+        write_and_sync(&generation_dir.join(COMPLETE_FILE), b"complete\n").unwrap();
+        std::fs::write(generation_dir.join(TRUSTED_MANIFEST_FILE), b"{}").unwrap();
+        let corrupt_manifest = verify_ready_current(
+            &snapshot,
+            generation_id.clone(),
+            generation_dir.clone(),
+            &fixture.plan,
+            fixture.manifest,
+        )
+        .await;
+        assert!(matches!(
+            corrupt_manifest,
+            Err(ModelDeliveryError::Integrity)
+        ));
+
+        write_metadata(&generation_dir, fixture.manifest).unwrap();
+        let wrong_catalog_identity = ManagedGenerationSnapshot::empty(
+            orbok_models::ModelStoreProfileId::default_embedding(),
+        )
+        .register_inactive(generation_id.clone(), "different-manifest")
+        .unwrap()
+        .activate(&generation_id)
+        .unwrap();
+        let identity_mismatch = verify_ready_current(
+            &wrong_catalog_identity,
+            generation_id,
+            generation_dir,
+            &fixture.plan,
+            fixture.manifest,
+        )
+        .await;
+        assert!(matches!(
+            identity_mismatch,
+            Err(ModelDeliveryError::Integrity)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn post_commit_validation_failure_restores_prior_current_and_marks_new_invalid() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let server =
+            MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
+        let fixture = fixture(&server.base_url, tokenizer.clone(), model.clone(), None);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("model-store");
+        std::fs::create_dir(&root).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open_in_memory().unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let prior = ManagedGenerationId::generate();
+        let prior_dir = root.join(GENERATIONS_DIR).join(prior.as_str());
+        write_fixture_generation(&prior_dir, fixture.manifest, &tokenizer, &model);
+        repository
+            .register_inactive(&guard, prior.clone(), fixture.manifest.manifest_id)
+            .unwrap();
+        repository.activate(&guard, &prior).unwrap();
+        repository.advance_startup_epoch(&guard).unwrap();
+        let observed = repository.load_exclusive(&guard).unwrap();
+        let evidence = observed
+            .observe_current_for_startup_validation(&prior)
+            .unwrap();
+        repository
+            .validate_current_after_startup(&guard, &evidence)
+            .unwrap();
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+
+        let result = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &prior_dir,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            |_| {},
+            |promoted| std::fs::remove_file(promoted.join(COMPLETE_FILE)).unwrap(),
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::FinalCheck)));
+        let final_snapshot = repository.load_exclusive(&guard).unwrap();
+        assert_eq!(final_snapshot.profile.current_generation_id, Some(prior));
+        assert!(final_snapshot.profile.previous_generation_id.is_none());
+        assert_eq!(
+            final_snapshot
+                .generations
+                .values()
+                .filter(|record| record.state == ManagedGenerationState::Invalid)
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn corrupt_repair_predecessor_is_not_restored_after_post_commit_failure() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let server = MockServer::start([("/tokenizer", tokenizer.clone())]).await;
+        let mut fixture = fixture(&server.base_url, tokenizer.clone(), model.clone(), None);
+        fixture.plan.files[0].action = DownloadAction::Replace;
+        fixture.plan.files[0].local_status = LocalFileStatus::Invalid;
+        fixture.plan.files[1].action = DownloadAction::Skip;
+        fixture.plan.files[1].local_status = LocalFileStatus::Ready;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("model-store");
+        std::fs::create_dir(&root).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open_in_memory().unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let prior = ManagedGenerationId::generate();
+        let prior_dir = root.join(GENERATIONS_DIR).join(prior.as_str());
+        write_fixture_generation(&prior_dir, fixture.manifest, &tokenizer, &model);
+        std::fs::write(prior_dir.join("tokenizer.json"), b"corrupt-tokenizer").unwrap();
+        repository
+            .register_inactive(&guard, prior.clone(), fixture.manifest.manifest_id)
+            .unwrap();
+        repository.activate(&guard, &prior).unwrap();
+        repository.advance_startup_epoch(&guard).unwrap();
+        let observed = repository.load_exclusive(&guard).unwrap();
+        let evidence = observed
+            .observe_current_for_startup_validation(&prior)
+            .unwrap();
+        repository
+            .validate_current_after_startup(&guard, &evidence)
+            .unwrap();
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+
+        let result = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &prior_dir,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            |_| {},
+            |promoted| std::fs::remove_file(promoted.join(COMPLETE_FILE)).unwrap(),
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::FinalCheck)));
+        let final_snapshot = repository.load_exclusive(&guard).unwrap();
+        assert!(final_snapshot.profile.current_generation_id.is_none());
+        assert!(final_snapshot.profile.previous_generation_id.is_none());
+        assert_eq!(
+            final_snapshot
+                .generations
+                .values()
+                .filter(|record| record.state == ManagedGenerationState::Invalid)
+                .count(),
+            2
+        );
+        assert_eq!(
+            final_snapshot.generations.get(&prior).unwrap().state,
+            ManagedGenerationState::Invalid
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn post_commit_manifest_corruption_clears_initial_activation_and_marks_it_invalid() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let server =
+            MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
+        let fixture = fixture(&server.base_url, tokenizer, model, None);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("model-store");
+        std::fs::create_dir(&root).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open_in_memory().unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+
+        let result = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &root,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            |_| {},
+            |promoted| {
+                std::fs::write(promoted.join(TRUSTED_MANIFEST_FILE), b"{}").unwrap();
+            },
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::FinalCheck)));
+        let final_snapshot = repository.load_exclusive(&guard).unwrap();
+        assert!(final_snapshot.profile.current_generation_id.is_none());
+        assert!(final_snapshot.profile.previous_generation_id.is_none());
+        assert_eq!(
+            final_snapshot
+                .generations
+                .values()
+                .filter(|record| record.state == ManagedGenerationState::Invalid)
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn exact_size_header_mismatch_is_rejected_before_part_creation() {
+        let body = b"trusted-bytes";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len() + 1
+        )
+        .into_bytes();
+        let (url, server) = RawServer::start(vec![(Duration::ZERO, response)]).await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = test_file_plan(&url, body, body.len() as u64);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+
+        let result = download_file(
+            &base_client_builder().build().unwrap(),
+            &file,
+            temp.path(),
+            0,
+            1,
+            &mut events,
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::Integrity)));
+        assert!(!file.temp_path(temp.path()).exists());
+    }
+
+    #[tokio::test]
+    async fn omitted_content_length_streams_and_verifies_exact_bytes() {
+        let body = b"trusted-bytes";
+        let mut response = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+        response.extend_from_slice(body);
+        let (url, server) = RawServer::start(vec![(Duration::ZERO, response)]).await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = test_file_plan(&url, body, body.len() as u64);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+
+        download_file(
+            &base_client_builder().build().unwrap(),
+            &file,
+            temp.path(),
+            0,
+            1,
+            &mut events,
+        )
+        .await
+        .unwrap();
+        server.finish().await;
+
+        assert_eq!(std::fs::read(file.final_path(temp.path())).unwrap(), body);
+    }
+
+    #[tokio::test]
+    async fn transfer_overflow_without_content_length_is_rejected() {
+        let trusted = b"short";
+        let mut response = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+        response.extend_from_slice(b"bytes-longer-than-trusted");
+        let (url, server) = RawServer::start(vec![(Duration::ZERO, response)]).await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = test_file_plan(&url, trusted, trusted.len() as u64);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+
+        let result = download_file(
+            &base_client_builder().build().unwrap(),
+            &file,
+            temp.path(),
+            0,
+            1,
+            &mut events,
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::TransferLimit)));
+    }
+
+    #[tokio::test]
+    async fn timeout_and_midstream_disconnect_fail_closed() {
+        let body = b"trusted-bytes";
+        let delayed = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        let (timeout_url, timeout_server) =
+            RawServer::start(vec![(Duration::from_millis(100), delayed)]).await;
+        let temp = tempfile::tempdir().unwrap();
+        let timeout_file = test_file_plan(&timeout_url, body, body.len() as u64);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+        let timeout = download_file(
+            &base_client_builder()
+                .timeout(Duration::from_millis(20))
+                .build()
+                .unwrap(),
+            &timeout_file,
+            temp.path(),
+            0,
+            1,
+            &mut events,
+        )
+        .await;
+        timeout_server.finish().await;
+        assert!(matches!(timeout, Err(ModelDeliveryError::Network)));
+
+        let mut partial = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        partial.extend_from_slice(&body[..3]);
+        let (disconnect_url, disconnect_server) =
+            RawServer::start(vec![(Duration::ZERO, partial)]).await;
+        let disconnect_file = test_file_plan(&disconnect_url, body, body.len() as u64);
+        let disconnect = download_file(
+            &base_client_builder().build().unwrap(),
+            &disconnect_file,
+            temp.path(),
+            0,
+            1,
+            &mut events,
+        )
+        .await;
+        disconnect_server.finish().await;
+        assert!(matches!(disconnect, Err(ModelDeliveryError::Network)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -683,13 +1213,13 @@ mod tests {
     }
 
     fn fixture(
-        server: &MockServer,
+        base_url: &str,
         tokenizer: Vec<u8>,
         model: Vec<u8>,
         model_digest_override: Option<&'static str>,
     ) -> Fixture {
-        let tokenizer_url = leak(format!("{}/tokenizer", server.base_url));
-        let model_url = leak(format!("{}/model", server.base_url));
+        let tokenizer_url = leak(format!("{base_url}/tokenizer"));
+        let model_url = leak(format!("{base_url}/model"));
         let tokenizer_digest = leak(digest(&tokenizer));
         let model_digest = model_digest_override.unwrap_or_else(|| leak(digest(&model)));
         let trusted_files = Box::leak(
@@ -765,6 +1295,32 @@ mod tests {
         encoded
     }
 
+    fn write_fixture_generation(
+        generation_dir: &Path,
+        manifest: &TrustedModelManifest,
+        tokenizer: &[u8],
+        model: &[u8],
+    ) {
+        std::fs::create_dir_all(generation_dir.join("onnx")).unwrap();
+        std::fs::write(generation_dir.join("tokenizer.json"), tokenizer).unwrap();
+        std::fs::write(generation_dir.join("onnx/model.onnx"), model).unwrap();
+        write_metadata(generation_dir, manifest).unwrap();
+    }
+
+    fn test_file_plan(url: &str, trusted_bytes: &[u8], max_transfer_bytes: u64) -> ModelFilePlan {
+        ModelFilePlan {
+            logical_name: "test-file",
+            relative_path: "test.bin",
+            remote_url: leak(url.to_string()),
+            expected_sha256: leak(digest(trusted_bytes)),
+            exact_size_bytes: trusted_bytes.len() as u64,
+            max_transfer_bytes,
+            local_status: LocalFileStatus::Missing,
+            action: DownloadAction::Download,
+            temp_path_suffix: ".part",
+        }
+    }
+
     fn leak(value: String) -> &'static str {
         Box::leak(value.into_boxed_str())
     }
@@ -773,6 +1329,34 @@ mod tests {
         base_url: String,
         max_active: Arc<AtomicUsize>,
         task: tokio::task::JoinHandle<()>,
+    }
+
+    struct RawServer {
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl RawServer {
+        async fn start(chunks: Vec<(Duration, Vec<u8>)>) -> (String, Self) {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let task = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 2048];
+                let _ = stream.read(&mut request).await;
+                for (delay, chunk) in chunks {
+                    tokio::time::sleep(delay).await;
+                    if stream.write_all(&chunk).await.is_err() {
+                        break;
+                    }
+                }
+                let _ = stream.shutdown().await;
+            });
+            (format!("http://{address}/file"), Self { task })
+        }
+
+        async fn finish(self) {
+            self.task.await.unwrap();
+        }
     }
 
     impl MockServer {

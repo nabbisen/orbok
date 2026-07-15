@@ -39,3 +39,6 @@ tracing-subscriber          = { workspace = true }
 
 dirs                        = { workspace = true }
 futures                     = { workspace = true }
+
+[dev-dependencies]
+tempfile                    = { workspace = true }
