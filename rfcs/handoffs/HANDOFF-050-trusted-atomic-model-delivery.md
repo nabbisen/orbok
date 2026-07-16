@@ -111,6 +111,10 @@ for acceptance evidence.
 12. Preserve the executed-test count with platform evidence. A command that
     exits successfully after filtering out every requested test is not passing
     evidence for this phase.
+13. After one concurrent transfer fails, stop scheduling new transfers but
+    drain already-started transfer futures before cleaning the staging
+    directory. Do not race Windows file flush/sync work against cancellation and
+    recursive removal.
 
 Review point: generation transaction and injected-crash evidence before GUI
 integration.

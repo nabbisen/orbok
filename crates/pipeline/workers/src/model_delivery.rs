@@ -159,7 +159,10 @@ where
     B: FnOnce(&Path),
     A: FnOnce(&Path),
 {
-    if plan.manifest_id != manifest.manifest_id || plan.max_concurrent > 2 {
+    if plan.manifest_id != manifest.manifest_id
+        || plan.max_concurrent == 0
+        || plan.max_concurrent > 2
+    {
         return Err(ModelDeliveryError::Plan);
     }
     let generation_id = ManagedGenerationId::generate();
@@ -289,7 +292,7 @@ async fn stage_files(
         .collect::<Vec<_>>();
     let staging = staging.to_path_buf();
     let client = client.clone();
-    let downloads = downloads.into_iter().map(|(index, file)| {
+    let mut downloads = downloads.into_iter().map(|(index, file)| {
         let mut tx = events.clone();
         let staging = staging.clone();
         let client = client.clone();
@@ -299,9 +302,28 @@ async fn stage_files(
             download_file(&client, &file, &staging, index as u32, files_total, &mut tx).await
         }
     });
-    let mut results = futures::stream::iter(downloads).buffer_unordered(plan.max_concurrent);
-    while let Some(result) = results.next().await {
-        result?;
+    let mut in_flight = futures::stream::FuturesUnordered::new();
+    for _ in 0..plan.max_concurrent {
+        if let Some(download) = downloads.next() {
+            in_flight.push(download);
+        }
+    }
+    let mut first_error = None;
+    while let Some(result) = in_flight.next().await {
+        match result {
+            Ok(()) if first_error.is_none() => {
+                if let Some(download) = downloads.next() {
+                    in_flight.push(download);
+                }
+            }
+            Ok(()) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    if let Some(error) = first_error {
+        return Err(error);
     }
     Ok(())
 }
@@ -714,6 +736,38 @@ mod tests {
             std::fs::read_dir(root.join(STAGING_DIR)).unwrap().count(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn concurrent_failure_drains_started_transfer_before_cleanup() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let expected_model = b"trusted-onnx-model".to_vec();
+        let server = MockServer::start_delayed([
+            ("/tokenizer", tokenizer.clone(), Duration::from_millis(250)),
+            ("/model", b"short".to_vec(), Duration::ZERO),
+        ])
+        .await;
+        let fixture = fixture(&server.base_url, tokenizer.clone(), expected_model, None);
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        std::fs::create_dir(&staging).unwrap();
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+
+        let result = stage_files(
+            temp.path(),
+            &staging,
+            &fixture.plan,
+            &base_client_builder().build().unwrap(),
+            events,
+        )
+        .await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::Integrity)));
+        assert_eq!(
+            std::fs::read(staging.join("tokenizer.json")).unwrap(),
+            tokenizer
+        );
+        server.finish().await;
     }
 
     #[tokio::test]
@@ -1548,6 +1602,11 @@ mod tests {
         task: tokio::task::JoinHandle<()>,
     }
 
+    struct MockResponse {
+        body: Vec<u8>,
+        delay: Duration,
+    }
+
     struct RawServer {
         task: tokio::task::JoinHandle<()>,
     }
@@ -1578,9 +1637,23 @@ mod tests {
 
     impl MockServer {
         async fn start<const N: usize>(responses: [(&'static str, Vec<u8>); N]) -> Self {
+            Self::start_delayed(
+                responses.map(|(path, body)| (path, body, Duration::from_millis(50))),
+            )
+            .await
+        }
+
+        async fn start_delayed<const N: usize>(
+            responses: [(&'static str, Vec<u8>, Duration); N],
+        ) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
-            let responses = Arc::new(responses.into_iter().collect::<HashMap<_, _>>());
+            let responses = Arc::new(
+                responses
+                    .into_iter()
+                    .map(|(path, body, delay)| (path, MockResponse { body, delay }))
+                    .collect::<HashMap<_, _>>(),
+            );
             let active = Arc::new(AtomicUsize::new(0));
             let max_active = Arc::new(AtomicUsize::new(0));
             let active_task = active.clone();
@@ -1623,7 +1696,7 @@ mod tests {
 
     async fn serve(
         mut stream: TcpStream,
-        responses: Arc<HashMap<&'static str, Vec<u8>>>,
+        responses: Arc<HashMap<&'static str, MockResponse>>,
         active: Arc<AtomicUsize>,
         max_active: Arc<AtomicUsize>,
     ) {
@@ -1635,18 +1708,18 @@ mod tests {
         let Some(path) = request.split_whitespace().nth(1) else {
             return;
         };
-        let Some(body) = responses.get(path) else {
+        let Some(response) = responses.get(path) else {
             return;
         };
         let now = active.fetch_add(1, Ordering::SeqCst) + 1;
         max_active.fetch_max(now, Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        let response = format!(
+        tokio::time::sleep(response.delay).await;
+        let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
+            response.body.len()
         );
-        if stream.write_all(response.as_bytes()).await.is_ok() {
-            let _ = stream.write_all(body).await;
+        if stream.write_all(header.as_bytes()).await.is_ok() {
+            let _ = stream.write_all(&response.body).await;
         }
         let _ = stream.shutdown().await;
         active.fetch_sub(1, Ordering::SeqCst);
