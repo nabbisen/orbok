@@ -24,6 +24,7 @@ pub mod cleanup_service;
 mod embedding;
 mod extract;
 pub mod model_delivery;
+pub(crate) mod model_durability;
 pub mod model_lifecycle;
 pub mod model_verifier;
 pub mod recovery;
