@@ -6,7 +6,7 @@
 **Status:** Proposed  
 **Target milestone:** v1.0.0 security stabilization  
 **Date:** 2026-07-14  
-**Last revised:** 2026-07-15
+**Last revised:** 2026-07-16
 **Related RFCs:** RFC-012 Model Registry; RFC-021 Default Embedding Model; RFC-029 Model Download Integrity and Trust; RFC-043 Model Download Readiness  
 **Handoff:** [`HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 
@@ -131,11 +131,11 @@ exclusive model-store mutation guard
   -> create same-filesystem .staging/<install-id>
   -> bounded transfers (maximum 2) into .part files
   -> flush, close, verify exact size and trusted SHA-256 for every file
-  -> rename .part files to their staged names
+  -> rename .part files and complete each platform durability barrier
   -> write trusted-manifest.json and COMPLETE
-  -> sync the staged tree bottom-up
+  -> complete the platform namespace barriers
   -> rename the complete directory to generations/<install-id>
-  -> sync both rename parents and model root
+  -> complete the platform promotion barriers
   -> validate the immutable generation again
   -> in one transaction read current, then set new current + derived previous
   -> publish Ready only after the catalog transaction commits
@@ -162,30 +162,124 @@ Startup recovery runs before model loading:
 | current and previous both missing/invalid | mark invalid records, atomically set `(current=NULL, previous=NULL)`, and do not report Ready |
 | cleanup interrupted | active and previous generations remain; extra inactive data is safe |
 
-### 7.1. Exact Sync Order
+### 7.1. Platform Namespace Durability Protocol
 
-All paths are on the model store's filesystem. Where the platform supports
-directory syncing, the required order is:
+All regular payload, manifest, and completion-marker files use the same content
+protocol on every platform:
 
-1. Create `.staging/`, `generations/`, and the unique staging tree; sync newly
-   modified parent directories before transfer begins.
-2. After download and trusted verification, call `sync_all` on every `.part`
-   file before renaming it to its staged final name.
-3. After file renames, sync each modified nested directory bottom-up: `onnx/`
-   first, then the staging generation root.
-4. Write and `sync_all` `trusted-manifest.json`, then `COMPLETE`; sync the
-   staging generation root again.
-5. Rename `.staging/<id>` to `generations/<id>` using a new non-existing target.
-6. Sync the source parent `.staging/`, then destination parent `generations/`,
-   then the model root.
-7. Re-verify the promoted generation before opening the catalog transaction.
+1. Write a `.part` or metadata file.
+2. Flush and call file `sync_all` before closing it.
+3. Verify the trusted exact size and digest where applicable.
+4. Complete the platform rename barrier before treating a staged final name as
+   durable.
 
-A platform helper encapsulates directory sync semantics and is tested on Unix
-and Windows. If a target cannot provide the required rename/durability contract,
-installation fails before activation. The design does not promise that the
-latest activation survives power loss beyond the catalog's existing WAL plus
-`synchronous=NORMAL` policy; the safe permitted outcome is the prior coherent
-catalog pointer and an inactive complete generation.
+`COMPLETE` cannot participate in promotion until every payload and metadata
+file has completed its regular-file sync. Namespace durability is then
+platform-specific; Windows directory `File::sync_all` is not part of this
+contract.
+
+#### 7.1.1. Unix barriers
+
+Unix uses same-filesystem rename plus bottom-up directory `sync_all`:
+
+| Order | Barrier | Crash-safe disposition |
+|---|---|---|
+| 1 | Create `.staging/`, `generations/`, and the unique staging tree; sync modified parents | Missing or incomplete staging is never loadable |
+| 2 | Before/after each `.part` rename | Incomplete staging is quarantined or removed |
+| 3 | Sync modified nested directories, deepest first, then the staging generation root | Only fully named, file-synced payloads advance |
+| 4 | Write/sync `trusted-manifest.json`, then `COMPLETE`; sync the staging root | An unsynced/incomplete generation cannot promote |
+| 5 | Before/after rename from `.staging/<id>` to new `generations/<id>` | State is staging or a complete unreferenced generation |
+| 6 | Sync `.staging/`, then `generations/`, then the model root | Promotion namespace changes precede catalog mutation |
+| 7 | Re-verify the immutable generation | Failure prevents registration/activation |
+
+Recovery and quarantine renames sync their affected parents in the same
+source-parent, destination-parent, model-root order. Cleanup deletion is
+rechecked under the exclusive guard; interruption may over-retain inactive or
+invalid bytes but cannot remove current or previous generations.
+
+#### 7.1.2. Windows barriers
+
+Windows uses one shared wide-character `durable_rename` primitive implemented
+with `MoveFileExW` and exactly `MOVEFILE_WRITE_THROUGH`. It must not pass
+`MOVEFILE_REPLACE_EXISTING`, `MOVEFILE_COPY_ALLOWED`,
+`MOVEFILE_DELAY_UNTIL_REBOOT`, or any other move flag. Source and destination
+must be on the same supported local volume and the destination must not exist.
+A false return is a typed filesystem failure and prevents any catalog mutation
+that assumes the move succeeded.
+
+The primitive is mandatory for:
+
+- every `.part` to staged-final payload rename;
+- `.staging/<id>` to `generations/<id>` promotion;
+- a recovery move from staging to a complete unreferenced generation;
+- quarantine moves from `.staging` or `generations`.
+
+| Order | Barrier | Crash-safe disposition |
+|---|---|---|
+| 1 | Create staging parents/tree; no unsupported directory flush is claimed | Missing or incomplete staging is never loadable |
+| 2 | Before/after each write-through staged-file rename | A `.part` or staged final file remains non-loadable without the complete set |
+| 3 | Write and file-sync manifest and `COMPLETE` | File contents are durable before promotion |
+| 4 | Before/after write-through generation promotion | State is incomplete staging or a complete unreferenced generation |
+| 5 | Re-verify the immutable promoted generation | Failure prevents registration/activation |
+
+Before/after boundaries also wrap each write-through recovery/quarantine move.
+An interrupted creation is absent or incomplete staging. An interrupted cleanup
+deletion may leave extra inactive/invalid bytes and is retried. Neither case may
+modify or delete current/previous generations. A successful write-through
+promotion followed by a pre-catalog crash is recovered only after complete
+validation and only as inactive data; it is never auto-activated.
+
+#### 7.1.3. Shared catalog and lifecycle barriers
+
+After the platform namespace barriers and immutable-generation revalidation,
+Unix and Windows use the same SQLite crash boundaries:
+
+| Order | Before/after transaction | Crash-safe disposition |
+|---|---|---|
+| 1 | Inactive registration | Before commit, complete generation data is unreferenced; after commit, the generation is exactly `Inactive` |
+| 2 | Activation | Before commit, the prior pointer pair remains and the candidate is inactive; after commit, the candidate is current and commit-time current is previous |
+| 3 | Invalid-current rollback with verified previous `A` | Before commit, coherent `(current=B, previous=A)` remains and startup retries; after commit, state is exactly `(current=A, previous=NULL)` and `B` is invalid |
+| 4 | Invalid-current rollback with invalid/unverifiable previous `A` | Before commit, coherent `(current=B, previous=A)` remains and startup retries; after commit, state is exactly `(current=NULL, previous=NULL)` and both failed records are invalid |
+| 5 | Later-startup validation | Before commit, current remains unvalidated and previous stays protected; after commit, validation is durable and previous remains protected until release |
+| 6 | Predecessor release | Before commit, previous is safely over-retained; after commit, `previous=NULL` and the former previous record is inactive |
+
+Every row requires abrupt-exit injection immediately before and after commit on
+Windows and Unix-like targets. Rollback may never leave invalid `B` as previous,
+retain an invalid rollback target, or produce equal current and previous ids.
+SQLite atomicity permits only the complete pre-commit or post-commit state for
+the selected branch.
+
+#### 7.1.4. Windows path and volume contract
+
+The Windows helper must preserve the effective absolute and extended-length
+path behavior provided by Rust filesystem APIs:
+
+- use `MoveFileExW` with non-lossy UTF-16 conversion and reject interior NUL;
+- require absolute managed-store paths and reject relative, drive-relative, and
+  root-relative inputs;
+- preserve already-verbatim paths; convert drive-absolute paths to `\\?\C:\...`
+  form and UNC paths to `\\?\UNC\server\share\...` without resolving through a
+  reparse point;
+- preserve roots, Unicode components, and non-existing destination leaves;
+- validate the managed root and every existing ancestor without following an
+  unreviewed reparse boundary; derive a non-existing destination's volume from
+  an existing validated parent or opened managed-root handle, not lexical drive
+  letters alone;
+- reject malformed prefixes and propagate the raw Win32 error into safe test
+  diagnostics while retaining the public typed filesystem error.
+
+Initial Windows support is limited to local fixed NTFS or ReFS volumes. Source
+and destination volume identity and filesystem type are checked before the
+move. Installation preflights the managed-store path and volume before staging
+or network transfer. UNC/network shares, redirected network application-data
+roots, removable media, FAT/exFAT, cross-volume moves, and unknown
+filesystem/drive types fail closed before activation. Supporting them requires
+separate durability evidence and design review.
+
+The design does not promise that the latest activation survives power loss
+beyond the catalog's existing WAL plus `synchronous=NORMAL` policy. The safe
+permitted outcome is the prior coherent catalog pointer or a complete
+unreferenced/inactive generation.
 
 ### 7.2. Durable Startup Validation
 
@@ -304,6 +398,21 @@ cleanup protection for current/previous generations. Proxy tests set
 credential-bearing `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` values and prove
 the production client neither connects to the proxy nor emits proxy
 authorization.
+
+Windows helper tests must cover write-through file and directory moves,
+nonexistent-destination enforcement, same-volume enforcement, unsupported
+volume/filesystem failure, Unicode, extended-length drive paths, UNC conversion
+followed by policy rejection, interior-NUL rejection, and raw OS error
+diagnostics. The crash matrix must use the Windows barriers in §7.1.2 rather
+than obsolete Unix directory-sync points, followed by every shared catalog
+barrier in §7.1.3.
+
+The Windows reparse-boundary test must create a real directory junction or
+equivalent `FILE_ATTRIBUTE_REPARSE_POINT` fixture without requiring elevated
+symlink privilege, assert that the fixture is a reparse point, and then prove
+production validation rejects it. OS error 1314 is not a passing skip.
+Preflight tests must also reject a lexically local managed path whose existing
+ancestor is a junction/reparse point into unsupported storage.
 
 ## 13. Acceptance Criteria
 

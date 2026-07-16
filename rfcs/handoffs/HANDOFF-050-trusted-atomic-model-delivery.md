@@ -4,7 +4,7 @@
 **RFC:** 050  
 **Lifecycle stage:** Design + handoff  
 **Primary owners:** model registry/readiness, app download worker, security  
-**Last revised:** 2026-07-15
+**Last revised:** 2026-07-16
 **RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`../appendices/APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
@@ -68,16 +68,21 @@ Review point: schema/locking slice before download or generation promotion.
    fail closed if unavailable.
 2. Replace direct GUI `download::run(dest)` semantics with a worker receiving a
    fresh `ModelReadinessReport`, `DownloadPlan`, and trusted manifest.
-3. Allocate a unique same-filesystem `.staging/<install-id>` directory; never
-   write into current or previous generations.
+3. Preflight the platform path/volume contract, then allocate a unique
+   same-filesystem `.staging/<install-id>` directory; never write into current
+   or previous generations. On Windows this preflight occurs before staging or
+   network transfer.
 4. Execute only non-skip actions with maximum concurrency 2 using a production
    client with environment/system proxy discovery disabled.
 5. Stream to `.part` files with exact/max byte enforcement and timeouts.
 6. Flush/close and verify trusted size/digest for the complete required set.
-7. Rename staged files, sync `onnx/` then generation root, write/sync manifest
-   and `COMPLETE`, and sync the generation root again.
-8. Rename to a new immutable `generations/<install-id>`, then sync `.staging/`,
-   `generations/`, and model root in that order.
+7. Complete RFC-050 §7.1's platform barriers: Unix renames and syncs `onnx/`
+   then the generation root; Windows uses the reviewed write-through rename
+   primitive and never claims directory `sync_all`.
+8. Promote to a new immutable `generations/<install-id>` using the platform
+   barrier: Unix then syncs `.staging/`, `generations/`, and model root;
+   Windows uses same-volume, no-replacement `MoveFileExW` with exactly
+   `MOVEFILE_WRITE_THROUGH`.
 9. Re-verify the immutable generation.
 10. While still holding the guard, open one catalog transaction, read current,
     derive previous from that value, and activate the new generation.
@@ -91,8 +96,13 @@ for acceptance evidence.
 1. Increment and record the profile startup epoch under the exclusive guard.
 2. Recover/quarantine incomplete staging directories without activating them.
 3. Leave complete unreferenced generations inactive.
-4. Inject crashes before/after each file flush, nested-directory sync, staged
-   rename, both rename-parent syncs, model-root sync, and catalog transaction.
+4. Inject crashes against the platform tables in RFC-050 §7.1: Unix retains
+   file flush, nested/parent directory sync, rename, and catalog boundaries;
+   Windows uses before/after write-through file, promotion, recovery, and
+   quarantine moves. Both platforms inject before/after inactive registration,
+   activation, both invalid-current rollback branches, later-startup validation,
+   and predecessor release. Do not retain obsolete Windows directory-sync
+   points.
 5. For invalid `B` and verified previous `A`, atomically produce
    `(current=A, previous=NULL)` and mark `B` invalid; if both fail, produce
    `(NULL, NULL)`.
@@ -115,6 +125,16 @@ for acceptance evidence.
     drain already-started transfer futures before cleaning the staging
     directory. Do not race Windows file flush/sync work against cancellation and
     recursive removal.
+14. On Windows, preserve extended-length absolute path behavior, Unicode, raw
+    Win32 error diagnostics, same-volume identity, and local fixed NTFS/ReFS
+    policy. Fail closed for UNC/network, redirected network roots, removable or
+    unknown media, FAT/exFAT, and cross-volume moves.
+15. Use a non-elevated directory junction/reparse fixture, assert
+    `FILE_ATTRIBUTE_REPARSE_POINT`, and prove production rejection. Do not skip
+    on `ERROR_PRIVILEGE_NOT_HELD` (1314).
+16. Derive Windows volume/filesystem identity from a validated existing parent
+    or managed-root handle, reject reparse ancestors before trusting that
+    identity, and test a lexically local root redirected through a junction.
 
 Review point: generation transaction and injected-crash evidence before GUI
 integration.
@@ -139,12 +159,18 @@ integration.
 - timeout and mid-stream failure;
 - concurrent transfer bound;
 - staging-directory promotion/rename failure;
+- Windows write-through file/directory rename and nonexistent-target failure;
+- Windows Unicode, extended-length, malformed/interior-NUL, UNC-policy, volume,
+  and filesystem-policy cases;
+- non-elevated Windows junction/reparse rejection;
 - mutation-lock timeout and crashed-owner release;
 - cleanup versus promoted-pre-activation generation interleaving;
 - activation deriving previous from commit-time current;
 - crash at every activation point;
 - complete-set preservation and verified previous-generation rollback;
 - exact `(A, NULL)` / `(NULL, NULL)` rollback outcomes;
+- abrupt exit immediately before/after verified-previous rollback commit;
+- abrupt exit immediately before/after both-invalid rollback commit;
 - second-activation rejection before later-startup validation;
 - startup-epoch and cleanup-eligibility durability;
 - mixed-generation rejection;
@@ -157,6 +183,9 @@ integration.
 ## 8. Validation
 
 - narrow model/app/worker tests including mock-server tests
+- focused platform durability-helper tests on Unix and Windows
+- nonzero Windows checksum, lifecycle, reparse, contention, and abrupt-exit
+  evidence using the platform-specific barrier names
 - `cargo test --workspace --lib`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo audit --deny warnings`
@@ -168,8 +197,9 @@ integration.
 Return to design/security review if the provider cannot offer immutable
 artifacts, atomic replacement is unavailable on a target platform without a
 new recovery protocol, SQLite cannot durably represent the generation switch,
-the cross-process locking contract is unavailable on a target, directory sync
-cannot meet the reviewed contract, model selection must change, or
+the cross-process locking contract is unavailable on a target, neither Unix
+directory sync nor the reviewed Windows write-through rename can meet its
+platform contract, model selection must change, or
 implementation would claim that checksums make parsers safe.
 
 ## 10. Definition of Done
