@@ -296,14 +296,16 @@ async fn stage_files(
             .await
             .map_err(|_| ModelDeliveryError::Filesystem)?;
         crash_point(&format!("before_file_sync:{}", file.logical_name));
-        tokio::fs::OpenOptions::new()
+        let part_file = tokio::fs::OpenOptions::new()
             .write(true)
             .open(&part)
             .await
-            .map_err(|_| ModelDeliveryError::Filesystem)?
+            .map_err(|_| ModelDeliveryError::Filesystem)?;
+        part_file
             .sync_all()
             .await
             .map_err(|_| ModelDeliveryError::Filesystem)?;
+        close_tokio_file(part_file).await;
         crash_point(&format!("after_file_sync:{}", file.logical_name));
         crash_point(&format!(
             "before_staged_file_durable_rename:{}",
@@ -435,7 +437,7 @@ async fn download_file(
         .sync_all()
         .await
         .map_err(|_| ModelDeliveryError::Filesystem)?;
-    drop(output);
+    close_tokio_file(output).await;
     crash_point(&format!("after_file_sync:{}", file.logical_name));
     if downloaded != file.exact_size_bytes || sha256_file(&part).await? != file.expected_sha256 {
         return Err(ModelDeliveryError::Integrity);
@@ -464,6 +466,10 @@ async fn durable_rename_async(
         .await
         .map_err(|_| ModelDeliveryError::Filesystem)?
         .map_err(map_durability_filesystem_error)
+}
+
+async fn close_tokio_file(file: tokio::fs::File) {
+    drop(file.into_std().await);
 }
 
 async fn verify_payload_files(
@@ -537,6 +543,7 @@ async fn sha256_file(path: &Path) -> Result<String, ModelDeliveryError> {
         }
         hasher.update(&buffer[..read]);
     }
+    close_tokio_file(file).await;
     use std::fmt::Write as _;
     let mut encoded = String::with_capacity(64);
     for byte in hasher.finalize() {
@@ -669,6 +676,8 @@ fn map_durability_store_error(error: ModelDurabilityError) -> ModelDeliveryError
 }
 
 fn map_durability_filesystem_error(error: ModelDurabilityError) -> ModelDeliveryError {
+    #[cfg(test)]
+    eprintln!("managed model durability operation failed: {error}");
     tracing::warn!(durability_error = %error, "managed model durability operation failed");
     ModelDeliveryError::Filesystem
 }
@@ -696,6 +705,35 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn synced_tokio_file_is_closed_before_durable_rename() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp
+            .path()
+            .join(STAGING_DIR)
+            .join("generation")
+            .join("onnx");
+        std::fs::create_dir_all(&staging).unwrap();
+        let part = staging.join("model.onnx.part");
+        let destination = staging.join("model.onnx");
+        let mut output = tokio::fs::File::create(&part).await.unwrap();
+        output.write_all(b"durable-payload").await.unwrap();
+        output.flush().await.unwrap();
+        output.sync_all().await.unwrap();
+        close_tokio_file(output).await;
+
+        assert_eq!(
+            sha256_file(&part).await.unwrap(),
+            digest(b"durable-payload")
+        );
+        durable_rename_async(temp.path(), &part, &destination)
+            .await
+            .unwrap();
+
+        assert!(!part.exists());
+        assert_eq!(std::fs::read(destination).unwrap(), b"durable-payload");
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn mock_server_install_promotes_complete_generation_and_activates_it() {
