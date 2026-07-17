@@ -418,6 +418,15 @@ mod imp {
             })?;
             Ok(probes)
         }
+
+        pub(crate) fn require_same_supported_volume(
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), ModelDurabilityError> {
+            let source = supported_volume(source)?;
+            let destination = supported_volume(destination)?;
+            ensure_same_volume(&source, &destination)
+        }
     }
 }
 

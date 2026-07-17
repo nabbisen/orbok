@@ -64,8 +64,8 @@ fn unix_rename_moves_to_a_new_managed_destination() {
 mod windows {
     use super::*;
     use crate::model_durability::imp::test_support::{
-        ancestor_probe_paths, extended_path, reject_different_volumes, validate_absolute,
-        validate_storage,
+        ancestor_probe_paths, extended_path, reject_different_volumes,
+        require_same_supported_volume, validate_absolute, validate_storage,
     };
     use std::ffi::OsString;
     use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
@@ -79,6 +79,23 @@ mod windows {
         let mut wide = extended_path(path).unwrap();
         assert_eq!(wide.pop(), Some(0));
         PathBuf::from(OsString::from_wide(&wide))
+    }
+
+    fn create_junction(junction: &Path, target: &Path) {
+        let output = Command::new("cmd")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(junction)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "mklink /J failed");
+        assert_ne!(
+            std::fs::symlink_metadata(junction)
+                .unwrap()
+                .file_attributes()
+                & FILE_ATTRIBUTE_REPARSE_POINT,
+            0
+        );
     }
 
     #[test]
@@ -191,6 +208,40 @@ mod windows {
     }
 
     #[test]
+    fn dangling_junction_destination_is_still_an_existing_destination() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("junction-target");
+        let destination = temp.path().join("dangling-destination");
+        std::fs::create_dir(&target).unwrap();
+        create_junction(&destination, &target);
+        std::fs::remove_dir(&target).unwrap();
+        assert!(!destination.exists());
+
+        let source = temp.path().join("source");
+        std::fs::write(&source, b"source").unwrap();
+        assert_eq!(
+            durable_rename(temp.path(), &source, &destination),
+            Err(ModelDurabilityError::DestinationExists)
+        );
+        assert_eq!(std::fs::read(&source).unwrap(), b"source");
+    }
+
+    #[test]
+    fn invalid_component_preserves_the_raw_get_file_attributes_error() {
+        const ERROR_INVALID_NAME: i32 = 123;
+        let temp = tempfile::tempdir().unwrap();
+        let invalid = temp.path().join("invalid|component");
+
+        assert_eq!(
+            preflight_managed_store(&invalid),
+            Err(ModelDurabilityError::Os {
+                operation: "GetFileAttributesW",
+                code: Some(ERROR_INVALID_NAME),
+            })
+        );
+    }
+
+    #[test]
     fn preflight_and_rename_accept_verbatim_paths_longer_than_max_path() {
         const MAX_PATH: usize = 260;
         let temp = tempfile::tempdir().unwrap();
@@ -221,23 +272,51 @@ mod windows {
         let junction = temp.path().join("junction");
         let managed = target.join("managed");
         std::fs::create_dir_all(&managed).unwrap();
-        let output = Command::new("cmd")
-            .args(["/D", "/C", "mklink", "/J"])
-            .arg(&junction)
-            .arg(&target)
-            .output()
-            .unwrap();
-        assert!(output.status.success(), "mklink /J failed");
-        assert_ne!(
-            std::fs::symlink_metadata(&junction)
-                .unwrap()
-                .file_attributes()
-                & FILE_ATTRIBUTE_REPARSE_POINT,
-            0
-        );
+        create_junction(&junction, &target);
         let verbatim_root = verbatim_path(temp.path());
         assert_eq!(
             preflight_managed_store(&verbatim_root.join("junction").join("managed")),
+            Err(ModelDurabilityError::ReparseBoundary)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires ORBOK_TEST_WINDOWS_SECONDARY_SUPPORTED_ROOT on another fixed NTFS/ReFS volume"]
+    fn real_distinct_supported_volumes_are_rejected() {
+        let secondary = std::env::var_os("ORBOK_TEST_WINDOWS_SECONDARY_SUPPORTED_ROOT")
+            .map(PathBuf::from)
+            .expect("set ORBOK_TEST_WINDOWS_SECONDARY_SUPPORTED_ROOT");
+        let primary = tempfile::tempdir().unwrap();
+        preflight_managed_store(primary.path()).unwrap();
+        preflight_managed_store(&secondary).unwrap();
+
+        assert_eq!(
+            require_same_supported_volume(primary.path(), &secondary),
+            Err(ModelDurabilityError::CrossVolume)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires ORBOK_TEST_WINDOWS_UNSUPPORTED_LOCAL_ROOT on removable/FAT/exFAT storage"]
+    fn junction_into_real_unsupported_storage_is_rejected_before_following() {
+        let unsupported_root = std::env::var_os("ORBOK_TEST_WINDOWS_UNSUPPORTED_LOCAL_ROOT")
+            .map(PathBuf::from)
+            .expect("set ORBOK_TEST_WINDOWS_UNSUPPORTED_LOCAL_ROOT");
+        assert_eq!(
+            preflight_managed_store(&unsupported_root),
+            Err(ModelDurabilityError::UnsupportedStorage)
+        );
+
+        let unsupported_target = tempfile::Builder::new()
+            .prefix("orbok-unsupported-storage-")
+            .tempdir_in(&unsupported_root)
+            .unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let junction = local.path().join("redirected-managed-root");
+        create_junction(&junction, unsupported_target.path());
+
+        assert_eq!(
+            preflight_managed_store(&junction),
             Err(ModelDurabilityError::ReparseBoundary)
         );
     }
