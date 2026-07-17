@@ -103,11 +103,11 @@ mod imp {
     use super::*;
     use std::ffi::{OsStr, OsString};
     use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
-    use std::os::windows::fs::MetadataExt as _;
     use std::path::{Component, PathBuf, Prefix};
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_REPARSE_POINT, GetDriveTypeW, GetVolumeInformationW,
-        GetVolumeNameForVolumeMountPointW, GetVolumePathNameW, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, GetDriveTypeW, GetFileAttributesW,
+        GetVolumeInformationW, GetVolumeNameForVolumeMountPointW, GetVolumePathNameW,
+        INVALID_FILE_ATTRIBUTES, MOVEFILE_WRITE_THROUGH, MoveFileExW,
     };
     use windows_sys::Win32::System::WindowsProgramming::DRIVE_FIXED;
 
@@ -121,7 +121,10 @@ mod imp {
     pub(super) fn preflight_managed_store(root: &Path) -> Result<(), ModelDurabilityError> {
         validate_absolute_path(root)?;
         validate_existing_ancestors(root)?;
-        if !root.is_dir() {
+        let Some(attributes) = path_attributes(root)? else {
+            return Err(ModelDurabilityError::InvalidPath);
+        };
+        if attributes & FILE_ATTRIBUTE_DIRECTORY == 0 {
             return Err(ModelDurabilityError::InvalidPath);
         }
         supported_volume(root).map(|_| ())
@@ -140,15 +143,16 @@ mod imp {
             .parent()
             .ok_or(ModelDurabilityError::InvalidPath)?;
         validate_existing_ancestors(destination_parent)?;
-        if !source.exists() || !destination_parent.is_dir() {
+        let source_attributes = path_attributes(source)?;
+        let destination_parent_attributes = path_attributes(destination_parent)?;
+        if source_attributes.is_none()
+            || !destination_parent_attributes
+                .is_some_and(|attributes| attributes & FILE_ATTRIBUTE_DIRECTORY != 0)
+        {
             return Err(ModelDurabilityError::InvalidPath);
         }
-        match std::fs::symlink_metadata(destination) {
-            Ok(_) => return Err(ModelDurabilityError::DestinationExists),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(ModelDurabilityError::io_error("symlink_metadata", &error));
-            }
+        if path_attributes(destination)?.is_some() {
+            return Err(ModelDurabilityError::DestinationExists);
         }
 
         let source_volume = supported_volume(source)?;
@@ -213,18 +217,30 @@ mod imp {
             if !current.has_root() {
                 continue;
             }
-            let metadata = match std::fs::symlink_metadata(&current) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-                Err(error) => {
-                    return Err(ModelDurabilityError::io_error("symlink_metadata", &error));
-                }
+            let Some(attributes) = path_attributes(&current)? else {
+                break;
             };
-            if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
                 return Err(ModelDurabilityError::ReparseBoundary);
             }
         }
         Ok(())
+    }
+
+    fn path_attributes(path: &Path) -> Result<Option<u32>, ModelDurabilityError> {
+        let path_wide = extended_wide_path(path)?;
+        // SAFETY: path_wide is a live, NUL-terminated UTF-16 buffer.
+        let attributes = unsafe { GetFileAttributesW(path_wide.as_ptr()) };
+        if attributes != INVALID_FILE_ATTRIBUTES {
+            return Ok(Some(attributes));
+        }
+
+        let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::NotFound {
+            Ok(None)
+        } else {
+            Err(ModelDurabilityError::io_error("GetFileAttributesW", &error))
+        }
     }
 
     fn supported_volume(path: &Path) -> Result<VolumeIdentity, ModelDurabilityError> {
