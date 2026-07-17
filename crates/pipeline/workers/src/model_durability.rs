@@ -210,21 +210,41 @@ mod imp {
     }
 
     fn validate_existing_ancestors(path: &Path) -> Result<(), ModelDurabilityError> {
-        validate_absolute_path(path)?;
-        let mut current = PathBuf::new();
-        for component in path.components() {
-            current.push(component.as_os_str());
-            if !current.has_root() {
-                continue;
-            }
-            let Some(attributes) = path_attributes(&current)? else {
-                break;
+        walk_rooted_ancestors(path, |current| {
+            let Some(attributes) = path_attributes(current)? else {
+                return Ok(false);
             };
             if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
                 return Err(ModelDurabilityError::ReparseBoundary);
             }
+            Ok(true)
+        })
+    }
+
+    fn walk_rooted_ancestors(
+        path: &Path,
+        mut inspect: impl FnMut(&Path) -> Result<bool, ModelDurabilityError>,
+    ) -> Result<(), ModelDurabilityError> {
+        validate_absolute_path(path)?;
+        let mut current = PathBuf::new();
+        let mut root_complete = false;
+        for component in path.components() {
+            current.push(component.as_os_str());
+            match component {
+                Component::Prefix(_) => continue,
+                Component::RootDir => root_complete = true,
+                Component::Normal(_) if root_complete => {}
+                _ => return Err(ModelDurabilityError::InvalidPath),
+            }
+            if !inspect(&current)? {
+                return Ok(());
+            }
         }
-        Ok(())
+        if root_complete {
+            Ok(())
+        } else {
+            Err(ModelDurabilityError::InvalidPath)
+        }
     }
 
     fn path_attributes(path: &Path) -> Result<Option<u32>, ModelDurabilityError> {
@@ -386,6 +406,17 @@ mod imp {
             filesystem: &str,
         ) -> Result<(), ModelDurabilityError> {
             validate_storage_kind(drive_type, filesystem)
+        }
+
+        pub(crate) fn ancestor_probe_paths(
+            path: &Path,
+        ) -> Result<Vec<PathBuf>, ModelDurabilityError> {
+            let mut probes = Vec::new();
+            walk_rooted_ancestors(path, |probe| {
+                probes.push(probe.to_path_buf());
+                Ok(true)
+            })?;
+            Ok(probes)
         }
     }
 }

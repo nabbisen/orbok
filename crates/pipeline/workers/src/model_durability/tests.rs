@@ -64,7 +64,8 @@ fn unix_rename_moves_to_a_new_managed_destination() {
 mod windows {
     use super::*;
     use crate::model_durability::imp::test_support::{
-        extended_path, reject_different_volumes, validate_absolute, validate_storage,
+        ancestor_probe_paths, extended_path, reject_different_volumes, validate_absolute,
+        validate_storage,
     };
     use std::ffi::OsString;
     use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
@@ -99,6 +100,17 @@ mod windows {
             validate_storage(DRIVE_REMOTE, "NTFS"),
             Err(ModelDurabilityError::UnsupportedStorage),
             "a converted UNC path remains outside the supported local-volume policy"
+        );
+    }
+
+    #[test]
+    fn ancestor_probes_begin_only_after_the_verbatim_root_is_complete() {
+        let probes = ancestor_probe_paths(Path::new(r"\\?\C:\models\generation")).unwrap();
+        assert_eq!(probes.first(), Some(&PathBuf::from(r"\\?\C:\")));
+        assert!(!probes.iter().any(|probe| probe == Path::new(r"\\?\C:")));
+        assert_eq!(
+            ancestor_probe_paths(Path::new(r"\\?\C:")),
+            Err(ModelDurabilityError::InvalidPath)
         );
     }
 
