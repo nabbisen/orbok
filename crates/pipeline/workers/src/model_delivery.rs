@@ -709,14 +709,10 @@ mod tests {
     #[tokio::test]
     async fn synced_tokio_file_is_closed_before_durable_rename() {
         let temp = tempfile::tempdir().unwrap();
-        let staging = temp
-            .path()
-            .join(STAGING_DIR)
-            .join("generation")
-            .join("onnx");
-        std::fs::create_dir_all(&staging).unwrap();
-        let part = staging.join("model.onnx.part");
-        let destination = staging.join("model.onnx");
+        let generation = temp.path().join(STAGING_DIR).join("generation");
+        let part = generation.join("onnx/model.onnx.part");
+        let destination = generation.join("onnx/model.onnx");
+        std::fs::create_dir_all(part.parent().unwrap()).unwrap();
         let mut output = tokio::fs::File::create(&part).await.unwrap();
         output.write_all(b"durable-payload").await.unwrap();
         output.flush().await.unwrap();

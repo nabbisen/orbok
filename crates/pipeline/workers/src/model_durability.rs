@@ -192,21 +192,31 @@ mod imp {
         {
             return Err(ModelDurabilityError::InvalidPath);
         }
-        match path.components().next() {
-            Some(Component::Prefix(prefix))
-                if matches!(
-                    prefix.kind(),
-                    Prefix::Disk(_)
-                        | Prefix::UNC(_, _)
-                        | Prefix::Verbatim(_)
-                        | Prefix::VerbatimDisk(_)
-                        | Prefix::VerbatimUNC(_, _)
-                ) =>
-            {
-                Ok(())
-            }
-            _ => Err(ModelDurabilityError::InvalidPath),
+        let Some(Component::Prefix(prefix)) = path.components().next() else {
+            return Err(ModelDurabilityError::InvalidPath);
+        };
+        let prefix = prefix.kind();
+        if !matches!(
+            prefix,
+            Prefix::Disk(_)
+                | Prefix::UNC(_, _)
+                | Prefix::Verbatim(_)
+                | Prefix::VerbatimDisk(_)
+                | Prefix::VerbatimUNC(_, _)
+        ) {
+            return Err(ModelDurabilityError::InvalidPath);
         }
+        if matches!(
+            prefix,
+            Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _)
+        ) && path
+            .as_os_str()
+            .encode_wide()
+            .any(|unit| unit == u16::from(b'/'))
+        {
+            return Err(ModelDurabilityError::InvalidPath);
+        }
+        Ok(())
     }
 
     fn validate_existing_ancestors(path: &Path) -> Result<(), ModelDurabilityError> {
@@ -349,7 +359,17 @@ mod imp {
 
     fn extended_wide_path(path: &Path) -> Result<Vec<u16>, ModelDurabilityError> {
         validate_absolute_path(path)?;
-        let raw = path.as_os_str().encode_wide().collect::<Vec<_>>();
+        let raw = path
+            .as_os_str()
+            .encode_wide()
+            .map(|unit| {
+                if unit == u16::from(b'/') {
+                    u16::from(b'\\')
+                } else {
+                    unit
+                }
+            })
+            .collect::<Vec<_>>();
         if raw.contains(&0) {
             return Err(ModelDurabilityError::InvalidPath);
         }

@@ -107,11 +107,30 @@ mod windows {
             OsString::from(r"\\?\C:\models\日本語\generation")
         );
 
+        let mixed_separators = PathBuf::from(r"C:\models\onnx/model.onnx");
+        assert!(
+            mixed_separators
+                .as_os_str()
+                .encode_wide()
+                .any(|unit| unit == u16::from(b'/'))
+        );
+        let mixed_wide = extended_path(&mixed_separators).unwrap();
+        assert_eq!(
+            OsString::from_wide(&mixed_wide[..mixed_wide.len() - 1]),
+            OsString::from(r"\\?\C:\models\onnx\model.onnx")
+        );
+
         let unc = PathBuf::from(r"\\server\share\モデル");
         let unc_wide = extended_path(&unc).unwrap();
         assert_eq!(
             OsString::from_wide(&unc_wide[..unc_wide.len() - 1]),
             OsString::from(r"\\?\UNC\server\share\モデル")
+        );
+        let mixed_unc = PathBuf::from(r"\\server\share\models/model.onnx");
+        let mixed_unc_wide = extended_path(&mixed_unc).unwrap();
+        assert_eq!(
+            OsString::from_wide(&mixed_unc_wide[..mixed_unc_wide.len() - 1]),
+            OsString::from(r"\\?\UNC\server\share\models\model.onnx")
         );
         assert_eq!(
             validate_storage(DRIVE_REMOTE, "NTFS"),
@@ -123,11 +142,22 @@ mod windows {
     #[test]
     fn ancestor_probes_begin_only_after_the_verbatim_root_is_complete() {
         let probes = ancestor_probe_paths(Path::new(r"\\?\C:\models\generation")).unwrap();
-        assert_eq!(probes.first(), Some(&PathBuf::from(r"\\?\C:\")));
-        assert!(!probes.iter().any(|probe| probe == Path::new(r"\\?\C:")));
+        assert_eq!(
+            probes,
+            [
+                PathBuf::from(r"\\?\C:\"),
+                PathBuf::from(r"\\?\C:\models"),
+                PathBuf::from(r"\\?\C:\models\generation"),
+            ]
+        );
         assert_eq!(
             ancestor_probe_paths(Path::new(r"\\?\C:")),
             Err(ModelDurabilityError::InvalidPath)
+        );
+        assert_eq!(
+            ancestor_probe_paths(Path::new(r"\\?\C:\models/safe/junction/leaf")),
+            Err(ModelDurabilityError::InvalidPath),
+            "mixed-separator verbatim paths must be rejected before probing"
         );
     }
 
@@ -141,6 +171,23 @@ mod windows {
             validate_absolute(Path::new(r"\root-relative")),
             Err(ModelDurabilityError::InvalidPath)
         );
+        for path in [
+            r"\\?\C:\models/safe/leaf",
+            r"\\?\UNC\server\share/models/leaf",
+            r"\\?\C:\models/safe/./leaf",
+            r"\\?\C:\models/safe/../leaf",
+        ] {
+            assert_eq!(
+                validate_absolute(Path::new(path)),
+                Err(ModelDurabilityError::InvalidPath),
+                "{path}"
+            );
+            assert_eq!(
+                extended_path(Path::new(path)),
+                Err(ModelDurabilityError::InvalidPath),
+                "{path}"
+            );
+        }
         let with_nul = PathBuf::from(OsString::from_wide(&[
             b'C' as u16,
             b':' as u16,
