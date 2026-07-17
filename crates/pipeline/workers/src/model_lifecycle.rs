@@ -1,6 +1,8 @@
 //! Serialized managed-model startup recovery and cleanup (RFC-050 Phase 3).
 
+#[cfg(unix)]
 use crate::model_delivery::sync_directory;
+use crate::model_durability::{ModelDurabilityError, durable_rename, preflight_managed_store};
 use orbok_db::Catalog;
 use orbok_db::repo::ManagedGenerationRepository;
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
@@ -64,6 +66,8 @@ pub(crate) fn run_managed_model_startup_with(
     manifest_id: &str,
     validate_and_load: impl Fn(&Path) -> bool,
 ) -> Result<ManagedModelStartupOutcome, ModelLifecycleError> {
+    preflight_managed_store(store.models_dir()).map_err(map_durability_store_error)?;
+    #[cfg(unix)]
     if !is_real_directory_from_store_root(store.models_dir(), store.models_dir()) {
         return Err(ModelLifecycleError::StoreUnavailable);
     }
@@ -93,7 +97,12 @@ pub(crate) fn run_managed_model_startup_with(
             .map_err(|_| ModelLifecycleError::Filesystem)?
             .is_dir()
         {
-            quarantine(&path, &quarantine_parent, &staging_parent)?;
+            quarantine(
+                store.models_dir(),
+                &path,
+                &quarantine_parent,
+                &staging_parent,
+            )?;
             quarantined_staging += 1;
             continue;
         }
@@ -104,18 +113,40 @@ pub(crate) fn run_managed_model_startup_with(
         if let Some(generation_id) = parsed_id.filter(|_| validate_and_load(&path)) {
             let promoted = generations_parent.join(generation_id.as_str());
             if promoted.exists() {
-                quarantine(&path, &quarantine_parent, &staging_parent)?;
+                quarantine(
+                    store.models_dir(),
+                    &path,
+                    &quarantine_parent,
+                    &staging_parent,
+                )?;
                 quarantined_staging += 1;
                 continue;
             }
-            std::fs::rename(&path, &promoted).map_err(|_| ModelLifecycleError::Filesystem)?;
-            sync_directory(&staging_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
-            sync_directory(&generations_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
-            sync_directory(store.models_dir()).map_err(|_| ModelLifecycleError::Filesystem)?;
+            lifecycle_crash_point("before_recovery_durable_rename");
+            durable_rename(store.models_dir(), &path, &promoted)
+                .map_err(map_durability_filesystem_error)?;
+            lifecycle_crash_point("after_recovery_durable_rename");
+            #[cfg(unix)]
+            {
+                lifecycle_crash_point("before_recovery_source_parent_sync");
+                sync_directory(&staging_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
+                lifecycle_crash_point("after_recovery_source_parent_sync");
+                lifecycle_crash_point("before_recovery_destination_parent_sync");
+                sync_directory(&generations_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
+                lifecycle_crash_point("after_recovery_destination_parent_sync");
+                lifecycle_crash_point("before_recovery_model_root_sync");
+                sync_directory(store.models_dir()).map_err(|_| ModelLifecycleError::Filesystem)?;
+                lifecycle_crash_point("after_recovery_model_root_sync");
+            }
             register_inactive_if_unreferenced(&repository, &guard, generation_id, manifest_id)?;
             recovered_inactive += 1;
         } else {
-            quarantine(&path, &quarantine_parent, &staging_parent)?;
+            quarantine(
+                store.models_dir(),
+                &path,
+                &quarantine_parent,
+                &staging_parent,
+            )?;
             quarantined_staging += 1;
         }
     }
@@ -147,7 +178,12 @@ pub(crate) fn run_managed_model_startup_with(
             register_inactive_if_unreferenced(&repository, &guard, generation_id, manifest_id)?;
             recovered_inactive += 1;
         } else {
-            quarantine(&path, &quarantine_parent, &generations_parent)?;
+            quarantine(
+                store.models_dir(),
+                &path,
+                &quarantine_parent,
+                &generations_parent,
+            )?;
             quarantined_generations += 1;
         }
     }
@@ -226,6 +262,7 @@ pub fn cleanup_managed_model_generations(
     catalog: &Catalog,
     store: &ManagedModelStore,
 ) -> Result<ManagedModelCleanupOutcome, ModelLifecycleError> {
+    preflight_managed_store(store.models_dir()).map_err(map_durability_store_error)?;
     let guard = store
         .acquire_exclusive(LOCK_TIMEOUT)
         .map_err(map_lock_error)?;
@@ -260,9 +297,14 @@ pub fn cleanup_managed_model_generations(
         }
     }
     if removed_generations > 0 {
-        sync_directory(&store.models_dir().join(GENERATIONS_DIR))
-            .map_err(|_| ModelLifecycleError::Filesystem)?;
-        sync_directory(store.models_dir()).map_err(|_| ModelLifecycleError::Filesystem)?;
+        #[cfg(unix)]
+        {
+            sync_directory(&store.models_dir().join(GENERATIONS_DIR))
+                .map_err(|_| ModelLifecycleError::Filesystem)?;
+            sync_directory(store.models_dir()).map_err(|_| ModelLifecycleError::Filesystem)?;
+        }
+        #[cfg(not(any(unix, windows)))]
+        return Err(ModelLifecycleError::Filesystem);
     }
     Ok(ManagedModelCleanupOutcome {
         removed_generations,
@@ -327,6 +369,12 @@ fn trusted_generation_bytes_valid(generation_dir: &Path) -> bool {
             == Some(b"complete\n")
 }
 
+#[cfg(windows)]
+fn is_real_directory_from_store_root(store_root: &Path, directory: &Path) -> bool {
+    directory.strip_prefix(store_root).is_ok() && preflight_managed_store(directory).is_ok()
+}
+
+#[cfg(not(windows))]
 fn is_real_directory_from_store_root(store_root: &Path, directory: &Path) -> bool {
     let Ok(relative) = directory.strip_prefix(store_root) else {
         return false;
@@ -425,7 +473,13 @@ fn create_and_sync_parent(root: &Path, path: &Path) -> Result<(), ModelLifecycle
             .ok_or(ModelLifecycleError::Filesystem);
     }
     std::fs::create_dir(path).map_err(|_| ModelLifecycleError::Filesystem)?;
-    sync_directory(root).map_err(|_| ModelLifecycleError::Filesystem)
+    #[cfg(windows)]
+    let _ = root;
+    #[cfg(unix)]
+    sync_directory(root).map_err(|_| ModelLifecycleError::Filesystem)?;
+    #[cfg(not(any(unix, windows)))]
+    return Err(ModelLifecycleError::Filesystem);
+    Ok(())
 }
 
 fn read_entries(path: &Path) -> Result<Vec<std::fs::DirEntry>, ModelLifecycleError> {
@@ -436,9 +490,10 @@ fn read_entries(path: &Path) -> Result<Vec<std::fs::DirEntry>, ModelLifecycleErr
 }
 
 fn quarantine(
+    managed_root: &Path,
     path: &Path,
     quarantine_parent: &Path,
-    staging_parent: &Path,
+    source_parent: &Path,
 ) -> Result<(), ModelLifecycleError> {
     let original = path
         .file_name()
@@ -446,9 +501,26 @@ fn quarantine(
         .unwrap_or_default();
     let unique = ManagedGenerationId::generate();
     let target = quarantine_parent.join(format!("{original}-{}", unique.as_str()));
-    std::fs::rename(path, target).map_err(|_| ModelLifecycleError::Filesystem)?;
-    sync_directory(staging_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
-    sync_directory(quarantine_parent).map_err(|_| ModelLifecycleError::Filesystem)
+    lifecycle_crash_point("before_quarantine_durable_rename");
+    durable_rename(managed_root, path, &target).map_err(map_durability_filesystem_error)?;
+    lifecycle_crash_point("after_quarantine_durable_rename");
+    #[cfg(windows)]
+    let _ = source_parent;
+    #[cfg(unix)]
+    {
+        lifecycle_crash_point("before_quarantine_source_parent_sync");
+        sync_directory(source_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
+        lifecycle_crash_point("after_quarantine_source_parent_sync");
+        lifecycle_crash_point("before_quarantine_destination_parent_sync");
+        sync_directory(quarantine_parent).map_err(|_| ModelLifecycleError::Filesystem)?;
+        lifecycle_crash_point("after_quarantine_destination_parent_sync");
+        lifecycle_crash_point("before_quarantine_model_root_sync");
+        sync_directory(managed_root).map_err(|_| ModelLifecycleError::Filesystem)?;
+        lifecycle_crash_point("after_quarantine_model_root_sync");
+    }
+    #[cfg(not(any(unix, windows)))]
+    return Err(ModelLifecycleError::Filesystem);
+    Ok(())
 }
 
 fn map_lock_error(error: ModelStoreLockError) -> ModelLifecycleError {
@@ -458,6 +530,16 @@ fn map_lock_error(error: ModelStoreLockError) -> ModelLifecycleError {
             ModelLifecycleError::StoreUnavailable
         }
     }
+}
+
+fn map_durability_store_error(error: ModelDurabilityError) -> ModelLifecycleError {
+    tracing::warn!(durability_error = %error, "managed model durability preflight failed");
+    ModelLifecycleError::StoreUnavailable
+}
+
+fn map_durability_filesystem_error(error: ModelDurabilityError) -> ModelLifecycleError {
+    tracing::warn!(durability_error = %error, "managed model durability operation failed");
+    ModelLifecycleError::Filesystem
 }
 
 #[cfg(test)]
@@ -699,6 +781,106 @@ mod tests {
             snapshot.generations[&complete_unreferenced].state,
             ManagedGenerationState::Inactive
         );
+    }
+
+    #[test]
+    fn recovery_and_quarantine_durability_boundaries_recover_coherently() {
+        let rename_crash_cases = [
+            ("before_recovery_durable_rename", true),
+            ("after_recovery_durable_rename", true),
+            ("before_quarantine_durable_rename", false),
+            ("after_quarantine_durable_rename", false),
+        ];
+        #[cfg(unix)]
+        let crash_cases = rename_crash_cases
+            .into_iter()
+            .chain([
+                ("before_recovery_source_parent_sync", true),
+                ("after_recovery_source_parent_sync", true),
+                ("before_recovery_destination_parent_sync", true),
+                ("after_recovery_destination_parent_sync", true),
+                ("before_recovery_model_root_sync", true),
+                ("after_recovery_model_root_sync", true),
+                ("before_quarantine_source_parent_sync", false),
+                ("after_quarantine_source_parent_sync", false),
+                ("before_quarantine_destination_parent_sync", false),
+                ("after_quarantine_destination_parent_sync", false),
+                ("before_quarantine_model_root_sync", false),
+                ("after_quarantine_model_root_sync", false),
+            ])
+            .collect::<Vec<_>>();
+        #[cfg(not(unix))]
+        let crash_cases = rename_crash_cases.to_vec();
+
+        for (crash_point, valid) in crash_cases {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("model-store");
+            std::fs::create_dir(&root).unwrap();
+            let catalog_path = temp.path().join("catalog.sqlite3");
+            drop(Catalog::open(&catalog_path).unwrap());
+            let store = ManagedModelStore::default_embedding(&root);
+            let generation_id = ManagedGenerationId::generate();
+            create_generation(store.models_dir(), STAGING_DIR, &generation_id, valid);
+
+            let output = lifecycle_child_command(
+                &std::env::current_exe().unwrap(),
+                &root,
+                &catalog_path,
+                "recovery",
+            )
+            .env("ORBOK_RFC050_LIFECYCLE_CRASH_POINT", crash_point)
+            .output()
+            .unwrap();
+            assert!(
+                !output.status.success(),
+                "lifecycle failpoint {crash_point} did not abort"
+            );
+
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            let outcome = run_managed_model_startup_with(
+                &catalog,
+                &store,
+                DEFAULT_TRUSTED_MODEL.manifest_id,
+                marker_validator,
+            )
+            .unwrap();
+            let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+            let snapshot = ManagedGenerationRepository::new(&catalog)
+                .load_shared(&guard)
+                .unwrap();
+            snapshot.validate().unwrap();
+
+            if valid {
+                assert_eq!(outcome.recovered_inactive, 1, "{crash_point}");
+                assert_eq!(
+                    snapshot.generations[&generation_id].state,
+                    ManagedGenerationState::Inactive,
+                    "{crash_point}"
+                );
+                assert!(
+                    root.join(GENERATIONS_DIR)
+                        .join(generation_id.as_str())
+                        .is_dir(),
+                    "{crash_point}"
+                );
+            } else {
+                assert!(snapshot.generations.is_empty(), "{crash_point}");
+                assert_eq!(
+                    std::fs::read_dir(root.join(QUARANTINE_DIR))
+                        .unwrap()
+                        .count(),
+                    1,
+                    "{crash_point}"
+                );
+            }
+            assert!(
+                std::fs::read_dir(root.join(STAGING_DIR))
+                    .unwrap()
+                    .next()
+                    .is_none(),
+                "staging was not classified after {crash_point}"
+            );
+        }
     }
 
     #[test]

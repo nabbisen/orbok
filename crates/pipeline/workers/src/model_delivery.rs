@@ -1,5 +1,6 @@
 //! Serialized trusted model-generation delivery (RFC-050 Phase 2).
 
+use crate::model_durability::{ModelDurabilityError, durable_rename, preflight_managed_store};
 use futures::{SinkExt as _, StreamExt as _};
 use orbok_db::Catalog;
 use orbok_db::repo::ManagedGenerationRepository;
@@ -76,9 +77,7 @@ pub async fn install_default_model(
     DEFAULT_TRUSTED_MODEL
         .validate()
         .map_err(|_| ModelDeliveryError::TrustPolicy)?;
-    if !store.models_dir().is_dir() {
-        return Err(ModelDeliveryError::StoreUnavailable);
-    }
+    preflight_managed_store(store.models_dir()).map_err(map_durability_store_error)?;
     let guard = store
         .acquire_exclusive(LOCK_TIMEOUT)
         .map_err(map_lock_error)?;
@@ -165,6 +164,7 @@ where
     {
         return Err(ModelDeliveryError::Plan);
     }
+    preflight_managed_store(store.models_dir()).map_err(map_durability_store_error)?;
     let generation_id = ManagedGenerationId::generate();
     let staging_parent = store.models_dir().join(STAGING_DIR);
     let generations_parent = store.models_dir().join(GENERATIONS_DIR);
@@ -174,33 +174,52 @@ where
     std::fs::create_dir_all(&staging_parent).map_err(|_| ModelDeliveryError::Filesystem)?;
     std::fs::create_dir_all(&generations_parent).map_err(|_| ModelDeliveryError::Filesystem)?;
     std::fs::create_dir(&staging).map_err(|_| ModelDeliveryError::Filesystem)?;
-    sync_directory(&staging_parent)?;
-    sync_directory(&generations_parent)?;
-    sync_directory(store.models_dir())?;
+    #[cfg(unix)]
+    {
+        sync_directory(&staging_parent)?;
+        sync_directory(&generations_parent)?;
+        sync_directory(store.models_dir())?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    return Err(ModelDeliveryError::Filesystem);
 
-    let result = stage_files(source_dir, &staging, plan, client, events).await;
+    let result = stage_files(
+        store.models_dir(),
+        source_dir,
+        &staging,
+        plan,
+        client,
+        events,
+    )
+    .await;
     if let Err(error) = result {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
     verify_payload_files(&staging, plan).await?;
+    #[cfg(unix)]
     sync_staged_tree(&staging, plan)?;
+    #[cfg(not(any(unix, windows)))]
+    return Err(ModelDeliveryError::Filesystem);
     write_metadata(&staging, manifest)?;
     verify_generation_validity(&staging, plan, manifest, manifest.manifest_id).await?;
 
     before_promotion(&promoted);
-    crash_point("before_staged_rename");
-    std::fs::rename(&staging, &promoted).map_err(|_| ModelDeliveryError::Filesystem)?;
-    crash_point("after_staged_rename");
-    crash_point("before_staging_parent_sync");
-    sync_directory(&staging_parent)?;
-    crash_point("after_staging_parent_sync");
-    crash_point("before_generations_parent_sync");
-    sync_directory(&generations_parent)?;
-    crash_point("after_generations_parent_sync");
-    crash_point("before_model_root_sync");
-    sync_directory(store.models_dir())?;
-    crash_point("after_model_root_sync");
+    crash_point("before_generation_promotion_durable_rename");
+    durable_rename_async(store.models_dir(), &staging, &promoted).await?;
+    crash_point("after_generation_promotion_durable_rename");
+    #[cfg(unix)]
+    {
+        crash_point("before_staging_parent_sync");
+        sync_directory(&staging_parent)?;
+        crash_point("after_staging_parent_sync");
+        crash_point("before_generations_parent_sync");
+        sync_directory(&generations_parent)?;
+        crash_point("after_generations_parent_sync");
+        crash_point("before_model_root_sync");
+        sync_directory(store.models_dir())?;
+        crash_point("after_model_root_sync");
+    }
     verify_generation_validity(&promoted, plan, manifest, manifest.manifest_id).await?;
 
     crash_point("before_inactive_registration_transaction");
@@ -258,6 +277,7 @@ async fn verify_previous_for_rollback(
 }
 
 async fn stage_files(
+    managed_root: &Path,
     source_dir: &Path,
     staging: &Path,
     plan: &DownloadPlan,
@@ -271,15 +291,29 @@ async fn stage_files(
     {
         let destination = file.final_path(staging);
         create_parent(&destination)?;
-        tokio::fs::copy(file.final_path(source_dir), &destination)
+        let part = file.temp_path(staging);
+        tokio::fs::copy(file.final_path(source_dir), &part)
             .await
             .map_err(|_| ModelDeliveryError::Filesystem)?;
-        tokio::fs::File::open(&destination)
+        crash_point(&format!("before_file_sync:{}", file.logical_name));
+        tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(&part)
             .await
             .map_err(|_| ModelDeliveryError::Filesystem)?
             .sync_all()
             .await
             .map_err(|_| ModelDeliveryError::Filesystem)?;
+        crash_point(&format!("after_file_sync:{}", file.logical_name));
+        crash_point(&format!(
+            "before_staged_file_durable_rename:{}",
+            file.logical_name
+        ));
+        durable_rename_async(managed_root, &part, &destination).await?;
+        crash_point(&format!(
+            "after_staged_file_durable_rename:{}",
+            file.logical_name
+        ));
     }
 
     let files_total = plan.files.len() as u32;
@@ -291,15 +325,26 @@ async fn stage_files(
         .map(|(index, file)| (index, file.clone()))
         .collect::<Vec<_>>();
     let staging = staging.to_path_buf();
+    let managed_root = managed_root.to_path_buf();
     let client = client.clone();
     let mut downloads = downloads.into_iter().map(|(index, file)| {
         let mut tx = events.clone();
         let staging = staging.clone();
+        let managed_root = managed_root.clone();
         let client = client.clone();
         async move {
             let destination = file.final_path(&staging);
             create_parent(&destination)?;
-            download_file(&client, &file, &staging, index as u32, files_total, &mut tx).await
+            download_file(
+                &client,
+                &file,
+                &managed_root,
+                &staging,
+                index as u32,
+                files_total,
+                &mut tx,
+            )
+            .await
         }
     });
     let mut in_flight = futures::stream::FuturesUnordered::new();
@@ -331,6 +376,7 @@ async fn stage_files(
 async fn download_file(
     client: &reqwest::Client,
     file: &orbok_models::ModelFilePlan,
+    managed_root: &Path,
     staging: &Path,
     files_done: u32,
     files_total: u32,
@@ -380,24 +426,44 @@ async fn download_file(
             })
             .await;
     }
-    crash_point(&format!("before_file_flush:{}", file.logical_name));
+    crash_point(&format!("before_file_sync:{}", file.logical_name));
     output
         .flush()
         .await
         .map_err(|_| ModelDeliveryError::Filesystem)?;
-    crash_point(&format!("after_file_flush:{}", file.logical_name));
     output
         .sync_all()
         .await
         .map_err(|_| ModelDeliveryError::Filesystem)?;
     drop(output);
+    crash_point(&format!("after_file_sync:{}", file.logical_name));
     if downloaded != file.exact_size_bytes || sha256_file(&part).await? != file.expected_sha256 {
         return Err(ModelDeliveryError::Integrity);
     }
-    tokio::fs::rename(part, final_path)
-        .await
-        .map_err(|_| ModelDeliveryError::Filesystem)?;
+    crash_point(&format!(
+        "before_staged_file_durable_rename:{}",
+        file.logical_name
+    ));
+    durable_rename_async(managed_root, &part, &final_path).await?;
+    crash_point(&format!(
+        "after_staged_file_durable_rename:{}",
+        file.logical_name
+    ));
     Ok(())
+}
+
+async fn durable_rename_async(
+    managed_root: &Path,
+    source: &Path,
+    destination: &Path,
+) -> Result<(), ModelDeliveryError> {
+    let managed_root = managed_root.to_path_buf();
+    let source = source.to_path_buf();
+    let destination = destination.to_path_buf();
+    tokio::task::spawn_blocking(move || durable_rename(&managed_root, &source, &destination))
+        .await
+        .map_err(|_| ModelDeliveryError::Filesystem)?
+        .map_err(map_durability_filesystem_error)
 }
 
 async fn verify_payload_files(
@@ -513,6 +579,7 @@ fn create_parent(path: &Path) -> Result<(), ModelDeliveryError> {
     std::fs::create_dir_all(parent).map_err(|_| ModelDeliveryError::Filesystem)
 }
 
+#[cfg(unix)]
 fn sync_staged_tree(staging: &Path, plan: &DownloadPlan) -> Result<(), ModelDeliveryError> {
     let mut parents = plan
         .files
@@ -538,7 +605,11 @@ fn write_metadata(
     let bytes = serde_json::to_vec_pretty(manifest).map_err(|_| ModelDeliveryError::Filesystem)?;
     write_and_sync(&manifest_file, &bytes)?;
     write_and_sync(&staging.join(COMPLETE_FILE), b"complete\n")?;
-    sync_directory(staging)
+    #[cfg(unix)]
+    sync_directory(staging)?;
+    #[cfg(not(any(unix, windows)))]
+    return Err(ModelDeliveryError::Filesystem);
+    Ok(())
 }
 
 fn verify_generation_metadata(
@@ -578,18 +649,6 @@ pub(crate) fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
         .map_err(|_| ModelDeliveryError::Filesystem)
 }
 
-#[cfg(windows)]
-pub(crate) fn sync_directory(path: &Path) -> Result<(), ModelDeliveryError> {
-    use std::os::windows::fs::OpenOptionsExt as _;
-    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|_| ModelDeliveryError::Filesystem)
-}
-
 #[cfg(not(any(unix, windows)))]
 pub(crate) fn sync_directory(_path: &Path) -> Result<(), ModelDeliveryError> {
     Err(ModelDeliveryError::Filesystem)
@@ -602,6 +661,16 @@ fn map_lock_error(error: ModelStoreLockError) -> ModelDeliveryError {
             ModelDeliveryError::StoreUnavailable
         }
     }
+}
+
+fn map_durability_store_error(error: ModelDurabilityError) -> ModelDeliveryError {
+    tracing::warn!(durability_error = %error, "managed model durability preflight failed");
+    ModelDeliveryError::StoreUnavailable
+}
+
+fn map_durability_filesystem_error(error: ModelDurabilityError) -> ModelDeliveryError {
+    tracing::warn!(durability_error = %error, "managed model durability operation failed");
+    ModelDeliveryError::Filesystem
 }
 
 #[cfg(test)]
@@ -755,6 +824,7 @@ mod tests {
 
         let result = stage_files(
             temp.path(),
+            temp.path(),
             &staging,
             &fixture.plan,
             &base_client_builder().build().unwrap(),
@@ -875,6 +945,11 @@ mod tests {
         assert_eq!(
             std::fs::read(outcome.generation_dir.join("tokenizer.json")).unwrap(),
             b"trusted-tokenizer"
+        );
+        assert!(
+            !fixture.plan.files[0]
+                .temp_path(&outcome.generation_dir)
+                .exists()
         );
     }
 
@@ -1144,6 +1219,7 @@ mod tests {
             &base_client_builder().build().unwrap(),
             &file,
             temp.path(),
+            temp.path(),
             0,
             1,
             &mut events,
@@ -1169,6 +1245,7 @@ mod tests {
             &base_client_builder().build().unwrap(),
             &file,
             temp.path(),
+            temp.path(),
             0,
             1,
             &mut events,
@@ -1193,6 +1270,7 @@ mod tests {
         let result = download_file(
             &base_client_builder().build().unwrap(),
             &file,
+            temp.path(),
             temp.path(),
             0,
             1,
@@ -1224,6 +1302,7 @@ mod tests {
                 .unwrap(),
             &timeout_file,
             temp.path(),
+            temp.path(),
             0,
             1,
             &mut events,
@@ -1244,6 +1323,7 @@ mod tests {
         let disconnect = download_file(
             &base_client_builder().build().unwrap(),
             &disconnect_file,
+            temp.path(),
             temp.path(),
             0,
             1,
@@ -1318,21 +1398,43 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn abrupt_process_exit_at_each_durability_boundary_recovers_coherently() {
+        #[cfg(unix)]
         const CRASH_POINTS: &[&str] = &[
-            "before_file_flush:tokenizer",
-            "after_file_flush:tokenizer",
-            "before_file_flush:onnx-model",
-            "after_file_flush:onnx-model",
+            "before_file_sync:tokenizer",
+            "after_file_sync:tokenizer",
+            "before_file_sync:onnx-model",
+            "after_file_sync:onnx-model",
+            "before_staged_file_durable_rename:tokenizer",
+            "after_staged_file_durable_rename:tokenizer",
+            "before_staged_file_durable_rename:onnx-model",
+            "after_staged_file_durable_rename:onnx-model",
             "before_nested_directory_sync",
             "after_nested_directory_sync",
-            "before_staged_rename",
-            "after_staged_rename",
+            "before_generation_promotion_durable_rename",
+            "after_generation_promotion_durable_rename",
             "before_staging_parent_sync",
             "after_staging_parent_sync",
             "before_generations_parent_sync",
             "after_generations_parent_sync",
             "before_model_root_sync",
             "after_model_root_sync",
+            "before_inactive_registration_transaction",
+            "after_inactive_registration_transaction",
+            "before_activation_transaction",
+            "after_activation_transaction",
+        ];
+        #[cfg(windows)]
+        const CRASH_POINTS: &[&str] = &[
+            "before_file_sync:tokenizer",
+            "after_file_sync:tokenizer",
+            "before_file_sync:onnx-model",
+            "after_file_sync:onnx-model",
+            "before_staged_file_durable_rename:tokenizer",
+            "after_staged_file_durable_rename:tokenizer",
+            "before_staged_file_durable_rename:onnx-model",
+            "after_staged_file_durable_rename:onnx-model",
+            "before_generation_promotion_durable_rename",
+            "after_generation_promotion_durable_rename",
             "before_inactive_registration_transaction",
             "after_inactive_registration_transaction",
             "before_activation_transaction",
@@ -1401,10 +1503,14 @@ mod tests {
                 );
             } else if matches!(
                 *crash_point,
-                "before_file_flush:tokenizer"
-                    | "after_file_flush:tokenizer"
-                    | "before_file_flush:onnx-model"
-                    | "after_file_flush:onnx-model"
+                "before_file_sync:tokenizer"
+                    | "after_file_sync:tokenizer"
+                    | "before_file_sync:onnx-model"
+                    | "after_file_sync:onnx-model"
+                    | "before_staged_file_durable_rename:tokenizer"
+                    | "after_staged_file_durable_rename:tokenizer"
+                    | "before_staged_file_durable_rename:onnx-model"
+                    | "after_staged_file_durable_rename:onnx-model"
                     | "before_nested_directory_sync"
                     | "after_nested_directory_sync"
             ) {
