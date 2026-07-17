@@ -573,18 +573,37 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn symlink_directory(source: &Path, target: &Path) {
+    fn create_directory_reparse_fixture(source: &Path, target: &Path) {
         std::os::unix::fs::symlink(source, target).unwrap();
     }
 
     #[cfg(windows)]
-    fn symlink_directory(source: &Path, target: &Path) {
-        std::os::windows::fs::symlink_dir(source, target).unwrap();
+    fn create_directory_reparse_fixture(source: &Path, target: &Path) {
+        use std::os::windows::fs::MetadataExt as _;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        let output = Command::new("cmd")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(target)
+            .arg(source)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "mklink /J failed with status {:?}",
+            output.status.code()
+        );
+        let attributes = std::fs::symlink_metadata(target).unwrap().file_attributes();
+        assert_ne!(
+            attributes & FILE_ATTRIBUTE_REPARSE_POINT,
+            0,
+            "mklink /J fixture is not a reparse point"
+        );
     }
 
     #[cfg(any(unix, windows))]
     #[test]
-    fn startup_rejects_current_generation_root_symlink_and_clears_pointer() {
+    fn startup_rejects_current_generation_root_reparse_boundary_and_clears_pointer() {
         let (_temp, catalog, store) = setup();
         let generation_id = ManagedGenerationId::generate();
         let external = store.models_dir().parent().unwrap().join("external-model");
@@ -592,7 +611,7 @@ mod tests {
         std::fs::write(external.join("VALID"), b"valid").unwrap();
         let generations = store.models_dir().join(GENERATIONS_DIR);
         std::fs::create_dir(&generations).unwrap();
-        symlink_directory(&external, &generations.join(generation_id.as_str()));
+        create_directory_reparse_fixture(&external, &generations.join(generation_id.as_str()));
         {
             let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
             let repository = ManagedGenerationRepository::new(&catalog);
