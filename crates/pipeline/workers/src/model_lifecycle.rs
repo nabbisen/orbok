@@ -212,6 +212,7 @@ pub(crate) fn run_managed_model_startup_with(
         let evidence = snapshot
             .observe_current_for_startup_validation(&current_id)
             .map_err(|_| ModelLifecycleError::Catalog)?;
+        lifecycle_crash_point("before_current_validation_transaction");
         let validated = repository
             .validate_current_after_startup(&guard, &evidence)
             .map_err(|_| ModelLifecycleError::Catalog)?;
@@ -243,9 +244,22 @@ pub(crate) fn run_managed_model_startup_with(
         .is_some_and(|id| {
             record_and_generation_load(store, &snapshot, id, manifest_id, &validate_and_load)
         });
+    let (before_rollback, after_rollback) = if previous_verified {
+        (
+            "before_verified_previous_rollback_transaction",
+            "after_verified_previous_rollback_transaction",
+        )
+    } else {
+        (
+            "before_both_invalid_rollback_transaction",
+            "after_both_invalid_rollback_transaction",
+        )
+    };
+    lifecycle_crash_point(before_rollback);
     let rolled_back = repository
         .rollback_invalid_current(&guard, previous_verified)
         .map_err(|_| ModelLifecycleError::Catalog)?;
+    lifecycle_crash_point(after_rollback);
     Ok(ManagedModelStartupOutcome {
         startup_epoch,
         current_generation_id: rolled_back.profile.current_generation_id,
@@ -1021,6 +1035,324 @@ mod tests {
             snapshot.generations[&b].state,
             ManagedGenerationState::Invalid
         );
+    }
+
+    #[test]
+    fn invalid_current_rollback_transaction_crash_boundaries_recover_coherently() {
+        for (crash_point, previous_valid, committed) in [
+            ("before_verified_previous_rollback_transaction", true, false),
+            ("after_verified_previous_rollback_transaction", true, true),
+            ("before_both_invalid_rollback_transaction", false, false),
+            ("after_both_invalid_rollback_transaction", false, true),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("model-store");
+            std::fs::create_dir(&root).unwrap();
+            let catalog_path = temp.path().join("catalog.sqlite3");
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            let store = ManagedModelStore::default_embedding(&root);
+            let a = ManagedGenerationId::generate();
+            let b = ManagedGenerationId::generate();
+            create_generation(store.models_dir(), GENERATIONS_DIR, &a, true);
+            {
+                let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+                let repository = ManagedGenerationRepository::new(&catalog);
+                repository
+                    .register_inactive(&guard, a.clone(), DEFAULT_TRUSTED_MODEL.manifest_id)
+                    .unwrap();
+                repository.activate(&guard, &a).unwrap();
+            }
+            run_managed_model_startup_with(
+                &catalog,
+                &store,
+                DEFAULT_TRUSTED_MODEL.manifest_id,
+                marker_validator,
+            )
+            .unwrap();
+            create_generation(store.models_dir(), GENERATIONS_DIR, &b, false);
+            {
+                let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+                let repository = ManagedGenerationRepository::new(&catalog);
+                repository
+                    .register_inactive(&guard, b.clone(), DEFAULT_TRUSTED_MODEL.manifest_id)
+                    .unwrap();
+                repository.activate(&guard, &b).unwrap();
+            }
+            if !previous_valid {
+                std::fs::remove_file(root.join(GENERATIONS_DIR).join(a.as_str()).join("VALID"))
+                    .unwrap();
+            }
+            drop(catalog);
+
+            let output = lifecycle_child_command(
+                &std::env::current_exe().unwrap(),
+                &root,
+                &catalog_path,
+                "recovery",
+            )
+            .env("ORBOK_RFC050_LIFECYCLE_CRASH_POINT", crash_point)
+            .output()
+            .unwrap();
+            assert!(
+                !output.status.success(),
+                "rollback failpoint {crash_point} did not abort"
+            );
+
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            {
+                let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+                let snapshot = ManagedGenerationRepository::new(&catalog)
+                    .load_shared(&guard)
+                    .unwrap();
+                snapshot.validate().unwrap();
+                if !committed {
+                    assert_eq!(
+                        snapshot.profile.current_generation_id,
+                        Some(b.clone()),
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.profile.previous_generation_id,
+                        Some(a.clone()),
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&a].state,
+                        ManagedGenerationState::Previous,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&b].state,
+                        ManagedGenerationState::Current,
+                        "{crash_point}"
+                    );
+                } else if previous_valid {
+                    assert_eq!(
+                        snapshot.profile.current_generation_id,
+                        Some(a.clone()),
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.profile.previous_generation_id, None,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&a].state,
+                        ManagedGenerationState::Current,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&b].state,
+                        ManagedGenerationState::Invalid,
+                        "{crash_point}"
+                    );
+                } else {
+                    assert_eq!(
+                        snapshot.profile.current_generation_id, None,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.profile.previous_generation_id, None,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&a].state,
+                        ManagedGenerationState::Invalid,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&b].state,
+                        ManagedGenerationState::Invalid,
+                        "{crash_point}"
+                    );
+                }
+            }
+
+            run_managed_model_startup_with(
+                &catalog,
+                &store,
+                DEFAULT_TRUSTED_MODEL.manifest_id,
+                marker_validator,
+            )
+            .unwrap();
+            let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+            let snapshot = ManagedGenerationRepository::new(&catalog)
+                .load_shared(&guard)
+                .unwrap();
+            snapshot.validate().unwrap();
+            assert_eq!(
+                snapshot.profile.previous_generation_id, None,
+                "{crash_point}"
+            );
+            assert_eq!(
+                snapshot.generations[&b].state,
+                ManagedGenerationState::Invalid,
+                "{crash_point}"
+            );
+            if previous_valid {
+                assert_eq!(
+                    snapshot.profile.current_generation_id,
+                    Some(a.clone()),
+                    "{crash_point}"
+                );
+                assert_eq!(
+                    snapshot.generations[&a].state,
+                    ManagedGenerationState::Current,
+                    "{crash_point}"
+                );
+            } else {
+                assert_eq!(
+                    snapshot.profile.current_generation_id, None,
+                    "{crash_point}"
+                );
+                assert_eq!(
+                    snapshot.generations[&a].state,
+                    ManagedGenerationState::Invalid,
+                    "{crash_point}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validation_and_previous_release_transaction_boundaries_recover_coherently() {
+        for (crash_point, validation_committed, release_committed) in [
+            ("before_current_validation_transaction", false, false),
+            ("after_current_validation_transaction", true, false),
+            ("before_previous_release_transaction", true, false),
+            ("after_previous_release_transaction", true, true),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("model-store");
+            std::fs::create_dir(&root).unwrap();
+            let catalog_path = temp.path().join("catalog.sqlite3");
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            let store = ManagedModelStore::default_embedding(&root);
+            let a = ManagedGenerationId::generate();
+            let b = ManagedGenerationId::generate();
+            create_generation(store.models_dir(), GENERATIONS_DIR, &a, true);
+            {
+                let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+                let repository = ManagedGenerationRepository::new(&catalog);
+                repository
+                    .register_inactive(&guard, a.clone(), DEFAULT_TRUSTED_MODEL.manifest_id)
+                    .unwrap();
+                repository.activate(&guard, &a).unwrap();
+            }
+            run_managed_model_startup_with(
+                &catalog,
+                &store,
+                DEFAULT_TRUSTED_MODEL.manifest_id,
+                marker_validator,
+            )
+            .unwrap();
+            create_generation(store.models_dir(), GENERATIONS_DIR, &b, true);
+            {
+                let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+                let repository = ManagedGenerationRepository::new(&catalog);
+                repository
+                    .register_inactive(&guard, b.clone(), DEFAULT_TRUSTED_MODEL.manifest_id)
+                    .unwrap();
+                repository.activate(&guard, &b).unwrap();
+            }
+            drop(catalog);
+
+            let output = lifecycle_child_command(
+                &std::env::current_exe().unwrap(),
+                &root,
+                &catalog_path,
+                "recovery",
+            )
+            .env("ORBOK_RFC050_LIFECYCLE_CRASH_POINT", crash_point)
+            .output()
+            .unwrap();
+            assert!(
+                !output.status.success(),
+                "validation failpoint {crash_point} did not abort"
+            );
+
+            let catalog = Catalog::open(&catalog_path).unwrap();
+            {
+                let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+                let snapshot = ManagedGenerationRepository::new(&catalog)
+                    .load_shared(&guard)
+                    .unwrap();
+                snapshot.validate().unwrap();
+                assert_eq!(
+                    snapshot.profile.current_generation_id,
+                    Some(b.clone()),
+                    "{crash_point}"
+                );
+                if release_committed {
+                    assert_eq!(
+                        snapshot.profile.previous_generation_id, None,
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&a].state,
+                        ManagedGenerationState::Inactive,
+                        "{crash_point}"
+                    );
+                } else {
+                    assert_eq!(
+                        snapshot.profile.previous_generation_id,
+                        Some(a.clone()),
+                        "{crash_point}"
+                    );
+                    assert_eq!(
+                        snapshot.generations[&a].state,
+                        ManagedGenerationState::Previous,
+                        "{crash_point}"
+                    );
+                }
+                assert_eq!(
+                    snapshot.generations[&b].state,
+                    ManagedGenerationState::Current,
+                    "{crash_point}"
+                );
+                assert_eq!(
+                    snapshot.generations[&b].validated_startup_epoch.is_some(),
+                    validation_committed,
+                    "{crash_point}"
+                );
+            }
+
+            run_managed_model_startup_with(
+                &catalog,
+                &store,
+                DEFAULT_TRUSTED_MODEL.manifest_id,
+                marker_validator,
+            )
+            .unwrap();
+            let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+            let snapshot = ManagedGenerationRepository::new(&catalog)
+                .load_shared(&guard)
+                .unwrap();
+            snapshot.validate().unwrap();
+            assert_eq!(
+                snapshot.profile.current_generation_id,
+                Some(b.clone()),
+                "{crash_point}"
+            );
+            assert_eq!(
+                snapshot.profile.previous_generation_id, None,
+                "{crash_point}"
+            );
+            assert_eq!(
+                snapshot.generations[&a].state,
+                ManagedGenerationState::Inactive,
+                "{crash_point}"
+            );
+            assert_eq!(
+                snapshot.generations[&b].state,
+                ManagedGenerationState::Current,
+                "{crash_point}"
+            );
+            assert!(
+                snapshot.generations[&b].validated_startup_epoch.is_some(),
+                "{crash_point}"
+            );
+        }
     }
 
     #[test]
