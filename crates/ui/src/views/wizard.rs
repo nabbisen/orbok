@@ -13,10 +13,12 @@
 //! [`crate::theme`] helpers and the token spacing scale; icon glyph dimensions
 //! stay explicit.
 
-use crate::i18n::{Locale, MessageKey, model_exact_size, tr};
+use crate::i18n::{
+    Locale, MessageKey, model_exact_size, model_file_position, model_transfer_progress, tr,
+};
 use crate::state::{
-    AppState, Message, ModelDownloadConsent, ModelProvenance, ModelTrustPresentation,
-    WizardFileCheck, WizardState,
+    AppState, Message, ModelArtifact, ModelDeliveryFailure, ModelDownloadConsent,
+    ModelPersistenceState, ModelProvenance, ModelTrustPresentation, WizardFileCheck, WizardState,
 };
 use crate::theme;
 use iced::widget::{button, column, container, progress_bar, row, text, text_input};
@@ -65,7 +67,8 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             page_download_consent(tokens, sc, locale, presentation)
         }
         WizardState::Downloading {
-            current_file,
+            presentation,
+            current_artifact,
             bytes,
             total,
             files_done,
@@ -75,7 +78,8 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             tokens,
             sc,
             locale,
-            current_file,
+            presentation,
+            *current_artifact,
             *bytes,
             *total,
             *files_done,
@@ -89,7 +93,12 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
         WizardState::Ready {
             model_dir,
             provenance,
-        } => page_ready(tokens, sc, locale, model_dir, *provenance),
+            persistence,
+            ..
+        } => page_ready(tokens, sc, locale, model_dir, *provenance, *persistence),
+        WizardState::DownloadFailed { failure, .. } => {
+            page_download_failed(tokens, sc, locale, *failure)
+        }
     }
 }
 
@@ -139,7 +148,9 @@ fn page_setup<'a>(
     col = col.push(download_card);
 
     // ── Separator ────────────────────────────────────────────────────
-    col = col.push(text("— or —").size(theme::meta_s(tokens, sc)));
+    col = col.push(
+        text(format!("— {} —", tr(locale, MessageKey::WizardOr))).size(theme::meta_s(tokens, sc)),
+    );
 
     // ── Secondary action: locate existing files ───────────────────────
     col = col
@@ -150,9 +161,12 @@ fn page_setup<'a>(
         col = col.push(text(prev_dir).size(theme::meta_s(tokens, sc)));
         for fc in checks {
             let (icon, note) = if fc.found {
-                ("✓", "")
+                ("✓", String::new())
             } else {
-                ("✗", "  ← missing")
+                (
+                    "✗",
+                    format!("  ← {}", tr(locale, MessageKey::WizardMissingMarker)),
+                )
             };
             col = col.push(
                 text(format!("{icon}  {}{note}", fc.relative_path)).size(theme::meta_s(tokens, sc)),
@@ -276,31 +290,27 @@ fn page_downloading<'a>(
     tokens: &Tokens,
     sc: crate::theme::TextScale,
     locale: Locale,
-    current_file: &'a str,
+    presentation: &'a ModelDownloadConsent,
+    current_artifact: Option<ModelArtifact>,
     bytes: u64,
-    total: Option<u64>,
+    total: u64,
     files_done: u32,
     files_total: u32,
 ) -> Element<'a, Message> {
-    let overall_label = format!("File {}/{}", files_done + 1, files_total);
+    let overall_label = model_file_position(locale, files_done, files_total);
 
     // Progress fraction for the current file (0.0 – 1.0).
-    let frac: f32 = match total {
-        Some(t) if t > 0 => (bytes as f32 / t as f32).min(1.0),
-        _ => 0.0,
-    };
-
-    let bytes_label = if let Some(t) = total {
-        format!("{} / {}", human_bytes(bytes), human_bytes(t),)
+    let frac: f32 = if total > 0 {
+        (bytes as f32 / total as f32).min(1.0)
     } else {
-        human_bytes(bytes)
+        0.0
     };
-
-    let pct_label = if total.is_some() {
-        format!("  ({:.0}%)", frac * 100.0)
-    } else {
-        String::new()
+    let artifact_label = match current_artifact {
+        Some(ModelArtifact::Tokenizer) => tr(locale, MessageKey::ModelArtifactTokenizer),
+        Some(ModelArtifact::OnnxModel) => tr(locale, MessageKey::ModelArtifactOnnx),
+        None => tr(locale, MessageKey::ModelDownloadingWhatNeeded),
     };
+    let transfer_label = model_transfer_progress(locale, bytes, total);
 
     let col = column![
         row![
@@ -308,14 +318,45 @@ fn page_downloading<'a>(
             text(tr(locale, MessageKey::WizardDownloadProgress)).size(theme::title_s(tokens, sc)),
         ]
         .spacing(tokens.spacing.sm),
-        text("multilingual-e5-small · MIT").size(theme::meta_s(tokens, sc)),
+        text(format!(
+            "{} · {}",
+            presentation.model_name, presentation.license
+        ))
+        .size(theme::meta_s(tokens, sc)),
         text(overall_label).size(theme::meta_s(tokens, sc)),
-        text(format!("↓  {current_file}")).size(theme::body_s(tokens, sc)),
+        text(format!("↓  {artifact_label}")).size(theme::body_s(tokens, sc)),
         progress_bar(0.0..=1.0, frac),
-        text(format!("{bytes_label}{pct_label}")).size(theme::meta_s(tokens, sc)),
+        text(transfer_label).size(theme::meta_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.md);
 
+    wizard_page(tokens, col)
+}
+
+fn page_download_failed(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    locale: Locale,
+    failure: ModelDeliveryFailure,
+) -> Element<'static, Message> {
+    let detail = match failure {
+        ModelDeliveryFailure::StoreUnavailable => {
+            tr(locale, MessageKey::ModelDeliveryStoreUnavailable)
+        }
+        ModelDeliveryFailure::Connection => tr(locale, MessageKey::ModelDeliveryConnection),
+        ModelDeliveryFailure::Verification => tr(locale, MessageKey::ModelDeliveryVerification),
+        ModelDeliveryFailure::LocalStorage => tr(locale, MessageKey::ModelDeliveryLocalStorage),
+        ModelDeliveryFailure::InternalState => tr(locale, MessageKey::ModelDeliveryInternalState),
+    };
+    let col = column![
+        text(tr(locale, MessageKey::ModelDownloadFailed)).size(theme::title_s(tokens, sc)),
+        text(detail).size(theme::body_s(tokens, sc)),
+        button(text(tr(locale, MessageKey::ModelDownloadRetry)).size(theme::body_s(tokens, sc)),)
+            .on_press(Message::RetryModelDownload),
+        button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)),)
+            .on_press(Message::WizardSkip),
+    ]
+    .spacing(tokens.spacing.md);
     wizard_page(tokens, col)
 }
 
@@ -338,9 +379,12 @@ fn page_checked<'a>(
 
     for fc in checks {
         let (icon, style) = if fc.found {
-            ("✓", "")
+            ("✓", String::new())
         } else {
-            ("✗", "  ← missing")
+            (
+                "✗",
+                format!("  ← {}", tr(locale, MessageKey::WizardMissingMarker)),
+            )
         };
         let size_info = fc
             .size_mb
@@ -394,7 +438,11 @@ fn page_checked<'a>(
 
     col = col.push(
         row![
-            button(text("← Back").size(theme::meta_s(tokens, sc))).on_press(Message::WizardBack),
+            button(
+                text(format!("← {}", tr(locale, MessageKey::WizardBack)))
+                    .size(theme::meta_s(tokens, sc)),
+            )
+            .on_press(Message::WizardBack),
             button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
                 .on_press(Message::WizardSkip),
         ]
@@ -412,12 +460,13 @@ fn page_ready<'a>(
     locale: Locale,
     model_dir: &'a str,
     provenance: ModelProvenance,
+    persistence: ModelPersistenceState,
 ) -> Element<'a, Message> {
     let trust = match provenance {
         ModelProvenance::AppManaged => tr(locale, MessageKey::ModelTrustAppVerified),
         ModelProvenance::UserSupplied => tr(locale, MessageKey::ModelTrustUserSupplied),
     };
-    let col = column![
+    let mut col = column![
         row![
             icon_text(char::from(lucide::CheckCircle), 18.0),
             text(tr(locale, MessageKey::WizardTitleReady)).size(theme::title_s(tokens, sc)),
@@ -426,28 +475,44 @@ fn page_ready<'a>(
         text(model_dir).size(theme::meta_s(tokens, sc)),
         text(trust).size(theme::meta_s(tokens, sc)),
         text(tr(locale, MessageKey::WizardReadyBody)).size(theme::body_s(tokens, sc)),
-        button(
-            row![
-                icon_text(char::from(lucide::CheckCircle), 13.0),
-                text(tr(locale, MessageKey::WizardActionUseModel)).size(theme::body_s(tokens, sc)),
-            ]
-            .spacing(tokens.spacing.xs),
-        )
-        .on_press(Message::WizardAccept),
     ]
     .spacing(tokens.spacing.md);
 
-    wizard_page(tokens, col)
-}
-
-// ── helpers ───────────────────────────────────────────────────────────
-
-fn human_bytes(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1} MB", n as f64 / 1_000_000.0)
-    } else if n >= 1_000 {
-        format!("{:.0} KB", n as f64 / 1_000.0)
-    } else {
-        format!("{n} B")
+    match persistence {
+        ModelPersistenceState::Idle => {
+            col = col.push(
+                button(
+                    row![
+                        icon_text(char::from(lucide::CheckCircle), 13.0),
+                        text(tr(locale, MessageKey::WizardActionUseModel))
+                            .size(theme::body_s(tokens, sc)),
+                    ]
+                    .spacing(tokens.spacing.xs),
+                )
+                .on_press(Message::WizardAccept),
+            );
+        }
+        ModelPersistenceState::InFlight(_) => {
+            col = col.push(
+                text(tr(locale, MessageKey::ModelPersistenceSaving))
+                    .size(theme::body_s(tokens, sc)),
+            );
+        }
+        ModelPersistenceState::Failed => {
+            col = col
+                .push(
+                    text(tr(locale, MessageKey::ModelPersistenceFailed))
+                        .size(theme::body_s(tokens, sc)),
+                )
+                .push(
+                    button(
+                        text(tr(locale, MessageKey::ModelPersistenceRetry))
+                            .size(theme::body_s(tokens, sc)),
+                    )
+                    .on_press(Message::WizardAccept),
+                );
+        }
     }
+
+    wizard_page(tokens, col)
 }

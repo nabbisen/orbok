@@ -105,6 +105,9 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardDownloadAction => "HuggingFaceからダウンロード",
         WizardDownloadProgress => "モデルをダウンロード中…",
         WizardActionSkip => "スキップ — キーワード検索のみ使用",
+        WizardOr => "または",
+        WizardMissingMarker => "不足",
+        WizardBack => "戻る",
         WizardPreviousPathLabel => "最後の既知のパス",
         WizardValidationOk => "確認済み",
         WizardValidationFail => "見つかりません",
@@ -128,6 +131,26 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelTrustUserSupplied => "ユーザー提供 / 出所未検証",
         ModelConsentConfirm => "同意してダウンロード",
         ModelConsentCancel => "戻る",
+        ModelArtifactTokenizer => "トークナイザー",
+        ModelArtifactOnnx => "検索モデル",
+        ModelDeliveryStoreUnavailable => {
+            "モデル保存領域を使用できないか、使用中です。もう一度お試しください。"
+        }
+        ModelDeliveryConnection => {
+            "ダウンロードに接続できませんでした。接続を確認してもう一度お試しください。"
+        }
+        ModelDeliveryVerification => {
+            "ダウンロードしたファイルを検証できませんでした。もう一度お試しください。"
+        }
+        ModelDeliveryLocalStorage => {
+            "モデルを安全に保存できませんでした。ローカルストレージを確認してもう一度お試しください。"
+        }
+        ModelDeliveryInternalState => {
+            "モデルの設定を安全に続行できませんでした。もう一度お試しください。"
+        }
+        ModelPersistenceSaving => "このモデル設定を保存中…",
+        ModelPersistenceFailed => "モデルは準備できましたが、この設定を保存できませんでした。",
+        ModelPersistenceRetry => "保存をもう一度試す",
         NoticeDownloadFailTitle => "ダウンロードが完了しませんでした",
         NoticeDownloadFailBody => {
             "ダウンロードを完了できませんでした。接続を確認して、もう一度お試しください。"

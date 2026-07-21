@@ -12,6 +12,7 @@ mod bootstrap;
 mod diagnostics;
 mod download;
 mod history;
+mod model_flow;
 mod settings;
 
 use orbok_ui::state::WizardFileCheck;
@@ -47,46 +48,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     iced::application(
         move || OrbokApp::with_state(state.clone()),
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
+            if let Some(effect) = model_flow::reduce(&mut app.state, &message) {
+                return match effect {
+                    model_flow::ModelFlowEffect::None => iced::Task::none(),
+                    model_flow::ModelFlowEffect::StartManagedDownload => {
+                        let dest = bootstrap::default_model_store_root(&data_dir);
+                        let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
+                        tokio::spawn(download::run(dest, catalog_path.clone(), tx));
+                        iced::Task::stream(rx)
+                    }
+                    effect @ model_flow::ModelFlowEffect::PersistReady { .. } => {
+                        let persistence_data_dir = data_dir.clone();
+                        iced::Task::perform(
+                            async move {
+                                model_flow::execute_production_persistence(
+                                    effect,
+                                    &persistence_data_dir,
+                                )
+                                .expect("PersistReady must produce a completion")
+                            },
+                            |completion| completion,
+                        )
+                    }
+                };
+            }
             // Handle backend effects before passing message to UI state.
             match &message {
-                Message::ConfirmModelDownload if download::consent_allows_start(&app.state) => {
-                    let dest = bootstrap::default_model_store_root(&data_dir);
-                    let dest_str = dest.to_string_lossy().to_string();
-                    app.update(Message::DownloadStarted { dest_dir: dest_str });
-                    let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
-                    tokio::spawn(download::run(dest, catalog_path.clone(), tx));
-                    return iced::Task::stream(rx);
-                }
                 Message::WizardValidate => {
                     let path = app.state.wizard_path_input.trim().to_string();
                     let outcome = verify_embedding_model(Some(&path));
                     let (checks, all_ok) = build_wizard_checks(&outcome, &path);
-                    app.update(Message::WizardChecked {
+                    let checked = Message::WizardChecked {
                         model_dir: path,
                         checks,
                         all_ok,
-                    });
+                    };
+                    let _ = model_flow::reduce(&mut app.state, &checked);
                     return iced::Task::none();
-                }
-                Message::WizardAccept => {
-                    // Persist the accepted model directory to OrbokSettings.
-                    if let Some(orbok_ui::state::WizardState::Ready {
-                        model_dir,
-                        provenance,
-                    }) = &app.state.wizard
-                    {
-                        let persisted = match provenance {
-                            orbok_ui::state::ModelProvenance::UserSupplied => {
-                                bootstrap::persist_model_dir(model_dir.as_str())
-                            }
-                            orbok_ui::state::ModelProvenance::AppManaged => {
-                                bootstrap::remove_managed_model_dir_setting(&data_dir)
-                            }
-                        };
-                        if let Err(e) = persisted {
-                            tracing::error!("failed to save model dir: {e}");
-                        }
-                    }
                 }
                 Message::RequestAddSource => {
                     // Open the OS-native folder picker.

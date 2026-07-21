@@ -133,18 +133,30 @@ pub enum WizardState {
     },
     /// All files verified — ready to proceed.
     Ready {
+        ready_id: ReadyId,
         model_dir: String,
         provenance: ModelProvenance,
+        persistence: ModelPersistenceState,
     },
     /// HuggingFace download in progress.
     Downloading {
+        /// Reserved before worker start so identity exhaustion cannot follow
+        /// an authoritative activation.
+        reserved_ready_id: ReadyId,
         dest_dir: String,
-        /// Filename currently being downloaded.
-        current_file: String,
+        presentation: ModelDownloadConsent,
+        return_to: ModelConsentReturn,
+        current_artifact: Option<ModelArtifact>,
         bytes: u64,
-        total: Option<u64>,
+        total: u64,
         files_done: u32,
         files_total: u32,
+    },
+    /// A safe, recoverable delivery failure that retains the reviewed offer.
+    DownloadFailed {
+        presentation: ModelDownloadConsent,
+        return_to: ModelConsentReturn,
+        failure: ModelDeliveryFailure,
     },
 }
 
@@ -152,6 +164,98 @@ pub enum WizardState {
 pub enum ModelProvenance {
     UserSupplied,
     AppManaged,
+}
+
+/// Identity of one entry into the Ready state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadyId(u64);
+
+impl ReadyId {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Identity of one persistence attempt for a Ready state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PersistenceAttemptId(u64);
+
+impl PersistenceAttemptId {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Persistence status retained on the Ready screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelPersistenceState {
+    Idle,
+    InFlight(PersistenceAttemptId),
+    Failed,
+}
+
+/// Closed artifact vocabulary safe for UI presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelArtifact {
+    Tokenizer,
+    OnnxModel,
+}
+
+/// Closed delivery-failure vocabulary; never contains paths or worker text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelDeliveryFailure {
+    StoreUnavailable,
+    Connection,
+    Verification,
+    LocalStorage,
+    InternalState,
+}
+
+/// Result of a correlated preference write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelPersistenceResult {
+    Saved,
+    Failed,
+}
+
+/// Checked, non-reusing identity allocator owned by the app view model.
+#[derive(Debug, Clone)]
+pub struct ModelFlowIdentitySequence {
+    next_ready: Option<u64>,
+    next_persistence_attempt: Option<u64>,
+}
+
+impl Default for ModelFlowIdentitySequence {
+    fn default() -> Self {
+        Self {
+            next_ready: Some(1),
+            next_persistence_attempt: Some(1),
+        }
+    }
+}
+
+impl ModelFlowIdentitySequence {
+    pub fn allocate_ready(&mut self) -> Option<ReadyId> {
+        allocate_checked(&mut self.next_ready).map(ReadyId)
+    }
+
+    pub fn allocate_persistence_attempt(&mut self) -> Option<PersistenceAttemptId> {
+        allocate_checked(&mut self.next_persistence_attempt).map(PersistenceAttemptId)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_next(ready: u64, persistence_attempt: u64) -> Self {
+        Self {
+            next_ready: Some(ready),
+            next_persistence_attempt: Some(persistence_attempt),
+        }
+    }
+}
+
+fn allocate_checked(next: &mut Option<u64>) -> Option<u64> {
+    let current = (*next)?;
+    *next = current.checked_add(1);
+    Some(current)
 }
 
 /// Setup state restored when the user backs out of download consent.
@@ -223,6 +327,8 @@ pub struct AppState {
     pub wizard_path_input: String,
     /// App-populated, path-aware facts for the reviewed default-model offer.
     pub model_download_consent: Option<ModelDownloadConsent>,
+    /// Non-reusing identities used to correlate Ready and persistence events.
+    pub model_flow_ids: ModelFlowIdentitySequence,
     /// Text input for the "add source" path field.
     pub source_path_input: String,
     /// When false (default), hide technical detail. Mature users can toggle on.
@@ -273,6 +379,7 @@ impl Default for AppState {
             wizard: None,
             wizard_path_input: String::new(),
             model_download_consent: None,
+            model_flow_ids: ModelFlowIdentitySequence::default(),
             source_path_input: String::new(),
             show_advanced: false,
             notice: None,
@@ -351,6 +458,13 @@ pub enum Message {
         all_ok: bool,
     },
     WizardAccept,
+    ModelPersistenceCompleted {
+        ready_id: ReadyId,
+        persistence_attempt_id: PersistenceAttemptId,
+        model_dir: String,
+        provenance: ModelProvenance,
+        result: ModelPersistenceResult,
+    },
     WizardSkip,
     // Source management
     SourcePathChanged(String),
@@ -362,20 +476,18 @@ pub enum Message {
     DownloadModel,
     ConfirmModelDownload,
     CancelModelDownload,
-    DownloadStarted {
-        dest_dir: String,
-    },
+    RetryModelDownload,
     DownloadFileProgress {
-        file: String,
+        artifact: ModelArtifact,
         bytes: u64,
-        total: Option<u64>,
+        total: u64,
         files_done: u32,
         files_total: u32,
     },
     DownloadAllComplete {
         dest_dir: String,
     },
-    DownloadFailed(String),
+    DownloadFailed(ModelDeliveryFailure),
     // Startup population
     HealthUpdated(IndexHealth),
     SourcesLoaded(Vec<SourceCard>),
@@ -567,33 +679,12 @@ impl AppState {
             Message::WizardPathChanged(p) => self.wizard_path_input = p.clone(),
             Message::WizardValidate => {} // handled in orbok update
             Message::WizardChecked {
-                model_dir,
-                checks,
-                all_ok,
-            } => {
-                self.wizard = Some(if *all_ok {
-                    WizardState::Ready {
-                        model_dir: model_dir.clone(),
-                        provenance: ModelProvenance::UserSupplied,
-                    }
-                } else {
-                    WizardState::Checked {
-                        model_dir: model_dir.clone(),
-                        checks: checks.clone(),
-                        all_ok: false,
-                    }
-                });
+                model_dir: _,
+                checks: _,
+                all_ok: _,
             }
-            Message::WizardAccept => {
-                // orbok writes the model dir to OrbokSettings; ui
-                // transitions to full capability.
-                if let Some(WizardState::Ready { provenance, .. }) = self.wizard.as_ref() {
-                    self.active_model_provenance = Some(*provenance);
-                }
-                self.capability = SearchCapability::Hybrid;
-                self.wizard = None;
-                self.wizard_path_input = String::new();
-            }
+            | Message::WizardAccept
+            | Message::ModelPersistenceCompleted { .. } => {}
             Message::WizardSkip => {
                 self.capability = SearchCapability::KeywordOnly;
                 self.active_model_provenance = None;
@@ -614,56 +705,15 @@ impl AppState {
                     });
                 }
             }
-            Message::ConfirmModelDownload => {} // guarded and handled by orbok
+            Message::ConfirmModelDownload | Message::RetryModelDownload => {}
             Message::CancelModelDownload => {
                 if let Some(WizardState::DownloadConsent { return_to, .. }) = self.wizard.take() {
                     self.wizard = Some(return_to.into_wizard());
                 }
             }
-            Message::DownloadStarted { dest_dir } => {
-                self.wizard = Some(WizardState::Downloading {
-                    dest_dir: dest_dir.clone(),
-                    current_file: String::new(),
-                    bytes: 0,
-                    total: None,
-                    files_done: 0,
-                    files_total: 2,
-                });
-            }
-            Message::DownloadFileProgress {
-                file,
-                bytes,
-                total,
-                files_done,
-                files_total,
-            } => {
-                if let Some(WizardState::Downloading {
-                    current_file,
-                    bytes: b,
-                    total: t,
-                    files_done: fd,
-                    files_total: ft,
-                    ..
-                }) = &mut self.wizard
-                {
-                    *current_file = file.clone();
-                    *b = *bytes;
-                    *t = *total;
-                    *fd = *files_done;
-                    *ft = *files_total;
-                }
-            }
-            Message::DownloadAllComplete { dest_dir } => {
-                // Switch directly to wizard-accepted flow.
-                self.wizard = Some(WizardState::Ready {
-                    model_dir: dest_dir.clone(),
-                    provenance: ModelProvenance::AppManaged,
-                });
-            }
-            Message::DownloadFailed(_reason) => {
-                // Return to NotConfigured so the user can try again.
-                self.wizard = Some(WizardState::NotConfigured);
-            }
+            Message::DownloadFileProgress { .. }
+            | Message::DownloadAllComplete { .. }
+            | Message::DownloadFailed(_) => {}
             Message::SourcePathChanged(p) => self.source_path_input = p.clone(),
             Message::RequestAddSource => {} // handled in orbok
             Message::SourceAdded(card) => {

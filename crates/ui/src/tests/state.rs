@@ -1,8 +1,8 @@
 //! AppState transitions, notice handling, theme, and navigation tests.
 
 use crate::state::{
-    AppState, Message, ModelDownloadConsent, ModelProvenance, ModelTrustPresentation, ViewId,
-    WizardFileCheck, WizardState,
+    AppState, Message, ModelDownloadConsent, ModelFlowIdentitySequence, ModelPersistenceState,
+    ModelProvenance, ModelTrustPresentation, ViewId, WizardFileCheck, WizardState,
 };
 use crate::theme::{TextScale, Theme};
 
@@ -30,27 +30,19 @@ fn navigation_order_is_search_first() {
 }
 
 #[test]
-fn downloaded_model_ready_state_retains_managed_provenance() {
+fn ui_state_cannot_accept_ready_without_the_app_controller() {
     let mut state = AppState::default();
-
-    state.update(&Message::DownloadAllComplete {
-        dest_dir: "/managed/generation".into(),
+    let ready_id = state.model_flow_ids.allocate_ready().unwrap();
+    state.wizard = Some(WizardState::Ready {
+        ready_id,
+        model_dir: "/managed/generation".into(),
+        provenance: ModelProvenance::AppManaged,
+        persistence: ModelPersistenceState::Idle,
     });
 
-    assert_eq!(
-        state.wizard,
-        Some(WizardState::Ready {
-            model_dir: "/managed/generation".into(),
-            provenance: ModelProvenance::AppManaged,
-        })
-    );
-
     state.update(&Message::WizardAccept);
-    assert_eq!(
-        state.active_model_provenance,
-        Some(ModelProvenance::AppManaged)
-    );
-    assert!(state.wizard.is_none());
+    assert_eq!(state.active_model_provenance, None);
+    assert!(matches!(state.wizard, Some(WizardState::Ready { .. })));
 }
 
 #[test]
@@ -114,20 +106,15 @@ fn cancel_consent_restores_the_missing_file_context() {
 }
 
 #[test]
-fn accepting_a_manual_model_retains_user_supplied_provenance() {
-    let mut state = AppState::default();
-    state.update(&Message::WizardChecked {
-        model_dir: "/user/model".into(),
-        checks: Vec::new(),
-        all_ok: true,
-    });
-    state.update(&Message::WizardAccept);
-
+fn model_flow_identity_sequence_never_wraps_or_reuses() {
+    let mut sequence = ModelFlowIdentitySequence::with_next(u64::MAX, u64::MAX);
+    assert_eq!(sequence.allocate_ready().unwrap().get(), u64::MAX);
+    assert!(sequence.allocate_ready().is_none());
     assert_eq!(
-        state.active_model_provenance,
-        Some(ModelProvenance::UserSupplied)
+        sequence.allocate_persistence_attempt().unwrap().get(),
+        u64::MAX
     );
-    assert!(state.wizard.is_none());
+    assert!(sequence.allocate_persistence_attempt().is_none());
 }
 
 // Failures surface a notice; success clears it.

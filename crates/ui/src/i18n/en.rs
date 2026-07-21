@@ -98,6 +98,9 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardDownloadAction => "Download from HuggingFace",
         WizardDownloadProgress => "Downloading model…",
         WizardActionSkip => "Skip — use keyword search only",
+        WizardOr => "or",
+        WizardMissingMarker => "missing",
+        WizardBack => "Back",
         WizardPreviousPathLabel => "Last known path",
         WizardValidationOk => "found",
         WizardValidationFail => "not found",
@@ -121,6 +124,20 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelTrustUserSupplied => "User supplied / provenance not verified",
         ModelConsentConfirm => "Agree and download",
         ModelConsentCancel => "Back",
+        ModelArtifactTokenizer => "Tokenizer",
+        ModelArtifactOnnx => "Search model",
+        ModelDeliveryStoreUnavailable => "The model store is busy or unavailable. Try again.",
+        ModelDeliveryConnection => {
+            "The download could not connect. Check your connection and try again."
+        }
+        ModelDeliveryVerification => "The downloaded files could not be verified. Try again.",
+        ModelDeliveryLocalStorage => {
+            "The model could not be saved safely. Check local storage and try again."
+        }
+        ModelDeliveryInternalState => "orbok could not continue the model setup safely. Try again.",
+        ModelPersistenceSaving => "Saving this model choice…",
+        ModelPersistenceFailed => "The model is ready, but this choice could not be saved.",
+        ModelPersistenceRetry => "Try saving again",
         NoticeDownloadFailTitle => "Download did not finish",
         NoticeDownloadFailBody => {
             "We could not finish the download. Please check your \

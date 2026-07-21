@@ -182,6 +182,9 @@ pub enum MessageKey {
     WizardDownloadAction,
     WizardDownloadProgress,
     WizardActionSkip,
+    WizardOr,
+    WizardMissingMarker,
+    WizardBack,
     WizardPreviousPathLabel,
     WizardValidationOk,
     WizardValidationFail,
@@ -201,6 +204,16 @@ pub enum MessageKey {
     ModelTrustUserSupplied,
     ModelConsentConfirm,
     ModelConsentCancel,
+    ModelArtifactTokenizer,
+    ModelArtifactOnnx,
+    ModelDeliveryStoreUnavailable,
+    ModelDeliveryConnection,
+    ModelDeliveryVerification,
+    ModelDeliveryLocalStorage,
+    ModelDeliveryInternalState,
+    ModelPersistenceSaving,
+    ModelPersistenceFailed,
+    ModelPersistenceRetry,
     // Common actions
     NoticeDownloadFailTitle,
     NoticeDownloadFailBody,
@@ -403,6 +416,46 @@ pub fn model_exact_size(locale: Locale, bytes: u64) -> String {
     match locale {
         Locale::En => format!("{bytes} bytes ({decimal_mb:.1} MB)"),
         Locale::Ja => format!("{bytes} バイト ({decimal_mb:.1} MB)"),
+    }
+}
+
+/// Parameterized current/total file position with completed-state clamping.
+pub fn model_file_position(locale: Locale, files_done: u32, files_total: u32) -> String {
+    if files_total == 0 {
+        return match locale {
+            Locale::En => "Preparing files".to_string(),
+            Locale::Ja => "ファイルを準備中".to_string(),
+        };
+    }
+    let current = files_done.saturating_add(1).min(files_total);
+    match locale {
+        Locale::En => format!("File {current} of {files_total}"),
+        Locale::Ja => format!("ファイル {current}/{files_total}"),
+    }
+}
+
+/// Parameterized byte progress with localized byte units and percentage.
+pub fn model_transfer_progress(locale: Locale, bytes: u64, total: u64) -> String {
+    let exact_bytes = bytes;
+    let bytes = model_bytes(locale, exact_bytes);
+    if total == 0 {
+        return bytes;
+    }
+    let transferred = model_bytes(locale, total);
+    let ratio = (exact_bytes as f64 / total as f64).clamp(0.0, 1.0);
+    format!("{bytes} / {transferred} ({:.0}%)", ratio * 100.0)
+}
+
+fn model_bytes(locale: Locale, bytes: u64) -> String {
+    if bytes >= 1_000_000 {
+        format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+    } else if bytes >= 1_000 {
+        format!("{:.0} KB", bytes as f64 / 1_000.0)
+    } else {
+        match locale {
+            Locale::En => format!("{bytes} B"),
+            Locale::Ja => format!("{bytes} バイト"),
+        }
     }
 }
 

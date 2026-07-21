@@ -14,14 +14,13 @@ use orbok_db::repo::SettingsRepository;
 use orbok_db::{CATALOG_FILE_NAME, Catalog};
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
-use orbok_models::SearchCapability;
 use orbok_models::{ManagedModelStore, ModelStoreLockError, ModelStoreMutationGuard, SharedAccess};
 use orbok_search::HybridSearchService;
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
-use orbok_ui::state::{ModelProvenance, WizardFileCheck, WizardState};
+use orbok_ui::state::ModelProvenance;
 use orbok_ui::theme::{TextScale, Theme};
-use orbok_workers::{VerifyOutcome, verify_embedding_model};
+use orbok_workers::verify_embedding_model;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -87,15 +86,6 @@ struct ResolvedModelDir {
     _guard: Option<ModelStoreMutationGuard<SharedAccess>>,
     path: Option<String>,
     provenance: Option<ModelProvenance>,
-}
-
-fn active_provenance_after_verification(
-    outcome: &VerifyOutcome,
-    resolved: &ResolvedModelDir,
-) -> Option<ModelProvenance> {
-    matches!(outcome, VerifyOutcome::Ready)
-        .then_some(resolved.provenance)
-        .flatten()
 }
 
 fn managed_current_model_dir_timeout(
@@ -230,8 +220,7 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
     let outcome = verify_embedding_model(resolved_model.path.as_deref());
     tracing::info!("{}", orbok_workers::verify_outcome_summary(&outcome));
 
-    let active_model_provenance = active_provenance_after_verification(&outcome, &resolved_model);
-    let (capability, wizard) = build_capability_and_wizard(outcome, &settings);
+    let projection = crate::model_flow::project_startup(outcome, resolved_model.provenance);
 
     // Theme priority (RFC-032): stored intent is kept as-is; `System` is
     // resolved once here to a concrete preset for token construction. The OS
@@ -259,9 +248,9 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
         tokens: resolved_theme.tokens(),
         text_scale: TextScale::parse(&settings.text_scale).unwrap_or_default(),
         reduced_motion: settings.reduced_motion || resolve_os_reduced_motion(),
-        capability,
-        active_model_provenance,
-        wizard,
+        capability: projection.capability,
+        active_model_provenance: projection.active_provenance,
+        wizard: projection.wizard,
         model_download_consent: Some(orbok_ui::ModelDownloadConsent::trusted_default(
             default_model_store_root(dir).to_string_lossy().into_owned(),
         )),
@@ -275,38 +264,6 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
         ..Default::default()
     };
     Ok(state)
-}
-
-/// Determine search capability and wizard state from the verify outcome.
-fn build_capability_and_wizard(
-    outcome: VerifyOutcome,
-    _settings: &OrbokSettings,
-) -> (SearchCapability, Option<WizardState>) {
-    match outcome {
-        VerifyOutcome::Ready => (SearchCapability::Hybrid, None),
-        VerifyOutcome::NotConfigured => (
-            SearchCapability::KeywordOnly,
-            Some(WizardState::NotConfigured),
-        ),
-        VerifyOutcome::FilesInvalid { model_dir, issues } => {
-            let checks: Vec<WizardFileCheck> = orbok_workers::model_verifier::REQUIRED_MODEL_FILES
-                .iter()
-                .map(|rel| {
-                    let found = !issues.iter().any(|i| i.relative_path == *rel);
-                    WizardFileCheck {
-                        relative_path: rel.to_string(),
-                        found,
-                        size_mb: None,
-                    }
-                })
-                .collect();
-            let wizard = WizardState::FileMissing {
-                previous_dir: model_dir,
-                checks,
-            };
-            (SearchCapability::KeywordOnly, Some(wizard))
-        }
-    }
 }
 
 /// Execute a keyword/hybrid search and convert results to UI structs.
@@ -725,6 +682,7 @@ pub fn reset_catalog(
 #[cfg(test)]
 mod managed_resolution_tests {
     use super::*;
+    use orbok_workers::VerifyOutcome;
 
     #[test]
     fn initial_state_advances_managed_model_startup_epoch() {
@@ -827,7 +785,8 @@ mod managed_resolution_tests {
 
         let managed = resolve_model_dir(&catalog, &OrbokSettings::default()).unwrap();
         assert_eq!(
-            active_provenance_after_verification(&VerifyOutcome::Ready, &managed),
+            crate::model_flow::project_startup(VerifyOutcome::Ready, managed.provenance)
+                .active_provenance,
             Some(ModelProvenance::AppManaged)
         );
 
@@ -841,17 +800,19 @@ mod managed_resolution_tests {
         };
         let manual = resolve_model_dir(&manual_catalog, &manual_settings).unwrap();
         assert_eq!(
-            active_provenance_after_verification(&VerifyOutcome::Ready, &manual),
+            crate::model_flow::project_startup(VerifyOutcome::Ready, manual.provenance)
+                .active_provenance,
             Some(ModelProvenance::UserSupplied)
         );
         assert_eq!(
-            active_provenance_after_verification(
-                &VerifyOutcome::FilesInvalid {
+            crate::model_flow::project_startup(
+                VerifyOutcome::FilesInvalid {
                     model_dir: manual_path.to_string_lossy().into_owned(),
                     issues: Vec::new(),
                 },
-                &manual
-            ),
+                manual.provenance,
+            )
+            .active_provenance,
             None
         );
     }

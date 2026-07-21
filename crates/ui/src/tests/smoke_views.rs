@@ -8,7 +8,8 @@
 
 use crate::i18n::{Locale, MessageKey, model_exact_size, tr};
 use crate::state::{
-    AppState, Message, ModelDownloadConsent, ModelProvenance, SourceCard, ViewId, WizardState,
+    AppState, Message, ModelConsentReturn, ModelDeliveryFailure, ModelDownloadConsent,
+    ModelPersistenceState, ModelProvenance, SourceCard, ViewId, WizardState,
 };
 use crate::views;
 use iced_test::{Simulator, simulator};
@@ -217,5 +218,59 @@ fn models_view_distinguishes_persistent_managed_and_manual_provenance() {
                 "Models view must render {expected:?} for {locale:?}"
             );
         }
+    }
+}
+
+#[test]
+fn model_failure_and_persistence_retry_are_visible_in_both_locales() {
+    let _guard = iced_test_guard();
+
+    for locale in Locale::ALL {
+        let consent = ModelDownloadConsent::trusted_default("/managed/models".into());
+        let failure_state = AppState {
+            locale: *locale,
+            wizard: Some(WizardState::DownloadFailed {
+                presentation: consent,
+                return_to: ModelConsentReturn::NotConfigured,
+                failure: ModelDeliveryFailure::Connection,
+            }),
+            ..Default::default()
+        };
+        let mut failure_ui = simulator(views::wizard_view(&failure_state));
+        assert!(
+            failure_ui
+                .find(tr(*locale, MessageKey::ModelDeliveryConnection))
+                .is_ok()
+        );
+        let _ = failure_ui.click(tr(*locale, MessageKey::ModelDownloadRetry));
+        assert!(
+            failure_ui
+                .into_messages()
+                .any(|message| matches!(message, Message::RetryModelDownload))
+        );
+
+        let mut ready_state = AppState {
+            locale: *locale,
+            ..Default::default()
+        };
+        let ready_id = ready_state.model_flow_ids.allocate_ready().unwrap();
+        ready_state.wizard = Some(WizardState::Ready {
+            ready_id,
+            model_dir: "/managed/generation".into(),
+            provenance: ModelProvenance::AppManaged,
+            persistence: ModelPersistenceState::Failed,
+        });
+        let mut ready_ui = simulator(views::wizard_view(&ready_state));
+        assert!(
+            ready_ui
+                .find(tr(*locale, MessageKey::ModelPersistenceFailed))
+                .is_ok()
+        );
+        let _ = ready_ui.click(tr(*locale, MessageKey::ModelPersistenceRetry));
+        assert!(
+            ready_ui
+                .into_messages()
+                .any(|message| matches!(message, Message::WizardAccept))
+        );
     }
 }

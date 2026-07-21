@@ -1,6 +1,9 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
-use crate::i18n::{Locale, files_indexed, model_exact_size, source_summary, tr};
+use crate::i18n::{
+    Locale, files_indexed, model_exact_size, model_file_position, model_transfer_progress,
+    source_summary, tr,
+};
 use crate::tests::ALL_KEYS;
 
 // RFC-031 §9: every key resolves to a non-empty string in every locale.
@@ -22,6 +25,26 @@ fn exact_model_size_localizes_the_unit_without_rounding_the_byte_count() {
     assert_eq!(
         model_exact_size(Locale::Ja, 487_351_240),
         "487351240 バイト (487.4 MB)"
+    );
+}
+
+#[test]
+fn model_progress_formatters_cover_zero_completed_and_locale_edges() {
+    assert_eq!(model_file_position(Locale::En, 0, 0), "Preparing files");
+    assert_eq!(model_file_position(Locale::Ja, 0, 0), "ファイルを準備中");
+    assert_eq!(model_file_position(Locale::En, 0, 2), "File 1 of 2");
+    assert_eq!(model_file_position(Locale::En, 2, 2), "File 2 of 2");
+    assert_eq!(model_file_position(Locale::Ja, u32::MAX, 2), "ファイル 2/2");
+
+    assert_eq!(model_transfer_progress(Locale::En, 0, 0), "0 B");
+    assert_eq!(model_transfer_progress(Locale::Ja, 12, 0), "12 バイト");
+    assert_eq!(
+        model_transfer_progress(Locale::En, 500, 1_000),
+        "500 B / 1 KB (50%)"
+    );
+    assert_eq!(
+        model_transfer_progress(Locale::Ja, 2_000, 1_000),
+        "2 KB / 1 KB (100%)"
     );
 }
 
