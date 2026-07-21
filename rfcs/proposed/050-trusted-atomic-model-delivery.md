@@ -13,6 +13,7 @@
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
 **Phase 4 consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](../appendices/APPENDIX-C-rfc050-phase4-consent-threat-model.md)
 **Phase 4 GUI lifecycle design:** [`APPENDIX-D-rfc050-gui-lifecycle-integration-design.md`](../appendices/APPENDIX-D-rfc050-gui-lifecycle-integration-design.md)
+**Phase 4 compositional proof:** [`APPENDIX-E-rfc050-phase4-compositional-proof-report.md`](../appendices/APPENDIX-E-rfc050-phase4-compositional-proof-report.md)
 
 ---
 

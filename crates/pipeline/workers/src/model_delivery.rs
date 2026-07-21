@@ -695,6 +695,7 @@ fn crash_point(_point: &str) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_lifecycle::run_managed_model_startup_with;
     use orbok_models::{
         DownloadAction, LocalFileStatus, ManagedGenerationState, ModelFilePlan, TrustedModelFile,
         TrustedModelIdentity, TrustedTransportPolicy,
@@ -745,7 +746,7 @@ mod tests {
         let catalog = Catalog::open_in_memory().unwrap();
         let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
         let repository = ManagedGenerationRepository::new(&catalog);
-        let (events, _receiver) = futures::channel::mpsc::channel(16);
+        let (events, receiver) = futures::channel::mpsc::channel(16);
 
         let outcome = execute_generation(
             &store,
@@ -764,40 +765,137 @@ mod tests {
         )
         .await
         .unwrap();
+        let progress = receiver.collect::<Vec<_>>().await;
         let max_active = server.max_active.clone();
+        let requests = server.requests.clone();
         server.finish().await;
 
         assert_eq!(max_active.load(Ordering::SeqCst), 2);
-        assert!(outcome.generation_dir.join(COMPLETE_FILE).is_file());
-        assert!(outcome.generation_dir.join(TRUSTED_MANIFEST_FILE).is_file());
-        assert!(!outcome.generation_dir.join("tokenizer.json.part").exists());
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+        assert!(!progress.is_empty());
+        assert!(progress.iter().all(|event| matches!(
+            event,
+            ModelDeliveryEvent::FileProgress {
+                bytes,
+                total,
+                files_total: 2,
+                ..
+            } if *bytes > 0 && *bytes == *total
+        )));
+        assert!(progress.iter().any(|event| matches!(
+            event,
+            ModelDeliveryEvent::FileProgress {
+                logical_name: "tokenizer",
+                ..
+            }
+        )));
+        assert!(progress.iter().any(|event| matches!(
+            event,
+            ModelDeliveryEvent::FileProgress {
+                logical_name: "onnx-model",
+                ..
+            }
+        )));
+        assert_eq!(
+            outcome.generation_dir,
+            root.join(GENERATIONS_DIR)
+                .join(outcome.generation_id.as_str())
+        );
+        assert_eq!(
+            std::fs::read(outcome.generation_dir.join("tokenizer.json")).unwrap(),
+            tokenizer
+        );
+        assert_eq!(
+            std::fs::read(outcome.generation_dir.join("onnx/model.onnx")).unwrap(),
+            model
+        );
+        assert_eq!(
+            std::fs::read(outcome.generation_dir.join(COMPLETE_FILE)).unwrap(),
+            b"complete\n"
+        );
+        assert_eq!(
+            std::fs::read(outcome.generation_dir.join(TRUSTED_MANIFEST_FILE)).unwrap(),
+            serde_json::to_vec_pretty(fixture.manifest).unwrap()
+        );
+        for file in fixture.manifest.files {
+            let bytes = std::fs::read(outcome.generation_dir.join(file.relative_path)).unwrap();
+            assert_eq!(digest(&bytes), file.sha256);
+        }
+        assert_no_part_files(&outcome.generation_dir);
         assert_eq!(
             repository
                 .load_exclusive(&guard)
                 .unwrap()
                 .profile
                 .current_generation_id,
-            Some(outcome.generation_id)
+            Some(outcome.generation_id.clone())
         );
+
+        let generation_id = outcome.generation_id.clone();
+        let generation_dir = outcome.generation_dir.clone();
+        drop(guard);
+        let startup = run_managed_model_startup_with(
+            &catalog,
+            &store,
+            fixture.manifest.manifest_id,
+            |path| {
+                fixture_generation_matches(
+                    path,
+                    &generation_dir,
+                    fixture.manifest,
+                    &tokenizer,
+                    &model,
+                )
+            },
+        )
+        .unwrap();
+        assert_eq!(startup.current_generation_id, Some(generation_id.clone()));
+        assert!(!startup.rolled_back);
+        assert!(startup.startup_epoch > 0);
+        let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
+        let snapshot = ManagedGenerationRepository::new(&catalog)
+            .load_shared(&guard)
+            .unwrap();
+        assert_eq!(snapshot.profile.current_generation_id, Some(generation_id));
+        assert!(snapshot.profile.previous_generation_id.is_none());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn checksum_failure_never_promotes_or_activates() {
         let tokenizer = b"trusted-tokenizer".to_vec();
-        let model = b"corrupt-model".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let corrupt_model = b"corrupt-onnx-model".to_vec();
+        assert_eq!(model.len(), corrupt_model.len());
         let server =
-            MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", model.clone())]).await;
-        let fixture = fixture(
-            &server.base_url,
-            tokenizer,
-            model,
-            Some(leak("0".repeat(64))),
-        );
+            MockServer::start([("/tokenizer", tokenizer.clone()), ("/model", corrupt_model)]).await;
+        let fixture = fixture(&server.base_url, tokenizer.clone(), model.clone(), None);
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("model-store");
         std::fs::create_dir(&root).unwrap();
         let store = ManagedModelStore::default_embedding(&root);
         let catalog = Catalog::open_in_memory().unwrap();
+        let prior = ManagedGenerationId::generate();
+        let prior_dir = root.join(GENERATIONS_DIR).join(prior.as_str());
+        write_fixture_generation(&prior_dir, fixture.manifest, &tokenizer, &model);
+        {
+            let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+            let repository = ManagedGenerationRepository::new(&catalog);
+            repository
+                .register_inactive(&guard, prior.clone(), fixture.manifest.manifest_id)
+                .unwrap();
+            repository.activate(&guard, &prior).unwrap();
+        }
+        let startup = run_managed_model_startup_with(
+            &catalog,
+            &store,
+            fixture.manifest.manifest_id,
+            |path| {
+                fixture_generation_matches(path, &prior_dir, fixture.manifest, &tokenizer, &model)
+            },
+        )
+        .unwrap();
+        assert_eq!(startup.current_generation_id, Some(prior.clone()));
+        assert!(!startup.rolled_back);
         let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
         let repository = ManagedGenerationRepository::new(&catalog);
         let (events, _receiver) = futures::channel::mpsc::channel(16);
@@ -806,7 +904,7 @@ mod tests {
             &store,
             &guard,
             &repository,
-            &root,
+            &prior_dir,
             &fixture.plan,
             fixture.manifest,
             &base_client_builder()
@@ -821,19 +919,21 @@ mod tests {
         server.finish().await;
 
         assert!(matches!(result, Err(ModelDeliveryError::Integrity)));
-        assert!(
-            repository
-                .load_exclusive(&guard)
-                .unwrap()
-                .profile
-                .current_generation_id
-                .is_none()
-        );
+        let snapshot = repository.load_exclusive(&guard).unwrap();
+        assert_eq!(snapshot.profile.current_generation_id, Some(prior.clone()));
+        assert!(snapshot.profile.previous_generation_id.is_none());
+        assert_eq!(snapshot.generations.len(), 1);
         assert_eq!(
-            std::fs::read_dir(root.join(GENERATIONS_DIR))
-                .unwrap()
-                .count(),
-            0
+            snapshot.generations[&prior].state,
+            ManagedGenerationState::Current
+        );
+        let generation_entries = std::fs::read_dir(root.join(GENERATIONS_DIR))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            generation_entries,
+            vec![std::ffi::OsString::from(prior.as_str())]
         );
         assert_eq!(
             std::fs::read_dir(root.join(STAGING_DIR)).unwrap().count(),
@@ -1705,6 +1805,36 @@ mod tests {
         encoded
     }
 
+    fn assert_no_part_files(root: &Path) {
+        for entry in std::fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if entry.file_type().unwrap().is_dir() {
+                assert_no_part_files(&path);
+            } else {
+                assert_ne!(
+                    path.extension().and_then(|extension| extension.to_str()),
+                    Some("part")
+                );
+            }
+        }
+    }
+
+    fn fixture_generation_matches(
+        path: &Path,
+        expected_path: &Path,
+        manifest: &TrustedModelManifest,
+        tokenizer: &[u8],
+        model: &[u8],
+    ) -> bool {
+        path == expected_path
+            && std::fs::read(path.join("tokenizer.json")).ok().as_deref() == Some(tokenizer)
+            && std::fs::read(path.join("onnx/model.onnx")).ok().as_deref() == Some(model)
+            && std::fs::read(path.join(COMPLETE_FILE)).ok().as_deref() == Some(b"complete\n")
+            && std::fs::read(path.join(TRUSTED_MANIFEST_FILE)).ok()
+                == serde_json::to_vec_pretty(manifest).ok()
+    }
+
     fn write_fixture_generation(
         generation_dir: &Path,
         manifest: &TrustedModelManifest,
@@ -1738,6 +1868,7 @@ mod tests {
     struct MockServer {
         base_url: String,
         max_active: Arc<AtomicUsize>,
+        requests: Arc<AtomicUsize>,
         shutdown: oneshot::Sender<()>,
         task: tokio::task::JoinHandle<()>,
     }
@@ -1796,8 +1927,10 @@ mod tests {
             );
             let active = Arc::new(AtomicUsize::new(0));
             let max_active = Arc::new(AtomicUsize::new(0));
+            let requests = Arc::new(AtomicUsize::new(0));
             let active_task = active.clone();
             let max_task = max_active.clone();
+            let requests_task = requests.clone();
             let (shutdown, mut shutdown_requested) = oneshot::channel();
             let task = tokio::spawn(async move {
                 let mut children = Vec::new();
@@ -1812,8 +1945,9 @@ mod tests {
                     let responses = responses.clone();
                     let active = active_task.clone();
                     let max_active = max_task.clone();
+                    let requests = requests_task.clone();
                     children.push(tokio::spawn(async move {
-                        serve(stream, responses, active, max_active).await;
+                        serve(stream, responses, active, max_active, requests).await;
                     }));
                 }
                 for child in children {
@@ -1823,6 +1957,7 @@ mod tests {
             Self {
                 base_url: format!("http://{address}"),
                 max_active,
+                requests,
                 shutdown,
                 task,
             }
@@ -1839,6 +1974,7 @@ mod tests {
         responses: Arc<HashMap<&'static str, MockResponse>>,
         active: Arc<AtomicUsize>,
         max_active: Arc<AtomicUsize>,
+        requests: Arc<AtomicUsize>,
     ) {
         let mut request = vec![0_u8; 2048];
         let Ok(read) = stream.read(&mut request).await else {
@@ -1851,6 +1987,7 @@ mod tests {
         let Some(response) = responses.get(path) else {
             return;
         };
+        requests.fetch_add(1, Ordering::SeqCst);
         let now = active.fetch_add(1, Ordering::SeqCst) + 1;
         max_active.fetch_max(now, Ordering::SeqCst);
         tokio::time::sleep(response.delay).await;
