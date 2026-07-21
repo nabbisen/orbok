@@ -13,8 +13,11 @@
 //! [`crate::theme`] helpers and the token spacing scale; icon glyph dimensions
 //! stay explicit.
 
-use crate::i18n::{Locale, MessageKey, tr};
-use crate::state::{AppState, Message, WizardFileCheck, WizardState};
+use crate::i18n::{Locale, MessageKey, model_exact_size, tr};
+use crate::state::{
+    AppState, Message, ModelDownloadConsent, ModelProvenance, ModelTrustPresentation,
+    WizardFileCheck, WizardState,
+};
 use crate::theme;
 use iced::widget::{button, column, container, progress_bar, row, text, text_input};
 use iced::{Element, Length, Padding};
@@ -58,6 +61,9 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             state,
             Some((previous_dir.as_str(), checks.as_slice())),
         ),
+        WizardState::DownloadConsent { presentation, .. } => {
+            page_download_consent(tokens, sc, locale, presentation)
+        }
         WizardState::Downloading {
             current_file,
             bytes,
@@ -80,7 +86,10 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             checks,
             all_ok,
         } => page_checked(locale, state, model_dir, checks, *all_ok),
-        WizardState::Ready { model_dir, .. } => page_ready(tokens, sc, locale, model_dir),
+        WizardState::Ready {
+            model_dir,
+            provenance,
+        } => page_ready(tokens, sc, locale, model_dir, *provenance),
     }
 }
 
@@ -107,8 +116,13 @@ fn page_setup<'a>(
                 text(tr(locale, MessageKey::WizardDownloadAction)).size(theme::body_s(tokens, sc)),
             ]
             .spacing(tokens.spacing.sm),
-            text("multilingual-e5-small · MIT · ~490 MB · 94 languages")
-                .size(theme::meta_s(tokens, sc)),
+            text(
+                state
+                    .model_download_consent
+                    .as_ref()
+                    .map_or("multilingual-e5-small", |offer| offer.model_name),
+            )
+            .size(theme::meta_s(tokens, sc)),
             button(
                 row![
                     icon_text(char::from(lucide::Download), 13.0),
@@ -175,6 +189,82 @@ fn page_setup<'a>(
         button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
             .on_press(Message::WizardSkip),
     );
+
+    wizard_page(tokens, col)
+}
+
+// ── Page: explicit download consent ─────────────────────────────────
+
+fn page_download_consent<'a>(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    locale: Locale,
+    presentation: &'a ModelDownloadConsent,
+) -> Element<'a, Message> {
+    let trust = match presentation.trust {
+        ModelTrustPresentation::AppWillVerify => tr(locale, MessageKey::ModelTrustAppWillVerify),
+        ModelTrustPresentation::AppVerified => tr(locale, MessageKey::ModelTrustAppVerified),
+        ModelTrustPresentation::UserSupplied => tr(locale, MessageKey::ModelTrustUserSupplied),
+    };
+    let col = column![
+        text(tr(locale, MessageKey::ModelConsentTitle)).size(theme::title_s(tokens, sc)),
+        text(presentation.model_name).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::ModelConsentBody)).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::ModelConsentPrivacy)).size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentProvider),
+            presentation.provider
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentSource),
+            presentation.source
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentRevision),
+            presentation.immutable_revision
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentExactSize),
+            model_exact_size(locale, presentation.exact_size_bytes)
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentLicense),
+            presentation.license
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {}",
+            tr(locale, MessageKey::ModelConsentLocation),
+            presentation.destination
+        ))
+        .size(theme::body_s(tokens, sc)),
+        text(format!(
+            "{}: {trust}",
+            tr(locale, MessageKey::ModelConsentVerification)
+        ))
+        .size(theme::body_s(tokens, sc)),
+        row![
+            button(
+                text(tr(locale, MessageKey::ModelConsentConfirm)).size(theme::body_s(tokens, sc)),
+            )
+            .on_press(Message::ConfirmModelDownload),
+            button(
+                text(tr(locale, MessageKey::ModelConsentCancel)).size(theme::body_s(tokens, sc)),
+            )
+            .on_press(Message::CancelModelDownload),
+        ]
+        .spacing(tokens.spacing.sm),
+    ]
+    .spacing(tokens.spacing.sm);
 
     wizard_page(tokens, col)
 }
@@ -321,7 +411,12 @@ fn page_ready<'a>(
     sc: crate::theme::TextScale,
     locale: Locale,
     model_dir: &'a str,
+    provenance: ModelProvenance,
 ) -> Element<'a, Message> {
+    let trust = match provenance {
+        ModelProvenance::AppManaged => tr(locale, MessageKey::ModelTrustAppVerified),
+        ModelProvenance::UserSupplied => tr(locale, MessageKey::ModelTrustUserSupplied),
+    };
     let col = column![
         row![
             icon_text(char::from(lucide::CheckCircle), 18.0),
@@ -329,6 +424,7 @@ fn page_ready<'a>(
         ]
         .spacing(tokens.spacing.sm),
         text(model_dir).size(theme::meta_s(tokens, sc)),
+        text(trust).size(theme::meta_s(tokens, sc)),
         text(tr(locale, MessageKey::WizardReadyBody)).size(theme::body_s(tokens, sc)),
         button(
             row![

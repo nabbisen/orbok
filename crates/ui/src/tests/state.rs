@@ -1,6 +1,9 @@
 //! AppState transitions, notice handling, theme, and navigation tests.
 
-use crate::state::{AppState, Message, ViewId, WizardModelProvenance, WizardState};
+use crate::state::{
+    AppState, Message, ModelDownloadConsent, ModelProvenance, ModelTrustPresentation, ViewId,
+    WizardFileCheck, WizardState,
+};
 use crate::theme::{TextScale, Theme};
 
 #[test]
@@ -38,9 +41,93 @@ fn downloaded_model_ready_state_retains_managed_provenance() {
         state.wizard,
         Some(WizardState::Ready {
             model_dir: "/managed/generation".into(),
-            provenance: WizardModelProvenance::Managed,
+            provenance: ModelProvenance::AppManaged,
         })
     );
+
+    state.update(&Message::WizardAccept);
+    assert_eq!(
+        state.active_model_provenance,
+        Some(ModelProvenance::AppManaged)
+    );
+    assert!(state.wizard.is_none());
+}
+
+#[test]
+fn default_model_consent_uses_the_reviewed_manifest_exactly() {
+    let consent = ModelDownloadConsent::trusted_default("/managed/models".into());
+
+    assert_eq!(consent.provider, "Hugging Face");
+    assert_eq!(consent.source, "intfloat/multilingual-e5-small");
+    assert_eq!(
+        consent.immutable_revision,
+        "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+    );
+    assert_eq!(consent.exact_size_bytes, 487_351_240);
+    assert_eq!(consent.license, "MIT");
+    assert_eq!(consent.destination, "/managed/models");
+    assert_eq!(consent.trust, ModelTrustPresentation::AppWillVerify);
+}
+
+#[test]
+fn download_request_opens_consent_without_starting_progress() {
+    let mut state = AppState {
+        wizard: Some(WizardState::NotConfigured),
+        model_download_consent: Some(ModelDownloadConsent::trusted_default(
+            "/managed/models".into(),
+        )),
+        ..Default::default()
+    };
+
+    state.update(&Message::DownloadModel);
+    assert!(matches!(
+        state.wizard,
+        Some(WizardState::DownloadConsent { .. })
+    ));
+
+    state.update(&Message::CancelModelDownload);
+    assert_eq!(state.wizard, Some(WizardState::NotConfigured));
+}
+
+#[test]
+fn cancel_consent_restores_the_missing_file_context() {
+    let original = WizardState::FileMissing {
+        previous_dir: "/previous/model".into(),
+        checks: vec![WizardFileCheck {
+            relative_path: "onnx/model.onnx".into(),
+            found: false,
+            size_mb: None,
+        }],
+    };
+    let mut state = AppState {
+        wizard: Some(original.clone()),
+        model_download_consent: Some(ModelDownloadConsent::trusted_default(
+            "/managed/models".into(),
+        )),
+        ..Default::default()
+    };
+
+    state.update(&Message::DownloadModel);
+    state.update(&Message::CancelModelDownload);
+
+    assert_eq!(state.wizard, Some(original));
+}
+
+#[test]
+fn accepting_a_manual_model_retains_user_supplied_provenance() {
+    let mut state = AppState::default();
+    state.update(&Message::WizardChecked {
+        model_dir: "/user/model".into(),
+        checks: Vec::new(),
+        all_ok: true,
+    });
+    state.update(&Message::WizardAccept);
+
+    assert_eq!(
+        state.active_model_provenance,
+        Some(ModelProvenance::UserSupplied)
+    );
+    assert!(state.wizard.is_none());
 }
 
 // Failures surface a notice; success clears it.

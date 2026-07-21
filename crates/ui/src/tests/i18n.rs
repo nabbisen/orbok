@@ -1,6 +1,6 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
-use crate::i18n::{Locale, files_indexed, source_summary, tr};
+use crate::i18n::{Locale, files_indexed, model_exact_size, source_summary, tr};
 use crate::tests::ALL_KEYS;
 
 // RFC-031 §9: every key resolves to a non-empty string in every locale.
@@ -11,6 +11,18 @@ fn all_messages_non_empty_in_all_locales() {
             assert!(!tr(*locale, *key).is_empty(), "{locale:?} {key:?} is empty");
         }
     }
+}
+
+#[test]
+fn exact_model_size_localizes_the_unit_without_rounding_the_byte_count() {
+    assert_eq!(
+        model_exact_size(Locale::En, 487_351_240),
+        "487351240 bytes (487.4 MB)"
+    );
+    assert_eq!(
+        model_exact_size(Locale::Ja, 487_351_240),
+        "487351240 バイト (487.4 MB)"
+    );
 }
 
 // RFC-031 §9: locales actually differ (a copy-pasted catalog is a bug).

@@ -626,6 +626,23 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
             text(tr(locale, MessageKey::ModelsKeywordOnlyHint)).size(theme::meta_s(tokens, sc)),
         );
     }
+    if let Some(provenance) = state.active_model_provenance {
+        let status = match provenance {
+            crate::state::ModelProvenance::AppManaged => {
+                tr(locale, MessageKey::ModelTrustAppVerified)
+            }
+            crate::state::ModelProvenance::UserSupplied => {
+                tr(locale, MessageKey::ModelTrustUserSupplied)
+            }
+        };
+        content = content.push(
+            text(format!(
+                "{}: {status}",
+                tr(locale, MessageKey::ModelsVerification)
+            ))
+            .size(theme::body_s(tokens, sc)),
+        );
+    }
     page(tokens, content)
 }
 

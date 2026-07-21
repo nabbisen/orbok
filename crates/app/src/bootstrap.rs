@@ -19,7 +19,7 @@ use orbok_models::{ManagedModelStore, ModelStoreLockError, ModelStoreMutationGua
 use orbok_search::HybridSearchService;
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
-use orbok_ui::state::{WizardFileCheck, WizardState};
+use orbok_ui::state::{ModelProvenance, WizardFileCheck, WizardState};
 use orbok_ui::theme::{TextScale, Theme};
 use orbok_workers::{VerifyOutcome, verify_embedding_model};
 use std::path::PathBuf;
@@ -86,6 +86,16 @@ impl std::error::Error for ManagedModelResolutionError {}
 struct ResolvedModelDir {
     _guard: Option<ModelStoreMutationGuard<SharedAccess>>,
     path: Option<String>,
+    provenance: Option<ModelProvenance>,
+}
+
+fn active_provenance_after_verification(
+    outcome: &VerifyOutcome,
+    resolved: &ResolvedModelDir,
+) -> Option<ModelProvenance> {
+    matches!(outcome, VerifyOutcome::Ready)
+        .then_some(resolved.provenance)
+        .flatten()
 }
 
 fn managed_current_model_dir_timeout(
@@ -133,6 +143,7 @@ fn resolve_model_dir_with_timeout(
         return Ok(ResolvedModelDir {
             _guard: Some(guard),
             path: Some(path.to_string_lossy().into_owned()),
+            provenance: Some(ModelProvenance::AppManaged),
         });
     }
     let store_root = default_model_store_root(data_dir);
@@ -143,6 +154,7 @@ fn resolve_model_dir_with_timeout(
         .cloned();
     Ok(ResolvedModelDir {
         _guard: None,
+        provenance: manual.as_ref().map(|_| ModelProvenance::UserSupplied),
         path: manual,
     })
 }
@@ -211,12 +223,14 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
             ResolvedModelDir {
                 _guard: None,
                 path: None,
+                provenance: None,
             }
         }
     };
     let outcome = verify_embedding_model(resolved_model.path.as_deref());
     tracing::info!("{}", orbok_workers::verify_outcome_summary(&outcome));
 
+    let active_model_provenance = active_provenance_after_verification(&outcome, &resolved_model);
     let (capability, wizard) = build_capability_and_wizard(outcome, &settings);
 
     // Theme priority (RFC-032): stored intent is kept as-is; `System` is
@@ -246,7 +260,11 @@ pub fn load_initial_state(dir: &std::path::Path) -> Result<AppState, Box<dyn std
         text_scale: TextScale::parse(&settings.text_scale).unwrap_or_default(),
         reduced_motion: settings.reduced_motion || resolve_os_reduced_motion(),
         capability,
+        active_model_provenance,
         wizard,
+        model_download_consent: Some(orbok_ui::ModelDownloadConsent::trusted_default(
+            default_model_store_root(dir).to_string_lossy().into_owned(),
+        )),
         health,
         sources,
         remember_recent_searches: settings.remember_recent_searches,
@@ -308,6 +326,7 @@ pub(crate) fn run_search(
             ResolvedModelDir {
                 _guard: None,
                 path: None,
+                provenance: None,
             }
         }
     };
@@ -764,6 +783,7 @@ mod managed_resolution_tests {
         let resolved = resolve_model_dir(&catalog, &settings).unwrap();
 
         assert!(resolved.path.is_none());
+        assert_eq!(resolved.provenance, None);
         assert!(resolved._guard.is_none());
     }
 
@@ -781,6 +801,58 @@ mod managed_resolution_tests {
         let resolved = resolve_model_dir(&catalog, &settings).unwrap();
 
         assert_eq!(resolved.path.as_deref(), manual.to_str());
+        assert_eq!(resolved.provenance, Some(ModelProvenance::UserSupplied));
         assert!(resolved._guard.is_none());
+    }
+
+    #[test]
+    fn ready_startup_distinguishes_managed_and_manual_provenance() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = ensure_default_model_store(temp.path()).unwrap();
+        let catalog = open_catalog(temp.path()).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let generation_id = orbok_models::ManagedGenerationId::generate();
+        {
+            let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+            let repository = orbok_db::repo::ManagedGenerationRepository::new(&catalog);
+            repository
+                .register_inactive(
+                    &guard,
+                    generation_id.clone(),
+                    orbok_models::trust::DEFAULT_TRUSTED_MODEL.manifest_id,
+                )
+                .unwrap();
+            repository.activate(&guard, &generation_id).unwrap();
+        }
+
+        let managed = resolve_model_dir(&catalog, &OrbokSettings::default()).unwrap();
+        assert_eq!(
+            active_provenance_after_verification(&VerifyOutcome::Ready, &managed),
+            Some(ModelProvenance::AppManaged)
+        );
+
+        let manual_temp = tempfile::tempdir().unwrap();
+        ensure_default_model_store(manual_temp.path()).unwrap();
+        let manual_catalog = open_catalog(manual_temp.path()).unwrap();
+        let manual_path = manual_temp.path().join("user-model");
+        let manual_settings = OrbokSettings {
+            embedding_model_dir: Some(manual_path.to_string_lossy().into_owned()),
+            ..OrbokSettings::default()
+        };
+        let manual = resolve_model_dir(&manual_catalog, &manual_settings).unwrap();
+        assert_eq!(
+            active_provenance_after_verification(&VerifyOutcome::Ready, &manual),
+            Some(ModelProvenance::UserSupplied)
+        );
+        assert_eq!(
+            active_provenance_after_verification(
+                &VerifyOutcome::FilesInvalid {
+                    model_dir: manual_path.to_string_lossy().into_owned(),
+                    issues: Vec::new(),
+                },
+                &manual
+            ),
+            None
+        );
     }
 }

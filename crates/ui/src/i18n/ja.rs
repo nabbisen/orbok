@@ -65,6 +65,7 @@ pub fn message(key: MessageKey) -> &'static str {
             "キーワード検索は使用できます。概念的な検索を有効にするには、\
              埋め込みモデルを導入してください。"
         }
+        ModelsVerification => "検証状態",
         SettingsTitle => "設定",
         SettingsLanguageHeading => "言語",
         SettingsPrivacyHeading => "プライバシー",
@@ -108,6 +109,25 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardValidationOk => "確認済み",
         WizardValidationFail => "見つかりません",
         WizardReadyBody => "セマンティック検索が利用可能になりました。",
+        ModelConsentTitle => "モデルのダウンロードを確認",
+        ModelConsentBody => {
+            "続行すると、orbok は提供元に接続し、このモデルをローカルに保存します。"
+        }
+        ModelConsentPrivacy => {
+            "文書、検索内容、検索元のパス、この保存場所はモデル提供元に送信されません。"
+        }
+        ModelConsentProvider => "提供元",
+        ModelConsentSource => "ソース",
+        ModelConsentRevision => "変更されないリビジョン",
+        ModelConsentExactSize => "正確なダウンロードサイズ",
+        ModelConsentLicense => "ライセンス",
+        ModelConsentLocation => "保存場所",
+        ModelConsentVerification => "検証状態",
+        ModelTrustAppWillVerify => "使用前に orbok がダウンロードを検証",
+        ModelTrustAppVerified => "アプリによる検証",
+        ModelTrustUserSupplied => "ユーザー提供 / 出所未検証",
+        ModelConsentConfirm => "同意してダウンロード",
+        ModelConsentCancel => "戻る",
         NoticeDownloadFailTitle => "ダウンロードが完了しませんでした",
         NoticeDownloadFailBody => {
             "ダウンロードを完了できませんでした。接続を確認して、もう一度お試しください。"

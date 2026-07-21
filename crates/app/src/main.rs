@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
             // Handle backend effects before passing message to UI state.
             match &message {
-                Message::DownloadModel => {
+                Message::ConfirmModelDownload if download::consent_allows_start(&app.state) => {
                     let dest = bootstrap::default_model_store_root(&data_dir);
                     let dest_str = dest.to_string_lossy().to_string();
                     app.update(Message::DownloadStarted { dest_dir: dest_str });
@@ -76,10 +76,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }) = &app.state.wizard
                     {
                         let persisted = match provenance {
-                            orbok_ui::state::WizardModelProvenance::Manual => {
+                            orbok_ui::state::ModelProvenance::UserSupplied => {
                                 bootstrap::persist_model_dir(model_dir.as_str())
                             }
-                            orbok_ui::state::WizardModelProvenance::Managed => {
+                            orbok_ui::state::ModelProvenance::AppManaged => {
                                 bootstrap::remove_managed_model_dir_setting(&data_dir)
                             }
                         };

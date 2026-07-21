@@ -144,6 +144,7 @@ pub enum MessageKey {
     ModelsStatusAvailable,
     ModelsStatusMissing,
     ModelsKeywordOnlyHint,
+    ModelsVerification,
     // Settings view
     SettingsTitle,
     SettingsLanguageHeading,
@@ -185,6 +186,21 @@ pub enum MessageKey {
     WizardValidationOk,
     WizardValidationFail,
     WizardReadyBody,
+    ModelConsentTitle,
+    ModelConsentBody,
+    ModelConsentPrivacy,
+    ModelConsentProvider,
+    ModelConsentSource,
+    ModelConsentRevision,
+    ModelConsentExactSize,
+    ModelConsentLicense,
+    ModelConsentLocation,
+    ModelConsentVerification,
+    ModelTrustAppWillVerify,
+    ModelTrustAppVerified,
+    ModelTrustUserSupplied,
+    ModelConsentConfirm,
+    ModelConsentCancel,
     // Common actions
     NoticeDownloadFailTitle,
     NoticeDownloadFailBody,
@@ -378,6 +394,15 @@ pub fn tr(locale: Locale, key: MessageKey) -> &'static str {
     match locale {
         Locale::En => en::message(key),
         Locale::Ja => ja::message(key),
+    }
+}
+
+/// Parameterized exact model size shown before RFC-050 download consent.
+pub fn model_exact_size(locale: Locale, bytes: u64) -> String {
+    let decimal_mb = bytes as f64 / 1_000_000.0;
+    match locale {
+        Locale::En => format!("{bytes} bytes ({decimal_mb:.1} MB)"),
+        Locale::Ja => format!("{bytes} バイト ({decimal_mb:.1} MB)"),
     }
 }
 

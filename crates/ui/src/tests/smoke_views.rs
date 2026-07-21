@@ -6,10 +6,13 @@
 //! panics and vanished key content. Not an exhaustive UI suite; iced_test is
 //! young and we keep reliance on it light.
 
-use crate::i18n::{MessageKey, tr};
-use crate::state::{AppState, Message, SourceCard, ViewId};
+use crate::i18n::{Locale, MessageKey, model_exact_size, tr};
+use crate::state::{
+    AppState, Message, ModelDownloadConsent, ModelProvenance, SourceCard, ViewId, WizardState,
+};
 use crate::views;
-use iced_test::simulator;
+use iced_test::{Simulator, simulator};
+use orbok_models::SearchCapability;
 use std::sync::{Mutex, MutexGuard};
 
 static ICED_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -84,4 +87,135 @@ fn sources_view_renders_both_states() {
         ui.find("Docs").is_ok(),
         "populated sources view must list the source name"
     );
+}
+
+#[test]
+fn model_consent_renders_every_required_fact_and_action_in_both_locales() {
+    let _guard = iced_test_guard();
+
+    for locale in Locale::ALL {
+        let consent = ModelDownloadConsent::trusted_default(
+            "/a/representative/platform/path/models/multilingual-e5-small".into(),
+        );
+        let mut state = AppState {
+            locale: *locale,
+            wizard: Some(WizardState::NotConfigured),
+            model_download_consent: Some(consent.clone()),
+            ..Default::default()
+        };
+        state.update(&Message::DownloadModel);
+        let mut ui = Simulator::with_size(
+            Default::default(),
+            [800.0, 600.0],
+            views::wizard_view(&state),
+        );
+
+        let expected = [
+            consent.model_name.to_string(),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentProvider),
+                consent.provider
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentSource),
+                consent.source
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentRevision),
+                consent.immutable_revision
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentExactSize),
+                model_exact_size(*locale, consent.exact_size_bytes)
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentLicense),
+                consent.license
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentLocation),
+                consent.destination
+            ),
+            format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelConsentVerification),
+                tr(*locale, MessageKey::ModelTrustAppWillVerify)
+            ),
+            tr(*locale, MessageKey::ModelConsentPrivacy).to_string(),
+            tr(*locale, MessageKey::ModelConsentConfirm).to_string(),
+            tr(*locale, MessageKey::ModelConsentCancel).to_string(),
+        ];
+
+        for visible in expected {
+            assert!(
+                ui.find(visible.as_str()).is_ok(),
+                "consent must render {visible:?} for {locale:?}"
+            );
+        }
+
+        let _ = ui.click(tr(*locale, MessageKey::ModelConsentConfirm));
+        let messages: Vec<Message> = ui.into_messages().collect();
+        assert!(
+            messages
+                .iter()
+                .any(|message| matches!(message, Message::ConfirmModelDownload)),
+            "consent confirmation must emit the guarded start message"
+        );
+
+        let mut cancel_ui = Simulator::with_size(
+            Default::default(),
+            [800.0, 600.0],
+            views::wizard_view(&state),
+        );
+        let _ = cancel_ui.click(tr(*locale, MessageKey::ModelConsentCancel));
+        let cancel_messages: Vec<Message> = cancel_ui.into_messages().collect();
+        assert!(
+            cancel_messages
+                .iter()
+                .any(|message| matches!(message, Message::CancelModelDownload)),
+            "consent back action must emit the typed cancel message"
+        );
+    }
+}
+
+#[test]
+fn models_view_distinguishes_persistent_managed_and_manual_provenance() {
+    let _guard = iced_test_guard();
+
+    for locale in Locale::ALL {
+        for (provenance, status_key) in [
+            (
+                ModelProvenance::AppManaged,
+                MessageKey::ModelTrustAppVerified,
+            ),
+            (
+                ModelProvenance::UserSupplied,
+                MessageKey::ModelTrustUserSupplied,
+            ),
+        ] {
+            let state = AppState {
+                locale: *locale,
+                active_view: ViewId::Models,
+                capability: SearchCapability::Hybrid,
+                active_model_provenance: Some(provenance),
+                ..Default::default()
+            };
+            let mut ui = simulator(views::models_view(&state));
+            let expected = format!(
+                "{}: {}",
+                tr(*locale, MessageKey::ModelsVerification),
+                tr(*locale, status_key)
+            );
+            assert!(
+                ui.find(expected.as_str()).is_ok(),
+                "Models view must render {expected:?} for {locale:?}"
+            );
+        }
+    }
 }

@@ -30,7 +30,8 @@ mod tests;
 pub use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 pub use shell::{OrbokApp, key_to_message};
 pub use state::{
-    AppState, IndexHealth, Message, NavGroup, ResultTrustDisplay, ResultsStatus, SearchFolderScope,
+    AppState, IndexHealth, Message, ModelConsentReturn, ModelDownloadConsent, ModelProvenance,
+    ModelTrustPresentation, NavGroup, ResultTrustDisplay, ResultsStatus, SearchFolderScope,
     SearchLocation, SearchLocationState, SearchLocationSummary, SearchResultDisplay, SearchUiState,
     SourceCard, ViewId, WizardFileCheck, WizardState,
 };

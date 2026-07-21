@@ -60,6 +60,7 @@ pub fn message(key: MessageKey) -> &'static str {
             "Basic search still works. Add a search helper to also \
              search by meaning."
         }
+        ModelsVerification => "Verification",
         SettingsTitle => "Settings",
         SettingsLanguageHeading => "Language",
         SettingsPrivacyHeading => "Privacy",
@@ -101,6 +102,25 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardValidationOk => "found",
         WizardValidationFail => "not found",
         WizardReadyBody => "Semantic search is now available.",
+        ModelConsentTitle => "Review model download",
+        ModelConsentBody => {
+            "orbok will contact the provider and save this model locally only after you continue."
+        }
+        ModelConsentPrivacy => {
+            "Your documents, searches, source paths, and this save location are not sent to the model provider."
+        }
+        ModelConsentProvider => "Provider",
+        ModelConsentSource => "Source",
+        ModelConsentRevision => "Immutable revision",
+        ModelConsentExactSize => "Exact download size",
+        ModelConsentLicense => "License",
+        ModelConsentLocation => "Save location",
+        ModelConsentVerification => "Verification",
+        ModelTrustAppWillVerify => "orbok will verify the download before use",
+        ModelTrustAppVerified => "App verified",
+        ModelTrustUserSupplied => "User supplied / provenance not verified",
+        ModelConsentConfirm => "Agree and download",
+        ModelConsentCancel => "Back",
         NoticeDownloadFailTitle => "Download did not finish",
         NoticeDownloadFailBody => {
             "We could not finish the download. Please check your \

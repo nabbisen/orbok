@@ -3,9 +3,14 @@
 use futures::channel::mpsc::Sender;
 use futures::{SinkExt as _, StreamExt as _};
 use orbok_models::ManagedModelStore;
-use orbok_ui::state::Message;
+use orbok_ui::state::{AppState, Message, WizardState};
 use orbok_workers::{ModelDeliveryEvent, install_default_model};
 use std::path::PathBuf;
+
+/// The app adapter may start network work only from the explicit consent state.
+pub(crate) fn consent_allows_start(state: &AppState) -> bool {
+    matches!(state.wizard, Some(WizardState::DownloadConsent { .. }))
+}
 
 /// Run the reviewed model-delivery worker and translate typed worker events to
 /// the existing wizard messages. Local paths are carried only in the success
@@ -63,5 +68,28 @@ pub async fn run(models_root: PathBuf, catalog_path: PathBuf, mut tx: Sender<Mes
             tracing::warn!(category = %error, "trusted model delivery failed");
             let _ = tx.send(Message::DownloadFailed(error.to_string())).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orbok_ui::ModelDownloadConsent;
+
+    #[test]
+    fn network_start_requires_the_explicit_consent_state() {
+        let mut state = AppState {
+            wizard: Some(WizardState::NotConfigured),
+            model_download_consent: Some(ModelDownloadConsent::trusted_default(
+                "/managed/models".into(),
+            )),
+            ..Default::default()
+        };
+
+        assert!(!consent_allows_start(&state));
+        state.update(&Message::DownloadModel);
+        assert!(consent_allows_start(&state));
+        state.update(&Message::CancelModelDownload);
+        assert!(!consent_allows_start(&state));
     }
 }

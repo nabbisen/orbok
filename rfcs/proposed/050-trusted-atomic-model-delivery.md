@@ -11,6 +11,7 @@
 **Handoff:** [`HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
+**Phase 4 consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](../appendices/APPENDIX-C-rfc050-phase4-consent-threat-model.md)
 
 ---
 

@@ -6,9 +6,11 @@
 //! module so state logic stays UI-framework-agnostic.
 
 pub mod location;
+pub mod model_consent;
 pub mod search;
 
 pub use location::{SearchFolderScope, SearchLocation, SearchLocationState, SearchLocationSummary};
+pub use model_consent::{ModelDownloadConsent, ModelTrustPresentation};
 pub use search::{ResultTrustDisplay, ResultsStatus, SearchUiState};
 
 use crate::i18n::Locale;
@@ -118,6 +120,11 @@ pub enum WizardState {
         previous_dir: String,
         checks: Vec<WizardFileCheck>,
     },
+    /// Reviewed model facts awaiting explicit consent before network access.
+    DownloadConsent {
+        presentation: ModelDownloadConsent,
+        return_to: ModelConsentReturn,
+    },
     /// User submitted a path; file checks complete.
     Checked {
         model_dir: String,
@@ -127,7 +134,7 @@ pub enum WizardState {
     /// All files verified — ready to proceed.
     Ready {
         model_dir: String,
-        provenance: WizardModelProvenance,
+        provenance: ModelProvenance,
     },
     /// HuggingFace download in progress.
     Downloading {
@@ -142,9 +149,48 @@ pub enum WizardState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WizardModelProvenance {
-    Manual,
-    Managed,
+pub enum ModelProvenance {
+    UserSupplied,
+    AppManaged,
+}
+
+/// Setup state restored when the user backs out of download consent.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModelConsentReturn {
+    NotConfigured,
+    FileMissing {
+        previous_dir: String,
+        checks: Vec<WizardFileCheck>,
+    },
+}
+
+impl ModelConsentReturn {
+    fn from_wizard(wizard: &WizardState) -> Option<Self> {
+        match wizard {
+            WizardState::NotConfigured => Some(Self::NotConfigured),
+            WizardState::FileMissing {
+                previous_dir,
+                checks,
+            } => Some(Self::FileMissing {
+                previous_dir: previous_dir.clone(),
+                checks: checks.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    fn into_wizard(self) -> WizardState {
+        match self {
+            Self::NotConfigured => WizardState::NotConfigured,
+            Self::FileMissing {
+                previous_dir,
+                checks,
+            } => WizardState::FileMissing {
+                previous_dir,
+                checks,
+            },
+        }
+    }
 }
 
 /// The whole-app view model.
@@ -168,11 +214,15 @@ pub struct AppState {
     pub health: IndexHealth,
     pub sources: Vec<SourceCard>,
     pub capability: SearchCapability,
+    /// Provenance of the active embedding model, independent of capability.
+    pub active_model_provenance: Option<ModelProvenance>,
     pub storage_total_bytes: u64,
     /// Active startup wizard, or `None` when startup succeeded.
     pub wizard: Option<WizardState>,
     /// Text-input path the user is typing in the wizard.
     pub wizard_path_input: String,
+    /// App-populated, path-aware facts for the reviewed default-model offer.
+    pub model_download_consent: Option<ModelDownloadConsent>,
     /// Text input for the "add source" path field.
     pub source_path_input: String,
     /// When false (default), hide technical detail. Mature users can toggle on.
@@ -218,9 +268,11 @@ impl Default for AppState {
             health: IndexHealth::default(),
             sources: Vec::new(),
             capability: SearchCapability::KeywordOnly,
+            active_model_provenance: None,
             storage_total_bytes: 0,
             wizard: None,
             wizard_path_input: String::new(),
+            model_download_consent: None,
             source_path_input: String::new(),
             show_advanced: false,
             notice: None,
@@ -308,6 +360,8 @@ pub enum Message {
     ScanCompleted(IndexHealth),
     // Download
     DownloadModel,
+    ConfirmModelDownload,
+    CancelModelDownload,
     DownloadStarted {
         dest_dir: String,
     },
@@ -520,7 +574,7 @@ impl AppState {
                 self.wizard = Some(if *all_ok {
                     WizardState::Ready {
                         model_dir: model_dir.clone(),
-                        provenance: WizardModelProvenance::Manual,
+                        provenance: ModelProvenance::UserSupplied,
                     }
                 } else {
                     WizardState::Checked {
@@ -533,18 +587,38 @@ impl AppState {
             Message::WizardAccept => {
                 // orbok writes the model dir to OrbokSettings; ui
                 // transitions to full capability.
+                if let Some(WizardState::Ready { provenance, .. }) = self.wizard.as_ref() {
+                    self.active_model_provenance = Some(*provenance);
+                }
                 self.capability = SearchCapability::Hybrid;
                 self.wizard = None;
                 self.wizard_path_input = String::new();
             }
             Message::WizardSkip => {
                 self.capability = SearchCapability::KeywordOnly;
+                self.active_model_provenance = None;
                 self.wizard = None;
                 self.wizard_path_input = String::new();
             }
             Message::DownloadModel => {
-                // Transition handled in orbok main.rs (needs the data_dir).
-                // The UI just switches to a "waiting" state until DownloadStarted arrives.
+                let return_to = self
+                    .wizard
+                    .as_ref()
+                    .and_then(ModelConsentReturn::from_wizard);
+                if let (Some(presentation), Some(return_to)) =
+                    (self.model_download_consent.clone(), return_to)
+                {
+                    self.wizard = Some(WizardState::DownloadConsent {
+                        presentation,
+                        return_to,
+                    });
+                }
+            }
+            Message::ConfirmModelDownload => {} // guarded and handled by orbok
+            Message::CancelModelDownload => {
+                if let Some(WizardState::DownloadConsent { return_to, .. }) = self.wizard.take() {
+                    self.wizard = Some(return_to.into_wizard());
+                }
             }
             Message::DownloadStarted { dest_dir } => {
                 self.wizard = Some(WizardState::Downloading {
@@ -583,7 +657,7 @@ impl AppState {
                 // Switch directly to wizard-accepted flow.
                 self.wizard = Some(WizardState::Ready {
                     model_dir: dest_dir.clone(),
-                    provenance: WizardModelProvenance::Managed,
+                    provenance: ModelProvenance::AppManaged,
                 });
             }
             Message::DownloadFailed(_reason) => {
