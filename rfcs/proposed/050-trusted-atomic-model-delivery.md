@@ -12,6 +12,7 @@
 
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
 **Phase 4 consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](../appendices/APPENDIX-C-rfc050-phase4-consent-threat-model.md)
+**Phase 4 GUI lifecycle design:** [`APPENDIX-D-rfc050-gui-lifecycle-integration-design.md`](../appendices/APPENDIX-D-rfc050-gui-lifecycle-integration-design.md)
 
 ---
 
@@ -382,9 +383,18 @@ the old generation remains active before commit, the complete new generation
 becomes active after commit, invalid current state rolls back only to a verified
 previous generation, and no mixed generation can be loaded. Windows tests must
 exercise directory promotion while the old generation is open and recovery
-after each injected activation crash point. At least one end-to-end app-layer
-test must exercise the same worker invoked by the GUI against a local mock
-server.
+after each injected activation crash point.
+
+The immutable production entry cannot be redirected to a local fixture without
+weakening its reviewed trust and transport binding. GUI-to-worker acceptance
+therefore uses the named compositional proof defined by Appendix D rather than
+claiming one app-layer end-to-end local-mock test. That proof must cover the
+compiled app controller and adapter, the private production transaction core
+against a local mock server, and the production entry's wrapper obligations
+separately. It must also prove the direct production binding from the GUI
+adapter to `install_default_model`. No component test may be described as the
+literal production worker running against localhost, and no runtime or release
+configuration may select test transport, metadata, or trust roots.
 
 Adversarial concurrency tests must interleave installer, recovery, rollback,
 and cleanup attempts from separate processes. They must prove exclusive mutation

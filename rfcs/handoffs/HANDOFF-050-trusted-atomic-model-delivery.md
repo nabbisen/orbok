@@ -176,13 +176,17 @@ integration.
 - mixed-generation rejection;
 - current/previous cleanup protection;
 - process restart and final readiness recheck;
-- GUI-triggered end-to-end worker path;
+- GUI lifecycle compositional proof from the compiled controller/adapter,
+  private transaction core against a local mock server, and separately proven
+  production-entry wrapper and binding obligations, as specified by Appendix D;
 - credential-bearing proxy environment variables cannot influence routing or
   emit proxy authorization.
 
 ## 8. Validation
 
 - narrow model/app/worker tests including mock-server tests
+- Appendix D's named GUI lifecycle compositional proof; do not relabel any
+  injected private-core test as app-layer end-to-end evidence
 - focused platform durability-helper tests on Unix and Windows
 - nonzero Windows checksum, lifecycle, reparse, contention, and abrupt-exit
   evidence using the platform-specific barrier names
