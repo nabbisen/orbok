@@ -10,10 +10,20 @@ use crate::i18n::{MessageKey, tr};
 use crate::state::{AppState, Message, SourceCard, ViewId};
 use crate::views;
 use iced_test::simulator;
+use std::sync::{Mutex, MutexGuard};
+
+static ICED_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn iced_test_guard() -> MutexGuard<'static, ()> {
+    ICED_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 // A fresh app with no sources shows the "add a source" call to action.
 #[test]
 fn search_empty_state_offers_add_source() {
+    let _guard = iced_test_guard();
     let state = AppState::default();
     let mut ui = simulator(views::search_view(&state));
     assert!(
@@ -26,6 +36,7 @@ fn search_empty_state_offers_add_source() {
 // Clicking the empty-state CTA emits a Switch to the Sources view.
 #[test]
 fn search_empty_cta_switches_to_sources() {
+    let _guard = iced_test_guard();
     let state = AppState::default();
     let mut ui = simulator(views::search_view(&state));
     let _ = ui.click(tr(state.locale, MessageKey::SearchAddSource));
@@ -41,6 +52,7 @@ fn search_empty_cta_switches_to_sources() {
 // The settings view renders and exposes the advanced-view toggle.
 #[test]
 fn settings_view_has_advanced_toggle() {
+    let _guard = iced_test_guard();
     let state = AppState::default();
     let mut ui = simulator(views::settings_view(&state));
     assert!(
@@ -53,6 +65,7 @@ fn settings_view_has_advanced_toggle() {
 // Sources view renders for both empty and populated states without panicking.
 #[test]
 fn sources_view_renders_both_states() {
+    let _guard = iced_test_guard();
     let empty = AppState::default();
     let _ = simulator(views::sources_view(&empty));
 
