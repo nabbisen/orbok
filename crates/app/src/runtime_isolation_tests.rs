@@ -292,12 +292,16 @@ fn exercise_and_assert_isolation(
 
 #[test]
 fn standard_and_portable_startup_check_recovery_and_later_access_stay_isolated() {
-    let temp = tempfile::tempdir().unwrap();
-    let (standard, portable) = contexts(temp.path());
+    let standard_active = tempfile::tempdir().unwrap();
+    let (standard, portable) = contexts(standard_active.path());
     seed_profile(&standard, "standard", "en");
     seed_profile(&portable, "portable", "ja");
-
     exercise_and_assert_isolation(&standard, &portable, "standard", orbok_ui::i18n::Locale::En);
+
+    let portable_active = tempfile::tempdir().unwrap();
+    let (standard, portable) = contexts(portable_active.path());
+    seed_profile(&standard, "standard", "en");
+    seed_profile(&portable, "portable", "ja");
     exercise_and_assert_isolation(&portable, &standard, "portable", orbok_ui::i18n::Locale::Ja);
 }
 
