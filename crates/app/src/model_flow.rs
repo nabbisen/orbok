@@ -6,7 +6,6 @@ use orbok_ui::state::{
     ModelProvenance, PersistenceAttemptId, ReadyId, WizardFileCheck, WizardState,
 };
 use orbok_workers::VerifyOutcome;
-use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ModelFlowEffect {
@@ -299,18 +298,18 @@ pub(crate) trait ModelPreferenceStore {
 }
 
 struct ProductionModelPreferenceStore {
-    data_dir: PathBuf,
+    runtime: orbok::runtime_context::RuntimeContext,
 }
 
 impl ModelPreferenceStore for ProductionModelPreferenceStore {
     fn accept_user_supplied(&self, model_dir: &str) -> Result<(), ()> {
-        crate::bootstrap::persist_model_dir(model_dir).map_err(|error| {
+        crate::bootstrap::persist_model_dir(&self.runtime, model_dir).map_err(|error| {
             tracing::error!(category = "settings", %error, "failed to save model preference");
         })
     }
 
     fn accept_app_managed(&self) -> Result<(), ()> {
-        crate::bootstrap::remove_managed_model_dir_setting(&self.data_dir).map_err(|error| {
+        crate::bootstrap::remove_managed_model_dir_setting(&self.runtime).map_err(|error| {
             tracing::error!(category = "settings", %error, "failed to save model preference");
         })
     }
@@ -318,10 +317,10 @@ impl ModelPreferenceStore for ProductionModelPreferenceStore {
 
 pub(crate) fn execute_production_persistence(
     effect: ModelFlowEffect,
-    data_dir: &Path,
+    runtime: &orbok::runtime_context::RuntimeContext,
 ) -> Option<Message> {
     let store = ProductionModelPreferenceStore {
-        data_dir: data_dir.to_path_buf(),
+        runtime: runtime.clone(),
     };
     execute_persistence(&store, effect)
 }

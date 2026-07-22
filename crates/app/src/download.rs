@@ -16,18 +16,7 @@ type InstallerFuture<'a> =
 
 /// Run the reviewed production entry and translate its typed events. The
 /// binding to `install_default_model` is deliberately direct and reviewable.
-pub async fn run(models_root: PathBuf, catalog_path: PathBuf, mut tx: Sender<Message>) {
-    let catalog = match orbok_db::Catalog::open(catalog_path) {
-        Ok(catalog) => catalog,
-        Err(_) => {
-            let _ = tx
-                .send(Message::DownloadFailed(
-                    ModelDeliveryFailure::StoreUnavailable,
-                ))
-                .await;
-            return;
-        }
-    };
+pub async fn run(models_root: PathBuf, catalog: orbok_db::Catalog, tx: Sender<Message>) {
     let store = ManagedModelStore::default_embedding(models_root);
     let _ = run_with_installer(tx, |events| {
         Box::pin(install_default_model(&catalog, &store, events))

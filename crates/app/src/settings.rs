@@ -2,7 +2,7 @@
 //!
 //! [`OrbokSettings`] is the single source of truth for user-configurable
 //! values that outlive a session. It is persisted as `settings.json`
-//! in the platform config directory via [`app_json_settings::ConfigManager`].
+//! at the explicit path captured in the immutable runtime context.
 //!
 //! The most important field is [`OrbokSettings::embedding_model_dir`]:
 //! the startup wizard writes it when the user successfully locates an
@@ -16,6 +16,7 @@
 //! so config paths are now stable.
 
 use app_json_settings::ConfigManager;
+use std::path::{Path, PathBuf};
 
 /// All persistent user preferences.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -94,18 +95,31 @@ impl Default for OrbokSettings {
 
 /// Load settings from the platform config directory, or return defaults
 /// if the file does not exist yet.
-pub fn load_settings() -> OrbokSettings {
+pub fn standard_settings_file() -> PathBuf {
     ConfigManager::<OrbokSettings>::new()
         .with_filename("settings.json")
-        .load_or_default()
-        .unwrap_or_default()
+        .path()
 }
 
-/// Persist settings to the platform config directory.
-pub fn save_settings(settings: &OrbokSettings) -> Result<(), app_json_settings::ConfigError> {
-    ConfigManager::new()
-        .with_filename("settings.json")
-        .save(settings)
+pub fn load_settings(path: &Path) -> OrbokSettings {
+    let Ok(bytes) = std::fs::read(path) else {
+        return OrbokSettings::default();
+    };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+/// Persist settings to the selected runtime profile.
+pub fn save_settings(path: &Path, settings: &OrbokSettings) -> std::io::Result<()> {
+    let directory = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "settings file has no parent directory",
+        )
+    })?;
+    std::fs::create_dir_all(directory)?;
+    let bytes = serde_json::to_vec_pretty(settings)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    std::fs::write(path, bytes)
 }
 
 impl OrbokSettings {

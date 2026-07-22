@@ -13,6 +13,8 @@ mod diagnostics;
 mod download;
 mod history;
 mod model_flow;
+#[cfg(test)]
+mod runtime_isolation_tests;
 mod settings;
 
 use orbok_ui::state::WizardFileCheck;
@@ -34,16 +36,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let portable = args.iter().any(|a| a == "--portable");
+    let runtime = bootstrap::resolve_runtime_context(portable)?;
     if portable {
         eprintln!("orbok: portable mode — data directory: ./orbok-data/");
     }
     if args.iter().any(|a| a == "--check") {
-        return bootstrap::run_check();
+        return bootstrap::run_check(&runtime);
     }
 
-    let data_dir = bootstrap::data_dir_for_args(portable);
-    let state = bootstrap::load_initial_state(&data_dir)?;
-    let catalog_path = data_dir.join(orbok_db::CATALOG_FILE_NAME);
+    let state = bootstrap::load_initial_state(&runtime)?;
 
     iced::application(
         move || OrbokApp::with_state(state.clone()),
@@ -52,18 +53,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return match effect {
                     model_flow::ModelFlowEffect::None => iced::Task::none(),
                     model_flow::ModelFlowEffect::StartManagedDownload => {
-                        let dest = bootstrap::default_model_store_root(&data_dir);
+                        let dest = bootstrap::active_model_store_root(&runtime)
+                            .expect("active model path must be authorized");
+                        let catalog = match bootstrap::open_catalog(&runtime) {
+                            Ok(catalog) => catalog,
+                            Err(_) => return iced::Task::none(),
+                        };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
-                        tokio::spawn(download::run(dest, catalog_path.clone(), tx));
+                        tokio::spawn(download::run(dest, catalog, tx));
                         iced::Task::stream(rx)
                     }
                     effect @ model_flow::ModelFlowEffect::PersistReady { .. } => {
-                        let persistence_data_dir = data_dir.clone();
+                        let persistence_runtime = runtime.clone();
                         iced::Task::perform(
                             async move {
                                 model_flow::execute_production_persistence(
                                     effect,
-                                    &persistence_data_dir,
+                                    &persistence_runtime,
                                 )
                                 .expect("PersistReady must produce a completion")
                             },
@@ -96,8 +102,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(folder) = picked {
                         let path = folder.to_string_lossy().to_string();
                         app.update(Message::SourcePathChanged(path.clone()));
-                        if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                            let cache = orbok_cache::CacheService::new(&data_dir);
+                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                            let cache = bootstrap::cache_service(&runtime)
+                                .expect("active cache path must be authorized");
                             match bootstrap::add_source(&catalog, &path) {
                                 Ok((card, sensitive)) => {
                                     if let Some(warning) = sensitive {
@@ -132,10 +139,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::CleanSnippets => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                        let cache = orbok_cache::CacheService::new(&data_dir);
-                        let cache_db = data_dir.join("orbok-cache.sqlite3");
-                        match bootstrap::clean_snippets(&catalog, &cache, &cache_db) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                        let cache = bootstrap::cache_service(&runtime)
+                            .expect("active cache path must be authorized");
+                        let cache_db = runtime.cache_file();
+                        match bootstrap::clean_snippets(&catalog, &cache, cache_db) {
                             Ok(_) => app.update(Message::CleanupDone),
                             Err(e) => tracing::error!("clean snippets failed: {e}"),
                         }
@@ -143,10 +151,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::CleanSearchCache => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                        let cache = orbok_cache::CacheService::new(&data_dir);
-                        let cache_db = data_dir.join("orbok-cache.sqlite3");
-                        match bootstrap::clean_search_cache(&catalog, &cache, &cache_db) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                        let cache = bootstrap::cache_service(&runtime)
+                            .expect("active cache path must be authorized");
+                        let cache_db = runtime.cache_file();
+                        match bootstrap::clean_search_cache(&catalog, &cache, cache_db) {
                             Ok(_) => app.update(Message::CleanupDone),
                             Err(e) => tracing::error!("clean search cache failed: {e}"),
                         }
@@ -154,15 +163,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::ConfirmResetCatalog => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                        let cache = orbok_cache::CacheService::new(&data_dir);
-                        let cache_db = data_dir.join("orbok-cache.sqlite3");
-                        let _ = bootstrap::reset_catalog(&catalog, &cache, &cache_db);
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                        let cache = bootstrap::cache_service(&runtime)
+                            .expect("active cache path must be authorized");
+                        let cache_db = runtime.cache_file();
+                        let _ = bootstrap::reset_catalog(&catalog, &cache, cache_db);
                     }
                     // UI state pre-cleared in AppState::update; fall through for update().
                 }
                 Message::SourceRemoved(source_id) => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let _ = bootstrap::remove_source(&catalog, source_id);
                     }
                 }
@@ -177,18 +187,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::PersistLocale(locale) => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let _ = bootstrap::persist_locale(&catalog, locale);
                     }
                 }
                 Message::SetTheme(theme) => {
-                    let _ = bootstrap::persist_theme(*theme);
+                    let _ = bootstrap::persist_theme(&runtime, *theme);
                 }
                 Message::SetTextScale(scale) => {
-                    let _ = bootstrap::persist_text_scale(*scale);
+                    let _ = bootstrap::persist_text_scale(&runtime, *scale);
                 }
                 Message::SetReducedMotion(val) => {
-                    let _ = bootstrap::persist_reduced_motion(*val);
+                    let _ = bootstrap::persist_reduced_motion(&runtime, *val);
                 }
                 Message::SubmitSearch => {
                     let query = app.state.query.trim().to_string();
@@ -213,14 +223,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 },
                             );
                         }
-                        if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
-                            match bootstrap::run_search(&catalog, &query, 20) {
+                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
                                 Ok(results) => {
                                     let count = results.len();
                                     app.update(message.clone());
                                     app.update(Message::SearchResultsReady(results));
                                     // RFC-042: record this search if history is on.
-                                    let s = settings::load_settings();
+                                    let s = bootstrap::load_runtime_settings(&runtime)
+                                        .unwrap_or_default();
                                     history::record_search(
                                         &catalog,
                                         &s.privacy_settings(),
@@ -247,7 +258,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // RFC-045: folder picked — create or reuse the remembered folder.
                 Message::FolderPicked(path) => {
                     let path_str = path.to_string_lossy().to_string();
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         // Reuse an existing source if the canonical path already
                         // exists — never create duplicates (RFC-045 §19.3).
                         let card = if let Some(existing) =
@@ -289,7 +300,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Begin background preparation and immediately search
                         // whatever is already indexed (RFC-045 §14, §8.1).
-                        let cache = orbok_cache::CacheService::new(&data_dir);
+                        let cache = bootstrap::cache_service(&runtime)
+                            .expect("active cache path must be authorized");
                         match bootstrap::scan_and_index_source(&catalog, &cache, source_id.as_str())
                         {
                             Ok(health) => app.update(Message::ScanCompleted(health)),
@@ -299,7 +311,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Resume the search that triggered the picker.
                         let query = app.state.last_query.clone().unwrap_or_default();
                         if !query.is_empty() {
-                            match bootstrap::run_search(&catalog, &query, 20) {
+                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
                                 Ok(results) => {
                                     app.update(Message::SearchResultsReady(results));
                                 }
@@ -313,7 +325,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         if let Some(entry) = history::get_entry(&catalog, id) {
                             // Restore search text immediately (RFC-042 §9 step 1).
                             app.state.query = entry.search_text.clone();
@@ -336,7 +348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Rerun against current files (RFC-042 §9 step 6).
                             let query = entry.search_text.trim().to_string();
                             if !query.is_empty() {
-                                match bootstrap::run_search(&catalog, &query, 20) {
+                                match bootstrap::run_search(&runtime, &catalog, &query, 20) {
                                     Ok(results) => {
                                         app.update(Message::SearchResultsReady(results));
                                     }
@@ -353,7 +365,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: remove one entry.
                 Message::RemoveRecentSearch(id) => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let refreshed = history::remove_entry(&catalog, id);
                         app.update(message.clone());
                         app.update(Message::HistoryLoaded(refreshed));
@@ -362,7 +374,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: clear all entries.
                 Message::ConfirmClearRecentSearches => {
-                    if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         history::clear_history(&catalog);
                     }
                     app.update(Message::RecentSearchesCleared);
@@ -373,13 +385,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: toggle the Remember recent searches setting.
                 Message::ToggleRememberRecentSearches(on) => {
-                    let mut s = settings::load_settings();
+                    let mut s = bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
                     s.remember_recent_searches = *on;
-                    let _ = settings::save_settings(&s);
+                    let _ = bootstrap::save_runtime_settings(&runtime, &s);
                     // If turned off, also clear existing entries (RFC-042 §13.4
                     // "Turn off and clear" — default safe behavior here).
                     if !*on {
-                        if let Ok(catalog) = orbok_db::Catalog::open(&catalog_path) {
+                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                             history::clear_history(&catalog);
                             app.update(Message::RecentSearchesCleared);
                         }

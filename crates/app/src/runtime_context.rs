@@ -201,6 +201,16 @@ pub trait RuntimePathProbe {
     fn before_access(&self, kind: RuntimePathKind, path: &Path) -> io::Result<()>;
 }
 
+/// Production probe which permits the already-resolved active path.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AllowRuntimePathProbe;
+
+impl RuntimePathProbe for AllowRuntimePathProbe {
+    fn before_access(&self, _kind: RuntimePathKind, _path: &Path) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Binds access authorization to exactly one immutable runtime context.
 pub struct RuntimeAccess<'a, P: ?Sized> {
     context: &'a RuntimeContext,
@@ -305,8 +315,13 @@ fn anchor_and_normalize(anchor: &Path, path: &Path) -> Result<PathBuf, RuntimeCo
     normalize_absolute(&anchored).ok_or(RuntimeContextError::ResolvedPathNotAbsolute)
 }
 
-fn paths_overlap(left: &Path, right: &Path) -> bool {
+pub fn paths_overlap(left: &Path, right: &Path) -> bool {
     paths_overlap_with_case(left, right, cfg!(any(windows, target_os = "macos")))
+}
+
+/// Target-aware whole-component containment used after physical resolution.
+pub fn path_is_within(path: &Path, prefix: &Path) -> bool {
+    components_start_with(path, prefix, cfg!(any(windows, target_os = "macos")))
 }
 
 fn paths_overlap_with_case(left: &Path, right: &Path, case_insensitive: bool) -> bool {

@@ -40,5 +40,8 @@ tracing-subscriber          = { workspace = true }
 dirs                        = { workspace = true }
 futures                     = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys                 = { workspace = true, features = ["Win32_Foundation"] }
+
 [dev-dependencies]
 tempfile                    = { workspace = true }
