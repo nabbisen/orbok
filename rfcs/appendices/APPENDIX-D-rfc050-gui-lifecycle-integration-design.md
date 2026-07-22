@@ -1,16 +1,16 @@
 # RFC-050 Appendix D — GUI Lifecycle Integration Design
 
-**Status:** Accepted Phase 4 integration design; Slices A and B implemented and reviewed; final consolidation pending
-**RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)
+**Status:** Accepted Phase 4 integration design; implementation consolidated by Review 105
+**RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 **Consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](APPENDIX-C-rfc050-phase4-consent-threat-model.md)
 **Localization policy:** [RFC-052](../proposed/052-ui-localization-and-design-gate-compliance.md) and [HANDOFF-052](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 
 This appendix records the accepted bounded Phase 4 integration design produced
 after Architecture Review 096. Its Slice A and Slice B implementation surfaces
-have been independently reviewed. The appendix remains the historical and
-normative design record; it does not by itself accept Phase 4, change the
-reviewed worker protocol, move RFC-050, or establish release readiness.
+were independently reviewed and consolidated by Review 105. The appendix
+remains the historical and normative design record; it does not change the
+reviewed worker protocol or establish release readiness.
 
 ## 1. Objective and boundaries
 

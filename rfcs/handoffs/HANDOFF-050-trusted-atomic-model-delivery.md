@@ -2,10 +2,10 @@
 
 **Project:** orbok  
 **RFC:** 050  
-**Lifecycle stage:** Design + handoff  
+**Lifecycle stage:** Implemented with RFC-050 on `main` at `902f33a`; release pending
 **Primary owners:** model registry/readiness, app download worker, security  
 **Last revised:** 2026-07-16
-**RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)
+**RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`../appendices/APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)
 
@@ -13,13 +13,13 @@
 > passed verification. Never derive expected integrity metadata from the bytes
 > being accepted.
 
-## 1. Approval Gate
+## 1. Approval Gate (historical)
 
-Do not implement production network or activation code until Appendix B and
-RFC-050's generation protocol receive independent security/design approval.
-The pure manifest/policy subset in §3A is already approved. Generation schema,
-filesystem, catalog mutation, production HTTP, recovery, cleanup, and GUI work
-remain blocked until the revised serialization/lifecycle protocol is reviewed.
+This gate governed implementation and is retained as historical execution
+context. The required design, security, implementation, and consolidated Phase
+4 reviews are complete through Review 105. Before that acceptance, production
+network or activation code was not to be implemented until Appendix B and
+RFC-050's generation protocol received independent security/design approval.
 
 ## 2. Expected Change Surface
 

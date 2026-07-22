@@ -1,14 +1,14 @@
 # RFC-050 Appendix C — Phase 4 Consent and Threat-Model Delta
 
-**Status:** Accepted bounded Phase 4 consent/threat-model evidence; final consolidation pending
-**RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)  
+**Status:** Accepted Phase 4 consent/threat-model evidence; consolidated by Review 105
+**RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)  
 **Localization policy:** [RFC-052](../proposed/052-ui-localization-and-design-gate-compliance.md) and [HANDOFF-052](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 
 This appendix records the accepted bounded Phase 4 consent and threat-model
-evidence implemented after Architecture Review 094. It does not by itself
-accept Phase 4, move RFC-050, authorize release, or broaden the reviewed
-model-delivery worker protocol.
+evidence implemented after Architecture Review 094 and consolidated by Review
+105. It does not authorize release or broaden the reviewed model-delivery
+worker protocol.
 
 ## 1. GUI entry-point and state inventory
 
@@ -135,6 +135,6 @@ evidence disposition and return it to architecture/security review.
 ## 5. Stop point
 
 The GUI lifecycle integration and Appendix D's named compositional proof are
-implemented and independently reviewed. Final Phase 4 consolidation remains
-the next review stop. RFC lifecycle movement, release-readiness claims, and the
-repository-wide RFC-052 program remain later independent decisions.
+implemented and independently reviewed. Review 105 accepted the final Phase 4
+consolidation. Release-readiness claims and the repository-wide RFC-052 program
+remain later independent decisions.

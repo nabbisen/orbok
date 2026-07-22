@@ -1,7 +1,7 @@
 # RFC-050 Appendix E — Phase 4 Compositional Proof Report
 
-**Status:** Slice B implementation accepted at `5fb085c`; Phase 4 consolidation pending
-**RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)  
+**Status:** Phase 4 compositional proof accepted by Review 105; implementation base `5fb085c`
+**RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)  
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](APPENDIX-B-default-model-trust-root.md)  
 **Consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](APPENDIX-C-rfc050-phase4-consent-threat-model.md)  
@@ -15,8 +15,8 @@ production worker contacted a loopback server.
 
 Architecture Review 101 authorized this bounded test/documentation Slice B,
 and independent Architecture Review 102 accepted the resulting implementation,
-which the owner committed at the revision above. This report does not by itself
-complete Phase 4, move the RFC lifecycle, expand Review 093, or establish
+which the owner committed at the revision above. Review 105 accepted the final
+Phase 4 consolidation. This report does not expand Review 093 or establish
 release readiness.
 
 ## 1. Proof boundaries
@@ -248,5 +248,4 @@ B implementation review.
   093's strict waiver.
 - No manual English/Japanese GUI session or real provider download/load is
   claimed.
-- Phase 4 consolidation, RFC lifecycle movement, and release readiness remain
-  pending.
+- RFC-050 release readiness remains pending.
