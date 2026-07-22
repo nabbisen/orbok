@@ -1,22 +1,23 @@
 # RFC-050 Appendix E — Phase 4 Compositional Proof Report
 
-**Status:** Slice B implementation evidence; independent implementation review pending  
+**Status:** Slice B implementation accepted at `5fb085c`; Phase 4 consolidation pending
 **RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)  
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)  
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](APPENDIX-B-default-model-trust-root.md)  
 **Consent/threat delta:** [`APPENDIX-C-rfc050-phase4-consent-threat-model.md`](APPENDIX-C-rfc050-phase4-consent-threat-model.md)  
 **Integration design:** [`APPENDIX-D-rfc050-gui-lifecycle-integration-design.md`](APPENDIX-D-rfc050-gui-lifecycle-integration-design.md)  
-**Evidence base:** `d4e958b58282c57e83f6e79c87279877f0fe7caf`
+**Accepted implementation:** `5fb085cc17ada0f6f85a537e8dcde99b98866369`
 
 This report records the named compositional proof required by RFC-050 §12,
 HANDOFF-050, and Appendix D §4.3. It joins independently compiled evidence; it
 does not claim one literal GUI-to-localhost execution or that the immutable
 production worker contacted a loopback server.
 
-Architecture Review 101 authorized this bounded test/documentation Slice B.
-Independent review of the resulting implementation is pending. This report
-does not accept Slice B, complete Phase 4, move the RFC lifecycle, expand
-Review 093, or establish release readiness.
+Architecture Review 101 authorized this bounded test/documentation Slice B,
+and independent Architecture Review 102 accepted the resulting implementation,
+which the owner committed at the revision above. This report does not by itself
+complete Phase 4, move the RFC lifecycle, expand Review 093, or establish
+release readiness.
 
 ## 1. Proof boundaries
 
@@ -24,7 +25,7 @@ Review 093, or establish release readiness.
 |---|---|---|---|
 | Controller | Real `orbok` `model_flow` module | `compiled_adapter_controller_and_executor_complete_managed_success`, `compiled_adapter_failure_never_creates_ready`, and the focused reducer matrix | Consent/duplicate guards, typed managed success/failure, correlated Ready persistence, and projection |
 | Adapter | Real `orbok` `download` module and `run_with_installer` | Adapter invocation, typed translation, FIFO drain, unknown-event, closed-receiver, and terminal-arbitration tests | The app waits for worker quiescence, drains admitted progress, selects one typed terminal result, and does not abandon worker mutation when presentation closes |
-| Private worker transaction | Private `model_delivery::execute_generation`, shared by production and fixtures | `mock_server_install_promotes_complete_generation_and_activates_it`, `checksum_failure_never_promotes_or_activates`, and the existing delivery/crash matrix | Loopback transfer, exact integrity, bounded concurrency, staging, durable promotion, activation, compensation, coherent-prior preservation, and later-startup catalog retention |
+| Private worker transaction | Private `model_delivery::execute_generation`, shared by production and fixtures | `mock_server_install_promotes_complete_generation_and_activates_it`, `checksum_failure_never_promotes_or_activates`, and the existing delivery/crash matrix detailed in §§2.1–2.3 | Loopback transfer, exact integrity, bounded concurrency, staging, durable promotion, activation, compensation, coherent-prior preservation, and later-startup catalog retention |
 | Production wrapper | Public `install_default_model` and existing private helpers | Dynamic helper/component tests plus the source/dataflow map in §3 | Sealed manifest validation, preflight, lock, guarded planning, already-ready verification, and production-client construction remain on the production entry |
 | Production binding | Compiled app/worker crates plus direct source/dataflow review | The two exact links in §4 and Appendix B parity/policy evidence | Production remains directly bound to `install_default_model`, the sealed manifest/client, and the same private transaction core; no runtime test route exists |
 
@@ -51,9 +52,9 @@ The test asserts:
 - exact `trusted-manifest.json` and `COMPLETE` metadata;
 - recursive absence of `.part` files;
 - catalog current equals the exact returned identity; and
-- a later `run_managed_model_startup_with` transition advances the startup
-  epoch, retains that exact current, does not roll back, and leaves no previous
-  generation.
+- a later `run_managed_model_startup_with` transition records a positive
+  startup epoch, retains that exact current, does not roll back, and leaves no
+  previous generation.
 
 The tiny restart validator checks the fixture path, both fixture payloads, the
 complete marker, and serialized fixture manifest. It proves traversal through
@@ -157,11 +158,11 @@ shared libraries, not `orbok` or `orbok-ui`. Its dev dependencies contain
 `orbok-bench` and test libraries, not app/UI crates. No app/controller source
 is copied or `include!`-expanded into the worker crate.
 
-The repository package intentionally contains the complete workspace,
-including app/UI source. The required hermeticity claim is narrower: the
-worker normal/release dependency graph and packaged worker source require no
-copied/included app/UI test logic and expose no runtime test override. Gate
-results and archive inspection are recorded in §7.
+This report does not claim that the complete-workspace archive excludes app/UI
+source. Its hermeticity claim is narrower: the worker normal/release dependency
+graph and packaged worker source require no copied/included app/UI test logic
+and expose no runtime test override. Gate results and archive inspection are
+recorded in §7.
 
 ## 6. Review 093 and platform analysis
 
@@ -230,8 +231,8 @@ The following evidence was observed on the Slice B working tree:
   were absent; and the packaged worker delivery source contained no
   `include!`, `orbok_ui`, `crates/app`, or `run_with_installer` reference.
 
-The package and checksum remain disposable ignored files under `dist/` for the
-implementation reviewer. They are not release artifacts.
+The Slice B package and checksum remain disposable ignored historical review
+evidence under `dist/`. They are not release artifacts.
 
 Hunk inspection confirms every worker change is below the existing
 `#[cfg(test)]` boundary. No mandatory gate remains unrun for the bounded Slice
@@ -247,5 +248,5 @@ B implementation review.
   093's strict waiver.
 - No manual English/Japanese GUI session or real provider download/load is
   claimed.
-- Independent Slice B implementation review, Phase 4 consolidation, RFC
-  lifecycle movement, and release readiness remain pending.
+- Phase 4 consolidation, RFC lifecycle movement, and release readiness remain
+  pending.

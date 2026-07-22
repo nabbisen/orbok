@@ -1,13 +1,14 @@
 # RFC-050 Appendix C — Phase 4 Consent and Threat-Model Delta
 
-**Status:** Phase 4 bounded-slice review input  
+**Status:** Accepted bounded Phase 4 consent/threat-model evidence; final consolidation pending
 **RFC:** [`../proposed/050-trusted-atomic-model-delivery.md`](../proposed/050-trusted-atomic-model-delivery.md)  
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)  
 **Localization policy:** [RFC-052](../proposed/052-ui-localization-and-design-gate-compliance.md) and [HANDOFF-052](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 
-This appendix records the first bounded Phase 4 slice authorized by Architecture
-Review 094. It does not accept Phase 4, authorize release, or broaden the
-reviewed model-delivery worker protocol.
+This appendix records the accepted bounded Phase 4 consent and threat-model
+evidence implemented after Architecture Review 094. It does not by itself
+accept Phase 4, move RFC-050, authorize release, or broaden the reviewed
+model-delivery worker protocol.
 
 ## 1. GUI entry-point and state inventory
 
@@ -66,13 +67,16 @@ parameterized formatter so the integer byte count is not rounded and its unit
 is localized. Dynamic provider, model id, revision, license, and path values are
 data, not catalog copy.
 
-Available gates are the UI catalog tests, UI/app unit compilation and tests,
-consent and persistent-provenance view smoke tests, formatting, strict clippy,
-diff checks, and RFC lifecycle checks. RFC-052's
-planned full literal-string inventory and dedicated policy tooling do not yet
-exist and remain deferred. Pre-existing wizard progress/file-position literals
-are outside this bounded consent slice and remain part of that RFC-052 audit;
-no new Phase 4 progress or failure literal is added here.
+Accepted gates include the exhaustive UI catalog tests, parameterized English
+and Japanese model-progress formatters, UI/app tests, and bilingual consent,
+failure/retry, and persistent-provenance view smoke tests. The progress,
+file-position, failure, and retry copy introduced or touched by the bounded
+RFC-050 model lifecycle is now typed and localized through that boundary.
+
+RFC-052's repository-wide literal inventory, dedicated policy tooling, CI
+wiring, remaining token cleanup, and manual Japanese QA remain pending. This
+screen-bounded evidence neither completes RFC-052 nor classifies unrelated
+pre-existing UI copy.
 
 ## 4. Threat-model delta
 
@@ -130,7 +134,7 @@ evidence disposition and return it to architecture/security review.
 
 ## 5. Stop point
 
-Independent review is required before broader GUI integration, Phase 4
-acceptance, RFC lifecycle movement, or release-readiness claims. GUI-triggered
-end-to-end worker evidence and complete RFC-052 progress/failure localization
-remain later gates.
+The GUI lifecycle integration and Appendix D's named compositional proof are
+implemented and independently reviewed. Final Phase 4 consolidation remains
+the next review stop. RFC lifecycle movement, release-readiness claims, and the
+repository-wide RFC-052 program remain later independent decisions.
