@@ -123,6 +123,13 @@ jobs:
     name: Cross-platform smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      # A pre-existing, unrelated orbok-fs failure on macos-latest
+      # (tests::path_guard::ignore_policy_blocks_internal_symlink) must not
+      # cancel the windows-latest leg via fail-fast before it reaches the
+      # RFC-049 isolation/denial tests added below — that would silently
+      # deny the Windows evidence this correction needs. fail-fast: false
+      # lets every OS leg run to completion independently.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
