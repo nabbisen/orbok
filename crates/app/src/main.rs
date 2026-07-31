@@ -53,14 +53,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return match effect {
                     model_flow::ModelFlowEffect::None => iced::Task::none(),
                     model_flow::ModelFlowEffect::StartManagedDownload => {
-                        let dest = bootstrap::active_model_store_root(&runtime)
-                            .expect("active model path must be authorized");
+                        let model_store = bootstrap::model_store(&runtime)
+                            .expect("active model store must be authorized");
                         let catalog = match bootstrap::open_catalog(&runtime) {
                             Ok(catalog) => catalog,
                             Err(_) => return iced::Task::none(),
                         };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
-                        tokio::spawn(download::run(dest, catalog, tx));
+                        tokio::spawn(download::run(model_store, catalog, tx));
                         iced::Task::stream(rx)
                     }
                     effect @ model_flow::ModelFlowEffect::PersistReady { .. } => {
@@ -142,8 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let cache = bootstrap::cache_service(&runtime)
                             .expect("active cache path must be authorized");
-                        let cache_db = runtime.cache_file();
-                        match bootstrap::clean_snippets(&catalog, &cache, cache_db) {
+                        match bootstrap::clean_snippets(&catalog, &cache) {
                             Ok(_) => app.update(Message::CleanupDone),
                             Err(e) => tracing::error!("clean snippets failed: {e}"),
                         }
@@ -154,8 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let cache = bootstrap::cache_service(&runtime)
                             .expect("active cache path must be authorized");
-                        let cache_db = runtime.cache_file();
-                        match bootstrap::clean_search_cache(&catalog, &cache, cache_db) {
+                        match bootstrap::clean_search_cache(&catalog, &cache) {
                             Ok(_) => app.update(Message::CleanupDone),
                             Err(e) => tracing::error!("clean search cache failed: {e}"),
                         }
@@ -166,8 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let cache = bootstrap::cache_service(&runtime)
                             .expect("active cache path must be authorized");
-                        let cache_db = runtime.cache_file();
-                        let _ = bootstrap::reset_catalog(&catalog, &cache, cache_db);
+                        let _ = bootstrap::reset_catalog(&catalog, &cache);
                     }
                     // UI state pre-cleared in AppState::update; fall through for update().
                 }

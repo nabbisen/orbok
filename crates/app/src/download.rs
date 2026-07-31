@@ -2,24 +2,22 @@
 
 use futures::channel::mpsc::Sender;
 use futures::{SinkExt as _, StreamExt as _};
-use orbok_models::ManagedModelStore;
+use orbok::runtime_storage::ProfileModelStore;
 use orbok_ui::state::{Message, ModelArtifact, ModelDeliveryFailure};
-use orbok_workers::{
-    ModelDeliveryError, ModelDeliveryEvent, ModelDeliveryOutcome, install_default_model,
-};
+use orbok_workers::{ModelDeliveryError, ModelDeliveryEvent, ModelDeliveryOutcome};
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 
 type InstallerFuture<'a> =
     Pin<Box<dyn Future<Output = Result<ModelDeliveryOutcome, ModelDeliveryError>> + Send + 'a>>;
 
 /// Run the reviewed production entry and translate its typed events. The
-/// binding to `install_default_model` is deliberately direct and reviewable.
-pub async fn run(models_root: PathBuf, catalog: orbok_db::Catalog, tx: Sender<Message>) {
-    let store = ManagedModelStore::default_embedding(models_root);
+/// binding to `store.install_default_model` is deliberately direct and
+/// reviewable; `store` is sealed to the profile it was authorized for, so
+/// this function cannot be handed a path belonging to another profile.
+pub async fn run(store: ProfileModelStore, catalog: orbok_db::Catalog, tx: Sender<Message>) {
     let _ = run_with_installer(tx, |events| {
-        Box::pin(install_default_model(&catalog, &store, events))
+        Box::pin(store.install_default_model(&catalog, events))
     })
     .await;
 }

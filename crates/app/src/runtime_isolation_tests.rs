@@ -1,7 +1,7 @@
 use super::bootstrap;
 use super::settings::{self, OrbokSettings};
 use orbok::runtime_context::{
-    PlatformRuntimePaths, RuntimeContext, RuntimePathKind, RuntimePathProbe, RuntimeSelection,
+    PlatformRuntimePaths, RuntimeContext, RuntimePathKind, RuntimeSelection,
 };
 use orbok_core::{
     HiddenFilePolicy, IndexMode, JobStatus, JobType, PersistenceMode, SearchHistorySettings,
@@ -16,26 +16,35 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct RecordingProbe(Mutex<Vec<(RuntimePathKind, PathBuf)>>);
 
-impl RuntimePathProbe for RecordingProbe {
+impl orbok::runtime_context::RuntimePathProbe for RecordingProbe {
     fn before_access(&self, kind: RuntimePathKind, path: &Path) -> io::Result<()> {
         self.0.lock().unwrap().push((kind, path.to_path_buf()));
         Ok(())
     }
 }
 
+/// Defense-in-depth only: this is a source-text check, not the primary
+/// guarantee. The primary guarantee is structural — `RuntimeContext`'s path
+/// accessors are `pub(crate)` to the `orbok` library crate, so this binary
+/// crate cannot construct a `Catalog`, `CacheService`, or managed model store
+/// from an arbitrary path at all; a bypass attempt fails to compile. This
+/// test only catches an accidental future bypass of `RuntimeStorage` itself
+/// and is deliberately not extended with more API names as a substitute for
+/// that structural boundary (Correction Request 111 §4 C5).
 #[test]
 fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
+    let runtime_storage = include_str!("runtime_storage.rs");
     let bootstrap = include_str!("bootstrap.rs");
     let main = include_str!("main.rs");
     let model_flow = include_str!("model_flow.rs");
     let download = include_str!("download.rs");
     let settings = include_str!("settings.rs");
-    let outside_boundary = [main, model_flow, download].join("\n");
+    let outside_boundary = [bootstrap, main, model_flow, download].join("\n");
 
     assert!(!outside_boundary.contains("Catalog::open"));
     assert!(!outside_boundary.contains("CacheService::new"));
-    assert_eq!(bootstrap.matches("Catalog::open").count(), 1);
-    assert_eq!(bootstrap.matches("CacheService::new").count(), 1);
+    assert_eq!(runtime_storage.matches("Catalog::open").count(), 1);
+    assert_eq!(runtime_storage.matches("CacheService::new").count(), 1);
     assert_eq!(
         settings
             .matches("ConfigManager::<OrbokSettings>::new()")
@@ -45,7 +54,37 @@ fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
     assert!(!settings.contains("at_custom_dir"));
 }
 
-fn contexts(root: &Path) -> (RuntimeContext, RuntimeContext) {
+/// A `RuntimeContext` plus the test's own independently-computed expectation
+/// of where it resolves each profile-resource path. Tests build these
+/// expectations from the same temporary roots they seed, rather than reading
+/// them back off the (now-sealed) context — see Correction Request 111 §4 C1
+/// ("tests already build expected paths from the temporary roots they seed;
+/// keep it that way").
+struct Profile {
+    context: RuntimeContext,
+    data_dir: PathBuf,
+    settings_dir: PathBuf,
+}
+
+impl Profile {
+    fn settings_file(&self) -> PathBuf {
+        self.settings_dir.join("settings.json")
+    }
+
+    fn path(&self, kind: RuntimePathKind) -> PathBuf {
+        match kind {
+            RuntimePathKind::Catalog => self.data_dir.join(orbok_db::CATALOG_FILE_NAME),
+            RuntimePathKind::Cache => self.data_dir.join(orbok_db::CACHE_FILE_NAME),
+            RuntimePathKind::Models => self.data_dir.join("models"),
+            RuntimePathKind::Settings => self.settings_file(),
+            RuntimePathKind::Recovery => self.data_dir.clone(),
+            RuntimePathKind::Diagnostics => self.data_dir.join("diagnostics"),
+            RuntimePathKind::Temporary => self.data_dir.join("tmp"),
+        }
+    }
+}
+
+fn contexts(root: &Path) -> (Profile, Profile) {
     let startup = root.join("startup");
     let standard_data = root.join("standard-data");
     let standard_settings = root.join("standard-settings");
@@ -54,23 +93,34 @@ fn contexts(root: &Path) -> (RuntimeContext, RuntimeContext) {
         standard_data_dir: Some(&standard_data),
         standard_settings_dir: &standard_settings,
     };
-    let standard = RuntimeContext::resolve(
+    let standard_context = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, None).unwrap(),
         &startup,
         platform,
     )
     .unwrap();
-    let portable = RuntimeContext::resolve(
+    let portable_context = RuntimeContext::resolve(
         RuntimeSelection::resolve(true, None).unwrap(),
         &startup,
         platform,
     )
     .unwrap();
+    let standard = Profile {
+        context: standard_context,
+        data_dir: standard_data,
+        settings_dir: standard_settings,
+    };
+    let portable_data = startup.join("orbok-data");
+    let portable = Profile {
+        context: portable_context,
+        data_dir: portable_data.clone(),
+        settings_dir: portable_data,
+    };
     (standard, portable)
 }
 
-fn seed_profile(context: &RuntimeContext, marker: &str, locale: &str) {
-    let catalog = bootstrap::open_catalog(context).unwrap();
+fn seed_profile(profile: &Profile, marker: &str, locale: &str) {
+    let catalog = bootstrap::open_catalog(&profile.context).unwrap();
     let source = SourceRepository::new(&catalog)
         .insert(NewSource {
             source_type: SourceType::Directory,
@@ -106,8 +156,9 @@ fn seed_profile(context: &RuntimeContext, marker: &str, locale: &str) {
         locale: locale.to_string(),
         ..OrbokSettings::default()
     };
-    settings::save_settings(context.settings_file(), &persisted).unwrap();
-    std::fs::write(context.data_dir().join("profile-sentinel"), marker).unwrap();
+    settings::save_settings(&profile.settings_file(), &persisted).unwrap();
+    std::fs::create_dir_all(&profile.data_dir).unwrap();
+    std::fs::write(profile.data_dir.join("profile-sentinel"), marker).unwrap();
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -121,8 +172,8 @@ struct LogicalSnapshot {
     model_dir: Option<String>,
 }
 
-fn logical_snapshot(context: &RuntimeContext) -> LogicalSnapshot {
-    let catalog = bootstrap::open_catalog(context).unwrap();
+fn logical_snapshot(profile: &Profile) -> LogicalSnapshot {
+    let catalog = bootstrap::open_catalog(&profile.context).unwrap();
     let mut sources: Vec<_> = SourceRepository::new(&catalog)
         .list_active()
         .unwrap()
@@ -145,7 +196,7 @@ fn logical_snapshot(context: &RuntimeContext) -> LogicalSnapshot {
         .into_iter()
         .find_map(|(status, count)| (status == JobStatus::Running).then_some(count))
         .unwrap_or(0);
-    let settings = settings::load_settings(context.settings_file());
+    let settings = settings::load_settings(&profile.settings_file());
     LogicalSnapshot {
         sources,
         history,
@@ -157,6 +208,31 @@ fn logical_snapshot(context: &RuntimeContext) -> LogicalSnapshot {
     }
 }
 
+/// Denies filesystem access to an inactive profile's roots and, critically,
+/// self-checks that the denial actually took effect before the caller relies
+/// on it (Correction Request 111 §4 C3). A denial harness that cannot arm
+/// itself must fail loudly, not silently pass — a privileged or unusual test
+/// runner (e.g. root in a container, or an elevated Windows account) can
+/// otherwise make the denial a no-op.
+///
+/// Prove the denial is actually in effect by attempting a known read against
+/// a sentinel this profile is guaranteed to have (written by `seed_profile`).
+/// If the read still succeeds, the runner defeats the denial and the harness
+/// must fail loudly rather than let the caller trust an unarmed boundary.
+/// Shared by both platform implementations below.
+fn assert_denial_armed(profile: &Profile) {
+    let sentinel = profile.data_dir.join("profile-sentinel");
+    let result = std::fs::read(&sentinel);
+    assert!(
+        result.is_err(),
+        "denial harness did not arm: {} is still readable under this test runner; \
+         byte/logical snapshot comparisons alone cannot detect a read-only \
+         inactive-profile access, so this test must not proceed on an unarmed \
+         denial boundary",
+        sentinel.display()
+    );
+}
+
 #[cfg(unix)]
 struct DeniedProfile {
     paths: Vec<(PathBuf, std::fs::Permissions)>,
@@ -164,14 +240,14 @@ struct DeniedProfile {
 
 #[cfg(unix)]
 impl DeniedProfile {
-    fn new(context: &RuntimeContext) -> Self {
+    fn new(profile: &Profile) -> Self {
         use std::os::unix::fs::PermissionsExt as _;
-        let mut roots = vec![context.data_dir().to_path_buf()];
-        let settings_root = context.settings_file().parent().unwrap().to_path_buf();
-        if settings_root != context.data_dir() {
+        let mut roots = vec![profile.data_dir.clone()];
+        let settings_root = profile.settings_dir.clone();
+        if settings_root != profile.data_dir {
             roots.push(settings_root);
         }
-        let paths = roots
+        let paths: Vec<_> = roots
             .into_iter()
             .map(|path| {
                 let permissions = std::fs::metadata(&path).unwrap().permissions();
@@ -179,7 +255,9 @@ impl DeniedProfile {
                 (path, permissions)
             })
             .collect();
-        Self { paths }
+        let denied = Self { paths };
+        assert_denial_armed(profile);
+        denied
     }
 }
 
@@ -188,6 +266,74 @@ impl Drop for DeniedProfile {
     fn drop(&mut self) {
         for (path, permissions) in &self.paths {
             std::fs::set_permissions(path, permissions.clone()).unwrap();
+        }
+    }
+}
+
+/// Windows equivalent using an explicit deny ACE (Correction Request 111 §4
+/// C2). This is the C2 feasibility spike itself, per the architect's
+/// clarification response §1.1: rather than reasoning in advance about
+/// whether a non-elevated `windows-latest` CI account can arm a deny ACE,
+/// `assert_denial_armed` measures it directly on the runner, at a known
+/// commit, in a reproducible log. If it cannot arm here, this test fails
+/// loudly rather than silently passing.
+///
+/// The denied rights deliberately exclude `WD` (write DAC) so the same
+/// (denied) account retains the right to restore its own ACL on teardown —
+/// denying `F` (full control, which includes write-DAC) would lock this
+/// harness out of its own cleanup.
+#[cfg(windows)]
+struct DeniedProfile {
+    paths: Vec<PathBuf>,
+    account: String,
+}
+
+#[cfg(windows)]
+impl DeniedProfile {
+    fn new(profile: &Profile) -> Self {
+        let account = std::env::var("USERNAME").expect("USERNAME must be set on Windows");
+        let mut roots = vec![profile.data_dir.clone()];
+        let settings_root = profile.settings_dir.clone();
+        if settings_root != profile.data_dir {
+            roots.push(settings_root);
+        }
+        for path in &roots {
+            let status = std::process::Command::new("icacls")
+                .arg(path)
+                .arg("/deny")
+                .arg(format!("{account}:(OI)(CI)(RD,REA,RA,RC,X,W,WA,WEA,AD,DC)"))
+                .status()
+                .expect("failed to invoke icacls /deny");
+            assert!(
+                status.success(),
+                "icacls /deny failed for {}",
+                path.display()
+            );
+        }
+        let denied = Self {
+            paths: roots,
+            account,
+        };
+        assert_denial_armed(profile);
+        denied
+    }
+}
+
+#[cfg(windows)]
+impl Drop for DeniedProfile {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let status = std::process::Command::new("icacls")
+                .arg(path)
+                .arg("/remove:d")
+                .arg(&self.account)
+                .status()
+                .expect("failed to invoke icacls /remove:d");
+            assert!(
+                status.success(),
+                "icacls /remove:d failed for {} during teardown",
+                path.display()
+            );
         }
     }
 }
@@ -216,20 +362,19 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 fn exercise_and_assert_isolation(
-    active: &RuntimeContext,
-    inactive: &RuntimeContext,
+    active: &Profile,
+    inactive: &Profile,
     marker: &str,
     expected_locale: orbok_ui::i18n::Locale,
 ) {
-    let inactive_data = snapshot(inactive.data_dir());
-    let inactive_settings = snapshot(inactive.settings_file().parent().unwrap());
+    let inactive_data = snapshot(&inactive.data_dir);
+    let inactive_settings = snapshot(&inactive.settings_dir);
     let inactive_logical = logical_snapshot(inactive);
     let probe = RecordingProbe::default();
 
-    #[cfg(unix)]
     let denied = DeniedProfile::new(inactive);
 
-    let state = bootstrap::load_initial_state_with(active, &probe).unwrap();
+    let state = bootstrap::load_initial_state_with(&active.context, &probe).unwrap();
     assert_eq!(state.locale, expected_locale);
     assert!(
         state
@@ -244,7 +389,8 @@ fn exercise_and_assert_isolation(
             .iter()
             .any(|entry| entry.search_text == format!("{marker} history"))
     );
-    let active_catalog = bootstrap::open_catalog_with(active, &probe).unwrap();
+    let active_catalog =
+        orbok::runtime_storage::open_catalog_with(&active.context, &probe).unwrap();
     let active_jobs = IndexJobRepository::new(&active_catalog);
     assert_eq!(active_jobs.list_queued(100).unwrap().len(), 1);
     assert_eq!(
@@ -257,25 +403,33 @@ fn exercise_and_assert_isolation(
         0
     );
     drop(active_catalog);
-    bootstrap::run_check_with(active, &probe).unwrap();
-    let source_path = active.startup_dir().join(format!("later-source-{marker}"));
+    bootstrap::run_check_with(&active.context, &probe).unwrap();
+    let source_path = active
+        .context
+        .startup_dir()
+        .join(format!("later-source-{marker}"));
     std::fs::create_dir_all(&source_path).unwrap();
-    bootstrap::exercise_later_profile_operations_with(active, &probe, &source_path).unwrap();
+    bootstrap::exercise_later_profile_operations_with(&active.context, &probe, &source_path)
+        .unwrap();
 
-    #[cfg(unix)]
+    // §5.1/§5.2: exercise the actual lazy cache open and managed model
+    // delivery, not merely construct the sealed handles. Both must stay
+    // confined to the active profile under the same armed denial boundary.
+    let cache_catalog = orbok::runtime_storage::open_catalog_with(&active.context, &probe).unwrap();
+    exercise_lazy_cache_open(&active.context, &probe, &cache_catalog);
+    drop(cache_catalog);
+    exercise_managed_model_delivery(&active.context, &probe);
+
     drop(denied);
 
-    assert_eq!(snapshot(inactive.data_dir()), inactive_data);
-    assert_eq!(
-        snapshot(inactive.settings_file().parent().unwrap()),
-        inactive_settings
-    );
+    assert_eq!(snapshot(&inactive.data_dir), inactive_data);
+    assert_eq!(snapshot(&inactive.settings_dir), inactive_settings);
     assert_eq!(logical_snapshot(inactive), inactive_logical);
     let calls = probe.0.lock().unwrap();
     assert!(!calls.is_empty());
     for (kind, path) in calls.iter() {
-        assert_eq!(path, active.path(*kind));
-        assert_ne!(path, inactive.path(*kind));
+        assert_eq!(path, &active.path(*kind));
+        assert_ne!(path, &inactive.path(*kind));
     }
     for required in [
         RuntimePathKind::Catalog,
@@ -288,6 +442,61 @@ fn exercise_and_assert_isolation(
     ] {
         assert!(calls.iter().any(|(kind, _)| *kind == required));
     }
+}
+
+/// Actually open the localcache database (`CacheEngine::builder().build()`
+/// happens inside `ProfileCache::engine`) rather than merely constructing the
+/// sealed `ProfileCache` handle — Review 111 §5 required this, since a
+/// constructed-but-unused handle does not exercise the real I/O path.
+fn exercise_lazy_cache_open(
+    context: &RuntimeContext,
+    probe: &RecordingProbe,
+    catalog: &orbok_db::Catalog,
+) {
+    let cache = orbok::runtime_storage::cache_with(context, probe).unwrap();
+    let engine = cache
+        .engine::<serde_json::Value>(
+            catalog,
+            &orbok_cache::OrbokCacheNamespace::PreviewCache,
+            orbok_cache::EngineOptions::default(),
+        )
+        .unwrap();
+    // Force the lazy engine to actually touch its backing database.
+    let _ = engine.cache_stats();
+}
+
+/// Exercise `ProfileModelStore::install_default_model` for real: trust
+/// validation, the managed-store preflight, and exclusive-lock acquisition
+/// all perform genuine filesystem I/O confined to the sealed store's root
+/// before any network step. This sandbox has no reachable model-delivery
+/// endpoint, so the eventual network/timeout outcome is not asserted — only
+/// that the call does not hang indefinitely and, combined with the denial
+/// boundary around it, never touches the inactive profile.
+fn exercise_managed_model_delivery(context: &RuntimeContext, probe: &RecordingProbe) {
+    let store = orbok::runtime_storage::model_store_with(context, probe).unwrap();
+    let catalog = orbok::runtime_storage::open_catalog_with(context, probe).unwrap();
+    let (tx, _rx) = futures::channel::mpsc::channel(8);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // Any outcome (install error, or a bounded timeout because this sandbox
+    // has no reachable model-delivery endpoint) is acceptable; only a hang
+    // would be a problem, and the timeout excludes that. Trust validation,
+    // the managed-store preflight, and exclusive-lock acquisition all still
+    // perform genuine filesystem I/O against the sealed store's root before
+    // any network step is reached.
+    // `tokio::time::timeout` itself requires an active runtime at the point
+    // it is called (it looks up the current timer driver immediately, not
+    // only when polled), so it must be constructed inside the `async` block
+    // rather than as a bare argument to `block_on`.
+    let _ = runtime.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(25),
+            store.install_default_model(&catalog, tx),
+        )
+        .await
+    });
 }
 
 #[test]
@@ -310,16 +519,14 @@ fn invalid_portable_root_fails_without_standard_fallback() {
     let temp = tempfile::tempdir().unwrap();
     let (standard, portable) = contexts(temp.path());
     seed_profile(&standard, "standard", "en");
-    let before_data = snapshot(standard.data_dir());
-    let before_settings = snapshot(standard.settings_file().parent().unwrap());
-    std::fs::write(portable.data_dir(), "not a directory").unwrap();
+    let before_data = snapshot(&standard.data_dir);
+    let before_settings = snapshot(&standard.settings_dir);
+    std::fs::create_dir_all(portable.data_dir.parent().unwrap()).unwrap();
+    std::fs::write(&portable.data_dir, "not a directory").unwrap();
 
-    assert!(bootstrap::load_initial_state(&portable).is_err());
-    assert_eq!(snapshot(standard.data_dir()), before_data);
-    assert_eq!(
-        snapshot(standard.settings_file().parent().unwrap()),
-        before_settings
-    );
+    assert!(bootstrap::load_initial_state(&portable.context).is_err());
+    assert_eq!(snapshot(&standard.data_dir), before_data);
+    assert_eq!(snapshot(&standard.settings_dir), before_settings);
 }
 
 #[test]

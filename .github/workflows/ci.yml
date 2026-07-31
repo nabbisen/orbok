@@ -142,3 +142,13 @@ jobs:
 
       - name: RFC-050 abrupt-exit recovery matrix
         run: cargo test -p orbok-workers abrupt_process_exit_at_each_durability_boundary_recovers_coherently --lib
+
+      # RFC-049 Slice 2 (Correction Request 111 §4 C2/C3): the runtime
+      # isolation boundary and its OS-level denial harness (chmod 000 on
+      # Unix, an icacls deny ACE on Windows) are platform-specific and must
+      # run natively per platform, not just cross-compile-checked. This is
+      # also the app binary's (`orbok`, `--bin orbok`) only test coverage in
+      # CI today: `fast` excludes it and `release` runs `--lib` only, neither
+      # of which reaches `main.rs`'s own test module.
+      - name: RFC-049 runtime isolation and boundary tests
+        run: cargo test -p orbok --bin orbok --locked

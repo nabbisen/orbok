@@ -139,39 +139,63 @@ impl RuntimeContext {
         self.mode
     }
 
+    /// The frozen startup anchor. Not a profile-resource path: it identifies
+    /// no catalog/cache/settings/model location by itself and is safe to read
+    /// from outside the storage boundary (RFC-049 §5 "frozen anchor").
     pub fn startup_dir(&self) -> &Path {
         &self.startup_dir
     }
 
-    pub fn data_dir(&self) -> &Path {
+    /// A display-only, redaction-safe summary of the active profile. Carries
+    /// no method capable of opening a profile resource — see Correction
+    /// Request 111 §4 C1.
+    pub fn descriptor(&self) -> RuntimeDescriptor {
+        RuntimeDescriptor {
+            mode: self.mode,
+            data_dir: self.data_dir.display().to_string(),
+        }
+    }
+
+    /// The three paths compared by construction-time physical-alias
+    /// validation (RFC-049 §6). Scoped narrowly to that one pre-existing
+    /// caller (`bootstrap::validate_physical_profile_separation`), which
+    /// stays in the bin crate pending the deferred general `bootstrap.rs`
+    /// split (Correction Request 111 §8) — this is not a general path
+    /// accessor and returns nothing usable to open catalog/cache/settings
+    /// independently of that one validation call.
+    pub fn physical_alias_candidates(&self) -> [&Path; 3] {
+        [&self.data_dir, &self.catalog_file, &self.settings_file]
+    }
+
+    pub(crate) fn data_dir(&self) -> &Path {
         &self.data_dir
     }
 
-    pub fn catalog_file(&self) -> &Path {
+    pub(crate) fn catalog_file(&self) -> &Path {
         &self.catalog_file
     }
 
-    pub fn cache_file(&self) -> &Path {
+    pub(crate) fn cache_file(&self) -> &Path {
         &self.cache_file
     }
 
-    pub fn models_dir(&self) -> &Path {
+    pub(crate) fn models_dir(&self) -> &Path {
         &self.models_dir
     }
 
-    pub fn settings_file(&self) -> &Path {
+    pub(crate) fn settings_file(&self) -> &Path {
         &self.settings_file
     }
 
-    pub fn diagnostics_dir(&self) -> &Path {
+    pub(crate) fn diagnostics_dir(&self) -> &Path {
         &self.diagnostics_dir
     }
 
-    pub fn temporary_dir(&self) -> &Path {
+    pub(crate) fn temporary_dir(&self) -> &Path {
         &self.temporary_dir
     }
 
-    pub fn path(&self, kind: RuntimePathKind) -> &Path {
+    pub(crate) fn path(&self, kind: RuntimePathKind) -> &Path {
         match kind {
             RuntimePathKind::Catalog => self.catalog_file(),
             RuntimePathKind::Cache => self.cache_file(),
@@ -181,6 +205,21 @@ impl RuntimeContext {
             RuntimePathKind::Diagnostics => self.diagnostics_dir(),
             RuntimePathKind::Temporary => self.temporary_dir(),
         }
+    }
+}
+
+/// Redaction-safe, display-only summary of the active [`RuntimeContext`].
+/// The inner path is a formatted `String`, not a `Path`/`PathBuf`: it cannot
+/// be threaded into a filesystem-opening API by construction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeDescriptor {
+    pub mode: RuntimeMode,
+    data_dir: String,
+}
+
+impl fmt::Display for RuntimeDescriptor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.data_dir)
     }
 }
 

@@ -26,6 +26,7 @@ orbok-search                = { workspace = true }
 orbok-extract               = { workspace = true }
 orbok-workers               = { workspace = true }
 orbok-ui                    = { workspace = true }
+localcache                  = { workspace = true }
 
 iced                        = { workspace = true }
 rfd                         = { workspace = true }
@@ -33,7 +34,7 @@ app-json-settings           = { workspace = true }
 
 serde                       = { workspace = true }
 serde_json                  = { workspace = true }
-tokio                       = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio                       = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 tracing                     = { workspace = true }
 tracing-subscriber          = { workspace = true }
 

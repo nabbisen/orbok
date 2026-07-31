@@ -59,8 +59,15 @@ impl CacheService {
         }
     }
 
-    /// Payload database path (storage dashboard).
-    pub fn db_path(&self) -> &Path {
+    /// Payload database path. Crate-internal only: storage-dashboard sizing
+    /// goes through [`CacheService::usage`] instead, and no external caller
+    /// should be able to recover a raw path from an already-sealed cache
+    /// handle (RFC-049 Correction Request 111 §4 C1). No current internal
+    /// caller either; kept `pub(crate)` rather than removed per that
+    /// correction's explicit instruction, in case a future in-crate need
+    /// (e.g. a diagnostics command) arises.
+    #[allow(dead_code)]
+    pub(crate) fn db_path(&self) -> &Path {
         &self.db_path
     }
 

@@ -16,7 +16,9 @@
 //! so config paths are now stable.
 
 use app_json_settings::ConfigManager;
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// All persistent user preferences.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -101,6 +103,12 @@ pub fn standard_settings_file() -> PathBuf {
         .path()
 }
 
+/// Test-fixture only: production settings load/save now goes through
+/// `orbok::runtime_storage`'s generic, boundary-mediated implementation.
+/// These remain for tests that deliberately write/read a known profile path
+/// directly to seed or verify fixtures, bypassing the app's own boundary on
+/// purpose (Correction Request 111 §4 C1).
+#[cfg(test)]
 pub fn load_settings(path: &Path) -> OrbokSettings {
     let Ok(bytes) = std::fs::read(path) else {
         return OrbokSettings::default();
@@ -108,7 +116,7 @@ pub fn load_settings(path: &Path) -> OrbokSettings {
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
-/// Persist settings to the selected runtime profile.
+#[cfg(test)]
 pub fn save_settings(path: &Path, settings: &OrbokSettings) -> std::io::Result<()> {
     let directory = path.parent().ok_or_else(|| {
         std::io::Error::new(
