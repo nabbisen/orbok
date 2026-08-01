@@ -25,6 +25,12 @@ readiness track:
 - `cargo clippy --workspace --all-targets -- -D warnings` — zero clippy
   warnings across workspace library, binary, and test targets.
 - `cargo test --workspace --lib` — all workspace library tests pass.
+- `cargo test -p orbok --bin orbok --locked` — RFC-049 runtime isolation and
+  denial-harness matrix. The app binary's tests live in its binary target,
+  not its library target, so `cargo test --workspace --lib` does not reach
+  them; this is the only command that does. See
+  [`testing.md`](testing.md#rfc-049-isolation-and-denial-testing) for what
+  it covers. Runs natively on Linux, macOS, and Windows in the `cross` job.
 - Headless backend check —
   `ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p orbok -- --check` exits 0.
 - Feature matrix — `cargo check -p orbok-embed --features tract` passes for
@@ -49,6 +55,7 @@ review before a release is cut.
 | Formatting | `fast` job: `fmt` | None. |
 | Strict clippy | `release` job: `strict clippy` | None. |
 | Workspace library tests | `release` job: `workspace library tests` | None. |
+| RFC-049 runtime isolation | `cross` job (`ubuntu-latest`, `macos-latest`, `windows-latest`): `RFC-049 runtime isolation and boundary tests` | None. |
 | Headless backend check | `release` job: `--check headless` with a fresh `ORBOK_DATA_DIR` | Local release-prep rerun may be recorded when cutting an RC. |
 | Feature matrix | `release` job: `feature matrix (tract)` | Real-model benchmark evidence remains separate. |
 | RFC lifecycle integrity | `release` job: `RFC lifecycle integrity` | None. |

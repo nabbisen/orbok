@@ -6,6 +6,12 @@
 # Run the full test suite
 cargo test --workspace --lib
 
+# App binary tests — RFC-049 isolation/denial matrix and everything else
+# under crates/app/src/main.rs. NOT reached by --workspace --lib or -p
+# orbok --lib (the app binary's tests live in its binary target); see
+# testing.md for what this covers.
+cargo test -p orbok --bin orbok --locked
+
 # Run the GUI
 cargo run
 
@@ -35,7 +41,16 @@ Two points worth knowing when touching this area:
   the two modes are not symmetric in what `ORBOK_DATA_DIR` covers.
 - `--portable` combined with a non-empty `ORBOK_DATA_DIR` fails closed
   (rejected during argument resolution, before any profile filesystem
-  access) rather than one silently winning.
+  access) rather than one silently winning. An absent or empty
+  `ORBOK_DATA_DIR` is treated as unset, not as an explicit override, so it
+  never triggers that rejection.
+- The startup directory is resolved to one absolute, normalized anchor and
+  frozen into the `RuntimeContext` at construction, before any argument is
+  acted on further. A later `chdir` in the same process cannot redirect
+  either profile — see
+  `frozen_startup_anchor_survives_a_later_current_directory_change`.
+- An unwritable or otherwise invalid portable directory is a hard failure,
+  never a silent downgrade to the standard profile.
 - The relative `./orbok-data/` label on portable startup and the full
   absolute path printed by `--check` are both intentional, not an
   inconsistency: the interactive startup message stays relative per the

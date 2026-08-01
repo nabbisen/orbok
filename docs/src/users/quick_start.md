@@ -42,12 +42,16 @@ Portable mode below).
 Run with `--portable` to keep everything — catalog, cache, models, **and
 settings** — under `./orbok-data/`, relative to the directory orbok was
 started from. Nothing is read from or written to the standard platform
-locations above while running this way.
+locations above while running this way, and a portable directory that
+cannot be created or opened is reported as an error — orbok never falls
+back to the standard profile when portable mode fails.
 
 `--portable` and `ORBOK_DATA_DIR` are mutually exclusive: supplying a
 non-empty `ORBOK_DATA_DIR` together with `--portable` is rejected outright,
-rather than one silently taking precedence. `ORBOK_DATA_DIR` only ever
-applies to standard mode.
+rather than one silently taking precedence. An absent or empty
+`ORBOK_DATA_DIR` (including `ORBOK_DATA_DIR=`) counts as not set at all, so
+it never triggers that rejection. `ORBOK_DATA_DIR` only ever applies to
+standard mode.
 
 The startup message for portable mode shows only the relative
 `./orbok-data/` label, not a resolved absolute path — this is a deliberate,
