@@ -1,13 +1,13 @@
 # RFC-050: Trusted Atomic Model Delivery
 
-**Project:** orbok  
-**RFC:** 050  
-**Title:** Trusted Atomic Model Delivery  
-**Status:** Implemented (main at `902f33a`; release pending)
-**Target milestone:** v1.0.0 security stabilization  
-**Date:** 2026-07-14  
-**Last revised:** 2026-07-16
-**Related RFCs:** RFC-012 Model Registry; RFC-021 Default Embedding Model; RFC-029 Model Download Integrity and Trust; RFC-043 Model Download Readiness  
+**Project:** orbok\
+**RFC:** 050\
+**Title:** Trusted Atomic Model Delivery\
+**Status:** Implemented (main at `902f33a`; release pending)\
+**Target milestone:** v1.0.0 security stabilization\
+**Date:** 2026-07-14\
+**Last revised:** 2026-07-16\
+**Related RFCs:** RFC-012 Model Registry; RFC-021 Default Embedding Model; RFC-029 Model Download Integrity and Trust; RFC-043 Model Download Readiness\
 **Handoff:** [`HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)

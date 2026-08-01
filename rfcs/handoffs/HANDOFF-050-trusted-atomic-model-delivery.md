@@ -1,10 +1,10 @@
 # Implementation Handoff — RFC-050: Trusted Atomic Model Delivery
 
-**Project:** orbok  
-**RFC:** 050  
-**Lifecycle stage:** Implemented with RFC-050 on `main` at `902f33a`; release pending
-**Primary owners:** model registry/readiness, app download worker, security  
-**Last revised:** 2026-07-16
+**Project:** orbok\
+**RFC:** 050\
+**Lifecycle stage:** Implemented with RFC-050 on `main` at `902f33a`; release pending\
+**Primary owners:** model registry/readiness, app download worker, security\
+**Last revised:** 2026-07-16\
 **RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 
 **Trust root:** [`../appendices/APPENDIX-B-default-model-trust-root.md`](../appendices/APPENDIX-B-default-model-trust-root.md)

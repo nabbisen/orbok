@@ -36,14 +36,9 @@ tag.
   an `icacls` deny ACE on Windows) that self-checks it is actually armed
   before relying on it. `--portable` combined with a non-empty
   `ORBOK_DATA_DIR` is now rejected outright instead of one silently winning.
-  See `rfcs/done/049-portable-runtime-data-isolation.md`.
-
-### Fixed
-
-- **Settings first-load creation:** a missing `settings.json` is created
-  with default values on first load at the active profile's resolved path,
-  restoring the pre-existing create-on-first-run behavior that an earlier
-  RFC-049 revision had inadvertently dropped.
+  A missing `settings.json` is created with default values on first load at
+  the active profile's resolved path in both modes. See
+  `rfcs/done/049-portable-runtime-data-isolation.md`.
 
 ### Tests
 
