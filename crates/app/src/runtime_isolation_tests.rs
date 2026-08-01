@@ -472,31 +472,23 @@ fn exercise_lazy_cache_open(
 /// endpoint, so the eventual network/timeout outcome is not asserted — only
 /// that the call does not hang indefinitely and, combined with the denial
 /// boundary around it, never touches the inactive profile.
+/// Exercises the pre-network phase of managed model delivery for real: trust
+/// manifest validation and exclusive-lock acquisition against the sealed
+/// store, both genuine work confined to the active profile's store root.
+/// Deliberately does **not** call `ProfileModelStore::install_default_model`
+/// itself, which would proceed to a real network request on every CI run —
+/// for a privacy-first, local-first project that is a poor default (Review
+/// 113 §5 non-blocking finding 1). The isolation-relevant property (this
+/// touches only the active profile) is fully covered without it.
 fn exercise_managed_model_delivery(context: &RuntimeContext, probe: &RecordingProbe) {
     let store = orbok::runtime_storage::model_store_with(context, probe).unwrap();
-    let catalog = orbok::runtime_storage::open_catalog_with(context, probe).unwrap();
-    let (tx, _rx) = futures::channel::mpsc::channel(8);
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    // Any outcome (install error, or a bounded timeout because this sandbox
-    // has no reachable model-delivery endpoint) is acceptable; only a hang
-    // would be a problem, and the timeout excludes that. Trust validation,
-    // the managed-store preflight, and exclusive-lock acquisition all still
-    // perform genuine filesystem I/O against the sealed store's root before
-    // any network step is reached.
-    // `tokio::time::timeout` itself requires an active runtime at the point
-    // it is called (it looks up the current timer driver immediately, not
-    // only when polled), so it must be constructed inside the `async` block
-    // rather than as a bare argument to `block_on`.
-    let _ = runtime.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_secs(25),
-            store.install_default_model(&catalog, tx),
-        )
-        .await
-    });
+    orbok_models::trust::DEFAULT_TRUSTED_MODEL
+        .validate()
+        .expect("the pinned trust manifest must validate");
+    let guard = store
+        .acquire_exclusive(std::time::Duration::from_secs(5))
+        .expect("exclusive lock against the sealed store must succeed");
+    drop(guard);
 }
 
 #[test]
@@ -585,7 +577,7 @@ fn physical_symlink_alias_is_rejected_before_persistent_access() {
     std::fs::create_dir_all(&startup).unwrap();
     symlink(&standard, startup.join("orbok-data")).unwrap();
     let settings = temp.path().join("settings");
-    let result = bootstrap::validate_physical_profile_separation(
+    let result = orbok::physical_identity::validate_physical_profile_separation(
         &RuntimeContext::resolve(
             RuntimeSelection::resolve(true, None).unwrap(),
             &startup,
@@ -631,8 +623,12 @@ fn physical_catalog_object_identity_alias_is_rejected() {
     .unwrap();
 
     assert!(
-        bootstrap::validate_physical_profile_separation(&context, Some(&standard), &settings)
-            .is_err()
+        orbok::physical_identity::validate_physical_profile_separation(
+            &context,
+            Some(&standard),
+            &settings
+        )
+        .is_err()
     );
 }
 
@@ -654,8 +650,31 @@ fn physical_bind_mount_identity_alias_is_rejected() {
         )
         .unwrap();
         assert!(
-            bootstrap::validate_physical_profile_separation(&context, Some(&standard), &settings)
-                .is_err()
+            orbok::physical_identity::validate_physical_profile_separation(
+                &context,
+                Some(&standard),
+                &settings
+            )
+            .is_err()
+        );
+        return;
+    }
+
+    // Correction Request 111 §4 F4 (Review 113): this alias mechanism needs
+    // unprivileged Linux user-namespace creation, which some CI runners
+    // restrict (observed on GitHub's `ubuntu-latest`). A capability probe
+    // must skip *loudly* rather than fail or pass silently — `eprintln!`
+    // bypasses libtest's stdout capture, so this is visible in CI output
+    // even without `--nocapture` on the outer `cargo test` invocation.
+    if !bwrap_can_create_unprivileged_user_namespace() {
+        eprintln!(
+            "SKIPPED (not silently — see Review 113 F4): \
+             physical_bind_mount_identity_alias_is_rejected requires unprivileged Linux \
+             user-namespace creation (`bwrap --unshare-user`), which this runner does not \
+             permit. RFC-049 §6 bind-mount alias-detection evidence is NOT collected by this \
+             run. This is a runner capability gap, not a test failure: rerun on a runner or \
+             local sandbox where unprivileged user namespaces are permitted to collect that \
+             evidence."
         );
         return;
     }
@@ -698,6 +717,19 @@ fn physical_bind_mount_identity_alias_is_rejected() {
     );
 }
 
+/// Whether this process can create an unprivileged Linux user namespace via
+/// `bwrap`. A minimal probe distinct from the real test fixture: it must not
+/// depend on anything the real bind-mount setup builds, so a probe failure
+/// cleanly means "capability unavailable," not "fixture setup went wrong."
+#[cfg(target_os = "linux")]
+fn bwrap_can_create_unprivileged_user_namespace() -> bool {
+    std::process::Command::new("bwrap")
+        .args(["--unshare-user", "--ro-bind", "/", "/", "true"])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 #[cfg(windows)]
 #[test]
 fn physical_junction_alias_is_rejected_before_persistent_access() {
@@ -726,8 +758,12 @@ fn physical_junction_alias_is_rejected_before_persistent_access() {
     .unwrap();
 
     assert!(
-        bootstrap::validate_physical_profile_separation(&context, Some(&standard), &settings)
-            .is_err()
+        orbok::physical_identity::validate_physical_profile_separation(
+            &context,
+            Some(&standard),
+            &settings
+        )
+        .is_err()
     );
     assert!(!standard.join(orbok_db::CATALOG_FILE_NAME).exists());
 }

@@ -14,22 +14,26 @@ use orbok_db::Catalog;
 use orbok_db::repo::SettingsRepository;
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
-use orbok_models::{ManagedModelStore, ModelStoreLockError, ModelStoreMutationGuard, SharedAccess};
+use orbok_models::{ModelStoreLockError, ModelStoreMutationGuard, SharedAccess};
 use orbok_search::HybridSearchService;
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
 use orbok_ui::state::ModelProvenance;
 use orbok_ui::theme::{TextScale, Theme};
 use orbok_workers::verify_embedding_model;
-use std::path::PathBuf;
 use std::time::Duration;
+
+#[cfg(test)]
+use orbok_models::ManagedModelStore;
+#[cfg(test)]
+use std::path::PathBuf;
 
 use crate::settings::OrbokSettings;
 #[cfg(test)]
 use orbok::runtime_context::RuntimePathKind;
 use orbok::runtime_context::{
     AllowRuntimePathProbe, PlatformRuntimePaths, RuntimeContext, RuntimeMode, RuntimePathProbe,
-    RuntimeSelection, path_is_within, paths_overlap,
+    RuntimeSelection,
 };
 #[cfg(test)]
 use orbok::runtime_storage::ProfileModelStore;
@@ -56,178 +60,13 @@ pub fn resolve_runtime_context(
         },
     )?;
     if context.mode() == RuntimeMode::Portable {
-        validate_physical_profile_separation(
+        orbok::physical_identity::validate_physical_profile_separation(
             &context,
             standard_data_dir.as_deref(),
             standard_settings_dir,
         )?;
     }
     Ok(context)
-}
-
-pub(crate) fn validate_physical_profile_separation(
-    context: &RuntimeContext,
-    standard_data_dir: Option<&std::path::Path>,
-    standard_settings_dir: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let portable_paths = context
-        .physical_alias_candidates()
-        .map(|path| path.to_path_buf());
-    let mut standard_paths = vec![
-        standard_settings_dir.to_path_buf(),
-        standard_settings_dir.join("settings.json"),
-    ];
-    if let Some(data_dir) = standard_data_dir {
-        standard_paths.push(data_dir.to_path_buf());
-        standard_paths.push(data_dir.join(orbok_db::CATALOG_FILE_NAME));
-    }
-    for portable_path in &portable_paths {
-        let portable = physical_location(portable_path)?;
-        for standard_path in &standard_paths {
-            let standard = physical_location(standard_path)?;
-            let canonical_overlap = paths_overlap(&portable.resolved_path, &standard.resolved_path);
-            let identity_overlap = portable.identity == standard.identity
-                && paths_overlap(&portable.missing_suffix, &standard.missing_suffix);
-            if canonical_overlap || identity_overlap {
-                return Err(
-                    "portable and standard runtime profiles resolve to the same physical path"
-                        .into(),
-                );
-            }
-        }
-    }
-    Ok(())
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct PhysicalLocation {
-    identity: FileIdentity,
-    missing_suffix: PathBuf,
-    resolved_path: PathBuf,
-}
-
-#[cfg(unix)]
-#[derive(Debug, Eq, PartialEq)]
-struct FileIdentity {
-    device: u64,
-    inode: u64,
-}
-
-#[cfg(windows)]
-#[derive(Debug, Eq, PartialEq)]
-struct FileIdentity {
-    volume: u32,
-    index: u64,
-}
-
-#[cfg(not(any(unix, windows)))]
-#[derive(Debug, Eq, PartialEq)]
-struct FileIdentity(PathBuf);
-
-#[cfg(unix)]
-fn file_identity(path: &std::path::Path) -> std::io::Result<FileIdentity> {
-    use std::os::unix::fs::MetadataExt as _;
-    let metadata = std::fs::metadata(path)?;
-    Ok(FileIdentity {
-        device: metadata.dev(),
-        inode: metadata.ino(),
-    })
-}
-
-#[cfg(windows)]
-fn file_identity(path: &std::path::Path) -> std::io::Result<FileIdentity> {
-    use std::os::windows::ffi::OsStrExt as _;
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES,
-        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle,
-        OPEN_EXISTING,
-    };
-
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
-    // SAFETY: `wide` is NUL-terminated and remains alive for the call. The
-    // returned handle is checked and closed on every subsequent path.
-    let handle = unsafe {
-        CreateFileW(
-            wide.as_ptr(),
-            FILE_READ_ATTRIBUTES,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            std::ptr::null(),
-            OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
-            std::ptr::null_mut(),
-        )
-    };
-    if handle == INVALID_HANDLE_VALUE {
-        return Err(std::io::Error::last_os_error());
-    }
-    let mut information = BY_HANDLE_FILE_INFORMATION::default();
-    // SAFETY: `handle` is valid and `information` points to writable storage
-    // of the structure required by `GetFileInformationByHandle`.
-    let result = unsafe { GetFileInformationByHandle(handle, &mut information) };
-    let error = (result == 0).then(std::io::Error::last_os_error);
-    // SAFETY: `handle` is an owned valid handle and is closed exactly once.
-    unsafe { CloseHandle(handle) };
-    if let Some(error) = error {
-        return Err(error);
-    }
-    Ok(FileIdentity {
-        volume: information.dwVolumeSerialNumber,
-        index: (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow),
-    })
-}
-
-#[cfg(not(any(unix, windows)))]
-fn file_identity(path: &std::path::Path) -> std::io::Result<FileIdentity> {
-    Ok(FileIdentity(std::fs::canonicalize(path)?))
-}
-
-/// Resolve the nearest existing ancestor and retain both its filesystem object
-/// identity and a policy-checked absent suffix. Identity catches bind mounts
-/// and other aliases whose canonical names remain distinct.
-fn physical_location(path: &std::path::Path) -> std::io::Result<PhysicalLocation> {
-    let mut existing = path;
-    let mut suffix = Vec::new();
-    loop {
-        match std::fs::canonicalize(existing) {
-            Ok(mut resolved) => {
-                let identity = file_identity(existing)?;
-                let mut missing_suffix = PathBuf::new();
-                for component in suffix.iter().rev() {
-                    resolved.push(component);
-                    missing_suffix.push(component);
-                }
-                validate_missing_suffix(&missing_suffix)?;
-                return Ok(PhysicalLocation {
-                    identity,
-                    missing_suffix,
-                    resolved_path: resolved,
-                });
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let name = existing.file_name().ok_or_else(|| {
-                    std::io::Error::new(error.kind(), "runtime path has no existing ancestor")
-                })?;
-                suffix.push(name.to_os_string());
-                existing = existing.parent().ok_or_else(|| {
-                    std::io::Error::new(error.kind(), "runtime path has no existing ancestor")
-                })?;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-}
-
-fn validate_missing_suffix(suffix: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(target_os = "macos")]
-    if !suffix.as_os_str().is_ascii() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "non-ASCII absent profile suffix cannot be identity-validated on macOS",
-        ));
-    }
-    let _ = suffix;
-    Ok(())
 }
 
 // RFC-049 Slice 2: the storage boundary (`RuntimeStorage`, `ProfileCache`,
@@ -238,7 +77,6 @@ fn validate_missing_suffix(suffix: &std::path::Path) -> std::io::Result<()> {
 // `OrbokSettings`-typed wrappers around that generic API for this file's
 // call sites.
 pub use orbok::runtime_storage::cache as cache_service;
-pub use orbok::runtime_storage::default_model_store_root;
 pub use orbok::runtime_storage::{model_store, open_catalog};
 
 pub fn load_runtime_settings(context: &RuntimeContext) -> std::io::Result<OrbokSettings> {
@@ -278,7 +116,7 @@ pub fn ensure_default_model_store<P: RuntimePathProbe + ?Sized>(
 
 #[derive(Debug)]
 enum ManagedModelResolutionError {
-    CatalogPath,
+    Store(std::io::Error),
     StoreLock(ModelStoreLockError),
     Catalog,
 }
@@ -286,7 +124,7 @@ enum ManagedModelResolutionError {
 impl std::fmt::Display for ManagedModelResolutionError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CatalogPath => formatter.write_str("managed model catalog path is unavailable"),
+            Self::Store(error) => write!(formatter, "managed model store is unavailable: {error}"),
             Self::StoreLock(error) => {
                 write!(formatter, "managed model store is unavailable: {error}")
             }
@@ -303,75 +141,59 @@ struct ResolvedModelDir {
     provenance: Option<ModelProvenance>,
 }
 
-fn managed_current_model_dir_timeout(
-    catalog: &Catalog,
-    timeout: Duration,
-) -> Result<Option<(ModelStoreMutationGuard<SharedAccess>, PathBuf)>, ManagedModelResolutionError> {
-    let data_dir = catalog
-        .path()
-        .parent()
-        .ok_or(ManagedModelResolutionError::CatalogPath)?;
-    let store = ManagedModelStore::default_embedding(default_model_store_root(data_dir));
-    let guard = store
-        .acquire_shared(timeout)
-        .map_err(ManagedModelResolutionError::StoreLock)?;
-    let snapshot = orbok_db::repo::ManagedGenerationRepository::new(catalog)
-        .load_shared(&guard)
-        .map_err(|_| ManagedModelResolutionError::Catalog)?;
-    let Some(generation_id) = snapshot.profile.current_generation_id else {
-        return Ok(None);
-    };
-    let generation_dir = store
-        .models_dir()
-        .join("generations")
-        .join(generation_id.as_str());
-    Ok(Some((guard, generation_dir)))
-}
-
-fn resolve_model_dir(
+/// Resolve the active-profile model directory: the current managed
+/// generation if the catalog records one, else a manually-configured
+/// directory outside the managed store. The managed store is always
+/// obtained from the active `RuntimeContext` (via `RuntimeStorage`), never
+/// re-derived from `catalog.path()` — a `Catalog` handle obtained by any
+/// other route must not silently determine which profile's model store this
+/// resolves against (Review 113 F1).
+fn resolve_model_dir<P: RuntimePathProbe + ?Sized>(
+    context: &RuntimeContext,
+    probe: &P,
     catalog: &Catalog,
     settings: &OrbokSettings,
 ) -> Result<ResolvedModelDir, ManagedModelResolutionError> {
-    resolve_model_dir_with_timeout(catalog, settings, Duration::from_secs(5))
+    resolve_model_dir_with_timeout(context, probe, catalog, settings, Duration::from_secs(5))
 }
 
-fn resolve_model_dir_with_timeout(
+fn resolve_model_dir_with_timeout<P: RuntimePathProbe + ?Sized>(
+    context: &RuntimeContext,
+    probe: &P,
     catalog: &Catalog,
     settings: &OrbokSettings,
     timeout: Duration,
 ) -> Result<ResolvedModelDir, ManagedModelResolutionError> {
-    let data_dir = catalog
-        .path()
-        .parent()
-        .ok_or(ManagedModelResolutionError::CatalogPath)?;
-    if let Some((guard, path)) = managed_current_model_dir_timeout(catalog, timeout)? {
+    let model_store = RuntimeStorage::new(context, probe)
+        .model_store()
+        .map_err(ManagedModelResolutionError::Store)?;
+    let current = model_store
+        .current_generation_dir(catalog, timeout)
+        .map_err(|error| match error {
+            orbok::runtime_storage::ManagedGenerationLookupError::StoreLock(inner) => {
+                ManagedModelResolutionError::StoreLock(inner)
+            }
+            orbok::runtime_storage::ManagedGenerationLookupError::Catalog => {
+                ManagedModelResolutionError::Catalog
+            }
+        })?;
+    if let Some((guard, path)) = current {
         return Ok(ResolvedModelDir {
             _guard: Some(guard),
             path: Some(path.to_string_lossy().into_owned()),
             provenance: Some(ModelProvenance::AppManaged),
         });
     }
-    let store_root = default_model_store_root(data_dir);
     let manual = settings
         .embedding_model_dir
         .as_ref()
-        .filter(|path| !is_within_model_store(std::path::Path::new(path), &store_root))
+        .filter(|path| !model_store.contains(std::path::Path::new(path)))
         .cloned();
     Ok(ResolvedModelDir {
         _guard: None,
         provenance: manual.as_ref().map(|_| ModelProvenance::UserSupplied),
         path: manual,
     })
-}
-
-fn is_within_model_store(candidate: &std::path::Path, store_root: &std::path::Path) -> bool {
-    fn comparable(path: &std::path::Path) -> PathBuf {
-        physical_location(path)
-            .map(|location| location.resolved_path)
-            .or_else(|_| std::path::absolute(path))
-            .unwrap_or_else(|_| path.to_path_buf())
-    }
-    path_is_within(&comparable(candidate), &comparable(store_root))
 }
 
 /// Build the initial `AppState` from persisted settings and startup
@@ -430,7 +252,7 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         .unwrap_or_default();
 
     // Verify embedding model files (design §startup-verify).
-    let resolved_model = match resolve_model_dir(&catalog, &settings) {
+    let resolved_model = match resolve_model_dir(context, probe, &catalog, &settings) {
         Ok(resolved) => resolved,
         Err(error) => {
             tracing::warn!(category = %error, "managed model resolution failed closed");
@@ -476,7 +298,7 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         active_model_provenance: projection.active_provenance,
         wizard: projection.wizard,
         model_download_consent: Some(orbok_ui::ModelDownloadConsent::trusted_default(
-            model_store.models_dir().to_string_lossy().into_owned(),
+            model_store.models_dir_display(),
         )),
         health,
         sources,
@@ -511,7 +333,7 @@ pub(crate) fn run_search_with<P: RuntimePathProbe + ?Sized>(
     limit: u32,
 ) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
     let settings = runtime_settings_with(context, probe)?;
-    let resolved_model = match resolve_model_dir(catalog, &settings) {
+    let resolved_model = match resolve_model_dir(context, probe, catalog, &settings) {
         Ok(resolved) => resolved,
         Err(error) => {
             tracing::warn!(category = %error, "managed model resolution failed closed");
@@ -585,7 +407,7 @@ pub fn run_check_with<P: RuntimePathProbe + ?Sized>(
 
     // Report model status in --check output.
     let settings = storage.load_settings::<OrbokSettings>()?;
-    let resolved_model = resolve_model_dir(&catalog, &settings)?;
+    let resolved_model = resolve_model_dir(context, probe, &catalog, &settings)?;
     let outcome = verify_embedding_model(resolved_model.path.as_deref());
     println!(
         "orbok --check OK  data_dir={}  schema_version={}  model={}",
@@ -677,7 +499,7 @@ pub fn remove_managed_model_dir_setting(
     if settings
         .embedding_model_dir
         .as_ref()
-        .is_some_and(|path| is_within_model_store(std::path::Path::new(path), store.models_dir()))
+        .is_some_and(|path| store.contains(std::path::Path::new(path)))
     {
         settings.embedding_model_dir = None;
         save_runtime_settings_with(context, &AllowRuntimePathProbe, &settings)?;
@@ -982,6 +804,14 @@ mod managed_resolution_tests {
         .unwrap()
     }
 
+    /// Duplicates `default_model_store_root`'s naming convention rather than
+    /// reaching for the (now lib-crate-internal) function itself — tests
+    /// rebuild expected paths from roots they control, per Correction
+    /// Request 111 §4 C1.
+    fn test_model_store_root(data_dir: &std::path::Path) -> PathBuf {
+        data_dir.join("models").join("multilingual-e5-small")
+    }
+
     #[test]
     fn initial_state_advances_managed_model_startup_epoch() {
         let temp = tempfile::tempdir().unwrap();
@@ -990,7 +820,7 @@ mod managed_resolution_tests {
         let _state = load_initial_state(&context).unwrap();
 
         let catalog = open_catalog(&context).unwrap();
-        let store = ManagedModelStore::default_embedding(default_model_store_root(temp.path()));
+        let store = ManagedModelStore::default_embedding(test_model_store_root(temp.path()));
         let guard = store.acquire_shared(Duration::from_secs(1)).unwrap();
         let snapshot = orbok_db::repo::ManagedGenerationRepository::new(&catalog)
             .load_shared(&guard)
@@ -1004,13 +834,13 @@ mod managed_resolution_tests {
         let data_dir = temp.path();
         let context = test_context(data_dir);
         let model_store = ensure_default_model_store(&context, &AllowRuntimePathProbe).unwrap();
+        let _exclusive = model_store
+            .acquire_exclusive(Duration::from_secs(1))
+            .unwrap();
         let catalog = open_catalog(&context).unwrap();
-        let store = ManagedModelStore::default_embedding(model_store.models_dir());
-        let _exclusive = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
         let settings = OrbokSettings {
             embedding_model_dir: Some(
-                model_store
-                    .models_dir()
+                test_model_store_root(data_dir)
                     .join("generations")
                     .join("persisted-managed-path")
                     .to_string_lossy()
@@ -1019,7 +849,13 @@ mod managed_resolution_tests {
             ..OrbokSettings::default()
         };
 
-        let result = resolve_model_dir_with_timeout(&catalog, &settings, Duration::from_millis(20));
+        let result = resolve_model_dir_with_timeout(
+            &context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &settings,
+            Duration::from_millis(20),
+        );
 
         assert!(matches!(
             result,
@@ -1033,10 +869,9 @@ mod managed_resolution_tests {
     fn managed_setting_is_not_treated_as_manual_without_a_catalog_current() {
         let temp = tempfile::tempdir().unwrap();
         let context = test_context(temp.path());
-        let model_store = ensure_default_model_store(&context, &AllowRuntimePathProbe).unwrap();
+        ensure_default_model_store(&context, &AllowRuntimePathProbe).unwrap();
         let catalog = open_catalog(&context).unwrap();
-        let managed_path = model_store
-            .models_dir()
+        let managed_path = test_model_store_root(temp.path())
             .join("generations")
             .join("old-managed-path");
         let settings = OrbokSettings {
@@ -1044,7 +879,8 @@ mod managed_resolution_tests {
             ..OrbokSettings::default()
         };
 
-        let resolved = resolve_model_dir(&catalog, &settings).unwrap();
+        let resolved =
+            resolve_model_dir(&context, &AllowRuntimePathProbe, &catalog, &settings).unwrap();
 
         assert!(resolved.path.is_none());
         assert_eq!(resolved.provenance, None);
@@ -1063,23 +899,34 @@ mod managed_resolution_tests {
             ..OrbokSettings::default()
         };
 
-        let resolved = resolve_model_dir(&catalog, &settings).unwrap();
+        let resolved =
+            resolve_model_dir(&context, &AllowRuntimePathProbe, &catalog, &settings).unwrap();
 
         assert_eq!(resolved.path.as_deref(), manual.to_str());
         assert_eq!(resolved.provenance, Some(ModelProvenance::UserSupplied));
         assert!(resolved._guard.is_none());
     }
 
+    /// F1 regression: the managed-generation directory must be computed
+    /// from the *context's* store root, never re-derived from
+    /// `Catalog::path()`. The catalog's own database record of the active
+    /// generation is legitimately whatever that catalog contains regardless
+    /// of which context resolves it — that part is unaffected by this test.
+    /// What must not happen: the *filesystem path* returned for that
+    /// generation silently follows the catalog's own profile directory
+    /// instead of the context passed to `resolve_model_dir`.
     #[test]
-    fn ready_startup_distinguishes_managed_and_manual_provenance() {
-        let temp = tempfile::tempdir().unwrap();
-        let context = test_context(temp.path());
-        let model_store = ensure_default_model_store(&context, &AllowRuntimePathProbe).unwrap();
-        let catalog = open_catalog(&context).unwrap();
-        let store = ManagedModelStore::default_embedding(model_store.models_dir());
+    fn resolution_follows_the_context_not_the_catalog_path() {
+        let catalog_temp = tempfile::tempdir().unwrap();
+        let catalog_context = test_context(catalog_temp.path());
+        let catalog_store =
+            ensure_default_model_store(&catalog_context, &AllowRuntimePathProbe).unwrap();
+        let catalog = open_catalog(&catalog_context).unwrap();
         let generation_id = orbok_models::ManagedGenerationId::generate();
         {
-            let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+            let guard = catalog_store
+                .acquire_exclusive(Duration::from_secs(1))
+                .unwrap();
             let repository = orbok_db::repo::ManagedGenerationRepository::new(&catalog);
             repository
                 .register_inactive(
@@ -1091,7 +938,69 @@ mod managed_resolution_tests {
             repository.activate(&guard, &generation_id).unwrap();
         }
 
-        let managed = resolve_model_dir(&catalog, &OrbokSettings::default()).unwrap();
+        // A different profile's context. The catalog above still reports
+        // this generation as active (that is a property of the catalog's
+        // own database, independent of which context resolves it) — the
+        // defect this guards against is the *directory* computed for it
+        // silently anchoring under the catalog's profile instead of the
+        // context actually passed in.
+        let other_temp = tempfile::tempdir().unwrap();
+        let other_context = test_context(other_temp.path());
+        ensure_default_model_store(&other_context, &AllowRuntimePathProbe).unwrap();
+
+        let resolved = resolve_model_dir(
+            &other_context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &OrbokSettings::default(),
+        )
+        .unwrap();
+
+        let resolved_path = resolved.path.expect("catalog reports an active generation");
+        let expected_root = test_model_store_root(other_temp.path());
+        let forbidden_root = test_model_store_root(catalog_temp.path());
+        assert!(
+            resolved_path.starts_with(expected_root.to_str().unwrap()),
+            "resolved path {resolved_path} must anchor under the context's own store root {}",
+            expected_root.display()
+        );
+        assert!(
+            !resolved_path.starts_with(forbidden_root.to_str().unwrap()),
+            "resolved path {resolved_path} must not follow the catalog's profile root {}",
+            forbidden_root.display()
+        );
+        assert_eq!(resolved.provenance, Some(ModelProvenance::AppManaged));
+    }
+
+    #[test]
+    fn ready_startup_distinguishes_managed_and_manual_provenance() {
+        let temp = tempfile::tempdir().unwrap();
+        let context = test_context(temp.path());
+        let model_store = ensure_default_model_store(&context, &AllowRuntimePathProbe).unwrap();
+        let catalog = open_catalog(&context).unwrap();
+        let generation_id = orbok_models::ManagedGenerationId::generate();
+        {
+            let guard = model_store
+                .acquire_exclusive(Duration::from_secs(1))
+                .unwrap();
+            let repository = orbok_db::repo::ManagedGenerationRepository::new(&catalog);
+            repository
+                .register_inactive(
+                    &guard,
+                    generation_id.clone(),
+                    orbok_models::trust::DEFAULT_TRUSTED_MODEL.manifest_id,
+                )
+                .unwrap();
+            repository.activate(&guard, &generation_id).unwrap();
+        }
+
+        let managed = resolve_model_dir(
+            &context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &OrbokSettings::default(),
+        )
+        .unwrap();
         assert_eq!(
             crate::model_flow::project_startup(VerifyOutcome::Ready, managed.provenance)
                 .active_provenance,
@@ -1107,7 +1016,13 @@ mod managed_resolution_tests {
             embedding_model_dir: Some(manual_path.to_string_lossy().into_owned()),
             ..OrbokSettings::default()
         };
-        let manual = resolve_model_dir(&manual_catalog, &manual_settings).unwrap();
+        let manual = resolve_model_dir(
+            &manual_context,
+            &AllowRuntimePathProbe,
+            &manual_catalog,
+            &manual_settings,
+        )
+        .unwrap();
         assert_eq!(
             crate::model_flow::project_startup(VerifyOutcome::Ready, manual.provenance)
                 .active_provenance,

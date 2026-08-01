@@ -23,7 +23,9 @@ use crate::runtime_context::{
 use orbok_cache::{EngineOptions, NamespaceUsage, OrbokCacheNamespace};
 use orbok_core::{CleanupPlan, OrbokResult};
 use orbok_db::Catalog;
-use orbok_models::ManagedModelStore;
+use orbok_models::{
+    ExclusiveAccess, ManagedModelStore, ModelStoreLockError, ModelStoreMutationGuard, SharedAccess,
+};
 use orbok_workers::{
     FullCleanupOutcome, ManagedModelStartupOutcome, ModelDeliveryError, ModelDeliveryEvent,
     ModelDeliveryOutcome, ModelLifecycleError, RecoveryReport,
@@ -35,7 +37,13 @@ use std::path::{Path, PathBuf};
 
 /// `<data_dir>/models/<default embedding model id>` — the one default
 /// managed-model root derived from a resolved profile data directory.
-pub fn default_model_store_root(data_dir: &Path) -> PathBuf {
+///
+/// `pub(crate)`, not `pub`: Review 113 F1/F2 found this was re-exported into
+/// the bin crate and, combined with a `Catalog`-derived data directory,
+/// composed into a managed-store construction that bypassed
+/// `RuntimeStorage` entirely. Now used only inside this module, by
+/// `RuntimeStorage::model_store`.
+pub(crate) fn default_model_store_root(data_dir: &Path) -> PathBuf {
     data_dir.join("models").join("multilingual-e5-small")
 }
 
@@ -229,12 +237,75 @@ impl ProfileModelStore {
         }
     }
 
-    /// The store's own root directory, for display/labeling only (e.g. the
-    /// model-download consent UI). Reading this back out is safe: the value
-    /// can only ever be the active profile's root, since that is the only
-    /// root this type can ever be constructed with.
-    pub fn models_dir(&self) -> &Path {
-        self.store.models_dir()
+    /// A display-only rendering of the store's root, for the model-download
+    /// consent UI label. Not a `Path`/`PathBuf`: it cannot be threaded into a
+    /// filesystem-opening API by construction, the same rationale as
+    /// `RuntimeContext::descriptor` (Review 113 F2).
+    pub fn models_dir_display(&self) -> String {
+        self.store.models_dir().display().to_string()
+    }
+
+    /// Whether `candidate` resolves inside this store's root, using the same
+    /// canonicalization-with-fallback as construction-time physical-alias
+    /// validation. Used to distinguish a manually-configured model directory
+    /// from one the managed store itself owns (RFC-050 provenance) — moved
+    /// here from a free function in the bin crate so the comparison no
+    /// longer needs the store's raw path handed across the boundary
+    /// (Review 113 F2).
+    pub fn contains(&self, candidate: &Path) -> bool {
+        fn comparable(path: &Path) -> PathBuf {
+            crate::physical_identity::physical_location(path)
+                .map(|location| location.resolved_path)
+                .or_else(|_| std::path::absolute(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        }
+        crate::runtime_context::path_is_within(
+            &comparable(candidate),
+            &comparable(self.store.models_dir()),
+        )
+    }
+
+    /// The currently active managed generation's directory, if the catalog
+    /// records one, holding the shared lock guard for as long as the result
+    /// is retained. `Ok(None)` means no managed generation is currently
+    /// active. Moved here from a bin-crate free function that re-derived the
+    /// store root from `Catalog::path()` instead of the active context
+    /// (Review 113 F1).
+    pub fn current_generation_dir(
+        &self,
+        catalog: &Catalog,
+        timeout: std::time::Duration,
+    ) -> Result<
+        Option<(ModelStoreMutationGuard<SharedAccess>, PathBuf)>,
+        ManagedGenerationLookupError,
+    > {
+        let guard = self
+            .store
+            .acquire_shared(timeout)
+            .map_err(ManagedGenerationLookupError::StoreLock)?;
+        let snapshot = orbok_db::repo::ManagedGenerationRepository::new(catalog)
+            .load_shared(&guard)
+            .map_err(|_| ManagedGenerationLookupError::Catalog)?;
+        let Some(generation_id) = snapshot.profile.current_generation_id else {
+            return Ok(None);
+        };
+        let generation_dir = self
+            .store
+            .models_dir()
+            .join("generations")
+            .join(generation_id.as_str());
+        Ok(Some((guard, generation_dir)))
+    }
+
+    /// Acquire an exclusive lock on this store. A thin delegate over the
+    /// wrapped `ManagedModelStore`, exposed so tests can simulate a
+    /// competing writer (lock contention) without needing the store's raw
+    /// path to construct a second, unsealed handle on it.
+    pub fn acquire_exclusive(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<ModelStoreMutationGuard<ExclusiveAccess>, ModelStoreLockError> {
+        self.store.acquire_exclusive(timeout)
     }
 
     /// Run the reviewed RFC-050 installer end to end against this sealed
@@ -311,6 +382,34 @@ impl ProfileCache {
         namespaces: &[OrbokCacheNamespace],
     ) -> OrbokResult<Vec<NamespaceUsage>> {
         self.service.usage(catalog, namespaces)
+    }
+}
+
+/// Failure resolving the currently active managed generation directory via
+/// [`ProfileModelStore::current_generation_dir`].
+#[derive(Debug)]
+pub enum ManagedGenerationLookupError {
+    StoreLock(ModelStoreLockError),
+    Catalog,
+}
+
+impl std::fmt::Display for ManagedGenerationLookupError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StoreLock(error) => {
+                write!(formatter, "managed model store is unavailable: {error}")
+            }
+            Self::Catalog => formatter.write_str("managed model catalog state is unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for ManagedGenerationLookupError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::StoreLock(error) => Some(error),
+            Self::Catalog => None,
+        }
     }
 }
 

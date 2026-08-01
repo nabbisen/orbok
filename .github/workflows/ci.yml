@@ -139,6 +139,25 @@ jobs:
       - name: build core crates
         run: cargo build -p orbok-core -p orbok-db -p orbok-fs -p orbok-workers
 
+      # RFC-049 Slice 2 (Correction Request 111 §4 C2/C3): the runtime
+      # isolation boundary and its OS-level denial harness (chmod 000 on
+      # Unix, an icacls deny ACE on Windows) are platform-specific and must
+      # run natively per platform, not just cross-compile-checked. This is
+      # also the app binary's (`orbok`, `--bin orbok`) only test coverage in
+      # CI today: `fast` excludes it and `release` runs `--lib` only, neither
+      # of which reaches `main.rs`'s own test module. Placed immediately
+      # after the build step and before "test core crates" (Review 113 F3):
+      # a pre-existing, unrelated failure in that later step
+      # (tests::path_guard::ignore_policy_blocks_internal_symlink on
+      # macos-latest — see finding below) aborts the remaining steps in its
+      # leg, and this step must not be starved of a chance to run by it.
+      - name: RFC-049 runtime isolation and boundary tests
+        run: cargo test -p orbok --bin orbok --locked
+
+      # Pre-existing, unrelated to RFC-049: fails today on macos-latest at
+      # tests::path_guard::ignore_policy_blocks_internal_symlink (orbok-fs).
+      # Tracked as a separate finding, not fixed here; kept blocking (no
+      # continue-on-error) so the failure stays visible rather than silent.
       - name: test core crates
         env:
           ORBOK_DATA_DIR: /tmp/orbok-cross
@@ -149,13 +168,3 @@ jobs:
 
       - name: RFC-050 abrupt-exit recovery matrix
         run: cargo test -p orbok-workers abrupt_process_exit_at_each_durability_boundary_recovers_coherently --lib
-
-      # RFC-049 Slice 2 (Correction Request 111 §4 C2/C3): the runtime
-      # isolation boundary and its OS-level denial harness (chmod 000 on
-      # Unix, an icacls deny ACE on Windows) are platform-specific and must
-      # run natively per platform, not just cross-compile-checked. This is
-      # also the app binary's (`orbok`, `--bin orbok`) only test coverage in
-      # CI today: `fast` excludes it and `release` runs `--lib` only, neither
-      # of which reaches `main.rs`'s own test module.
-      - name: RFC-049 runtime isolation and boundary tests
-        run: cargo test -p orbok --bin orbok --locked

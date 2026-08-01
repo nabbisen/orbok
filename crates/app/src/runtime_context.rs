@@ -156,17 +156,6 @@ impl RuntimeContext {
         }
     }
 
-    /// The three paths compared by construction-time physical-alias
-    /// validation (RFC-049 §6). Scoped narrowly to that one pre-existing
-    /// caller (`bootstrap::validate_physical_profile_separation`), which
-    /// stays in the bin crate pending the deferred general `bootstrap.rs`
-    /// split (Correction Request 111 §8) — this is not a general path
-    /// accessor and returns nothing usable to open catalog/cache/settings
-    /// independently of that one validation call.
-    pub fn physical_alias_candidates(&self) -> [&Path; 3] {
-        [&self.data_dir, &self.catalog_file, &self.settings_file]
-    }
-
     pub(crate) fn data_dir(&self) -> &Path {
         &self.data_dir
     }
@@ -251,18 +240,25 @@ impl RuntimePathProbe for AllowRuntimePathProbe {
 }
 
 /// Binds access authorization to exactly one immutable runtime context.
-pub struct RuntimeAccess<'a, P: ?Sized> {
+///
+/// `pub(crate)`, not `pub`: this is the mechanism `RuntimeStorage` uses
+/// internally to turn a `RuntimeContext` into an authorized path just before
+/// an open. It is not a general-purpose path accessor, and Review 113 F2
+/// found it was reachable (unused, but reachable) as a public API for any
+/// bin-crate caller to re-derive a path from — narrowed here so that door no
+/// longer exists.
+pub(crate) struct RuntimeAccess<'a, P: ?Sized> {
     context: &'a RuntimeContext,
     probe: &'a P,
 }
 
 impl<'a, P: RuntimePathProbe + ?Sized> RuntimeAccess<'a, P> {
-    pub fn new(context: &'a RuntimeContext, probe: &'a P) -> Self {
+    pub(crate) fn new(context: &'a RuntimeContext, probe: &'a P) -> Self {
         Self { context, probe }
     }
 
     /// Authorize the active path for one persistent service.
-    pub fn active_path(&self, kind: RuntimePathKind) -> io::Result<&'a Path> {
+    pub(crate) fn active_path(&self, kind: RuntimePathKind) -> io::Result<&'a Path> {
         let path = self.context.path(kind);
         self.probe.before_access(kind, path)?;
         Ok(path)
@@ -272,7 +268,8 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeAccess<'a, P> {
     ///
     /// Slice 2 can use this when an existing API still accepts an explicit
     /// path, allowing tests to detect attempted inactive-profile access.
-    pub fn authorize_path(
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn authorize_path(
         &self,
         kind: RuntimePathKind,
         requested: &Path,
