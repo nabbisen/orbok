@@ -25,7 +25,8 @@ orbok --version
 
 ## Data directory
 
-orbok stores its catalog and cache in the platform app-data directory:
+orbok stores its catalog, cache, and model files in the platform app-data
+directory:
 
 | Platform | Default path |
 |---|---|
@@ -33,7 +34,26 @@ orbok stores its catalog and cache in the platform app-data directory:
 | macOS | `~/Library/Application Support/orbok/` |
 | Windows | `%LOCALAPPDATA%\orbok\` |
 
-Override with `ORBOK_DATA_DIR=/path/to/dir`.
+Override with `ORBOK_DATA_DIR=/path/to/dir` (standard mode only — see
+Portable mode below).
+
+### Portable mode
+
+Run with `--portable` to keep everything — catalog, cache, models, **and
+settings** — under `./orbok-data/`, relative to the directory orbok was
+started from. Nothing is read from or written to the standard platform
+locations above while running this way.
+
+`--portable` and `ORBOK_DATA_DIR` are mutually exclusive: supplying a
+non-empty `ORBOK_DATA_DIR` together with `--portable` is rejected outright,
+rather than one silently taking precedence. `ORBOK_DATA_DIR` only ever
+applies to standard mode.
+
+The startup message for portable mode shows only the relative
+`./orbok-data/` label, not a resolved absolute path — this is a deliberate,
+minimal-disclosure default for interactive output. `orbok --check` is an
+explicit headless diagnostic command and prints the full resolved path for
+either mode, since showing the path is the point of running it.
 
 ## First launch walkthrough
 

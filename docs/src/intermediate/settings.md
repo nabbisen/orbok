@@ -30,5 +30,8 @@
 
 | Variable | Purpose |
 |---|---|
-| `ORBOK_DATA_DIR` | Override the local data directory |
+| `ORBOK_DATA_DIR` | Override the local data directory — standard mode only; rejected if combined with `--portable` |
 | `RUST_LOG` | Tracing log level (e.g. `orbok=debug`) |
+
+See [Quick Start: Data directory](../users/quick_start.md#data-directory)
+for the full standard/portable precedence rule.

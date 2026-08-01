@@ -9,15 +9,39 @@ cargo test --workspace --lib
 # Run the GUI
 cargo run
 
-# Portable mode (data in ./orbok-data/ instead of platform app-data dir)
+# Portable mode (catalog, cache, models, AND settings in ./orbok-data/
+# instead of the platform app-data/config dirs; combining with
+# ORBOK_DATA_DIR below is rejected, not silently resolved)
 cargo run -- --portable
 
 # Headless backend check (no display needed)
 cargo run -- --check
 
-# With a custom data dir
+# With a custom data dir (standard mode only)
 ORBOK_DATA_DIR=/tmp/orbok-dev cargo run -- --check
 ```
+
+### Portable/standard precedence (RFC-049)
+
+One immutable runtime context is resolved before any catalog, cache,
+settings, model, or recovery operation, and every later operation in the
+process uses only that context — see
+`crates/app/src/runtime_context.rs`/`crates/app/src/runtime_storage.rs`.
+Two points worth knowing when touching this area:
+
+- Standard mode's settings live in the platform config directory, separate
+  from `ORBOK_DATA_DIR` (which only affects catalog/cache/models). Portable
+  mode relocates settings alongside everything else under `./orbok-data/` —
+  the two modes are not symmetric in what `ORBOK_DATA_DIR` covers.
+- `--portable` combined with a non-empty `ORBOK_DATA_DIR` fails closed
+  (rejected during argument resolution, before any profile filesystem
+  access) rather than one silently winning.
+- The relative `./orbok-data/` label on portable startup and the full
+  absolute path printed by `--check` are both intentional, not an
+  inconsistency: the interactive startup message stays relative per the
+  diagnostics/privacy minimal-disclosure default, while `--check` is an
+  explicit headless diagnostic command where showing the resolved path is
+  the point (RFC-049 §4.7).
 
 ## Testing Philosophy
 
