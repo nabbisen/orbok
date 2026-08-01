@@ -67,6 +67,7 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | 049 | [Portable Runtime Data Isolation](proposed/049-portable-runtime-data-isolation.md) | Proposed |
 | 051 | [Reproducible Reviewed-Source Packaging](proposed/051-reproducible-reviewed-source-packaging.md) | Proposed |
 | 052 | [UI Localization and Design-Gate Compliance](proposed/052-ui-localization-and-design-gate-compliance.md) | Proposed |
+| 053 | [rusqlite Line and Rust MSRV Policy](proposed/053-rusqlite-line-and-msrv-policy.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in

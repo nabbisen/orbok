@@ -78,6 +78,7 @@ under RFC-000.
 | 050 | HANDOFF-050-trusted-atomic-model-delivery + Appendix B | trusted manifest, generation transaction, and crash recovery |
 | 051 | HANDOFF-051-reproducible-reviewed-source-packaging | reviewed tracked inputs, lockfile, and deterministic archives |
 | 052 | HANDOFF-052-ui-localization-and-design-gate-compliance | complete En/Ja UI copy and mandatory token/i18n gates |
+| 053 | HANDOFF-053-rusqlite-line-and-msrv | rusqlite 0.39 line, measured MSRV, and the localcache upgrade it unblocks |
 
 RFC-047 evidence collection and release-candidate promotion remain paused
 while the RFC-049–052 stabilization blockers and RFC-048 performance gate are
