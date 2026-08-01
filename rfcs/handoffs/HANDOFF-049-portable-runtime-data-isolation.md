@@ -2,9 +2,9 @@
 
 **Project:** orbok  
 **RFC:** 049  
-**Lifecycle stage:** Design + handoff  
+**Lifecycle stage:** Implemented with RFC-049 on `main` at `2fba6a9`; release pending
 **Primary owner:** `orbok-app` bootstrap/runtime wiring  
-**RFC:** [`../proposed/049-portable-runtime-data-isolation.md`](../proposed/049-portable-runtime-data-isolation.md)
+**RFC:** [`../done/049-portable-runtime-data-isolation.md`](../done/049-portable-runtime-data-isolation.md)
 
 > **Scope rule:** Establish one runtime context before touching persistent
 > state. Do not combine this work with profile migration or unrelated bootstrap

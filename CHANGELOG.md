@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+RFC-050 and RFC-049 have landed on `main`; both are recorded as
+`Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the next release
+tag.
+
+### Added
+
+- **RFC-050 — Trusted atomic model delivery:** the default embedding model
+  is now installed through a generation-based, crash-safe managed store:
+  staged downloads are verified against a pinned trust manifest before
+  atomic promotion, an in-flight install can be recovered or rolled back
+  after an abrupt process exit at any durability boundary, and Windows gets
+  its own durability protocol (verbatim-path handling, junction/reparse
+  cases, atomic rename). The GUI wizard's model-download step now runs
+  through this pipeline with an explicit consent/provenance presentation.
+  See `rfcs/done/050-trusted-atomic-model-delivery.md` and
+  `rfcs/appendices/APPENDIX-B-default-model-trust-root.md`.
+- **RFC-049 — Portable runtime data isolation:** one immutable runtime
+  context is now resolved before any catalog, cache, settings, model, or
+  recovery operation, and every later operation in the process uses only
+  that context. Standard and portable profiles cannot cross-contaminate:
+  the storage boundary is type-enforced (`RuntimeContext`'s path accessors
+  are private to the isolation boundary; sealed handles are the only way to
+  reach a catalog, cache, or managed model store), and the two-way isolation
+  matrix runs under an OS-level denial harness (`chmod 000` on Unix/macOS,
+  an `icacls` deny ACE on Windows) that self-checks it is actually armed
+  before relying on it. `--portable` combined with a non-empty
+  `ORBOK_DATA_DIR` is now rejected outright instead of one silently winning.
+  See `rfcs/done/049-portable-runtime-data-isolation.md`.
+
+### Fixed
+
+- **Settings first-load creation:** a missing `settings.json` is created
+  with default values on first load at the active profile's resolved path,
+  restoring the pre-existing create-on-first-run behavior that an earlier
+  RFC-049 revision had inadvertently dropped.
+
+### Tests
+
+- **RFC-049 isolation suite now runs in CI:** the app binary's own test
+  suite (`cargo test -p orbok --bin orbok --locked`) — previously exercised
+  by no CI job at all — now runs natively on Linux, macOS, and Windows in
+  the `cross` job, including the denial harness and a capability-gated
+  bind-mount alias-detection test on Linux.
+- **RFC-050:** added coverage for shared-catalog crash boundaries, iced
+  smoke-test serialization, and the full serialized recovery lifecycle
+  across abrupt-exit points.
+
+### Docs
+
+- Documented the RFC-049 `ORBOK_DATA_DIR`/`--portable` precedence rules
+  (including the frozen startup anchor and the no-fallback-on-failure
+  behavior) and the diagnostics/redaction wording distinction between the
+  interactive portable-mode warning and `orbok --check`'s output, in
+  `docs/src/users/quick_start.md`, `docs/src/intermediate/settings.md`, and
+  `docs/src/maintainers/development.md`.
+- Documented the RFC-049 isolation/denial test suite and corrected the CI
+  gate list to include it, in `docs/src/maintainers/testing.md` and
+  `docs/src/maintainers/release_readiness.md`.
+
 ---
 
 ## [0.24.0] — 2026-07-13 — v1.0.0 Readiness Evidence and Benchmark Diagnostics

@@ -3,7 +3,7 @@
 **Project:** orbok  
 **RFC:** 049  
 **Title:** Portable Runtime Data Isolation  
-**Status:** Proposed  
+**Status:** Implemented (main at `2fba6a9`; release pending)
 **Target milestone:** v1.0.0 stabilization  
 **Date:** 2026-07-14  
 **Related RFCs:** RFC-001 Local Data Classification and Lifecycle; RFC-030 Portable Mode; RFC-040 Safe Diagnostics  

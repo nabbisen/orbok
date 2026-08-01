@@ -1,13 +1,17 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-07-14)
+## Current Status (2026-08-01)
 
 Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
 **000–046 implemented** (see
-[`rfcs/README.md`](rfcs/README.md)). The design-system program (RFC-032–035:
-design tokens, component primitives, WCAG 2.1 AA accessibility, inclusive
-design) completed across v0.12.0–v0.14.0; the stabilization and
-search-foundation programs landed across v0.16.0–v0.24.0:
+[`rfcs/README.md`](rfcs/README.md)). RFC-049 (portable runtime data
+isolation) and RFC-050 (trusted atomic model delivery) are also now
+implemented on `main`, pending the next release tag — see
+[`rfcs/README.md`](rfcs/README.md) for their `Status` fields. The
+design-system program (RFC-032–035: design tokens, component primitives,
+WCAG 2.1 AA accessibility, inclusive design) completed across
+v0.12.0–v0.14.0; the stabilization and search-foundation programs landed
+across v0.16.0–v0.24.0:
 
 - v0.16.0 — RFC-044 (orbok-extract production hardening).
 - v0.17.0 — RFC-036 (resource-aware scheduler and backpressure).
@@ -20,17 +24,20 @@ search-foundation programs landed across v0.16.0–v0.24.0:
   keyword-only benchmark p99 stabilization.
 - v0.24.0 — v1.0.0 evidence workflow, CI/release-gate alignment, real-model
   benchmark guards, model evidence, and timing diagnostics.
+- unreleased (`main`) — RFC-050 (trusted atomic model delivery) and RFC-049
+  (portable runtime data isolation); release pending.
 
 Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
 
 ## Forward Plan — v1.0.0 readiness and stabilization RFCs in progress
 
-Every RFC through 046 has shipped. RFC-047 through RFC-052 are proposed
-v1.0.0 readiness/stabilization RFCs. RFC-047 defines evidence collection and
-RFC-048 tracks real-model performance recovery. RFC-049 through RFC-052 address
-the architecture review's release blockers: portable runtime isolation,
-trusted atomic model delivery, reviewed-source packaging, and complete UI
-localization/design-gate enforcement. None marks v1.0.0 ready.
+RFC-049 and RFC-050 have shipped on `main` (release pending). RFC-047,
+RFC-048, RFC-051, and RFC-052 remain proposed v1.0.0 readiness/
+stabilization RFCs. RFC-047 defines evidence collection and RFC-048 tracks
+real-model performance recovery. RFC-051 and RFC-052 address the two
+remaining architecture-review release blockers: reviewed-source packaging
+and complete UI localization/design-gate enforcement. None marks v1.0.0
+ready.
 
 The `tract` feature build finding is resolved: `cargo check -p orbok-embed
 --features tract` is now a blocking release gate, and `orbok-embed` contains
@@ -42,8 +49,10 @@ as new RFCs in creation order (RFC-000).
 
 ### Stabilization order before RC evidence collection
 
-1. Review and accept RFC-049 through RFC-052 and their handoffs.
-2. Implement and independently review the four stabilization boundaries.
+1. Review and accept RFC-051 and RFC-052 and their handoffs. (RFC-049 and
+   RFC-050 are implemented; see above.)
+2. Implement and independently review the remaining stabilization
+   boundaries.
 3. Continue RFC-048 measured performance recovery until real-model thresholds
    pass or a later accepted RFC changes policy.
 4. Resume RFC-047 evidence collection only after those blockers are closed.
