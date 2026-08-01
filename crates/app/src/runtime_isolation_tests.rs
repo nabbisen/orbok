@@ -660,21 +660,23 @@ fn physical_bind_mount_identity_alias_is_rejected() {
         return;
     }
 
-    // Correction Request 111 §4 F4 (Review 113): this alias mechanism needs
-    // unprivileged Linux user-namespace creation, which some CI runners
-    // restrict (observed on GitHub's `ubuntu-latest`). A capability probe
-    // must skip *loudly* rather than fail or pass silently — `eprintln!`
-    // bypasses libtest's stdout capture, so this is visible in CI output
-    // even without `--nocapture` on the outer `cargo test` invocation.
+    // Correction Request 111 §4 F4 (Review 113); corrected per Review 114
+    // §4 — `eprintln!`/`println!` are BOTH captured by libtest for a passing
+    // test (verified empirically in Review 114; my original claim that
+    // `eprintln!` bypasses capture was wrong and made this skip silent). A
+    // direct, unbuffered write to the real stderr file descriptor
+    // (`emit_capability_skip_notice`) bypasses libtest's capture instead,
+    // so the notice is visible in plain `cargo test` output — exercised by
+    // `bind_mount_probe_skip_is_visible_without_nocapture` below.
     if !bwrap_can_create_unprivileged_user_namespace() {
-        eprintln!(
-            "SKIPPED (not silently — see Review 113 F4): \
+        emit_capability_skip_notice(
+            "SKIPPED (not silently — see Review 114 §4): \
              physical_bind_mount_identity_alias_is_rejected requires unprivileged Linux \
              user-namespace creation (`bwrap --unshare-user`), which this runner does not \
              permit. RFC-049 §6 bind-mount alias-detection evidence is NOT collected by this \
              run. This is a runner capability gap, not a test failure: rerun on a runner or \
              local sandbox where unprivileged user namespaces are permitted to collect that \
-             evidence."
+             evidence.",
         );
         return;
     }
@@ -728,6 +730,67 @@ fn bwrap_can_create_unprivileged_user_namespace() -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+/// Write a capability-skip notice directly to the real stderr file
+/// descriptor. `println!`/`eprintln!` are both captured by libtest for a
+/// passing test and would make this silent (Review 114 §4) — a direct
+/// `Write` on `std::io::stderr()` bypasses that capture.
+#[cfg(target_os = "linux")]
+fn emit_capability_skip_notice(message: &str) {
+    use std::io::Write as _;
+    let mut stderr = std::io::stderr();
+    let _ = stderr.write_all(message.as_bytes());
+    let _ = stderr.write_all(b"\n");
+    let _ = stderr.flush();
+}
+
+/// Deliberately exercises the loud-skip branch above (Review 114 §4
+/// required test): runs the real bind-mount test as a child process with a
+/// `bwrap` on `PATH` that always fails, *without* `--nocapture`, and asserts
+/// the skip notice is present in the child's captured output. This proves
+/// visibility under the exact condition `cargo test` (and CI) runs under —
+/// not just that the code path is reachable.
+#[cfg(target_os = "linux")]
+#[test]
+fn bind_mount_probe_skip_is_visible_without_nocapture() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let fake_bin = tempfile::tempdir().unwrap();
+    let fake_bwrap = fake_bin.path().join("bwrap");
+    std::fs::write(&fake_bwrap, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&fake_bwrap, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let existing_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut forced_path = std::ffi::OsString::from(fake_bin.path());
+    forced_path.push(":");
+    forced_path.push(&existing_path);
+
+    // No `--nocapture`: this must reproduce what a plain `cargo test` run
+    // (and CI) actually sees.
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg("runtime_isolation_tests::physical_bind_mount_identity_alias_is_rejected")
+        .env("PATH", forced_path)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "the skip path must still report the test as passed, not failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        combined.contains("SKIPPED (not silently"),
+        "the loud-skip notice must be visible in captured child output without \
+         --nocapture; got:\n{combined}"
+    );
 }
 
 #[cfg(windows)]
