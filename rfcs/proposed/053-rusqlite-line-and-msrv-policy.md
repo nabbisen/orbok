@@ -1,13 +1,13 @@
 # RFC-053: rusqlite Line and Rust MSRV Policy
 
-**Project:** orbok  
-**RFC:** 053  
-**Title:** rusqlite Line and Rust MSRV Policy  
-**Status:** Proposed  
-**Target milestone:** v1.0.0 stabilization  
-**Date:** 2026-08-01  
-**Related RFCs:** RFC-002 SQLite Catalog Schema and Migration Policy (§16 one-`libsqlite3-sys` rule); RFC-017 Packaging and Distribution Strategy; RFC-019 Test Matrix and Release Readiness  
-**Supersedes decision:** DEC-006 (pin `rusqlite 0.40` to match `localcache 0.20.0`)  
+**Project:** orbok\
+**RFC:** 053\
+**Title:** rusqlite Line and Rust MSRV Policy\
+**Status:** Proposed\
+**Target milestone:** v1.0.0 stabilization\
+**Date:** 2026-08-01\
+**Related RFCs:** RFC-002 SQLite Catalog Schema and Migration Policy (§16 one-`libsqlite3-sys` rule); RFC-017 Packaging and Distribution Strategy; RFC-019 Test Matrix and Release Readiness\
+**Supersedes decision:** DEC-006 (pin `rusqlite 0.40` to match `localcache 0.20.0`)\
 **Handoff:** [`HANDOFF-053-rusqlite-line-and-msrv.md`](../handoffs/HANDOFF-053-rusqlite-line-and-msrv.md)
 
 ---
