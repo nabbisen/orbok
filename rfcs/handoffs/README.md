@@ -82,8 +82,3 @@ under RFC-000.
 RFC-047 evidence collection and release-candidate promotion remain paused
 while the RFC-049–052 stabilization blockers and RFC-048 performance gate are
 unresolved.
-
-## Upstream requests
-
-- `snora-request-contrast-facade-v0.25.1.md` — request that produced the
-  `snora::design::contrast` facade used by RFC-034 (delivered in snora 0.25.1).
