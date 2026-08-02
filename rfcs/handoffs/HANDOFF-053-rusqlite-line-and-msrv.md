@@ -1,10 +1,10 @@
 # Implementation Handoff — RFC-053: rusqlite Line and Rust MSRV Policy
 
-**Project:** orbok  
-**RFC:** 053  
-**Lifecycle stage:** Design + handoff  
-**Primary owner:** workspace manifests; `orbok-db` / `orbok-cache` / `orbok-workers` / `orbok-search` build surface  
-**RFC:** [`../proposed/053-rusqlite-line-and-msrv-policy.md`](../proposed/053-rusqlite-line-and-msrv-policy.md)
+**Project:** orbok\
+**RFC:** 053\
+**Lifecycle stage:** Implemented with RFC-053 on `main` at `6342cde`; release pending\
+**Primary owner:** workspace manifests; `orbok-db` / `orbok-cache` / `orbok-workers` / `orbok-search` build surface\
+**RFC:** [`../done/053-rusqlite-line-and-msrv-policy.md`](../done/053-rusqlite-line-and-msrv-policy.md)
 
 > **Scope rule:** This is a dependency-line and MSRV change. Do not adopt new
 > localcache capabilities, do not touch schema or SQL, and do not combine the

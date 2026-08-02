@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-RFC-050 and RFC-049 have landed on `main`; both are recorded as
-`Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the next release
-tag.
+RFC-050, RFC-049, and RFC-053 have landed on `main`; all three are recorded
+as `Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the next
+release tag.
 
 ### Added
 
@@ -40,6 +40,25 @@ tag.
   the active profile's resolved path in both modes. See
   `rfcs/done/049-portable-runtime-data-isolation.md`.
 
+### Changed
+
+- **RFC-053 — rusqlite line reversed, MSRV measured instead of declared:**
+  `rusqlite` moves `0.40 → 0.39` (`libsqlite3-sys` `0.38.x → 0.37.0`),
+  superseding DEC-006/RFC-002 §16's earlier pin — 0.40's `libsqlite3-sys`
+  carried an undeclared Rust 1.95 floor (a `cfg_select!` in its build
+  script) that no manifest inspection could surface. Workspace
+  `rust-version` moves `1.85 → 1.91`, the actual floor demonstrated by
+  building at each candidate toolchain rather than assumed from declared
+  dependency versions; the floor turned out to be gated by
+  `tract-core`/`app-json-settings`, not rusqlite. `localcache` moves to its
+  current line, `0.20.0 → 0.21.1`; its 0.21.0 breaking changes
+  (`LocalFileCacheError` becoming `#[non_exhaustive]`, JSON codec failures
+  reclassified) don't reach orbok, since the sole call site maps every
+  variant through a blanket `to_string()`. Bundled SQLite moves
+  `3.53.2 → 3.51.3`; the one security-relevant fix in that range (a
+  WAL-reset corruption bug) was already backported into 3.51.3 before
+  3.53.0 shipped. See `rfcs/done/053-rusqlite-line-and-msrv-policy.md`.
+
 ### Tests
 
 - **RFC-049 isolation suite now runs in CI:** the app binary's own test
@@ -62,6 +81,14 @@ tag.
 - Documented the RFC-049 isolation/denial test suite and corrected the CI
   gate list to include it, in `docs/src/maintainers/testing.md` and
   `docs/src/maintainers/release_readiness.md`.
+- Updated the stated Rust requirement (`1.85+` → `1.91+`) in `README.md`,
+  `docs/src/maintainers/development.md`, and
+  `docs/src/users/quick_start.md`; recorded the RFC-053 rusqlite/localcache
+  line moves and the measured-MSRV toolchain walk in
+  `docs/src/maintainers/dep_audit.md`; appended a supersession note to
+  RFC-002 §16 rather than rewriting its history, since the one-
+  `libsqlite3-sys`-per-graph rule it states is unchanged and only the
+  pinned version differs.
 
 ---
 

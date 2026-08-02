@@ -72,7 +72,7 @@ The measured floor (1.91) is gated by `tract-core` and `app-json-settings`,
 not by rusqlite/libsqlite3-sys — the rusqlite-specific 1.95 floor is fully
 removed, but the workspace's true floor was already higher than the
 declared 1.85 independent of this change. See
-`rfcs/proposed/053-rusqlite-line-and-msrv-policy.md`.
+`rfcs/done/053-rusqlite-line-and-msrv-policy.md`.
 
 Exactly one `rusqlite` and one `libsqlite3-sys` resolve (`cargo tree -d`),
 preserving RFC-002 §16's single-`libsqlite3-sys` rule.

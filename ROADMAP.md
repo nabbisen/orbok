@@ -1,12 +1,13 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-08-01)
+## Current Status (2026-08-02)
 
 Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
 **000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). RFC-049 (portable runtime data
-isolation) and RFC-050 (trusted atomic model delivery) are also now
-implemented on `main`, pending the next release tag — see
+isolation), RFC-050 (trusted atomic model delivery), and RFC-053
+(rusqlite line and Rust MSRV policy) are also now implemented on `main`,
+pending the next release tag — see
 [`rfcs/README.md`](rfcs/README.md) for their `Status` fields. The
 design-system program (RFC-032–035: design tokens, component primitives,
 WCAG 2.1 AA accessibility, inclusive design) completed across
@@ -24,20 +25,23 @@ across v0.16.0–v0.24.0:
   keyword-only benchmark p99 stabilization.
 - v0.24.0 — v1.0.0 evidence workflow, CI/release-gate alignment, real-model
   benchmark guards, model evidence, and timing diagnostics.
-- unreleased (`main`) — RFC-050 (trusted atomic model delivery) and RFC-049
-  (portable runtime data isolation); release pending.
+- unreleased (`main`) — RFC-050 (trusted atomic model delivery), RFC-049
+  (portable runtime data isolation), and RFC-053 (rusqlite line and Rust
+  MSRV policy); release pending.
 
-Stack: snora 0.25 / iced 0.14, localcache 0.20.0 + rusqlite 0.40.
+Stack: snora 0.25 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — v1.0.0 readiness and stabilization RFCs in progress
 
-RFC-049 and RFC-050 have shipped on `main` (release pending). RFC-047,
-RFC-048, RFC-051, and RFC-052 remain proposed v1.0.0 readiness/
+RFC-049, RFC-050, and RFC-053 have shipped on `main` (release pending).
+RFC-047, RFC-048, RFC-051, and RFC-052 remain proposed v1.0.0 readiness/
 stabilization RFCs. RFC-047 defines evidence collection and RFC-048 tracks
 real-model performance recovery. RFC-051 and RFC-052 address the two
 remaining architecture-review release blockers: reviewed-source packaging
-and complete UI localization/design-gate enforcement. None marks v1.0.0
-ready.
+and complete UI localization/design-gate enforcement. RFC-053 was a
+separate dependency-maintenance track (rusqlite line reversal and a
+measured, not declared, MSRV), unrelated to those two blockers. None marks
+v1.0.0 ready.
 
 The `tract` feature build finding is resolved: `cargo check -p orbok-embed
 --features tract` is now a blocking release gate, and `orbok-embed` contains
@@ -49,8 +53,8 @@ as new RFCs in creation order (RFC-000).
 
 ### Stabilization order before RC evidence collection
 
-1. Review and accept RFC-051 and RFC-052 and their handoffs. (RFC-049 and
-   RFC-050 are implemented; see above.)
+1. Review and accept RFC-051 and RFC-052 and their handoffs. (RFC-049,
+   RFC-050, and RFC-053 are implemented; see above.)
 2. Implement and independently review the remaining stabilization
    boundaries.
 3. Continue RFC-048 measured performance recovery until real-model thresholds
@@ -141,7 +145,7 @@ v1.0.0 is not released without explicit project-owner confirmation.
 
 - **GUI**: iced 0.14 via snora 0.8 — no WebView, no local HTTP API (RFC-027).
 - **i18n**: compile-time typed catalog, En+Ja (RFC-031).
-- **DB pin**: localcache 0.20.0 + rusqlite 0.40 — one libsqlite3-sys (RFC-002 §16).
+- **DB pin**: localcache 0.21 + rusqlite 0.39 — one libsqlite3-sys (RFC-002 §16, superseded by RFC-053).
 - **FTS**: SQLite FTS5 contentless + `keyword_index_records.fts_rowid` mapping (RFC-007).
 - **Chunking**: structure-aware (Markdown headings) + paragraph fallback (RFC-006).
 - **Pipeline**: extract → chunk+index in two worker steps, atomic per-file transactions (RFC-006 §12).
