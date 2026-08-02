@@ -1,5 +1,19 @@
 # Dependency Audit
 
+## 2026-08-03 Task 003 Part A: event-listener security fix
+
+`event-listener` moved `5.4.1 → 5.4.2`, resolving `RUSTSEC-2026-0221`
+(`StackSlot<'_, T>` unconditionally implementing `Send`/`Sync`, letting a
+`!Send` tag set via `Event::with_tag` cross a thread boundary; classified
+unsound, not known-exploitable). The advisory declares
+`patched = [">= 5.4.2"]`, a semver-compatible patch inside the existing
+`event-listener` requirement — no manifest change needed.
+
+Reaches orbok only transitively, through `rfd`→`ashpd`→`zbus` and
+`iced_winit`→`mundy`; orbok never calls it directly. `cargo update
+--dry-run -p event-listener` confirmed the delta was this package alone
+before applying. `cargo audit --deny warnings` is now clean.
+
 ## 2026-08-02 RFC-053 Slice 2: localcache moved to its current line
 
 `localcache` moved `0.20.1 → 0.21.1` (workspace requirement `^0.20.0` →
