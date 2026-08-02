@@ -84,10 +84,10 @@ impl SearchUiState {
     /// Apply a suggested filter at index `i`.
     /// Does nothing if `i` is out of range or the filter is already active.
     pub fn apply_suggested(&mut self, i: usize) {
-        if let Some(s) = self.suggested_filters.get(i).cloned() {
-            if !orbok_search::filter::is_already_active(&self.active_filters, &s.filter) {
-                self.active_filters.push(s.filter);
-            }
+        if let Some(s) = self.suggested_filters.get(i).cloned()
+            && !orbok_search::filter::is_already_active(&self.active_filters, &s.filter)
+        {
+            self.active_filters.push(s.filter);
         }
     }
 

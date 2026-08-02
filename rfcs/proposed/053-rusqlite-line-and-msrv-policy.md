@@ -73,8 +73,8 @@ the upstream-request convention.
 orbok is an end-user desktop application installed with `cargo install`. A floor
 three releases below current stable is an adoption barrier in a way it would not
 be for a library. Once rusqlite 0.40 was identified as the sole cause of the
-1.95 floor, roughly seven releases of headroom outweighed a two-year-newer
-bundled SQLite (3.53.2 → 3.51.3).
+1.95 floor, four releases of measured headroom (1.95 → 1.91; see §7.2)
+outweighed a two-year-newer bundled SQLite (3.53.2 → 3.51.3).
 
 Feasibility is established rather than assumed. orbok's entire rusqlite surface
 across four crates (`orbok-db`, `orbok-cache`, `orbok-workers`, `orbok-search`)
@@ -92,6 +92,9 @@ long predating 3.51.
 - README's stated Rust requirement.
 - Upgrading `localcache` from 0.20.0 to its current line, once unblocked.
 - Updating DEC-006's record and the RFC-002 §16 note.
+- Mechanical, behavior-preserving `collapsible_if` fixes made newly available
+  by the measured `rust-version` floor (nine sites across six crates,
+  discovered by the mandated clippy gate; none touch the database surface).
 
 **Out of scope**
 

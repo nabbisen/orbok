@@ -18,8 +18,16 @@
 - `README.md` — the stated Rust requirement in Quick Start
 - `docs/src/maintainers/development.md` — toolchain prerequisite, if stated there
 - `docs/src/maintainers/dep_audit.md` — a dated entry recording the line change
-- No `.rs` change is expected in either slice. If one proves necessary, stop
-  (see §6).
+- No `.rs` behavior change is expected in either slice. Mechanical
+  `collapsible_if` fallout is: raising `rust-version` to the measured floor
+  made clippy's MSRV-aware `collapsible_if` lint newly fire at nine sites
+  across six crates (`orbok-fs`, `orbok-search`, `orbok-ui`, `orbok-workers`,
+  `orbok-bench`, `orbok`), none touching the database surface. Each is a
+  behavior-preserving `if A { if B { X } }` → `if A && B { X }` collapse
+  (verified per-site: the outer block contains only the inner `if`, so
+  merging the condition cannot change control flow) and is in scope for
+  Slice 1. Any `.rs` change beyond this mechanical class still proves the
+  surface unstable and should stop (see §6).
 
 ## 2. Program Design
 

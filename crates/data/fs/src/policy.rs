@@ -98,10 +98,10 @@ impl CompiledPolicy {
     /// Whether a file name passes the include/exclude pattern rules.
     pub fn file_included(&self, file_name: &str) -> bool {
         let ext = extension_of(file_name);
-        if let Some(ext) = &ext {
-            if self.exclude_extensions.iter().any(|e| e == ext) {
-                return false;
-            }
+        if let Some(ext) = &ext
+            && self.exclude_extensions.iter().any(|e| e == ext)
+        {
+            return false;
         }
         if self.component_excluded(file_name) {
             return false;

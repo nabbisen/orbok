@@ -1,7 +1,7 @@
 # Local Development
 
 ```sh
-# Requires Rust 1.85+ (install via rustup.rs)
+# Requires Rust 1.91+ (install via rustup.rs)
 
 # Run the full test suite
 cargo test --workspace --lib

@@ -1,5 +1,49 @@
 # Dependency Audit
 
+## 2026-08-01 RFC-053 rusqlite line reversal and measured MSRV
+
+`rusqlite` moved `0.40.1 → 0.39.0` (`libsqlite3-sys` `0.38.1 → 0.37.0`),
+superseding DEC-006. `rusqlite 0.40`'s `libsqlite3-sys 0.38.x` uses the
+`cfg_select!` macro in its build script, which requires Rust 1.95 — an
+undeclared floor neither crate reports, so `cargo`'s own diagnostics never
+surfaced it. Manifest declared `1.85`; the true floor was ten releases
+newer.
+
+`localcache` incidentally moved `0.20.0 → 0.20.1` as part of the same
+re-resolution (still within the workspace's unchanged `^0.20.0`
+requirement — not the separate current-line upgrade RFC-053 Slice 2
+tracks).
+
+Workspace `rust-version` changed `1.85 → 1.91`, measured by building at
+each candidate toolchain rather than inferred (`cargo +X check --workspace
+--all-targets --locked`):
+
+| Toolchain | Result | Cause |
+|---|---|---|
+| 1.94 | ✓ pass | — |
+| 1.93 | ✓ pass | — |
+| 1.92 | ✓ pass | — |
+| 1.91 | ✓ pass | — |
+| 1.88 | ✗ fail | `app-json-settings` 2.0.3 requires 1.90; `tract-core`/`tract-data`/`tract-extra`/`tract-nnef`/`tract-onnx`/`tract-transformers` 0.23.3 require 1.91 |
+| 1.87 | ✗ fail | additionally `iced`/`iced_program`/`iced_selector`/`iced_test`, `time`/`time-core`/`time-macros`, `wgpu` 27.0.1 require 1.88 |
+| 1.85 | ✗ fail | additionally `wayland-protocols` requires 1.86; `zbus`/`zbus_macros`/`zbus_names`/`zvariant`/`zvariant_derive`/`zvariant_utils` require 1.87 |
+
+1.89 and 1.90 were not separately walked: `tract-core`/`tract-data`/
+`tract-extra`/`tract-nnef`/`tract-onnx`/`tract-transformers` 0.23.3 declare
+`rust-version = "1.91"`, and cargo enforces a declared `rust-version` by
+refusing to build below it, so both toolchains would fail for the same
+reason 1.88 does regardless of any other factor. 1.91 is the floor, and the
+pass recorded at 1.91 is an actual build, not an inference from the gap.
+
+The measured floor (1.91) is gated by `tract-core` and `app-json-settings`,
+not by rusqlite/libsqlite3-sys — the rusqlite-specific 1.95 floor is fully
+removed, but the workspace's true floor was already higher than the
+declared 1.85 independent of this change. See
+`rfcs/proposed/053-rusqlite-line-and-msrv-policy.md`.
+
+Exactly one `rusqlite` and one `libsqlite3-sys` resolve (`cargo tree -d`),
+preserving RFC-002 §16's single-`libsqlite3-sys` rule.
+
 ## 2026-07-11 cargo-deny deferral
 
 `cargo-deny` remains advisory for the active post-v0.24/v1.0 readiness track.

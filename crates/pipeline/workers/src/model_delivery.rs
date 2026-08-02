@@ -94,17 +94,17 @@ pub async fn install_default_model(
     let report = check_app_managed_model_readiness(&source_dir);
     let plan = build_download_plan(&report).map_err(|_| ModelDeliveryError::Plan)?;
 
-    if report.overall() == ModelReadiness::Ready {
-        if let Some(current_id) = snapshot.profile.current_generation_id.clone() {
-            return verify_ready_current(
-                &snapshot,
-                current_id,
-                source_dir,
-                &plan,
-                &DEFAULT_TRUSTED_MODEL,
-            )
-            .await;
-        }
+    if report.overall() == ModelReadiness::Ready
+        && let Some(current_id) = snapshot.profile.current_generation_id.clone()
+    {
+        return verify_ready_current(
+            &snapshot,
+            current_id,
+            source_dir,
+            &plan,
+            &DEFAULT_TRUSTED_MODEL,
+        )
+        .await;
     }
 
     let client = production_client(&DEFAULT_TRUSTED_MODEL)?;

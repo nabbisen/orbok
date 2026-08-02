@@ -222,10 +222,10 @@ impl<'a> HybridSearchService<'a> {
 
         // Optional reranking (RFC-010): reorder using passage scores.
         let rerank_start = Instant::now();
-        if limits.rerank {
-            if let Some(reranker) = self.reranker {
-                results = rerank_results(reranker, query, results)?;
-            }
+        if limits.rerank
+            && let Some(reranker) = self.reranker
+        {
+            results = rerank_results(reranker, query, results)?;
         }
         timing.rerank_ms = elapsed_ms(rerank_start);
         timing.total_ms = elapsed_ms(total_start);

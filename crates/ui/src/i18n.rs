@@ -50,10 +50,10 @@ impl Locale {
     /// `ja_JP`, `ja_JP.UTF-8`).
     pub fn from_env() -> Option<Locale> {
         for var in &["LANG", "LANGUAGE"] {
-            if let Ok(val) = std::env::var(var) {
-                if let Some(locale) = Self::parse_env_value(&val) {
-                    return Some(locale);
-                }
+            if let Ok(val) = std::env::var(var)
+                && let Some(locale) = Self::parse_env_value(&val)
+            {
+                return Some(locale);
             }
         }
         None

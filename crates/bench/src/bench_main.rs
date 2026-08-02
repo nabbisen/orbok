@@ -27,15 +27,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         work_dir.path(),
         orbok_bench_lib::BenchmarkOptions { model_dir },
     )?;
-    if let Some(expected) = expected_mode {
-        if result.mode != expected {
-            return Err(format!(
-                "benchmark mode mismatch: expected {}, got {}",
-                expected.label(),
-                result.mode.label()
-            )
-            .into());
-        }
+    if let Some(expected) = expected_mode
+        && result.mode != expected
+    {
+        return Err(format!(
+            "benchmark mode mismatch: expected {}, got {}",
+            expected.label(),
+            result.mode.label()
+        )
+        .into());
     }
 
     result.write_json(&out_dir.join("orbok-bench-results.json"))?;

@@ -322,41 +322,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        if let Some(entry) = history::get_entry(&catalog, id) {
-                            // Restore search text immediately (RFC-042 §9 step 1).
-                            app.state.query = entry.search_text.clone();
-                            app.state.search_ui.text = entry.search_text.clone();
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime)
+                        && let Some(entry) = history::get_entry(&catalog, id)
+                    {
+                        // Restore search text immediately (RFC-042 §9 step 1).
+                        app.state.query = entry.search_text.clone();
+                        app.state.search_ui.text = entry.search_text.clone();
 
-                            // Restore valid filters; drop missing folders.
-                            let (kept, dropped) = history::restore_valid_filters(&catalog, &entry);
-                            if dropped {
-                                app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::RecentSearchFilterDropped,
-                                ));
-                            }
-                            // Note: filters are stored for display; re-applying
-                            // them to the live ActiveFilter set is a P1 refinement.
-                            let _ = kept;
+                        // Restore valid filters; drop missing folders.
+                        let (kept, dropped) = history::restore_valid_filters(&catalog, &entry);
+                        if dropped {
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::RecentSearchFilterDropped,
+                            ));
+                        }
+                        // Note: filters are stored for display; re-applying
+                        // them to the live ActiveFilter set is a P1 refinement.
+                        let _ = kept;
 
-                            // UI status → "Searching again…".
-                            app.update(Message::SearchAgain(id.clone()));
+                        // UI status → "Searching again…".
+                        app.update(Message::SearchAgain(id.clone()));
 
-                            // Rerun against current files (RFC-042 §9 step 6).
-                            let query = entry.search_text.trim().to_string();
-                            if !query.is_empty() {
-                                match bootstrap::run_search(&runtime, &catalog, &query, 20) {
-                                    Ok(results) => {
-                                        app.update(Message::SearchResultsReady(results));
-                                    }
-                                    Err(e) => {
-                                        app.update(Message::SearchError(e.to_string()));
-                                    }
+                        // Rerun against current files (RFC-042 §9 step 6).
+                        let query = entry.search_text.trim().to_string();
+                        if !query.is_empty() {
+                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
+                                Ok(results) => {
+                                    app.update(Message::SearchResultsReady(results));
+                                }
+                                Err(e) => {
+                                    app.update(Message::SearchError(e.to_string()));
                                 }
                             }
-                            app.update(Message::RecentSearchRestored(id.clone()));
-                            app.update(Message::HistoryLoaded(history::load_history(&catalog)));
                         }
+                        app.update(Message::RecentSearchRestored(id.clone()));
+                        app.update(Message::HistoryLoaded(history::load_history(&catalog)));
                     }
                     return iced::Task::none();
                 }
@@ -387,11 +387,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = bootstrap::save_runtime_settings(&runtime, &s);
                     // If turned off, also clear existing entries (RFC-042 §13.4
                     // "Turn off and clear" — default safe behavior here).
-                    if !*on {
-                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                            history::clear_history(&catalog);
-                            app.update(Message::RecentSearchesCleared);
-                        }
+                    if !*on && let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                        history::clear_history(&catalog);
+                        app.update(Message::RecentSearchesCleared);
                     }
                     app.update(message.clone());
                     return iced::Task::none();

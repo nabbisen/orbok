@@ -18,7 +18,7 @@ members = [
 [workspace.package]
 version = "0.24.0"
 edition                 = "2024"
-rust-version            = "1.85"
+rust-version            = "1.91"
 license                 = "Apache-2.0"
 authors                 = ["nabbisen"]
 categories              = ["gui", "development-tools", "text-processing", "visualization"]
@@ -45,9 +45,12 @@ tract-core                  = { version = "0.23" }
 tokenizers                  = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 prost                       = { version = "0.14" }
 
-# database — pinned to 0.40 to match localcache 0.20.0
-# (single libsqlite3-sys rule; see RFC-002 amendment / Appendix A §21)
-rusqlite                    = { version = "0.40", features = ["bundled"] }
+# database — pinned to 0.39 (RFC-053 supersedes DEC-006): rusqlite 0.40's
+# libsqlite3-sys 0.38.x uses an undeclared, unmeasured Rust 1.95 MSRV floor
+# (cfg_select! in its build script); 0.39 keeps orbok's measured floor lower.
+# Track localcache's current requirement line rather than pinning a specific
+# localcache release (single libsqlite3-sys rule; see RFC-002 §16).
+rusqlite                    = { version = "0.39", features = ["bundled"] }
 
 # cache engine — Appendix A pins 0.20.0 (mtime ns-precision fix, schema v5)
 localcache                  = { version = "0.20.0", features = ["compression", "tracing"] }

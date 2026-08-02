@@ -36,7 +36,7 @@ and common source-code files.
 ## Quick Start
 
 ```sh
-# Install (requires Rust 1.85+)
+# Install (requires Rust 1.91+)
 cargo install --path crates/app
 
 # Launch the GUI

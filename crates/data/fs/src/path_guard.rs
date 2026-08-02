@@ -93,10 +93,11 @@ impl PathGuard {
         }
 
         // Size limit for files.
-        if let Ok(metadata) = std::fs::metadata(&canonical) {
-            if metadata.is_file() && !source.policy.size_allowed(metadata.len()) {
-                return Err(OrbokError::PolicyBlocked("file_too_large"));
-            }
+        if let Ok(metadata) = std::fs::metadata(&canonical)
+            && metadata.is_file()
+            && !source.policy.size_allowed(metadata.len())
+        {
+            return Err(OrbokError::PolicyBlocked("file_too_large"));
         }
 
         Ok(ValidatedPath {
