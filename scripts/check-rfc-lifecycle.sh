@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # check-rfc-lifecycle.sh — RFC index/folder/status consistency gate.
+#
+# Source of truth: the git INDEX, not the working tree. Every file this
+# script inspects is read via `git show ":<path>"` (the staged blob), and
+# every enumeration walks `git ls-files`, not a shell glob over disk. This
+# is deliberate: the point of this gate is "does the state about to be
+# committed satisfy the invariants", and a working-tree read can pass on
+# content that was edited but never re-staged (an uncommitted rename can
+# carry stale content this way — see the incident this comment was added
+# for). Reading from the index also means the gate can catch a problem
+# before commit, at `git add` time, rather than only in CI after the fact.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -20,11 +30,19 @@ require_dir rfcs/done
 require_dir rfcs/proposed
 require_dir rfcs/archive
 
+read_status() {
+  local path="$1"
+  git show ":$path" 2>/dev/null | grep -m1 '^\*\*Status:\*\*' || true
+}
+
+# rfcs/README.md itself is read from the index too, for the same reason.
+readme_index="$(git show ":rfcs/README.md" 2>/dev/null || true)"
+
 check_status_prefix() {
   local file="$1"
   local expected="$2"
   local status
-  status="$(grep -m1 '^\*\*Status:\*\*' "$file" || true)"
+  status="$(read_status "$file")"
   if [ -z "$status" ]; then
     flag "$file has no Status field"
     return
@@ -43,49 +61,56 @@ check_id_prefix() {
   fi
 }
 
-for file in rfcs/done/*.md; do
-  [ -e "$file" ] || continue
+while read -r file; do
+  [ -n "$file" ] || continue
   check_id_prefix "$file"
   check_status_prefix "$file" "**Status:** Implemented"
-done
+done < <(git ls-files 'rfcs/done/*.md')
 
-for file in rfcs/proposed/*.md; do
-  [ -e "$file" ] || continue
+while read -r file; do
+  [ -n "$file" ] || continue
   check_id_prefix "$file"
   check_status_prefix "$file" "**Status:** Proposed"
-done
+done < <(git ls-files 'rfcs/proposed/*.md')
 
-for file in rfcs/archive/*.md; do
-  [ -e "$file" ] || continue
+while read -r file; do
+  [ -n "$file" ] || continue
   check_id_prefix "$file"
-  status="$(grep -m1 '^\*\*Status:\*\*' "$file" || true)"
+  status="$(read_status "$file")"
   if [ -z "$status" ]; then
     flag "$file has no Status field"
   elif [[ "$status" != "**Status:** Withdrawn"* && "$status" != "**Status:** Superseded"* ]]; then
     flag "$file status does not match archive folder: $status"
   fi
-done
+done < <(git ls-files 'rfcs/archive/*.md')
 
 mkdir -p target
 tmp_dir="$(mktemp -d target/rfc-lifecycle.XXXXXX)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-{ grep -E '^\| [0-9]{3} \| .*]\(done/[^)]+\.md\) \|' rfcs/README.md || true; } \
+{ grep -E '^\| [0-9]{3} \| .*]\(done/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
   | sed -E 's/^\| ([0-9]{3}) \| .*]\((done\/[^)]+\.md)\) \|.*$/\1 \2/' \
   > "$tmp_dir/index-done.txt"
-{ grep -E '^\| [0-9]{3} \| .*]\(proposed/[^)]+\.md\) \|' rfcs/README.md || true; } \
+{ grep -E '^\| [0-9]{3} \| .*]\(proposed/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
   | sed -E 's/^\| ([0-9]{3}) \| .*]\((proposed\/[^)]+\.md)\) \|.*$/\1 \2/' \
   > "$tmp_dir/index-proposed.txt"
-{ grep -E '^\| [0-9]{3} \| .*]\(archive/[^)]+\.md\) \|' rfcs/README.md || true; } \
+{ grep -E '^\| [0-9]{3} \| .*]\(archive/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
   | sed -E 's/^\| ([0-9]{3}) \| .*]\((archive\/[^)]+\.md)\) \|.*$/\1 \2/' \
   > "$tmp_dir/index-archive.txt"
+
+tracked_rfc_paths="$tmp_dir/tracked-rfc-paths.txt"
+{
+  git ls-files 'rfcs/done/*.md'
+  git ls-files 'rfcs/proposed/*.md'
+  git ls-files 'rfcs/archive/*.md'
+} | sed 's#^rfcs/##' | sort > "$tracked_rfc_paths"
 
 check_index_entries() {
   local list="$1"
   local file_id
   while read -r id path; do
     [ -n "${id:-}" ] || continue
-    if [ ! -f "rfcs/$path" ]; then
+    if ! grep -qxF "$path" "$tracked_rfc_paths"; then
       flag "rfcs/README.md links missing RFC file: $path"
       continue
     fi
@@ -105,13 +130,6 @@ cut -d' ' -f2 "$tmp_dir/index-done.txt" > "$index_paths"
 cut -d' ' -f2 "$tmp_dir/index-proposed.txt" >> "$index_paths"
 cut -d' ' -f2 "$tmp_dir/index-archive.txt" >> "$index_paths"
 sort "$index_paths" > "$tmp_dir/index-paths.sorted"
-
-tracked_rfc_paths="$tmp_dir/tracked-rfc-paths.txt"
-{
-  git ls-files 'rfcs/done/*.md'
-  git ls-files 'rfcs/proposed/*.md'
-  git ls-files 'rfcs/archive/*.md'
-} | sed 's#^rfcs/##' | sort > "$tracked_rfc_paths"
 
 while read -r path; do
   [ -n "$path" ] || continue
@@ -148,15 +166,15 @@ if [ -n "$index_duplicates" ]; then
   done <<< "$index_duplicates"
 fi
 
-if find rfcs/proposed -maxdepth 1 -type f -name '*.md' | grep -q .; then
-  if grep -q '^None\. All RFCs through' rfcs/README.md; then
+if git ls-files 'rfcs/proposed/*.md' | grep -q .; then
+  if grep -q '^None\. All RFCs through' <<< "$readme_index"; then
     flag "rfcs/README.md says Proposed is None but proposed RFC files exist"
   fi
   if [ ! -s "$tmp_dir/index-proposed.txt" ]; then
     flag "proposed RFC files exist but rfcs/README.md has no proposed RFC index rows"
   fi
 else
-  if ! grep -q '^None\. All RFCs through' rfcs/README.md; then
+  if ! grep -q '^None\. All RFCs through' <<< "$readme_index"; then
     flag "rfcs/README.md Proposed section does not say None"
   fi
   if [ -s "$tmp_dir/index-proposed.txt" ]; then
