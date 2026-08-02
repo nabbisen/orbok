@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 053\
 **Title:** rusqlite Line and Rust MSRV Policy\
-**Status:** Proposed\
+**Status:** Implemented (main at `6342cde`; release pending)\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-01\
 **Related RFCs:** RFC-002 SQLite Catalog Schema and Migration Policy (§16 one-`libsqlite3-sys` rule); RFC-017 Packaging and Distribution Strategy; RFC-019 Test Matrix and Release Readiness\
