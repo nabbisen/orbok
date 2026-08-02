@@ -89,6 +89,38 @@ fn ignore_policy_blocks_internal_symlink() {
     assert!(guard.validate(&root.path().join("real.txt")).is_ok());
 }
 
+// Task 003 Part B: the Ignore policy must be spelling-independent. A
+// request routed through a symlinked ancestor of the source root (the
+// macOS default, `/var` -> `/private/var`, and reachable on Linux through
+// any symlinked ancestor) must not bypass the check just because the
+// request's spelling never matches the canonical root by string prefix.
+// This is not macOS-specific, so it is constructed explicitly here rather
+// than relying on a platform default, to reproduce on Linux CI too.
+#[cfg(unix)]
+#[test]
+fn ignore_policy_blocks_internal_symlink_via_symlinked_ancestor() {
+    let parent = tempfile::tempdir().unwrap();
+    let real_root = parent.path().join("real_root");
+    fs::create_dir(&real_root).unwrap();
+    let link_root = parent.path().join("link_root");
+    std::os::unix::fs::symlink(&real_root, &link_root).unwrap();
+
+    fs::write(real_root.join("target.txt"), "x").unwrap();
+    std::os::unix::fs::symlink(real_root.join("target.txt"), real_root.join("alias.txt")).unwrap();
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let guard = guard_for(&catalog, &real_root);
+
+    // Requested via the symlinked ancestor, not the canonical root.
+    let err = guard.validate(&link_root.join("alias.txt")).unwrap_err();
+    assert!(matches!(
+        err,
+        OrbokError::PolicyBlocked("symlink_policy_blocked")
+    ));
+    // The real file, reached through the same symlinked ancestor, is fine.
+    assert!(guard.validate(&link_root.join("target.txt")).is_ok());
+}
+
 // FollowWithinSource admits internal links but still rejects escapes.
 #[cfg(unix)]
 #[test]

@@ -72,17 +72,21 @@ impl PathGuard {
             .ok_or(OrbokError::PathOutsideSources)?;
 
         // Symlink policy: when the request path itself differs from its
-        // canonical form below the root, a link was traversed.
-        if source.policy.symlink_policy == SymlinkPolicy::Ignore {
-            let requested_inside = requested.starts_with(&source.canonical_root);
-            if requested_inside && requested != canonical {
-                // A symlink inside the source resolved elsewhere (still
-                // inside, or membership above would have failed) — the
-                // Ignore policy does not follow it.
-                if is_symlinked_below(&source.canonical_root, requested)? {
-                    return Err(OrbokError::PolicyBlocked("symlink_policy_blocked"));
-                }
-            }
+        // canonical form, a link was traversed somewhere along it.
+        // `requested != canonical` is a sound fast path — canonicalization
+        // resolves symlinks, so equal spellings mean none were crossed —
+        // but it cannot be gated on `requested.starts_with(root)`: on
+        // platforms where the source root itself sits behind a symlink
+        // (e.g. macOS's `/var` -> `/private/var`), a `requested` spelled
+        // via the non-canonical root would never satisfy that prefix test,
+        // silently skipping the whole check. `is_symlinked_below` locates
+        // the root by canonical identity instead, so no spelling of a
+        // request that resolves inside the source is missed.
+        if source.policy.symlink_policy == SymlinkPolicy::Ignore
+            && requested != canonical
+            && is_symlinked_below(&source.canonical_root, requested)?
+        {
+            return Err(OrbokError::PolicyBlocked("symlink_policy_blocked"));
         }
 
         // Hidden-file policy applies to components below the root.
@@ -118,13 +122,24 @@ fn hidden_below_root(root: &Path, canonical: &Path) -> bool {
 }
 
 /// True when any component of `path` strictly below `root` is a symlink.
+///
+/// Walks `path` in its own spelling rather than `root`'s: `path` may be
+/// spelled differently from the canonical `root` (a non-canonical source
+/// root, a differently-spelled ancestor, or both), and canonicalizing
+/// `path` up front would resolve away the very links this is looking for.
+/// The root is located by canonical identity as the walk proceeds, not by
+/// string prefix, so it is found under any spelling.
 fn is_symlinked_below(root: &Path, path: &Path) -> OrbokResult<bool> {
-    let Ok(relative) = path.strip_prefix(root) else {
-        return Ok(false);
-    };
-    let mut current = root.to_path_buf();
-    for component in relative.components() {
+    let mut current = PathBuf::new();
+    let mut inside_root = false;
+    for component in path.components() {
         current.push(component);
+        if !inside_root {
+            if std::fs::canonicalize(&current).is_ok_and(|c| c.as_path() == root) {
+                inside_root = true;
+            }
+            continue;
+        }
         let metadata = std::fs::symlink_metadata(&current)?;
         if metadata.file_type().is_symlink() {
             return Ok(true);
