@@ -2693,9 +2693,9 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "localcache"
-version = "0.20.1"
+version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fa8a1f8effa24da75eba66710669094826d1c19fad0a8a459c22cb595fa4520"
+checksum = "84dc22d51118ab1b159253ee3c114a74891cbb7248a10a333b48844b4ea664e3"
 dependencies = [
  "base64 0.22.1",
  "bincode",

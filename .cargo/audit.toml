@@ -1,8 +1,10 @@
 [advisories]
 ignore = [
-    # bincode 2.0.1 is pulled through localcache 0.20.0, the pinned cache
-    # engine. The advisory is unmaintained status rather than a known
-    # vulnerability, and localcache cannot be moved independently here.
+    # bincode 2.0.1 is pulled through localcache (0.21.1 as of RFC-053
+    # Slice 2; still bincode 2.0.1 after that move). The advisory is
+    # unmaintained status rather than a known vulnerability; nothing in
+    # orbok or localcache's current line depends on a fixed release
+    # existing yet.
     "RUSTSEC-2025-0141",
 
     # paste 1.0.15 is pulled transitively by GUI/model-support crates

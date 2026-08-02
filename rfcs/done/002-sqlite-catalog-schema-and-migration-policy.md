@@ -665,3 +665,17 @@ linked `libsqlite3-sys` version per dependency graph. Any future
 `rusqlite` upgrade must be coordinated with a `localcache` upgrade.
 
 The bundled SQLite build enables FTS5, which RFC-007 relies on.
+
+### Supersession (2026-08-02, RFC-053)
+
+The `0.40` pin above is superseded: `orbok-db` now pins `rusqlite = "0.39"`.
+`rusqlite` 0.40's `libsqlite3-sys` 0.38.x carried an undeclared Rust 1.95
+MSRV floor; 0.39 removes it, at the cost of the bundled SQLite version
+(3.53.2 → 3.51.3 — see RFC-053 §7.6 for the security-delta review that
+cleared this). `localcache` moved to its current line (0.21.x) in the same
+change.
+
+The rule this section exists to state is unchanged and still governs: only
+one `libsqlite3-sys` may resolve per dependency graph, and any future
+`rusqlite` move must be coordinated with `localcache`. Only the specific
+version differs.

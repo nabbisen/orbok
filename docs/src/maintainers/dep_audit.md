@@ -1,5 +1,38 @@
 # Dependency Audit
 
+## 2026-08-02 RFC-053 Slice 2: localcache moved to its current line
+
+`localcache` moved `0.20.1 → 0.21.1` (workspace requirement `^0.20.0` →
+`^0.21`), unblocked by Slice 1's rusqlite move — both `localcache` 0.20.1
+and 0.21.1 declare `rusqlite = "0.39"`, so this was always going to resolve
+to the same `rusqlite 0.39.0` / `libsqlite3-sys 0.37.0` Slice 1 already
+locked; `cargo update -p localcache` confirms no other package moved.
+
+0.21.0 makes `LocalFileCacheError` `#[non_exhaustive]` and adds a
+`Poisoned` variant, and reclassifies JSON codec (de)serialization failures
+from `UnsupportedFeature` to `Serialization`. Verified against the tree
+(not assumed from the handoff's note): `crates/data/cache/src/service.rs`'s
+`cache_err` is the only place in the workspace that names
+`LocalFileCacheError`, and it does a blanket `e.to_string()` with no `match`
+on variants — both changes are inert for orbok's compile-time behavior and
+control flow. The only observable effect is the wrapped error text changing
+from `"unsupported feature: json serialization error: …"` to
+`"serialization error: json serialization error: …"` inside
+`OrbokError::Cache(String)`; nothing in the workspace parses or matches on
+that text (`git grep` for both substrings returns nothing outside
+`localcache`'s own source). Confirmed by building and testing against
+0.21.1 with zero `.rs` changes required.
+
+`.cargo/audit.toml`'s `RUSTSEC-2025-0141` (`bincode`) waiver comment is
+corrected: it previously said localcache "cannot be moved independently
+here," which was true only while blocked on the rusqlite line (pre-Slice 1).
+`bincode` is still 2.0.1 after the localcache move, so the waiver itself is
+unchanged, but the stale rationale is fixed.
+
+`ReadPool` and any other new 0.21.x capability are available but not
+adopted — RFC-053 §5 scopes this to the line move only; adoption needs its
+own RFC.
+
 ## 2026-08-01 RFC-053 rusqlite line reversal and measured MSRV
 
 `rusqlite` moved `0.40.1 → 0.39.0` (`libsqlite3-sys` `0.38.1 → 0.37.0`),
@@ -75,7 +108,7 @@ Active waivers:
 
 | Advisory | Crate | Reason |
 |---|---|---|
-| RUSTSEC-2025-0141 | `bincode` 2.0.1 | Pulled through `localcache` 0.20.0; advisory is unmaintained status and the cache engine is pinned. |
+| RUSTSEC-2025-0141 | `bincode` 2.0.1 | Pulled through `localcache` 0.21.1 (still `bincode` 2.0.1 after the RFC-053 Slice 2 line move); advisory is unmaintained status. |
 | RUSTSEC-2024-0436 | `paste` 1.0.15 | Transitive proc-macro helper in GUI/model-support paths; no direct orbok usage. |
 | RUSTSEC-2026-0173 | `proc-macro-error2` 2.0.1 | Retained in `Cargo.lock` through a stale `defmt-macros` branch; not present in the active all-target dependency tree. |
 | RUSTSEC-2026-0192 | `ttf-parser` 0.25.1 | Pulled by GUI/font and PDF stacks; replacement requires upstream dependency movement. |
@@ -132,7 +165,7 @@ Performed manually against crates.io / docs.rs.
 
 | Crate | Locked | Notes |
 |---|---|---|
-| localcache | 0.20.0 | Is a newer release available? If so, note any schema migration required. |
+| localcache | 0.21.1 | Current line as of RFC-053 Slice 2 (2026-08-02); no schema migration required — `cache_err`'s blanket `to_string()` mapping absorbed 0.21.0's error-enum changes with no `.rs` edits. |
 | app-json-settings | 2.0.3 | Pending `.with_app_name("orbok")` builder consideration (see `settings.rs` note). |
 
 ## Dual-version transitive deps (normal, no action)

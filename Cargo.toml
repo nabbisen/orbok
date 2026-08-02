@@ -52,8 +52,11 @@ prost                       = { version = "0.14" }
 # localcache release (single libsqlite3-sys rule; see RFC-002 §16).
 rusqlite                    = { version = "0.39", features = ["bundled"] }
 
-# cache engine — Appendix A pins 0.20.0 (mtime ns-precision fix, schema v5)
-localcache                  = { version = "0.20.0", features = ["compression", "tracing"] }
+# cache engine — RFC-053 Slice 2: current line (0.21), tracking localcache's
+# published line rather than a specific patch (mtime ns-precision fix and
+# schema v5 from Appendix A are retained; single libsqlite3-sys rule, see
+# RFC-002 §16).
+localcache                  = { version = "0.21", features = ["compression", "tracing"] }
 
 # GUI — RFC-027 decision: iced 0.14 via snora 0.18
 iced                        = { version = "0.14", features = ["tokio"] }
