@@ -120,6 +120,8 @@ pub enum MessageKey {
     SourcesStatusActive,
     SourcesStatusPaused,
     SourcesStatusMissing,
+    SourcesPathInputPlaceholder,
+    SourcesRecursiveHint,
     // Indexing view
     IndexingTitle,
     IndexingIdle,
@@ -127,6 +129,7 @@ pub enum MessageKey {
     IndexingHealthStale,
     IndexingHealthFailed,
     IndexingHealthQueued,
+    IndexingRunning,
     // Storage view
     StorageTitle,
     StorageIntro,

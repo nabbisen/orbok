@@ -395,15 +395,18 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         tr(locale, MessageKey::SourcesAddFolder),
         Some(Message::RequestAddSource),
     );
-    let add_input = text_input("Or type a path manually…", &state.source_path_input)
-        .on_input(Message::SourcePathChanged)
-        .on_submit(Message::RequestAddSource)
-        .padding(tokens.spacing.sm);
+    let add_input = text_input(
+        tr(locale, MessageKey::SourcesPathInputPlaceholder),
+        &state.source_path_input,
+    )
+    .on_input(Message::SourcePathChanged)
+    .on_submit(Message::RequestAddSource)
+    .padding(tokens.spacing.sm);
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::SourcesTitle)),
         row![add_btn, container(add_input).width(Length::Fill)].spacing(tokens.spacing.sm),
-        text("All sub-folders are scanned recursively.").size(theme::meta_s(tokens, sc)),
+        text(tr(locale, MessageKey::SourcesRecursiveHint)).size(theme::meta_s(tokens, sc)),
     ];
 
     if let Some(notice) = &state.notice {
@@ -486,7 +489,11 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     ];
 
     if h.queued > 0 {
-        content = content.push(job_progress(tokens, "Indexing…", None));
+        content = content.push(job_progress(
+            tokens,
+            tr(locale, MessageKey::IndexingRunning),
+            None,
+        ));
     }
 
     page(tokens, content)
