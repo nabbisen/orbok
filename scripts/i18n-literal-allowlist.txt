@@ -1,0 +1,144 @@
+# RFC-052 Phase 1 — classified allowlist of data/technical string literals
+# in designated UI/platform-integration files (HANDOFF-052 §2).
+#
+# Format (tab-separated): <file>\t<literal>\t<reason>
+#
+# Every entry here is a literal the checker's heuristic would otherwise flag
+# as unrouted display copy, individually justified as data/technical rather
+# than user-visible text (RFC-052 §6: "broad file or line-pattern exclusions
+# are prohibited... every data/technical exception records its reason").
+# A literal appearing in a designated file but NOT listed here is either (a)
+# not matched by the heuristic at all (e.g. it flows through `tr()`), or (b)
+# a real violation the gate is correctly failing on until Phase 2 fixes it —
+# see docs referenced from review-request 132 for the list of those.
+#
+# Keyed on (file, literal) rather than line number, since line numbers shift
+# on every unrelated edit; a literal recurring in one file needs one entry.
+
+# ── Icon-font technical identifier ──────────────────────────────────────
+crates/ui/src/views/wizard.rs	lucide	font family name for the icon glyph font — a technical resource identifier, not display text
+crates/ui/src/components.rs	lucide	font family name for the icon glyph font — a technical resource identifier, not display text
+
+# ── Iconographic glyphs standing in for icons, not words ────────────────
+# Rendered via the same icon_text/glyph technique as lucide icons; the glyph
+# itself does not vary by locale, matching how lucide::Download etc. render
+# identically regardless of language.
+crates/ui/src/views.rs	✕	iconographic close/remove glyph, not translatable text
+crates/ui/src/views.rs	↕	iconographic scope-toggle glyph, not translatable text
+crates/ui/src/views.rs	▶	iconographic selected-result indicator glyph, not translatable text
+crates/ui/src/views.rs	✓	iconographic checkmark glyph (reduced-motion toggle), not translatable text
+crates/ui/src/views/wizard.rs	✓	iconographic checkmark glyph (file-found indicator), not translatable text
+crates/ui/src/views/wizard.rs	✗	iconographic cross-mark glyph (file-missing indicator), not translatable text
+crates/ui/src/views/wizard.rs	←	iconographic back/missing-marker arrow glyph, not translatable text
+crates/ui/src/views/wizard.rs	↓	iconographic download-in-progress arrow glyph, not translatable text
+
+# ── Proper nouns / vendor and model identifiers ──────────────────────────
+crates/ui/src/views/wizard.rs	multilingual-e5-small	default embedding model identifier (HuggingFace model id), a proper noun not translated across locales
+crates/ui/src/state/model_consent.rs	Hugging Face	model vendor/provider proper name, not translated across locales
+
+# ── Backend category keys matched programmatically ───────────────────────
+# Matched against category.as_str() from the backend storage-accounting
+# breakdown; these strings are never rendered directly — only used to bucket
+# bytes into the (already-localized) StorageGroup* labels.
+crates/ui/src/views.rs	keyword_index	internal storage-category identifier used for match-based bucketing, never rendered directly
+crates/ui/src/views.rs	vector_index	internal storage-category identifier used for match-based bucketing, never rendered directly
+crates/ui/src/views.rs	model_files	internal storage-category identifier used for match-based bucketing, never rendered directly
+crates/ui/src/views.rs	snippet_cache	internal storage-category identifier used for match-based bucketing, never rendered directly
+crates/ui/src/views.rs	search_cache	internal storage-category identifier used for match-based bucketing, never rendered directly
+crates/ui/src/views.rs	temporary_extraction	internal storage-category identifier used for match-based bucketing, never rendered directly
+
+# ── Developer-facing panic/invariant messages ────────────────────────────
+# .expect()/debug_assert! text surfaces only on a programming-error panic,
+# never in normal end-user operation.
+crates/ui/src/views/wizard.rs	wizard_view called without active wizard	panic message on an internal invariant violation, developer-facing only
+crates/ui/src/components.rs	status_badge: label must not be empty	debug_assert message on an internal invariant violation, developer-facing only
+crates/ui/src/state/model_consent.rs	reviewed default-model file sizes must fit in u64	panic message on an internal invariant violation, developer-facing only
+crates/app/src/main.rs	active model store must be authorized	panic message on an internal invariant violation, developer-facing only
+crates/app/src/main.rs	active cache path must be authorized	panic message on an internal invariant violation, developer-facing only
+crates/app/src/main.rs	PersistReady must produce a completion	panic message on an internal invariant violation, developer-facing only
+
+# ── Developer-facing log messages ────────────────────────────────────────
+# tracing::{warn,error}! output goes to the log stream, never the GUI; the
+# corresponding user-visible notice is a separate, already-localized
+# UserNotice variant dispatched alongside each of these.
+crates/app/src/main.rs	sensitive source: {warning}	tracing::warn! log message, not rendered in the GUI (paired with the localized UserNotice::SensitiveSourceAdded)
+crates/app/src/main.rs	scan failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
+crates/app/src/main.rs	add source failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
+crates/app/src/main.rs	clean snippets failed: {e}	tracing::error! log message, not rendered in the GUI
+crates/app/src/main.rs	clean search cache failed: {e}	tracing::error! log message, not rendered in the GUI
+crates/app/src/main.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
+crates/app/src/main.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
+
+# ── Framework/system technical identifiers ───────────────────────────────
+crates/ui/src/shell.rs	orbok-dark	internal iced::Theme::custom name, an iced framework identifier never rendered to the user
+crates/ui/src/shell.rs	orbok-light	internal iced::Theme::custom name, an iced framework identifier never rendered to the user
+crates/ui/src/shell.rs	k	keyboard-shortcut key character (Cmd/Ctrl+K), not display text
+crates/ui/src/shell.rs	,	keyboard-shortcut key character (Cmd/Ctrl+,), not display text
+
+# ── CLI output, not GUI text (see review-request 132 boundary question) ──
+crates/app/src/main.rs	orbok {}	--version flag output to stdout, conventional CLI text outside the GUI i18n boundary
+crates/app/src/main.rs	CARGO_PKG_VERSION	compile-time env var name for --version output, a technical identifier
+crates/app/src/main.rs	orbok: portable mode — data directory: ./orbok-data/	interactive startup console message (RFC-049 §4.7 minimal-disclosure text), conventional CLI/diagnostic text outside the GUI i18n boundary — flagged as a boundary question in review-request 132, not a settled classification
+
+# ── Dynamic technical identifiers (paths, externally-supplied metadata) ──
+# RFC-052 §3: "Dynamic technical identifiers such as filenames may remain
+# data." These are the *value* half of a label/value pair; the label half is
+# a separate, already-catalogued or flagged-for-cataloguing MessageKey.
+crates/ui/src/views/wizard.rs	fc.relative_path	dynamic filename/path, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	prev_dir	dynamic filesystem path, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	model_dir	dynamic filesystem path, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	presentation.model_name	externally-supplied model metadata, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	presentation.license	externally-supplied model metadata, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	presentation.provider	externally-supplied model metadata, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	presentation.source	externally-supplied model metadata, permitted as data per RFC-052 §3
+crates/ui/src/views/wizard.rs	presentation.destination	externally-supplied model metadata (destination path), permitted as data per RFC-052 §3
+
+# ── Diagnostics manifest/file-naming identifiers (written to disk, not GUI) ──
+crates/app/src/diagnostics.rs	orbok	hardcoded app-name manifest field, a technical identifier written to a JSON file, not rendered in the GUI
+crates/app/src/diagnostics.rs	app.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	platform.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	settings-redacted.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	storage-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	sources-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	indexing-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	extraction-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	models-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	scheduler-summary.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	recent-errors.json	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	logs-redacted.txt	diagnostics bundle output filename, a technical identifier
+crates/app/src/diagnostics.rs	HOME	environment variable name (Unix home directory), a technical identifier
+crates/app/src/diagnostics.rs	USERPROFILE	environment variable name (Windows home directory), a technical identifier
+crates/app/src/diagnostics.rs	app	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	version	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	build_profile	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	debug	JSON manifest field value (build profile), a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	release	JSON manifest field value (build profile), a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	os	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	arch	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+crates/app/src/diagnostics.rs	family	JSON manifest field name, a technical identifier written to a file, not rendered in the GUI
+
+# ── WCAG contrast-fixture descriptions (developer/test-facing only) ──────
+# RENDERED_PAIRS entries drive audit()'s test-suite assertions; the
+# `description` field appears only in test failure output, never rendered
+# in the actual GUI (crates/ui/src/a11y.rs is consumed only by the test
+# suite — see the module's own doc comment).
+crates/ui/src/a11y.rs	body text on background	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	body text on surface (cards)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	secondary text on surface	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	accent_text on accent (primary button)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	danger_text on danger (danger button / badge)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	warning_text on warning (stale badge surface)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	success_text on success (current badge surface)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	info_text on info (keyword badge surface)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	text_primary on surface_raised (raised cards)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+
+# ── Structural/decorative separators — BORDERLINE, see review-request 132 ──
+# Recommend exempt: purely structural, byte-identical across locales
+# per the established precedent of i18n.rs's own source_summary/
+# fmt_storage_row formatters, which use identical " · " separators in both
+# `en::message` and `ja::message`. Flagged for explicit reviewer
+# confirmation rather than silently assumed, since RFC-052 §3 calls out
+# "separator with semantic meaning" as requiring cataloguing.
+crates/ui/src/views.rs	 · 	structural list separator between already-localized filter labels; byte-identical across locales elsewhere in i18n.rs (source_summary, fmt_storage_row) — recommend exempt, flagged for reviewer confirmation
+crates/ui/src/views/wizard.rs	 · 	structural separator joining two data fields (model name, license); same precedent as above — recommend exempt, flagged for reviewer confirmation
+crates/ui/src/views/wizard.rs	— {} —	decorative em-dash bracketing around an already-translated MessageKey ("or" separator); recommend exempt, flagged for reviewer confirmation since dash conventions can vary by locale/typography

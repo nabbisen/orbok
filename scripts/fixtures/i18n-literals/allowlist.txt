@@ -1,0 +1,3 @@
+# Test-only allowlist for check-i18n-literals.test.sh. Not the real
+# repository allowlist (scripts/i18n-literal-allowlist.txt).
+scripts/fixtures/i18n-literals/violation.rs	reviewed default-model file sizes must fit in u64	panic message on an internal invariant violation, developer-facing only (allowlist-suppression test case)
