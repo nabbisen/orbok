@@ -429,10 +429,16 @@ pub fn fmt_label_value(locale: Locale, label: &str, value: impl std::fmt::Displa
 }
 
 /// A pre-rounded file size in MB, parenthesized for inline wizard display
-/// (RFC-052 §4 rule 3). "MB" is not localized — `model_exact_size` and
-/// `model_bytes` use the same unlocalized unit in both locales.
-pub fn wizard_file_size_mb(mb: f64) -> String {
-    format!("({mb:.1} MB)")
+/// (RFC-052 §4 rule 3). "MB" is not localized today — `model_exact_size` and
+/// `model_bytes` use the same unlocalized unit in both locales — but this
+/// takes `locale` anyway, matching `fmt_label_value`, so a future
+/// locale-specific parenthesis/spacing convention (Review 135 §3) is a
+/// one-line change here instead of another signature change plus call-site
+/// edit.
+pub fn wizard_file_size_mb(locale: Locale, mb: f64) -> String {
+    match locale {
+        Locale::En | Locale::Ja => format!("({mb:.1} MB)"),
+    }
 }
 
 /// Parameterized exact model size shown before RFC-050 download consent.

@@ -390,7 +390,7 @@ fn page_checked<'a>(
         };
         let size_info = fc
             .size_mb
-            .map(|m| format!("  {}", wizard_file_size_mb(m)))
+            .map(|m| format!("  {}", wizard_file_size_mb(locale, m)))
             .unwrap_or_default();
         col = col.push(
             text(format!("{icon}  {}{size_info}{style}", fc.relative_path))

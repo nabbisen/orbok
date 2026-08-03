@@ -97,13 +97,15 @@ fn fmt_label_value_joins_label_and_value_in_both_locales() {
 }
 
 // RFC-052 §4 rule 3: replaces the ad-hoc `format!("  ({m} MB)")` in the
-// wizard's file-check list; "MB" itself is not localized (see
-// model_exact_size/model_bytes, which share the same unlocalized unit).
+// wizard's file-check list; "MB" itself is not localized today (see
+// model_exact_size/model_bytes, which share the same unlocalized unit), but
+// this takes `locale` like fmt_label_value so a future convention change is
+// a one-line fix (Review 135 §3).
 #[test]
 fn wizard_file_size_mb_rounds_to_one_decimal() {
-    assert_eq!(wizard_file_size_mb(2.5), "(2.5 MB)");
-    assert_eq!(wizard_file_size_mb(0.0), "(0.0 MB)");
-    assert_eq!(wizard_file_size_mb(487.351_24), "(487.4 MB)");
+    assert_eq!(wizard_file_size_mb(Locale::En, 2.5), "(2.5 MB)");
+    assert_eq!(wizard_file_size_mb(Locale::Ja, 0.0), "(0.0 MB)");
+    assert_eq!(wizard_file_size_mb(Locale::En, 487.351_24), "(487.4 MB)");
 }
 
 // RFC-031 §3: locale persistence round-trip.
