@@ -84,6 +84,8 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeFused => "Fused",
         BadgeReranked => "Reranked",
         BadgeSourceStale => "Stale Source",
+        DialogAddSourceTitle => "Select a folder to add",
+        DialogChooseSearchFolderTitle => "Choose folder to search",
         WizardTitleNotConfigured => "Set up search by meaning",
         WizardTitleFileMissing => "Embedding model not found",
         WizardTitleValidating => "Checking model folder",

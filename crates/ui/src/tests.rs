@@ -208,6 +208,8 @@ pub const ALL_KEYS: &[MessageKey] = &[
     MessageKey::BadgeFused,
     MessageKey::BadgeReranked,
     MessageKey::BadgeSourceStale,
+    MessageKey::DialogAddSourceTitle,
+    MessageKey::DialogChooseSearchFolderTitle,
     MessageKey::WizardOr,
     MessageKey::WizardMissingMarker,
     MessageKey::WizardBack,

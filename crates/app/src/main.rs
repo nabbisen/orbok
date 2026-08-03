@@ -17,6 +17,7 @@ mod model_flow;
 mod runtime_isolation_tests;
 mod settings;
 
+use orbok_ui::i18n::{dialog_title_add_source, dialog_title_choose_search_folder};
 use orbok_ui::state::WizardFileCheck;
 use orbok_ui::{Message, OrbokApp, key_to_message};
 use orbok_workers::model_verifier::REQUIRED_MODEL_FILES;
@@ -97,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // `pick_folder()` is synchronous; it blocks the update loop
                     // while the dialog is open, which is expected for a modal dialog.
                     let picked = rfd::FileDialog::new()
-                        .set_title("Select folder to search")
+                        .set_title(dialog_title_add_source(app.state.locale))
                         .pick_folder();
                     if let Some(folder) = picked {
                         let path = folder.to_string_lossy().to_string();
@@ -206,10 +207,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             app.update(Message::ChooseFolderRequested);
                             // The actual rfd call is an async Task so it does
                             // not block the iced event loop (RFC-045 §19.0).
+                            let locale = app.state.locale;
                             return iced::Task::perform(
-                                async {
+                                async move {
                                     rfd::AsyncFileDialog::new()
-                                        .set_title("Choose folder to search")
+                                        .set_title(dialog_title_choose_search_folder(locale))
                                         .pick_folder()
                                         .await
                                         .map(|h| h.path().to_path_buf())

@@ -174,6 +174,9 @@ pub enum MessageKey {
     BadgeFused,
     BadgeReranked,
     BadgeSourceStale,
+    // Native dialog titles (RFC-052 §3, HANDOFF-052 §3 item 4)
+    DialogAddSourceTitle,
+    DialogChooseSearchFolderTitle,
     // Startup wizard (design §wizard)
     WizardTitleNotConfigured,
     WizardTitleFileMissing,
@@ -418,6 +421,22 @@ pub fn tr(locale: Locale, key: MessageKey) -> &'static str {
         Locale::En => en::message(key),
         Locale::Ja => ja::message(key),
     }
+}
+
+/// Localized title for the native "add a folder as a source" dialog
+/// (RFC-052 §3, HANDOFF-052 §3 item 4). `orbok-app` calls this instead of
+/// embedding English display copy or resolving a `MessageKey` itself —
+/// platform integrations request an already-localized string from this
+/// boundary (RFC-052 §3).
+pub fn dialog_title_add_source(locale: Locale) -> &'static str {
+    tr(locale, MessageKey::DialogAddSourceTitle)
+}
+
+/// Localized title for the native "choose a folder to search" dialog
+/// (RFC-045's search-location flow), on the same boundary rule as
+/// [`dialog_title_add_source`].
+pub fn dialog_title_choose_search_folder(locale: Locale) -> &'static str {
+    tr(locale, MessageKey::DialogChooseSearchFolderTitle)
 }
 
 /// Render a localized "label: value" pair (RFC-052 §4 rule 3), replacing the
