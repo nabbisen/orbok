@@ -332,7 +332,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
             );
         }
         if state.search_running {
-            content = content.push(text("Searching…").size(theme::body_s(tokens, sc)));
+            content = content
+                .push(text(tr(locale, MessageKey::SearchRunning)).size(theme::body_s(tokens, sc)));
         } else if let Some(last) = &state.last_query {
             if state.search_results.is_empty() {
                 content = content.push(
@@ -356,7 +357,10 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     } else {
                         title_raw.to_string()
                     };
-                    let snippet = result.snippet.as_deref().unwrap_or("(source unavailable)");
+                    let snippet = result
+                        .snippet
+                        .as_deref()
+                        .unwrap_or(tr(locale, MessageKey::SearchSnippetUnavailable));
                     let heading_str = result.heading_path.as_deref().unwrap_or("");
                     content = content.push(result_card(
                         tokens,

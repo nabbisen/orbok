@@ -21,6 +21,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchAddSource => "Add Source",
         SearchNoResults => "No results found",
         SearchKeywordOnlyNotice => "Search by meaning is not set up yet. Basic search still works.",
+        SearchRunning => "Searching…",
+        SearchSnippetUnavailable => "(source unavailable)",
         SourcesTitle => "Folders",
         SourcesEmptyTitle => "No folders added",
         SourcesEmptyBody => {

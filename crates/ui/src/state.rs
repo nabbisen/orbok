@@ -13,7 +13,7 @@ pub use location::{SearchFolderScope, SearchLocation, SearchLocationState, Searc
 pub use model_consent::{ModelDownloadConsent, ModelTrustPresentation};
 pub use search::{ResultTrustDisplay, ResultsStatus, SearchUiState};
 
-use crate::i18n::Locale;
+use crate::i18n::{Locale, MessageKey, tr};
 use crate::notice::UserNotice;
 use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 use orbok_models::SearchCapability;
@@ -629,7 +629,7 @@ impl AppState {
             Message::SearchError(_) => {
                 self.search_running = false;
                 self.search_ui.results_status = ResultsStatus::Problem {
-                    friendly_message: "Search did not finish. Please try again.".into(),
+                    friendly_message: tr(self.locale, MessageKey::NoticeSearchFailBody).to_string(),
                 };
                 self.notice = Some(UserNotice::SearchDidNotFinish);
             }

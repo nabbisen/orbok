@@ -42,6 +42,8 @@ pub const ALL_KEYS: &[MessageKey] = &[
     MessageKey::SearchAddSource,
     MessageKey::SearchNoResults,
     MessageKey::SearchKeywordOnlyNotice,
+    MessageKey::SearchRunning,
+    MessageKey::SearchSnippetUnavailable,
     MessageKey::SearchModeLabel,
     MessageKey::SearchModeAuto,
     MessageKey::SearchModeExact,

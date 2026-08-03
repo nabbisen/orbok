@@ -26,6 +26,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchKeywordOnlyNotice => {
             "セマンティック検索は利用できません。キーワード検索は使用できます。"
         }
+        SearchRunning => "検索中…",
+        SearchSnippetUnavailable => "(情報源を利用できません)",
         SourcesTitle => "フォルダー",
         SourcesEmptyTitle => "フォルダーが追加されていません",
         SourcesEmptyBody => {

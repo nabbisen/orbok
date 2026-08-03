@@ -110,6 +110,8 @@ pub enum MessageKey {
     SearchAddSource,
     SearchNoResults,
     SearchKeywordOnlyNotice,
+    SearchRunning,
+    SearchSnippetUnavailable,
     // Sources view
     SourcesTitle,
     SourcesEmptyTitle,
