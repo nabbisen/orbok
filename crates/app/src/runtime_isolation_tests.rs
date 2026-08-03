@@ -23,6 +23,50 @@ impl orbok::runtime_context::RuntimePathProbe for RecordingProbe {
     }
 }
 
+/// Reads every top-level `*.rs` file in `dir` — not recursive, which
+/// deliberately excludes `bootstrap/tests/`: the boundary this enforces is a
+/// *production* confinement rule, and a test calling `Catalog::open`
+/// directly is not a production bypass (Correction Request 111 §4 C5;
+/// Response 130 §4). `bootstrap.rs` itself is included by the caller separately via
+/// `include_str!`, matching how the other single-file modules are read.
+///
+/// Panics loudly rather than silently scanning nothing: `include_str!`
+/// binds a literal path at compile time and a typo or wrong path would
+/// fail to build, but a runtime directory read can silently return an
+/// empty or wrong result instead. Response 130 §3 requires this scope be
+/// proven non-empty and non-trivial before it is trusted — the same
+/// property `assert_denial_armed` (Review 114 §4) established for the
+/// RFC-049 denial harness and Task 003 Part C established for the RFC
+/// lifecycle gate.
+fn read_top_level_rs_files(dir: &str) -> String {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("bootstrap/ must be readable at {dir}: {e}"))
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "rs"))
+        .map(|entry| entry.path())
+        .collect();
+    entries.sort();
+    assert!(
+        entries.len() >= 5,
+        "bootstrap/ yielded only {} top-level .rs file(s) at {dir} — the scan is reading \
+         far less than expected, check the path",
+        entries.len()
+    );
+    let content: String = entries
+        .iter()
+        .map(|path| std::fs::read_to_string(path).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        content.len() > 2000,
+        "bootstrap/ content is only {} bytes at {dir} — suspiciously small, \
+         the scan may be reading the wrong path",
+        content.len()
+    );
+    content
+}
+
 /// Defense-in-depth only: this is a source-text check, not the primary
 /// guarantee. The primary guarantee is structural — `RuntimeContext`'s path
 /// accessors are `pub(crate)` to the `orbok` library crate, so this binary
@@ -34,12 +78,15 @@ impl orbok::runtime_context::RuntimePathProbe for RecordingProbe {
 #[test]
 fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
     let runtime_storage = include_str!("runtime_storage.rs");
-    let bootstrap = include_str!("bootstrap.rs");
+    let bootstrap_root = include_str!("bootstrap.rs");
+    let bootstrap_dir =
+        read_top_level_rs_files(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bootstrap"));
+    let bootstrap = format!("{bootstrap_root}\n{bootstrap_dir}");
     let main = include_str!("main.rs");
     let model_flow = include_str!("model_flow.rs");
     let download = include_str!("download.rs");
     let settings = include_str!("settings.rs");
-    let outside_boundary = [bootstrap, main, model_flow, download].join("\n");
+    let outside_boundary = [bootstrap.as_str(), main, model_flow, download].join("\n");
 
     assert!(!outside_boundary.contains("Catalog::open"));
     assert!(!outside_boundary.contains("CacheService::new"));
@@ -361,6 +408,35 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     output
 }
 
+fn exercise_later_profile_operations_with<P: orbok::runtime_context::RuntimePathProbe + ?Sized>(
+    context: &RuntimeContext,
+    probe: &P,
+    source_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    bootstrap::persist_theme_with(context, probe, orbok_ui::theme::Theme::Dark)?;
+    bootstrap::persist_model_dir_with(context, probe, &source_path.to_string_lossy())?;
+
+    let storage = orbok::runtime_storage::RuntimeStorage::new(context, probe);
+    storage.ensure_support_dir(RuntimePathKind::Diagnostics)?;
+    storage.ensure_support_dir(RuntimePathKind::Temporary)?;
+    let catalog = storage.open_catalog()?;
+    let cache = storage.cache()?;
+    let (source, _) = bootstrap::add_source(&catalog, &source_path.to_string_lossy())?;
+    let _ = bootstrap::run_search_with(context, probe, &catalog, "isolation", 20)?;
+    SearchHistoryRepository::new(&catalog).upsert(
+        "later isolation search",
+        &[],
+        Some(0),
+        "en",
+        &SearchHistorySettings::default(),
+    )?;
+    bootstrap::clean_snippets(&catalog, &cache)?;
+    bootstrap::clean_search_cache(&catalog, &cache)?;
+    bootstrap::remove_source(&catalog, &source.source_id)?;
+    bootstrap::reset_catalog(&catalog, &cache)?;
+    Ok(())
+}
+
 fn exercise_and_assert_isolation(
     active: &Profile,
     inactive: &Profile,
@@ -409,8 +485,7 @@ fn exercise_and_assert_isolation(
         .startup_dir()
         .join(format!("later-source-{marker}"));
     std::fs::create_dir_all(&source_path).unwrap();
-    bootstrap::exercise_later_profile_operations_with(&active.context, &probe, &source_path)
-        .unwrap();
+    exercise_later_profile_operations_with(&active.context, &probe, &source_path).unwrap();
 
     // §5.1/§5.2: exercise the actual lazy cache open and managed model
     // delivery, not merely construct the sealed handles. Both must stay
