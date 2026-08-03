@@ -73,6 +73,34 @@ documented as release-blocking for the active post-v0.24 readiness track:
   acceptable license rationale, advisory-waiver ownership, duplicate-version
   escalation rules, allowed source policy, and maintenance expectations.
 
+## Known Gate Coverage Limitation — RFC-050 durability
+
+**RFC-050's crash-recovery and cross-process concurrency guarantees are verified
+by design review and manual invocation, not by any gate.** Stating this
+explicitly because the only other signal is the `3 ignored` line printed by every
+`cargo test --workspace --lib` run, which is easy to stop reading.
+
+The following tests never execute in CI or in a default `cargo test`:
+
+| Test | Location | Why excluded |
+|---|---|---|
+| `crash_injection_child` | `crates/pipeline/workers/src/model_delivery.rs` | `#[ignore]` — separate-process helper |
+| `proxy_client_child` | `crates/pipeline/workers/src/model_delivery.rs` | `#[ignore]` — separate-process helper |
+| `lifecycle_interleaving_child` | `crates/pipeline/workers/src/model_lifecycle.rs` | `#[ignore]` — separate-process helper |
+| `real_distinct_supported_volumes_are_rejected` | `model_durability/tests.rs` | needs `ORBOK_TEST_WINDOWS_SECONDARY_SUPPORTED_ROOT` on a second fixed NTFS/ReFS volume |
+| `junction_into_real_unsupported_storage_is_rejected_before_following` | `model_durability/tests.rs` | needs `ORBOK_TEST_WINDOWS_UNSUPPORTED_LOCAL_ROOT` on removable/FAT/exFAT storage |
+
+What *is* continuously verified: the `cross` job runs the RFC-050 lifecycle
+matrix and the abrupt-exit recovery matrix natively on Linux, macOS, and
+Windows.
+
+**Consequence for release decisions.** RFC-050 is Implemented, but a regression
+in the crash-injection, proxy, or lifecycle-interleaving paths would not turn any
+gate red. Do not treat a green pipeline as evidence for those specific
+guarantees. Closing this means running the separate-process helpers in CI and
+provisioning the two Windows volume fixtures; until then the limitation is
+recorded rather than implied.
+
 ## Future Gate Alignment
 
 Before v1.0.0, decide which advisory checks become blocking and update this

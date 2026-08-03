@@ -79,6 +79,31 @@ v1.0.0 is not released without explicit project-owner confirmation.
   in chat. Open a dedicated RFC only if the template changes release policy or
   adds new gates.
 
+### Tracked technical debt — named, not scheduled
+
+Recorded 2026-08-03 from an independent architecture review. Neither item is a
+release blocker; both are named here so they are not rediscovered a third time.
+**Do not sequence either ahead of RFC-051 and RFC-052.**
+
+- **RFC-050 durability guarantees are not continuously verified.** Three
+  separate-process helpers (`crash_injection_child`, `proxy_client_child`,
+  `lifecycle_interleaving_child`) are `#[ignore]`d, and two Windows volume tests
+  require environment fixtures, so none run in CI. RFC-050 is Implemented, so a
+  regression in those paths would turn no gate red. Documented in
+  [`docs/src/maintainers/release_readiness.md`](docs/src/maintainers/release_readiness.md)
+  under "Known Gate Coverage Limitation". Closing it means running the helpers
+  in CI and provisioning the two Windows volume fixtures.
+
+- **File-size rule (DEC-004) is broadly unmet.** Eleven files exceed the
+  500-line hard limit. `crates/pipeline/workers/src/model_delivery.rs` (2004)
+  and `model_lifecycle.rs` (1693) have both *grown* since the debt was first
+  recorded on 2026-07-18, and are now what `bootstrap.rs` was before its split.
+  `crates/app/src/runtime_isolation_tests.rs` (907) grew during the RFC-049
+  program. The sibling-tests convention is also still unmet across the
+  workspace; the `bootstrap.rs` split addressed one file only. Split by stable
+  responsibility as each subsystem stabilizes rather than as a dedicated
+  campaign.
+
 ---
 
 > The sections below are historical milestone tracking (v0.1–v0.9 RC), retained
