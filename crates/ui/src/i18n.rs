@@ -163,6 +163,9 @@ pub enum MessageKey {
     // Match badges
     BadgeKeyword,
     BadgeSemantic,
+    // Unreferenced: no current MatchBadge variant corresponds to this key.
+    // Retained for a future hybrid-fusion result badge (RFC-009 RRF) rather
+    // than deleted (Review 134 §6.1).
     BadgeFused,
     BadgeReranked,
     BadgeSourceStale,
@@ -410,6 +413,24 @@ pub fn tr(locale: Locale, key: MessageKey) -> &'static str {
         Locale::En => en::message(key),
         Locale::Ja => ja::message(key),
     }
+}
+
+/// Render a localized "label: value" pair (RFC-052 §4 rule 3), replacing the
+/// ad-hoc `format!("{}: {value}", tr(locale, ...))` shape previously repeated
+/// at each call site. Both locales currently share the same shape; Phase 3
+/// manual Japanese QA (HANDOFF-052 §4) is where that gets revisited if it
+/// reads awkwardly, without another call-site-by-call-site refactor.
+pub fn fmt_label_value(locale: Locale, label: &str, value: impl std::fmt::Display) -> String {
+    match locale {
+        Locale::En | Locale::Ja => format!("{label}: {value}"),
+    }
+}
+
+/// A pre-rounded file size in MB, parenthesized for inline wizard display
+/// (RFC-052 §4 rule 3). "MB" is not localized — `model_exact_size` and
+/// `model_bytes` use the same unlocalized unit in both locales.
+pub fn wizard_file_size_mb(mb: f64) -> String {
+    format!("({mb:.1} MB)")
 }
 
 /// Parameterized exact model size shown before RFC-050 download consent.

@@ -12,8 +12,8 @@ pub use wizard::wizard_view;
 
 use crate::components::{self, health_cell, job_progress, result_card, source_card};
 use crate::i18n::{
-    Locale, MessageKey, files_indexed, fmt_gib, fmt_mib_bucket, fmt_query, fmt_storage_row,
-    search_location_chip, search_result_count, source_summary, tr,
+    Locale, MessageKey, files_indexed, fmt_gib, fmt_label_value, fmt_mib_bucket, fmt_query,
+    fmt_storage_row, search_location_chip, search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, Message, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -611,14 +611,16 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
     };
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::ModelsTitle)),
-        text(format!(
-            "{}: {embedding}",
-            tr(locale, MessageKey::ModelsEmbeddingRole)
+        text(fmt_label_value(
+            locale,
+            tr(locale, MessageKey::ModelsEmbeddingRole),
+            embedding
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {reranker}",
-            tr(locale, MessageKey::ModelsRerankerRole)
+        text(fmt_label_value(
+            locale,
+            tr(locale, MessageKey::ModelsRerankerRole),
+            reranker
         ))
         .size(theme::body_s(tokens, sc)),
     ];
@@ -637,9 +639,10 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
             }
         };
         content = content.push(
-            text(format!(
-                "{}: {status}",
-                tr(locale, MessageKey::ModelsVerification)
+            text(fmt_label_value(
+                locale,
+                tr(locale, MessageKey::ModelsVerification),
+                status,
             ))
             .size(theme::body_s(tokens, sc)),
         );

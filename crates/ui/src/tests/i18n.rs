@@ -1,8 +1,8 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
 use crate::i18n::{
-    Locale, files_indexed, model_exact_size, model_file_position, model_transfer_progress,
-    source_summary, tr,
+    Locale, files_indexed, fmt_label_value, model_exact_size, model_file_position,
+    model_transfer_progress, source_summary, tr, wizard_file_size_mb,
 };
 use crate::tests::ALL_KEYS;
 
@@ -75,6 +75,35 @@ fn parameterized_messages_localize() {
         s.contains("10") || s.contains("2") || s.contains("1"),
         "source_summary should include counts: {s}"
     );
+}
+
+// RFC-052 §4 rule 3: the shared label/value formatter replaces ten ad-hoc
+// `format!("{}: {value}")` call sites; both locales share its shape today.
+#[test]
+fn fmt_label_value_joins_label_and_value_in_both_locales() {
+    assert_eq!(
+        fmt_label_value(Locale::En, "Provider", "Hugging Face"),
+        "Provider: Hugging Face"
+    );
+    assert_eq!(
+        fmt_label_value(Locale::Ja, "プロバイダー", "Hugging Face"),
+        "プロバイダー: Hugging Face"
+    );
+    // Accepts any Display value, not just &str (e.g. an already-localized String).
+    assert_eq!(
+        fmt_label_value(Locale::En, "Exact size", 42u64),
+        "Exact size: 42"
+    );
+}
+
+// RFC-052 §4 rule 3: replaces the ad-hoc `format!("  ({m} MB)")` in the
+// wizard's file-check list; "MB" itself is not localized (see
+// model_exact_size/model_bytes, which share the same unlocalized unit).
+#[test]
+fn wizard_file_size_mb_rounds_to_one_decimal() {
+    assert_eq!(wizard_file_size_mb(2.5), "(2.5 MB)");
+    assert_eq!(wizard_file_size_mb(0.0), "(0.0 MB)");
+    assert_eq!(wizard_file_size_mb(487.351_24), "(487.4 MB)");
 }
 
 // RFC-031 §3: locale persistence round-trip.

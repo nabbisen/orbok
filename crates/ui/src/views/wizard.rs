@@ -14,7 +14,8 @@
 //! stay explicit.
 
 use crate::i18n::{
-    Locale, MessageKey, model_exact_size, model_file_position, model_transfer_progress, tr,
+    Locale, MessageKey, fmt_label_value, model_exact_size, model_file_position,
+    model_transfer_progress, tr, wizard_file_size_mb,
 };
 use crate::state::{
     AppState, Message, ModelArtifact, ModelDeliveryFailure, ModelDownloadConsent,
@@ -225,45 +226,46 @@ fn page_download_consent<'a>(
         text(presentation.model_name).size(theme::body_s(tokens, sc)),
         text(tr(locale, MessageKey::ModelConsentBody)).size(theme::body_s(tokens, sc)),
         text(tr(locale, MessageKey::ModelConsentPrivacy)).size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentProvider),
             presentation.provider
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentSource),
             presentation.source
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentRevision),
             presentation.immutable_revision
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentExactSize),
             model_exact_size(locale, presentation.exact_size_bytes)
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentLicense),
             presentation.license
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {}",
+        text(fmt_label_value(
+            locale,
             tr(locale, MessageKey::ModelConsentLocation),
-            presentation.destination
+            presentation.destination.clone()
         ))
         .size(theme::body_s(tokens, sc)),
-        text(format!(
-            "{}: {trust}",
-            tr(locale, MessageKey::ModelConsentVerification)
+        text(fmt_label_value(
+            locale,
+            tr(locale, MessageKey::ModelConsentVerification),
+            trust
         ))
         .size(theme::body_s(tokens, sc)),
         row![
@@ -388,7 +390,7 @@ fn page_checked<'a>(
         };
         let size_info = fc
             .size_mb
-            .map(|m| format!("  ({m} MB)"))
+            .map(|m| format!("  {}", wizard_file_size_mb(m)))
             .unwrap_or_default();
         col = col.push(
             text(format!("{icon}  {}{size_info}{style}", fc.relative_path))
