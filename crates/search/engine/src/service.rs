@@ -11,7 +11,7 @@ use orbok_core::{ChunkId, FileId, OrbokResult};
 use orbok_db::Catalog;
 
 /// A match badge indicating why this result appeared.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchBadge {
     Keyword,
     Semantic, // placeholder — M7

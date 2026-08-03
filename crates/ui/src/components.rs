@@ -24,10 +24,12 @@
 //! | confirmation dialog         | **bespoke** — no snora primitive yet  |
 //! | wizard stepper              | **bespoke** — no snora primitive yet  |
 
+use crate::i18n::{Locale, MessageKey, tr};
 use crate::state::Message;
 use crate::theme;
 use iced::widget::{button, column, row, text};
 use iced::{Element, Padding};
+use orbok_search::MatchBadge;
 use snora::design::style::button as btn_style;
 use snora::design::{Tokens, Tone, card, progress};
 use snora::lucide;
@@ -42,24 +44,26 @@ fn icon_text<'a>(glyph: char, size: f32) -> iced::widget::Text<'a> {
 
 // ── Status badges ─────────────────────────────────────────────────────────
 
-/// Map an orbok badge string to a semantic [`Tone`].
+/// Map a [`MatchBadge`] to a semantic [`Tone`].
 ///
-/// The mapping is stable and table-driven so that RFC-035's CVD fixture and
-/// the tone-mapping unit test both reference the same single source of truth.
-pub fn badge_tone(label: &str) -> Tone {
-    let l = label.to_lowercase();
-    if l.contains("missing") {
-        Tone::Danger
-    } else if l.contains("stale") {
-        Tone::Warning
-    } else if l.contains("semantic") || l.contains("rerank") {
-        Tone::Accent
-    } else if l.contains("keyword") {
-        Tone::Info
-    } else if l.contains("current") {
-        Tone::Success
-    } else {
-        Tone::Neutral
+/// Matches the typed variant directly rather than the rendered (and
+/// localized) label, so translating badge text can never silently change
+/// or collapse the colour-coding (RFC-052 §3).
+pub fn badge_tone(badge: MatchBadge) -> Tone {
+    match badge {
+        MatchBadge::SourceStale => Tone::Warning,
+        MatchBadge::Semantic | MatchBadge::Reranked => Tone::Accent,
+        MatchBadge::Keyword => Tone::Info,
+    }
+}
+
+/// Map a [`MatchBadge`] to its catalog key (RFC-052 §3).
+pub(crate) fn badge_message_key(badge: MatchBadge) -> MessageKey {
+    match badge {
+        MatchBadge::Keyword => MessageKey::BadgeKeyword,
+        MatchBadge::Semantic => MessageKey::BadgeSemantic,
+        MatchBadge::Reranked => MessageKey::BadgeReranked,
+        MatchBadge::SourceStale => MessageKey::BadgeSourceStale,
     }
 }
 
@@ -103,24 +107,23 @@ pub fn status_badge<'a>(tokens: &Tokens, label: &str, tone: Tone) -> Element<'a,
 #[allow(clippy::too_many_arguments)]
 pub fn result_card<'a>(
     tokens: &'a Tokens,
+    locale: Locale,
     title: String,
     display_path: String,
     heading_str: String,
     snippet: String,
-    badges: &'a [String],
+    badges: &'a [MatchBadge],
     show_advanced: bool,
     is_selected: bool,
     on_select: Message,
 ) -> Element<'a, Message> {
-    let shown_badges: Vec<&String> = if show_advanced {
-        badges.iter().collect()
+    let shown_badges: Vec<MatchBadge> = if show_advanced {
+        badges.to_vec()
     } else {
         badges
             .iter()
-            .filter(|b| {
-                let l = b.to_lowercase();
-                l.contains("stale") || l.contains("missing")
-            })
+            .filter(|b| matches!(b, MatchBadge::SourceStale))
+            .cloned()
             .collect()
     };
 
@@ -129,7 +132,8 @@ pub fn result_card<'a>(
     } else {
         let mut r = row![].spacing(tokens.spacing.sm);
         for b in shown_badges {
-            r = r.push(status_badge(tokens, b, badge_tone(b)));
+            let label = tr(locale, badge_message_key(b));
+            r = r.push(status_badge(tokens, label, badge_tone(b)));
         }
         r.into()
     };

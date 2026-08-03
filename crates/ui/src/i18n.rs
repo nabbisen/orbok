@@ -164,6 +164,8 @@ pub enum MessageKey {
     BadgeKeyword,
     BadgeSemantic,
     BadgeFused,
+    BadgeReranked,
+    BadgeSourceStale,
     // Startup wizard (design §wizard)
     WizardTitleNotConfigured,
     WizardTitleFileMissing,

@@ -1,29 +1,23 @@
 //! RFC-033 component adapter tests: tone mapping, badge invariant, smoke builds.
 
 use crate::components::{badge_tone, status_badge, tone_icon};
+use crate::i18n::Locale;
 use crate::state::Message;
+use orbok_search::MatchBadge;
 use snora::design::{Tokens, Tone};
 
-// RFC-033 §5.2: the badge_tone mapping is stable — shared by UI and RFC-035 CVD fixture.
+// RFC-033 §5.2 + RFC-052 §3: the badge_tone mapping is stable and keyed off
+// the typed MatchBadge variant, not its (localized) rendered label.
 #[test]
 fn badge_tone_mapping() {
-    let cases: &[(&str, Tone)] = &[
-        ("missing source", Tone::Danger),
-        ("Missing", Tone::Danger),
-        ("stale", Tone::Warning),
-        ("Stale index", Tone::Warning),
-        ("semantic", Tone::Accent),
-        ("Reranked", Tone::Accent),
-        ("keyword", Tone::Info),
-        ("Keyword match", Tone::Info),
-        ("current", Tone::Success),
-        ("Current", Tone::Success),
-        ("temporary", Tone::Neutral),
-        ("unknown badge", Tone::Neutral),
-        ("", Tone::Neutral),
+    let cases: &[(MatchBadge, Tone)] = &[
+        (MatchBadge::SourceStale, Tone::Warning),
+        (MatchBadge::Semantic, Tone::Accent),
+        (MatchBadge::Reranked, Tone::Accent),
+        (MatchBadge::Keyword, Tone::Info),
     ];
-    for (label, expected) in cases {
-        assert_eq!(badge_tone(label), *expected, "badge_tone({label:?})");
+    for (badge, expected) in cases {
+        assert_eq!(badge_tone(*badge), *expected, "badge_tone({badge:?})");
     }
 }
 
@@ -46,15 +40,14 @@ fn status_badge_label_and_icon_invariant() {
         );
     }
     let tokens = Tokens::light();
-    for label in [
-        "stale",
-        "missing",
-        "keyword",
-        "semantic",
-        "current",
-        "temporary",
+    for badge in [
+        MatchBadge::SourceStale,
+        MatchBadge::Keyword,
+        MatchBadge::Semantic,
+        MatchBadge::Reranked,
     ] {
-        let _ = status_badge(&tokens, label, badge_tone(label));
+        let label = crate::i18n::tr(Locale::En, crate::components::badge_message_key(badge));
+        let _ = status_badge(&tokens, label, badge_tone(badge));
     }
 }
 
@@ -65,11 +58,12 @@ fn component_smoke_result_card() {
     // Normal unselected card.
     let _ = crate::components::result_card(
         &tokens,
+        Locale::En,
         "My document.md".to_string(),
         "/home/user/My document.md".to_string(),
         "Section heading".to_string(),
         "A short snippet of content…".to_string(),
-        &["stale".to_string(), "keyword".to_string()],
+        &[MatchBadge::SourceStale, MatchBadge::Keyword],
         false,
         false,
         Message::SelectResult(0),
@@ -77,6 +71,7 @@ fn component_smoke_result_card() {
     // Selected card with no heading and empty badges.
     let _ = crate::components::result_card(
         &tokens,
+        Locale::Ja,
         "▶  selected.pdf".to_string(),
         "/docs/selected.pdf".to_string(),
         String::new(),

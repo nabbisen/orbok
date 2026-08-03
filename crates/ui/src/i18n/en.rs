@@ -77,6 +77,8 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeKeyword => "Keyword",
         BadgeSemantic => "Semantic",
         BadgeFused => "Fused",
+        BadgeReranked => "Reranked",
+        BadgeSourceStale => "Stale Source",
         WizardTitleNotConfigured => "Set up search by meaning",
         WizardTitleFileMissing => "Embedding model not found",
         WizardTitleValidating => "Checking model folder",

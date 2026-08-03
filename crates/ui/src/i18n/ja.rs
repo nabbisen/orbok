@@ -82,6 +82,8 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeKeyword => "キーワード",
         BadgeSemantic => "セマンティック",
         BadgeFused => "融合",
+        BadgeReranked => "リランク済み",
+        BadgeSourceStale => "情報源が古い",
         WizardTitleNotConfigured => "セマンティック検索の設定",
         WizardTitleFileMissing => "埋め込みモデルが見つかりません",
         WizardTitleValidating => "モデルフォルダを確認中",

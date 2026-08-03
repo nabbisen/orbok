@@ -75,7 +75,7 @@ pub(crate) fn run_search_with<P: RuntimePathProbe + ?Sized>(
             heading_path: r.heading_path,
             snippet: r.snippet,
             keyword_rank: r.keyword_rank,
-            badges: r.badges.iter().map(|b| format!("{b:?}")).collect(),
+            badges: r.badges,
             trust: orbok_ui::state::ResultTrustDisplay::default(),
         })
         .collect())

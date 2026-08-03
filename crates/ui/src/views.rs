@@ -360,6 +360,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     let heading_str = result.heading_path.as_deref().unwrap_or("");
                     content = content.push(result_card(
                         tokens,
+                        locale,
                         title_str,
                         result.display_path.clone(),
                         heading_str.to_string(),

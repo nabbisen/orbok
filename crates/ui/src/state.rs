@@ -17,7 +17,7 @@ use crate::i18n::Locale;
 use crate::notice::UserNotice;
 use orbok_core::{SearchHistoryEntry, SearchHistoryId};
 use orbok_models::SearchCapability;
-use orbok_search::{ResultRecoveryAction, SearchMode};
+use orbok_search::{MatchBadge, ResultRecoveryAction, SearchMode};
 
 /// Top-level navigation group for the two-level sidebar + tab layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,7 +97,7 @@ pub struct SearchResultDisplay {
     pub heading_path: Option<String>,
     pub snippet: Option<String>,
     pub keyword_rank: u32,
-    pub badges: Vec<String>,
+    pub badges: Vec<MatchBadge>,
     /// Trust state and recovery actions for this result (RFC-038).
     pub trust: ResultTrustDisplay,
 }
