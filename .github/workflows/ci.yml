@@ -84,25 +84,33 @@ jobs:
           ORBOK_DATA_DIR: /tmp/orbok-bench
         run: cargo test -p orbok-workers benchmark_corpus -- --nocapture
 
+      - name: release packaging self-test (RFC-051 adversarial suite)
+        run: bash scripts/package.test.sh
+
       - name: release archive checks
         run: |
           version="$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)"
           test -n "$version"
+
+          # Two clean builds of the same commit must be byte-identical
+          # (RFC-051 §5/§6) -- not merely asserted by the fixture suite
+          # above, demonstrated here against the real release commit.
           ./scripts/package.sh "$version"
-          (
-            cd dist
-            sha256sum -c "orbok-v${version}.tar.gz.sha256"
-          )
-          tar tf "dist/orbok-v${version}.tar.gz" > target/release-archive-contents.txt
-          grep -qx './Cargo.toml' target/release-archive-contents.txt
-          grep -q '^./crates/' target/release-archive-contents.txt
-          grep -q '^./rfcs/' target/release-archive-contents.txt
-          grep -q '^./docs/' target/release-archive-contents.txt
-          grep -q '^./scripts/' target/release-archive-contents.txt
-          if grep -E '^\./(target|\.git|\.git-exclude|\.agents|\.codex|dist|docs/book)(/|$)|^\./Cargo\.lock$' target/release-archive-contents.txt; then
-            echo "release archive contains forbidden paths" >&2
+          hash1="$(sha256sum "dist/orbok-v${version}.tar.gz" | awk '{print $1}')"
+          mv "dist/orbok-v${version}.tar.gz" "dist/orbok-v${version}.tar.gz.build1"
+          mv "dist/orbok-v${version}.tar.gz.sha256" "dist/orbok-v${version}.tar.gz.sha256.build1"
+          ./scripts/package.sh "$version"
+          hash2="$(sha256sum "dist/orbok-v${version}.tar.gz" | awk '{print $1}')"
+          if [ "$hash1" != "$hash2" ]; then
+            echo "release archive is not reproducible: $hash1 != $hash2" >&2
             exit 1
           fi
+          rm -f "dist/orbok-v${version}.tar.gz.build1" "dist/orbok-v${version}.tar.gz.sha256.build1"
+
+          # Independent verification (RFC-051 §6): derives the expected set
+          # from `git ls-tree` plus the shared policy, never from this
+          # step's own producer output above.
+          ./scripts/verify-release-archive.sh "dist/orbok-v${version}.tar.gz"
 
   # ── Security gate: mandatory on every PR ─────────────────────────
   security:

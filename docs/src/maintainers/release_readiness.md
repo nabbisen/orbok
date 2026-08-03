@@ -188,14 +188,28 @@ id, name, version, and dimension.
 
 ---
 
-## Packaging Checklist (RFC-017)
+## Packaging Checklist (RFC-017, RFC-051)
 
 - [ ] Checksum file accompanies every archive (`orbok-vX.Y.Z.tar.gz.sha256`)
 - [ ] Archive name includes version: `orbok-vX.Y.Z.tar.gz`
-- [ ] Archive contains: `Cargo.toml`, all `crates/`, `rfcs/`, `docs/`, `scripts/`
+- [ ] Archive contains: `Cargo.toml`, **`Cargo.lock`**, all `crates/`, `rfcs/`,
+      `docs/`, `scripts/` — the audited lock ships with the source, since
+      release gates and audit run against it (RFC-051 §3)
 - [ ] Archive does **not** contain: `target/`, `.git/`, `.git-exclude/`,
-      `.agents/`, `.codex/`, `dist/`, `docs/book/`, `Cargo.lock`
+      `.agents/`, `.codex/`, `dist/`, `docs/book/`
 - [ ] `orbok --version` output matches the Cargo.toml version
+- [ ] `./scripts/package.sh <version>` built from a clean tracked tree (dirty
+      tracked content fails packaging by design — commit or stash first)
+- [ ] `./scripts/verify-release-archive.sh dist/orbok-vX.Y.Z.tar.gz` passes —
+      independently derives the expected file set from `git ls-tree` plus
+      `scripts/release-path-policy.sh`, never from `package.sh`'s own output
+      (RFC-051 §6)
+- [ ] Two clean builds of the same commit on the same toolchain produce a
+      byte-identical archive (CI verifies this on every push; RFC-051 §5
+      scopes reproducibility to *within* a release, not across time or
+      environments — see RFC-051 §5 "Determinism scope")
+- [ ] Release evidence records the source commit and the `tar`/`gzip`
+      versions `package.sh` printed, not a pinned toolchain
 
 ---
 

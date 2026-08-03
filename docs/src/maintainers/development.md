@@ -79,12 +79,36 @@ orbok uses Rust 2018+ module layout throughout:
 - `mod.rs` is never used. Place the module router in `foo.rs` and
   submodule files inside `foo/`.
 
-## Packaging
+## Packaging (RFC-051)
 
 ```sh
 bash scripts/package.sh 0.17.0
 # Produces dist/orbok-v0.17.0.tar.gz and dist/orbok-v0.17.0.tar.gz.sha256
+
+bash scripts/verify-release-archive.sh dist/orbok-v0.17.0.tar.gz
+# Independently re-derives the expected file set from `git ls-tree` plus
+# scripts/release-path-policy.sh -- never from package.sh's own output --
+# and checks Cargo.lock is present and coherent (`cargo metadata --locked`
+# against a fresh unpack).
+
+bash scripts/package.test.sh
+# Adversarial self-test: untracked/ignored files never leak in and never
+# block packaging; a force-tracked local-only path is excluded anyway;
+# dirty tracked content and tracked symlinks both fail packaging;
+# executable bits and canonical ./ naming survive; two clean builds are
+# byte-identical; a planted producer/policy disagreement is caught by the
+# independent verifier.
 ```
 
-The archive is flat (no parent directory). Files unpack directly into
-the extraction destination.
+The archive is flat (no parent directory), built only from the git-tracked
+file set at the packaged commit — never the ambient working directory.
+Packaging fails if any tracked file is dirty relative to `HEAD`; untracked
+and ignored files are structurally absent from the input, never a reason to
+fail. `Cargo.lock` is included, since release gates and audit run against
+it. Files unpack directly into the extraction destination.
+
+Metadata (path order, uid/gid, mode, mtime, gzip headers) is normalized so
+two clean builds of the same commit on the same toolchain produce a
+byte-identical archive — see `scripts/release-path-policy.sh` for the
+shared inclusion/exclusion policy, and RFC-051 §5 for what reproducibility
+does and does not cover (within-release, not across time or environments).
