@@ -42,6 +42,44 @@ enforced.
 - Dynamic technical identifiers such as filenames may remain data, but all
   surrounding prose and units are localized and safely formatted.
 
+### Boundary decisions (amended 2026-08-03, from the Phase 1 inventory)
+
+**Console and CLI output are outside this boundary.** `--version` output and
+the interactive portable-mode startup message (`crates/app/src/main.rs`) stay
+English. This boundary covers what a GUI user sees — labels, placeholders,
+statuses, help text, dialog titles, progress phrases — and HANDOFF-052 §1 names
+*native dialog calls* in `orbok-app`, not stdout. Console output in CLI tools is
+conventionally English and is machine-read as often as human-read. There is a
+second, project-specific reason: the portable startup message's content is
+governed by RFC-049 §4.7's path-disclosure policy, and localizing it would
+entangle two RFCs' concerns in one string for no user benefit.
+
+**Debug-formatted backend enums are an instance of the rule above, not an
+exception to it.** The Phase 1 inventory found `MatchBadge` rendered to users via
+`format!("{b:?}")` in `crates/app/src/bootstrap/search.rs`, producing raw
+English variant names on the search-result surface — precisely the "raw
+backend/debug strings are not shown directly to users" case. Remediation carries
+the typed value through to render time and localizes there, matching the existing
+`result_trust_badge` precedent, which already takes `orbok_search::ResultTrustState`
+typed with `locale` alongside.
+
+Two requirements attach, and the fix is incomplete without both:
+
+1. **`badge_tone` must take the typed value, not the rendered string.** It
+   currently selects colour by matching lowercased English substrings
+   (`"missing"`, `"stale"`, `"semantic"`, `"keyword"`, `"current"`), so
+   translating badge text alone would silently collapse every branch to
+   `Tone::Neutral` and destroy colour-coding, with no test failing.
+2. **`Reranked` and `SourceStale` need catalog keys.** `BadgeKeyword`,
+   `BadgeSemantic`, and `BadgeFused` already exist but are unreferenced; the
+   other two variants have no key at all, so this is not purely a wiring job.
+
+**Structural separators are locale-invariant.** `·` used to join already-localized
+values is exempt, on the established precedent of `crates/ui/src/i18n.rs`'s
+`source_summary`, which uses it identically in both the `En` and `Ja` arms.
+Decorative bracketing around an already-translated key (`— … —`) is likewise
+exempt; Phase 3 Japanese QA is the place to revisit it if it reads poorly.
+
 ## 4. Catalog and Formatting Rules
 
 1. Every new key has En and Ja entries in the same change.
