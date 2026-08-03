@@ -34,9 +34,20 @@
 8. Reject tracked symlinks under the initial no-exception policy.
 9. Emit exactly one `./` root entry and canonical `./<path>` entries.
 
-Use the RFC-pinned builder image, GNU tar 1.35 POSIX/PAX output, and gzip 1.12.
-The script records the builder digest/tool versions and deletes nondeterministic
-PAX time keys. Do not substitute host tar/gzip for release evidence.
+Produce POSIX/PAX tar output with gzip timestamp/name suppression, and delete
+nondeterministic PAX time keys. **Record the tar and gzip versions actually used
+in release evidence.**
+
+**Amended 2026-08-03:** an earlier draft required a digest-pinned builder image
+and specific GNU tar 1.35 / gzip 1.12 versions. That is struck — see RFC-051 §5
+"Determinism scope" for the reasoning and the conditions under which it returns.
+Packaging runs on the ordinary runner and host toolchain; recording the versions
+used is what preserves the ability to reason about any published archive later.
+
+This does not weaken any other requirement. Byte-identical output from two clean
+builds of the same commit **on the same toolchain** remains required (§5), as
+does CI's independent content verification against `git ls-tree` (§3). What is no
+longer claimed is reproducibility across differing environments or across time.
 
 ## 3. Independent CI Verification
 

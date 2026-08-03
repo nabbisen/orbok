@@ -70,11 +70,49 @@ The initial policy has no symlink exceptions.
 - Record the source commit identifier in release evidence, not necessarily as
   a file inside the archive.
 
-The canonical builder uses GNU tar 1.35 in POSIX/PAX format and gzip 1.12 with
-timestamp/name suppression. CI runs them in a builder image pinned by immutable
-digest and records the image digest plus tool versions in release evidence.
-PAX access/change-time keys are deleted. Changing the builder image, tar format,
-or tool version is a reviewed release-toolchain change.
+Archives are produced in POSIX/PAX tar format with gzip timestamp/name
+suppression, and PAX access/change-time keys are deleted. **Release evidence
+records the tar and gzip versions actually used**, so the toolchain behind any
+published archive is always known after the fact.
+
+### Determinism scope: within-release, not cross-time
+
+**Amended 2026-08-03 by project-owner decision.** An earlier draft of this
+section additionally mandated GNU tar 1.35 and gzip 1.12 executed inside a
+CI builder image pinned by immutable digest. That requirement is **struck**.
+
+What it would have bought is *cross-time* byte reproducibility — the same commit
+producing an identical SHA-256 years later on different infrastructure — so that
+a third party could verify a release by hash comparison alone rather than by
+unpacking and diffing against the tag. That property has real value, but only to
+a verifier who exercises it, and orbok has none today: no distribution packaging,
+no external audit, no provenance-attestation consumer.
+
+It was also underspecified in a way that would have blocked implementation: no
+image, registry, or digest was ever named, so the pin the text referred to did
+not exist. And the two constraints could conflict — tool versions are a
+consequence of whichever image is chosen, not a free variable, and gzip 1.12
+predates what current base images ship.
+
+What this RFC still guarantees is unchanged: the archive contains exactly the
+reviewed tracked files of the release commit, with normalized metadata, verified
+independently by CI against `git ls-tree`. That is what the §2 triggering
+evidence actually called for — an archive-contents problem, not a
+bit-identity one.
+
+**Revisit when any of these becomes true**, at which point this is a small
+addition rather than a rework, because the content-determinism work below is the
+expensive part and is already done:
+
+- a distribution packages orbok under a reproducibility policy (Nix, Guix,
+  Debian);
+- the project adopts build-provenance attestation (SLSA, sigstore, GitHub
+  artifact attestations) that downstream consumers check;
+- a security audit or a platform requires independently rebuildable artifacts;
+- the threat model is extended to cover release-infrastructure compromise.
+
+Reintroducing it means naming a concrete image digest, making that digest the
+pin, and keeping tool versions *recorded* rather than mandated.
 
 Canonical entry names contain one leading `./`; the archive includes one `./`
 root entry and then `./<repository-relative-path>` entries. Verifiers normalize
@@ -110,7 +148,8 @@ excluded without blocking packaging; modify a tracked file and prove packaging
 fails; add a tracked symlink and prove rejection; verify `Cargo.lock` inclusion;
 check exact path/multiplicity equality; reject traversal/forbidden/duplicate
 paths; unpack and run locked metadata validation; inject producer/policy errors;
-and demonstrate deterministic repeated output with the pinned builder.
+and demonstrate deterministic repeated output on a single unchanged toolchain
+(§5 — cross-environment reproducibility is explicitly out of scope).
 
 ## 9. Acceptance Criteria
 
