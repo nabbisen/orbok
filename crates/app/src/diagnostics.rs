@@ -4,9 +4,14 @@
 //! redacted: no document contents, no search text, no raw paths. Each
 //! optional inclusion requires an explicit opt-in.
 
-#![allow(dead_code)] // Public API; wired in orbok update() and views.
+// Public API for RFC-040 §11.2's pre-export bundle preview. Not currently
+// wired into any UI view or `orbok update()` handler -- the previous
+// comment here claimed wiring that does not exist (Phase 1 inventory,
+// RFC-052 review request 132 §2c).
+#![allow(dead_code)]
 
 use orbok_core::DiagnosticsPolicy;
+use orbok_ui::i18n::Locale;
 use std::collections::HashMap;
 
 // ── Manifest ──────────────────────────────────────────────────────────
@@ -196,25 +201,30 @@ pub fn collect_platform_info() -> HashMap<&'static str, String> {
 
 /// Human-readable summary of what the bundle includes and excludes
 /// (RFC-040 §11.2 preview).
-pub fn bundle_preview_text(policy: &DiagnosticsPolicy) -> String {
+pub fn bundle_preview_text(locale: Locale, policy: &DiagnosticsPolicy) -> String {
+    let labels = orbok_ui::i18n::diagnostics_bundle_labels(locale);
     let included = [
-        "App version",
-        "Platform summary",
-        "Folder status counts",
-        "Search preparation status",
-        "Model readiness",
-        "Redacted logs",
+        labels.app_version,
+        labels.platform_summary,
+        labels.folder_status_counts,
+        labels.search_preparation_status,
+        labels.model_readiness,
+        labels.redacted_logs,
     ];
-    let excluded = ["Documents", "Search words", "Raw folder paths"];
-    let mut lines = vec!["Included:".to_string()];
+    let excluded = [
+        labels.documents,
+        labels.search_words,
+        labels.raw_folder_paths,
+    ];
+    let mut lines = vec![labels.included_heading.to_string()];
     for item in &included {
         lines.push(format!("  ✓ {item}"));
     }
     if policy.include_folder_names {
-        lines.push("  ✓ Folder names (opted in)".to_string());
+        lines.push(format!("  ✓ {}", labels.folder_names_opted_in));
     }
     lines.push(String::new());
-    lines.push("Not included:".to_string());
+    lines.push(labels.not_included_heading.to_string());
     for item in &excluded {
         lines.push(format!("  × {item}"));
     }

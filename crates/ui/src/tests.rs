@@ -288,5 +288,17 @@ pub const ALL_KEYS: &[MessageKey] = &[
     MessageKey::RecentSearchesStrictPrivacyNote,
     MessageKey::NoRecentSearches,
     MessageKey::DroppedFilterNotice,
+    MessageKey::DiagnosticsAppVersion,
+    MessageKey::DiagnosticsPlatformSummary,
+    MessageKey::DiagnosticsFolderStatusCounts,
+    MessageKey::DiagnosticsSearchPreparationStatus,
+    MessageKey::DiagnosticsModelReadiness,
+    MessageKey::DiagnosticsRedactedLogs,
+    MessageKey::DiagnosticsDocuments,
+    MessageKey::DiagnosticsSearchWords,
+    MessageKey::DiagnosticsRawFolderPaths,
+    MessageKey::DiagnosticsIncludedHeading,
+    MessageKey::DiagnosticsNotIncludedHeading,
+    MessageKey::DiagnosticsFolderNamesOptedIn,
 ];
 mod rfc041_search;

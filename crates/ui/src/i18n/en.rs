@@ -352,5 +352,17 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoRecentSearches => "No recent searches yet.",
         DroppedFilterNotice => "One narrowing choice was no longer available and was removed.",
+        DiagnosticsAppVersion => "App version",
+        DiagnosticsPlatformSummary => "Platform summary",
+        DiagnosticsFolderStatusCounts => "Folder status counts",
+        DiagnosticsSearchPreparationStatus => "Search preparation status",
+        DiagnosticsModelReadiness => "Model readiness",
+        DiagnosticsRedactedLogs => "Redacted logs",
+        DiagnosticsDocuments => "Documents",
+        DiagnosticsSearchWords => "Search words",
+        DiagnosticsRawFolderPaths => "Raw folder paths",
+        DiagnosticsIncludedHeading => "Included:",
+        DiagnosticsNotIncludedHeading => "Not included:",
+        DiagnosticsFolderNamesOptedIn => "Folder names (opted in)",
     }
 }

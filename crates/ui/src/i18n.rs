@@ -412,6 +412,20 @@ pub enum MessageKey {
     NoRecentSearches,
     /// Notice when a filter was dropped on reopen (RFC-042 §9 step 3).
     DroppedFilterNotice,
+    // Diagnostics bundle preview (RFC-040 §11.2). Not currently wired into
+    // any view -- see diagnostics.rs's module comment.
+    DiagnosticsAppVersion,
+    DiagnosticsPlatformSummary,
+    DiagnosticsFolderStatusCounts,
+    DiagnosticsSearchPreparationStatus,
+    DiagnosticsModelReadiness,
+    DiagnosticsRedactedLogs,
+    DiagnosticsDocuments,
+    DiagnosticsSearchWords,
+    DiagnosticsRawFolderPaths,
+    DiagnosticsIncludedHeading,
+    DiagnosticsNotIncludedHeading,
+    DiagnosticsFolderNamesOptedIn,
 }
 
 /// Translate a fixed message. The per-locale functions are exhaustive
@@ -437,6 +451,47 @@ pub fn dialog_title_add_source(locale: Locale) -> &'static str {
 /// [`dialog_title_add_source`].
 pub fn dialog_title_choose_search_folder(locale: Locale) -> &'static str {
     tr(locale, MessageKey::DialogChooseSearchFolderTitle)
+}
+
+/// Localized labels for the RFC-040 §11.2 diagnostics bundle preview
+/// (RFC-052 §3, §7 — "correct nearby stale user documentation revealed by
+/// the same terminology review"). `orbok-app`'s `diagnostics.rs` is not a
+/// native platform dialog the way `main.rs`'s `rfd` calls are, but it is
+/// an `orbok-app` file producing user-visible preview text, so it requests
+/// one batch of already-localized labels here rather than importing
+/// `MessageKey` and matching on it itself — the same boundary reasoning as
+/// [`dialog_title_add_source`], aggregated into one call instead of twelve
+/// single-string functions since the caller needs all of them together.
+pub struct DiagnosticsBundleLabels {
+    pub app_version: &'static str,
+    pub platform_summary: &'static str,
+    pub folder_status_counts: &'static str,
+    pub search_preparation_status: &'static str,
+    pub model_readiness: &'static str,
+    pub redacted_logs: &'static str,
+    pub documents: &'static str,
+    pub search_words: &'static str,
+    pub raw_folder_paths: &'static str,
+    pub included_heading: &'static str,
+    pub not_included_heading: &'static str,
+    pub folder_names_opted_in: &'static str,
+}
+
+pub fn diagnostics_bundle_labels(locale: Locale) -> DiagnosticsBundleLabels {
+    DiagnosticsBundleLabels {
+        app_version: tr(locale, MessageKey::DiagnosticsAppVersion),
+        platform_summary: tr(locale, MessageKey::DiagnosticsPlatformSummary),
+        folder_status_counts: tr(locale, MessageKey::DiagnosticsFolderStatusCounts),
+        search_preparation_status: tr(locale, MessageKey::DiagnosticsSearchPreparationStatus),
+        model_readiness: tr(locale, MessageKey::DiagnosticsModelReadiness),
+        redacted_logs: tr(locale, MessageKey::DiagnosticsRedactedLogs),
+        documents: tr(locale, MessageKey::DiagnosticsDocuments),
+        search_words: tr(locale, MessageKey::DiagnosticsSearchWords),
+        raw_folder_paths: tr(locale, MessageKey::DiagnosticsRawFolderPaths),
+        included_heading: tr(locale, MessageKey::DiagnosticsIncludedHeading),
+        not_included_heading: tr(locale, MessageKey::DiagnosticsNotIncludedHeading),
+        folder_names_opted_in: tr(locale, MessageKey::DiagnosticsFolderNamesOptedIn),
+    }
 }
 
 /// Render a localized "label: value" pair (RFC-052 §4 rule 3), replacing the

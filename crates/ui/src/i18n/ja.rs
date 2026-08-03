@@ -362,5 +362,17 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoRecentSearches => "最近の検索はまだありません。",
         DroppedFilterNotice => "利用できなくなった絞り込み条件が1つ削除されました。",
+        DiagnosticsAppVersion => "アプリのバージョン",
+        DiagnosticsPlatformSummary => "プラットフォーム概要",
+        DiagnosticsFolderStatusCounts => "フォルダーの状態件数",
+        DiagnosticsSearchPreparationStatus => "検索準備状況",
+        DiagnosticsModelReadiness => "モデルの準備状況",
+        DiagnosticsRedactedLogs => "マスク済みログ",
+        DiagnosticsDocuments => "ドキュメント",
+        DiagnosticsSearchWords => "検索語",
+        DiagnosticsRawFolderPaths => "フォルダーの実パス",
+        DiagnosticsIncludedHeading => "含まれるもの:",
+        DiagnosticsNotIncludedHeading => "含まれないもの:",
+        DiagnosticsFolderNamesOptedIn => "フォルダー名（オプトインした場合）",
     }
 }
