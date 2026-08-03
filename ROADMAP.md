@@ -1,12 +1,13 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-08-02)
+## Current Status (2026-08-04)
 
 Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
 **000–046 implemented** (see
 [`rfcs/README.md`](rfcs/README.md)). RFC-049 (portable runtime data
-isolation), RFC-050 (trusted atomic model delivery), and RFC-053
-(rusqlite line and Rust MSRV policy) are also now implemented on `main`,
+isolation), RFC-050 (trusted atomic model delivery), RFC-051
+(reproducible reviewed-source packaging), and RFC-053 (rusqlite line and
+Rust MSRV policy) are also now implemented on `main`,
 pending the next release tag — see
 [`rfcs/README.md`](rfcs/README.md) for their `Status` fields. The
 design-system program (RFC-032–035: design tokens, component primitives,
@@ -26,22 +27,22 @@ across v0.16.0–v0.24.0:
 - v0.24.0 — v1.0.0 evidence workflow, CI/release-gate alignment, real-model
   benchmark guards, model evidence, and timing diagnostics.
 - unreleased (`main`) — RFC-050 (trusted atomic model delivery), RFC-049
-  (portable runtime data isolation), and RFC-053 (rusqlite line and Rust
-  MSRV policy); release pending.
+  (portable runtime data isolation), RFC-051 (reproducible reviewed-source
+  packaging), and RFC-053 (rusqlite line and Rust MSRV policy); release
+  pending.
 
 Stack: snora 0.25 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — v1.0.0 readiness and stabilization RFCs in progress
 
-RFC-049, RFC-050, and RFC-053 have shipped on `main` (release pending).
-RFC-047, RFC-048, RFC-051, and RFC-052 remain proposed v1.0.0 readiness/
+RFC-049, RFC-050, RFC-051, and RFC-053 have shipped on `main` (release
+pending). RFC-047, RFC-048, and RFC-052 remain proposed v1.0.0 readiness/
 stabilization RFCs. RFC-047 defines evidence collection and RFC-048 tracks
-real-model performance recovery. RFC-051 and RFC-052 address the two
-remaining architecture-review release blockers: reviewed-source packaging
-and complete UI localization/design-gate enforcement. RFC-053 was a
-separate dependency-maintenance track (rusqlite line reversal and a
-measured, not declared, MSRV), unrelated to those two blockers. None marks
-v1.0.0 ready.
+real-model performance recovery. RFC-052 addresses the one remaining
+architecture-review release blocker: complete UI localization/design-gate
+enforcement. RFC-053 was a separate dependency-maintenance track (rusqlite
+line reversal and a measured, not declared, MSRV), unrelated to that
+blocker. None marks v1.0.0 ready.
 
 The `tract` feature build finding is resolved: `cargo check -p orbok-embed
 --features tract` is now a blocking release gate, and `orbok-embed` contains
@@ -53,8 +54,8 @@ as new RFCs in creation order (RFC-000).
 
 ### Stabilization order before RC evidence collection
 
-1. Review and accept RFC-051 and RFC-052 and their handoffs. (RFC-049,
-   RFC-050, and RFC-053 are implemented; see above.)
+1. Review and accept RFC-052 and its handoff. (RFC-049, RFC-050, RFC-051,
+   and RFC-053 are implemented; see above.)
 2. Implement and independently review the remaining stabilization
    boundaries.
 3. Continue RFC-048 measured performance recovery until real-model thresholds
@@ -83,7 +84,7 @@ v1.0.0 is not released without explicit project-owner confirmation.
 
 Recorded 2026-08-03 from an independent architecture review. Neither item is a
 release blocker; both are named here so they are not rediscovered a third time.
-**Do not sequence either ahead of RFC-051 and RFC-052.**
+**Do not sequence either ahead of RFC-052.**
 
 - **RFC-050 durability guarantees are not continuously verified.** Three
   separate-process helpers (`crash_injection_child`, `proxy_client_child`,

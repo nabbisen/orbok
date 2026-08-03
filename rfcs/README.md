@@ -1,6 +1,6 @@
 # orbok RFC Index
 
-Managed by RFC-000. Last updated: 2026-08-02 (main after v0.24.0).
+Managed by RFC-000. Last updated: 2026-08-04 (main after v0.24.0).
 
 The folder an RFC lives in is the source of truth for its state
 (`done/` = Implemented, `proposed/` = under review, `archive/` =
@@ -59,6 +59,7 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | 049 | [Portable Runtime Data Isolation](done/049-portable-runtime-data-isolation.md) | main at `2fba6a9`; release pending |
 | 050 | [Trusted Atomic Model Delivery](done/050-trusted-atomic-model-delivery.md) | main at `902f33a`; release pending |
 | 053 | [rusqlite Line and Rust MSRV Policy](done/053-rusqlite-line-and-msrv-policy.md) | main at `6342cde`; release pending |
+| 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | main at `56d63a6`; release pending |
 
 ## Proposed
 
@@ -66,7 +67,6 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
 | 048 | [Real-Model Benchmark Performance Recovery](proposed/048-real-model-performance-recovery.md) | Proposed |
-| 051 | [Reproducible Reviewed-Source Packaging](proposed/051-reproducible-reviewed-source-packaging.md) | Proposed |
 | 052 | [UI Localization and Design-Gate Compliance](proposed/052-ui-localization-and-design-gate-compliance.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
@@ -75,11 +75,11 @@ finding note for the separate `--features tract` recovery is in
 The v0.24.0 readiness trail is represented by RFC-047 and RFC-048. The
 architecture preparation review opened RFC-049 through RFC-052 for the
 portable-data, model-delivery, release-provenance, and UI-compliance blockers
-that must be resolved before release-candidate promotion. RFC-050 and
-RFC-049 are now implemented on `main`; RFC-050's normative model trust data
-and provenance evidence are recorded in
+that must be resolved before release-candidate promotion. RFC-049, RFC-050,
+and RFC-051 are now implemented on `main`; RFC-050's normative model trust
+data and provenance evidence are recorded in
 [`APPENDIX-B-default-model-trust-root.md`](appendices/APPENDIX-B-default-model-trust-root.md).
-RFC-051 and RFC-052 remain open. RFC-053 (rusqlite line and Rust MSRV
+RFC-052 remains open. RFC-053 (rusqlite line and Rust MSRV
 policy) is a separate dependency-maintenance track, not part of the
 architecture-review blocker set; it is also now implemented on `main`.
 

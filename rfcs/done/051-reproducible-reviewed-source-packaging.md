@@ -1,12 +1,12 @@
 # RFC-051: Reproducible Reviewed-Source Packaging
 
-**Project:** orbok  
-**RFC:** 051  
-**Title:** Reproducible Reviewed-Source Packaging  
-**Status:** Proposed  
-**Target milestone:** v1.0.0 release provenance  
-**Date:** 2026-07-14  
-**Related RFCs:** RFC-017 Packaging and Distribution; RFC-019 Test Matrix and Release Readiness  
+**Project:** orbok\
+**RFC:** 051\
+**Title:** Reproducible Reviewed-Source Packaging\
+**Status:** Implemented (main at `56d63a6`; release pending)\
+**Target milestone:** v1.0.0 release provenance\
+**Date:** 2026-07-14\
+**Related RFCs:** RFC-017 Packaging and Distribution; RFC-019 Test Matrix and Release Readiness\
 **Handoff:** [`HANDOFF-051-reproducible-reviewed-source-packaging.md`](../handoffs/HANDOFF-051-reproducible-reviewed-source-packaging.md)
 
 ---

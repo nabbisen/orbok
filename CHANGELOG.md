@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-RFC-050, RFC-049, and RFC-053 have landed on `main`; all three are recorded
-as `Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the next
-release tag.
+RFC-050, RFC-049, RFC-051, and RFC-053 have landed on `main`; all four are
+recorded as `Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the
+next release tag.
 
 ### Added
 
@@ -42,6 +42,21 @@ release tag.
 
 ### Changed
 
+- **RFC-051 — Reproducible reviewed-source packaging:** the release source
+  archive is now built from `git archive` over the release commit's tracked
+  file set, filtered through one shared, machine-readable path policy, in
+  place of a `tar --exclude=...` walk of the working directory. `Cargo.lock`
+  is now included (previously forbidden). Packaging fails closed on dirty
+  tracked content; untracked/ignored files are structurally absent rather
+  than exclusion-listed. Archive metadata (path order, uid/gid,
+  owner/group, mode, mtime, gzip name/timestamp) is normalized so two clean
+  builds of the same commit on the same toolchain are byte-identical, with
+  the actual `tar`/`gzip` versions used recorded in release evidence. CI now
+  runs a verifier that independently re-derives the expected file set from
+  `git ls-tree` plus the shared policy — never from the producer's own
+  output — and performs exact set/multiplicity equality, replacing an
+  earlier CI step that grep-checked the archive it had itself just
+  produced. See `rfcs/done/051-reproducible-reviewed-source-packaging.md`.
 - **RFC-053 — rusqlite line reversed, MSRV measured instead of declared:**
   `rusqlite` moves `0.40 → 0.39` (`libsqlite3-sys` `0.38.x → 0.37.0`),
   superseding DEC-006/RFC-002 §16's earlier pin — 0.40's `libsqlite3-sys`
@@ -69,6 +84,13 @@ release tag.
 - **RFC-050:** added coverage for shared-catalog crash boundaries, iced
   smoke-test serialization, and the full serialized recovery lifecycle
   across abrupt-exit points.
+- **RFC-051:** added an adversarial packaging suite (`scripts/package.test.sh`,
+  22 assertions) covering untracked/ignored/dirty-tracked/symlinked content,
+  executable-mode preservation, canonical `./` naming, duplicate detection,
+  two-build byte-reproducibility, and a hand-tampered archive caught by the
+  independent verifier acting alone. CI now runs this suite plus a real
+  two-build hash comparison and the independent verifier against the actual
+  release commit, replacing the old producer-trusts-itself grep check.
 
 ### Docs
 
@@ -89,6 +111,13 @@ release tag.
   RFC-002 §16 rather than rewriting its history, since the one-
   `libsqlite3-sys`-per-graph rule it states is unchanged and only the
   pinned version differs.
+- Updated `docs/src/maintainers/development.md` and
+  `docs/src/maintainers/release_readiness.md` for RFC-051: `Cargo.lock` is
+  now listed as required-present in the release archive (previously listed
+  as forbidden); `scripts/package.sh`'s producer/verifier split and
+  `scripts/verify-release-archive.sh` are documented with what each checks
+  and why; the packaging checklist gained the reproducibility and
+  independent-verification items RFC-051 requires.
 
 ---
 

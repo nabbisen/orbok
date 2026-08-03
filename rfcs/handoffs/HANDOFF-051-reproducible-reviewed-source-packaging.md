@@ -1,10 +1,10 @@
 # Implementation Handoff — RFC-051: Reproducible Reviewed-Source Packaging
 
-**Project:** orbok  
-**RFC:** 051  
-**Lifecycle stage:** Design + handoff  
-**Primary owners:** release automation and CI  
-**RFC:** [`../proposed/051-reproducible-reviewed-source-packaging.md`](../proposed/051-reproducible-reviewed-source-packaging.md)
+**Project:** orbok\
+**RFC:** 051\
+**Lifecycle stage:** Implemented with RFC-051 on `main` at `56d63a6`; release pending\
+**Primary owners:** release automation and CI\
+**RFC:** [`../done/051-reproducible-reviewed-source-packaging.md`](../done/051-reproducible-reviewed-source-packaging.md)
 
 > **Scope rule:** The release input is a reviewed commit/file manifest, never
 > the ambient working-directory traversal.
