@@ -213,6 +213,60 @@ git add rfcs/accepted/002-test.md
 accepted_fixed_result="$(run_gate)"
 check "staging the accepted/ correction makes the gate pass again" "pass" "$accepted_fixed_result"
 
+# ── Link integrity: a broken relative link is caught; a fenced example ────
+# link is not (Review 146 §5). Reuses the now-consistent RFC-001/RFC-002
+# state above as the baseline.
+
+cat > rfcs/done/001-test.md <<'EOF'
+# RFC-001: Test
+
+**Status:** Implemented (main at `deadbeef`; release pending)
+
+See [nonexistent](../done/999-does-not-exist.md) for details.
+
+Illustrative only, not a real cross-reference -- must not be flagged:
+
+```markdown
+See [RFC 010](../done/010-revoke-tokens.md) for the prior work.
+```
+EOF
+git add rfcs/done/001-test.md
+
+broken_link_result="$(run_gate)"
+check "a broken relative .md link is caught" "fail" "$broken_link_result"
+if [ "$broken_link_result" = "fail" ]; then
+  if grep -q "broken relative link" "$tmp_repo/.gate-output"; then
+    echo "ok: failure reason names the broken link"
+  else
+    echo "FAIL: gate failed, but not for the broken-link reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+  if grep -q "010-revoke-tokens" "$tmp_repo/.gate-output"; then
+    echo "FAIL: the fenced illustrative link was flagged; fence-skipping is broken" >&2
+    fail=1
+  else
+    echo "ok: the fenced illustrative link is not flagged"
+  fi
+fi
+
+# Remove the broken link (keep the fenced illustrative one) and confirm
+# the gate agrees the commit is valid again.
+cat > rfcs/done/001-test.md <<'EOF'
+# RFC-001: Test
+
+**Status:** Implemented (main at `deadbeef`; release pending)
+
+Illustrative only, not a real cross-reference -- must not be flagged:
+
+```markdown
+See [RFC 010](../done/010-revoke-tokens.md) for the prior work.
+```
+EOF
+git add rfcs/done/001-test.md
+link_fixed_result="$(run_gate)"
+check "removing the broken link makes the gate pass again" "pass" "$link_fixed_result"
+
 if [ "$fail" -ne 0 ]; then
   echo "check-rfc-lifecycle.test.sh: FAILED" >&2
   exit 1

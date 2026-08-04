@@ -180,6 +180,19 @@ if [ -n "$index_duplicates" ]; then
   done <<< "$index_duplicates"
 fi
 
+# This "None" check exists only for rfcs/proposed/ (Review 146 §3), and
+# deliberately has no accepted/done/archive equivalent. It exists because
+# the Proposed section, when empty, uses a prose sentinel ("None. All
+# RFCs through …") that the table-row parsing above cannot see — an
+# empty Proposed table alone can't distinguish "correctly empty" from
+# "README just wasn't updated." accepted/ (and every other folder) has
+# no such prose sentinel: the bidirectional index<->folder equality
+# already checked above (index-accepted.txt vs. tracked-rfc-paths, both
+# directions) fully covers accepted/'s empty case the same as its
+# non-empty case, so an analogous "None" check here would have nothing
+# to guard. Do not add one solely because accepted/ later becomes empty
+# in practice (e.g. once 048/052/054 all reach done/) -- emptiness alone
+# is not the trigger; the missing prose sentinel is.
 if git ls-files 'rfcs/proposed/*.md' | grep -q .; then
   if grep -q '^None\. All RFCs through' <<< "$readme_index"; then
     flag "rfcs/README.md says Proposed is None but proposed RFC files exist"
@@ -195,6 +208,55 @@ else
     flag "rfcs/README.md has proposed RFC index rows but no proposed RFC files exist"
   fi
 fi
+
+# ── Link integrity: every relative .md link under rfcs/ must resolve ──────
+# Required before the next RFC folder move (Review 146 §5): a folder move
+# silently breaks every inbound cross-reference to the moved file, and
+# nothing previously checked for that -- Task 007 Part A's own review
+# found two broken links (APPENDIX-C, APPENDIX-D) this script did not
+# catch. Resolves every relative Markdown link inside every tracked
+# rfcs/*.md file (README.md, and every state/handoffs/appendices
+# subdirectory) against the git index, the same source of truth as every
+# other check here. Fenced code blocks are blanked (not removed, so line
+# numbers in any failure message still match the file) before link
+# extraction, so RFC-000's own seven deliberately non-existent
+# illustrative example links are never flagged.
+check_links_in_file() {
+  local file="$1"
+  local dir
+  dir="$(dirname "$file")"
+  local content
+  content="$(git show ":$file" 2>/dev/null || true)"
+  local stripped
+  stripped="$(awk '
+    /^[[:space:]]*```/ { infence = !infence; print ""; next }
+    infence { print ""; next }
+    { print }
+  ' <<< "$content")"
+
+  local lineno=0
+  local line target resolved
+  while IFS= read -r line; do
+    lineno=$((lineno + 1))
+    while read -r target; do
+      [ -n "$target" ] || continue
+      case "$target" in
+        http://*|https://*|mailto:*) continue ;;
+      esac
+      target="${target%%#*}"
+      [ -n "$target" ] || continue
+      resolved="$(realpath -m --relative-to=. "$dir/$target" 2>/dev/null || true)"
+      if [ -z "$resolved" ] || ! git show ":$resolved" > /dev/null 2>&1; then
+        flag "$file:$lineno: broken relative link -> $target (resolves to ${resolved:-?})"
+      fi
+    done < <(grep -oP '(?<=\]\()[^)]+\.md(?=[)#])' <<< "$line" 2>/dev/null || true)
+  done <<< "$stripped"
+}
+
+while read -r file; do
+  [ -n "$file" ] || continue
+  check_links_in_file "$file"
+done < <(git ls-files 'rfcs/*.md')
 
 if [ "$fail" -ne 0 ]; then
   echo "rfc lifecycle gate: failed" >&2
