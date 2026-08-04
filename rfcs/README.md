@@ -68,6 +68,7 @@ may start" a checked state rather than an implicit convention.
 | 050 | [Trusted Atomic Model Delivery](done/050-trusted-atomic-model-delivery.md) | main at `902f33a`; release pending |
 | 053 | [rusqlite Line and Rust MSRV Policy](done/053-rusqlite-line-and-msrv-policy.md) | main at `6342cde`; release pending |
 | 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | main at `56d63a6`; release pending |
+| 054 | [Runtime Data Override Profile Scope](done/054-runtime-data-override-profile-scope.md) | main at `6bcedd9`; release pending |
 
 ## Accepted
 
@@ -75,7 +76,6 @@ may start" a checked state rather than an implicit convention.
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
 | 052 | [UI Localization and Design-Gate Compliance](accepted/052-ui-localization-and-design-gate-compliance.md) | Accepted — implementation complete pending §9's manual Japanese QA (Owner Task 001) |
-| 054 | [Runtime Data Override Profile Scope](accepted/054-runtime-data-override-profile-scope.md) | Accepted 2026-08-04 — implementation not started |
 
 ## Proposed
 
@@ -100,8 +100,7 @@ project owner's manual Japanese QA (Owner Task 001) before it can move to
 dependency-maintenance track, not part of the architecture-review blocker
 set; it is also now implemented on `main`. RFC-048's real-model measurement
 work is accepted and in progress (Owner Task 003); RFC-047 remains paused
-behind the other blockers and has not been accepted. RFC-054 is accepted and
-awaiting implementation; it narrows a cross-platform gap found in RFC-049 after
+behind the other blockers and has not been accepted. RFC-054 is implemented on `main`; it narrowed a cross-platform gap found in RFC-049 after
 it shipped: `ORBOK_DATA_DIR` relocates a profile's data but not its settings,
 and the workaround for that exists only on Linux. RFC-055 is the
 `app-json-settings` dependency track — it makes settings-path resolution

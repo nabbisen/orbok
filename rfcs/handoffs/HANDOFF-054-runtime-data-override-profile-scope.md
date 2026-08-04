@@ -2,9 +2,9 @@
 
 **Project:** orbok\
 **RFC:** 054\
-**Lifecycle stage:** Accepted 2026-08-04; implementation not started\
+**Lifecycle stage:** Implemented with RFC-054 on `main` at `6bcedd9`; release pending\
 **Primary owner:** `crates/app` runtime context; user and maintainer docs; CI\
-**RFC:** [`../accepted/054-runtime-data-override-profile-scope.md`](../accepted/054-runtime-data-override-profile-scope.md)
+**RFC:** [`../done/054-runtime-data-override-profile-scope.md`](../done/054-runtime-data-override-profile-scope.md)
 
 > **Scope rule:** This changes what `ORBOK_DATA_DIR` covers. It does **not**
 > change where anything lives by default on any platform, does not add an

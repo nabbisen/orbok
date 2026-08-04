@@ -132,7 +132,7 @@ cross-profile access path.
 `ORBOK_DATA_DIR` relocated the catalog, cache, and model directories but not
 the settings file, so a Standard-mode override produced a half-relocated
 profile — the one place this RFC's "a profile is an indivisible unit" thesis
-(§3) did not hold. [RFC-054](../accepted/054-runtime-data-override-profile-scope.md)
+(§3) did not hold. [RFC-054](../done/054-runtime-data-override-profile-scope.md)
 makes the override relocate the whole profile, settings included, matching
 the relationship Portable mode already had.
 

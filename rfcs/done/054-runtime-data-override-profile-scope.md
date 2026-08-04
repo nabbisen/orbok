@@ -3,10 +3,11 @@
 **Project:** orbok\
 **RFC:** 054\
 **Title:** Runtime Data Override Profile Scope\
-**Status:** Accepted\
+**Status:** Implemented (main at `6bcedd9`; release pending)\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-04\
 **Accepted:** 2026-08-04 by the project owner\
+**Implemented:** 2026-08-04 — Slice 1 `c618a62`, Slice 2 `9a0ff3e`, cross-platform test placement and check-truthfulness fixes `6bcedd9` (Reviews 149, 150)\
 **Related RFCs:** RFC-049 Portable Runtime Data Isolation (this narrows a gap in it); RFC-030 Portable Mode; RFC-039 Privacy Modes and Local Data Visibility; RFC-019 Test Matrix and Release Readiness\
 **Handoff:** [`HANDOFF-054-runtime-data-override-profile-scope.md`](../handoffs/HANDOFF-054-runtime-data-override-profile-scope.md)
 
