@@ -26,16 +26,23 @@ orbok --version
 ## Data directory
 
 orbok stores its catalog, cache, and model files in the platform app-data
-directory:
+directory, and settings in the platform config directory:
 
-| Platform | Default path |
-|---|---|
-| Linux | `~/.local/share/orbok/` |
-| macOS | `~/Library/Application Support/orbok/` |
-| Windows | `%LOCALAPPDATA%\orbok\` |
+| Platform | Data (catalog/cache/models) | Settings |
+|---|---|---|
+| Linux | `~/.local/share/orbok/` | `~/.config/orbok/` |
+| macOS | `~/Library/Application Support/orbok/` | same directory as data |
+| Windows | `%LOCALAPPDATA%\orbok\` | `%APPDATA%\orbok\` (Roaming) |
+
+Default placement is unaffected by anything below and does not change on
+any platform.
 
 Override with `ORBOK_DATA_DIR=/path/to/dir` (standard mode only — see
-Portable mode below).
+Portable mode below) to relocate the **whole profile — settings included**,
+the same relationship Portable mode already has. Before this, the override
+relocated only the data directory and left settings at the platform config
+path above; it now covers both, so one variable yields one complete,
+isolated profile on every platform.
 
 ### Portable mode
 

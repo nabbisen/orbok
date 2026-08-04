@@ -640,6 +640,46 @@ fn frozen_startup_anchor_survives_a_later_current_directory_change() {
     );
 }
 
+// RFC-054 §9.1, exercised through the real production call chain rather
+// than RuntimeContext::resolve() alone. runtime_context::tests already
+// proves the access seam never authorizes a path under the platform
+// config directory; this proves the same property survives all the way
+// through `bootstrap::run_check` -- storage.load_settings(), which
+// creates a default settings.json on first run (RFC-049 C4) -- against a
+// real filesystem, not recorded probe calls. The two are complementary:
+// a passing access-seam test does not by itself prove nothing else in
+// the call chain independently re-derives the platform settings path.
+#[test]
+fn standard_override_relocates_settings_through_a_real_run_check() {
+    let root = tempfile::tempdir().unwrap();
+    let startup = root.path().join("startup");
+    let override_dir = root.path().join("override-profile");
+    let platform_data = root.path().join("platform-data");
+    let platform_settings = root.path().join("platform-settings");
+    std::fs::create_dir_all(&startup).unwrap();
+
+    let context = RuntimeContext::resolve(
+        RuntimeSelection::resolve(false, Some(override_dir.clone().into_os_string())).unwrap(),
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(&platform_data),
+            standard_settings_dir: &platform_settings,
+        },
+    )
+    .unwrap();
+
+    bootstrap::run_check(&context).unwrap();
+
+    assert!(
+        override_dir.join("settings.json").exists(),
+        "settings.json must be created under the override directory"
+    );
+    assert!(
+        !platform_settings.exists(),
+        "the platform config directory must not be created at all -- RFC-054 §4.5, \"not merely unused for the resolved path, untouched\""
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn physical_symlink_alias_is_rejected_before_persistent_access() {

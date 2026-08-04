@@ -1,8 +1,16 @@
 //! Pure RFC-049 runtime-profile selection and path resolution.
 //!
-//! Slice 1 deliberately performs no filesystem or process-environment access.
-//! The binary will supply the startup directory, platform locations, and the
-//! optional `ORBOK_DATA_DIR` value when bootstrap propagation is implemented.
+//! This module deliberately performs no filesystem or process-environment
+//! access itself: `crate::bootstrap::resolve_runtime_context` supplies the
+//! startup directory, platform locations, and the optional `ORBOK_DATA_DIR`
+//! value, all captured once at process start.
+//!
+//! RFC-054 narrows a gap in the RFC-049 isolation guarantee: when
+//! `ORBOK_DATA_DIR` is set in Standard mode, the settings file now resolves
+//! under the override directory alongside the catalog, cache, and models —
+//! the same relationship Portable mode already has — rather than at the
+//! platform config directory, which the override previously left untouched
+//! by construction but not by intent.
 
 use std::ffi::OsString;
 use std::fmt;
@@ -117,9 +125,21 @@ impl RuntimeContext {
             }
         };
 
+        // RFC-054 §3/§4.1: a Standard-mode override relocates the whole
+        // profile, settings included -- data_dir here is already the
+        // anchored, normalized override directory (see the match above),
+        // so reusing it is sufficient; nothing further derives from
+        // standard_settings_dir in this case, and the platform config
+        // directory it names is never read or written.
         let settings_dir = match selection.mode {
             RuntimeMode::Portable => data_dir.clone(),
-            RuntimeMode::Standard => standard_settings_dir,
+            RuntimeMode::Standard => {
+                if selection.standard_data_override.is_some() {
+                    data_dir.clone()
+                } else {
+                    standard_settings_dir
+                }
+            }
         };
 
         Ok(Self {

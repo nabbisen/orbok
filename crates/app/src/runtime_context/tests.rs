@@ -72,6 +72,67 @@ fn standard_override_is_anchored_once_and_normalized() {
         absolute(&["launch", "override", "profile"])
     );
     assert_eq!(context.startup_dir(), startup);
+    // RFC-054 §3/§4.1: settings relocate with the rest of the profile.
+    assert_eq!(
+        context.settings_file(),
+        absolute(&["launch", "override", "profile", "settings.json"])
+    );
+    assert_ne!(
+        context.settings_file(),
+        standard_settings.join("settings.json")
+    );
+}
+
+// RFC-054 §9.1: a Standard-mode override must relocate settings *and* the
+// platform config directory must never be accessed -- not merely unused
+// for the resolved value. A path-equality assertion alone cannot detect a
+// stray read/write; this uses the RuntimePathProbe access seam so any
+// `RuntimeAccess::active_path` call is recorded and can be asserted never
+// to target the platform config directory, matching RFC-049's own
+// distinction between "unused" and "untouched" (Correction Request 111 §4).
+#[test]
+fn standard_override_never_authorizes_a_path_under_the_platform_config_dir() {
+    let startup = absolute(&["launch"]);
+    let standard_data = absolute(&["local-data", "orbok"]);
+    let standard_settings = absolute(&["config", "orbok"]);
+    let selection = RuntimeSelection::resolve(false, Some("override-profile".into())).unwrap();
+
+    let context = RuntimeContext::resolve(
+        selection,
+        &startup,
+        platform_paths(&standard_data, &standard_settings),
+    )
+    .unwrap();
+
+    let probe = RecordingProbe::default();
+    let access = RuntimeAccess::new(&context, &probe);
+    let kinds = [
+        RuntimePathKind::Catalog,
+        RuntimePathKind::Cache,
+        RuntimePathKind::Models,
+        RuntimePathKind::Settings,
+        RuntimePathKind::Recovery,
+        RuntimePathKind::Diagnostics,
+        RuntimePathKind::Temporary,
+    ];
+    for kind in kinds {
+        access.active_path(kind).unwrap();
+    }
+
+    let recorded = probe.accesses.lock().unwrap();
+    assert_eq!(recorded.len(), kinds.len());
+    assert!(
+        recorded
+            .iter()
+            .all(|(_, path)| !path.starts_with(&standard_settings)),
+        "an override must never authorize a path under the platform config directory: {recorded:?}"
+    );
+    let (settings_kind, settings_path) = recorded
+        .iter()
+        .find(|(kind, _)| *kind == RuntimePathKind::Settings)
+        .expect("Settings kind must have been probed");
+    assert_eq!(*settings_kind, RuntimePathKind::Settings);
+    assert!(settings_path.starts_with(startup.join("override-profile")));
 }
 
 #[test]

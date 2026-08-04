@@ -42,6 +42,17 @@ next release tag.
 
 ### Changed
 
+- **RFC-054 — `ORBOK_DATA_DIR` now relocates the whole profile, settings
+  included:** previously the override moved the catalog, cache, and model
+  directories but left the settings file at the platform config directory
+  — a half-relocated profile, and on macOS specifically a directory split
+  that the platform itself does not make (`dirs`' `data_local_dir()` and
+  `config_dir()` resolve to the same path there). A Standard-mode override
+  now relocates settings alongside the rest of the profile, matching
+  Portable mode's existing behavior. Default placement (no override set)
+  is unchanged on every platform. See
+  `rfcs/accepted/054-runtime-data-override-profile-scope.md` and the
+  amendment note in `rfcs/done/049-portable-runtime-data-isolation.md` §10.
 - **RFC-051 — Reproducible reviewed-source packaging:** the release source
   archive is now built from `git archive` over the release commit's tracked
   file set, filtered through one shared, machine-readable path policy, in
@@ -99,6 +110,13 @@ next release tag.
   independent verifier acting alone. CI now runs this suite plus a real
   two-build hash comparison and the independent verifier against the actual
   release commit, replacing the old producer-trusts-itself grep check.
+- **RFC-054:** added a unit-level test asserting a Standard-mode override
+  never authorizes a path under the platform config directory, via the
+  `RuntimePathProbe` access seam rather than a path-equality comparison
+  (a path assertion alone cannot detect a stray read); and an integration
+  test running the real `bootstrap::run_check` path against a temporary
+  override directory, confirming settings.json is created there and that
+  the platform config directory is never even created, not merely unused.
 
 ### Docs
 
@@ -126,6 +144,11 @@ next release tag.
   `scripts/verify-release-archive.sh` are documented with what each checks
   and why; the packaging checklist gained the reproducibility and
   independent-verification items RFC-051 requires.
+- Updated `docs/src/users/quick_start.md` and
+  `docs/src/intermediate/settings.md` for RFC-054: the data-directory table
+  now lists the platform config (settings) path alongside the data path,
+  and both docs state that `ORBOK_DATA_DIR` relocates the whole profile,
+  not just the data directory.
 
 ---
 

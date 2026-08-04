@@ -126,3 +126,38 @@ It is implemented when all startup and runtime paths use one resolved context,
 the isolation tests pass, headless checks cover both modes, documentation
 matches the final precedence rule, and an architecture review finds no
 cross-profile access path.
+
+## 10. Amendment (2026-08-04, RFC-054): the isolation guarantee had a gap
+
+`ORBOK_DATA_DIR` relocated the catalog, cache, and model directories but not
+the settings file, so a Standard-mode override produced a half-relocated
+profile — the one place this RFC's "a profile is an indivisible unit" thesis
+(§3) did not hold. [RFC-054](../accepted/054-runtime-data-override-profile-scope.md)
+makes the override relocate the whole profile, settings included, matching
+the relationship Portable mode already had.
+
+Two further findings from that RFC's investigation, recorded here because
+they bear on this RFC's own claims rather than being new:
+
+- **The environment-variable isolation path was untested cross-platform.**
+  `runtime_isolation_tests.rs` exercised isolation via direct
+  `PlatformRuntimePaths`/`RuntimeSelection` construction, never via
+  `ORBOK_DATA_DIR` actually read from the process environment on all three
+  platforms. §8 test 7 ("argument tests prove standard mode honors
+  `ORBOK_DATA_DIR`") was true at the unit level but did not establish that
+  the *environment* path — the one users and CI actually take — behaved
+  identically everywhere. It does not, prior to RFC-054: only Linux's
+  `dirs` backend reads `XDG_CONFIG_HOME`, so a workaround isolating that
+  variable alongside `ORBOK_DATA_DIR` (used during this RFC's own
+  development, per review-request 113) had no effect on macOS or Windows.
+- **§4 rule 4 ("Standard mode behavior and locations remain unchanged")
+  refers to default placement, not to the override's completeness.**
+  RFC-054 does not amend that rule — it still holds for every case without
+  an override, which is what the rule was written to guarantee — but the
+  rule's wording could be misread as also covering the override's scope,
+  which this amendment clarifies it does not.
+
+Nothing else in this RFC's decision, required behavior, or acceptance
+criteria changes. The isolation boundary mechanism (`RuntimeContext`,
+`RuntimeAccess`, the OS-level denial harness) is unaffected; only what a
+Standard-mode override relocates is different.

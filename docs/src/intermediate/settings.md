@@ -30,7 +30,7 @@
 
 | Variable | Purpose |
 |---|---|
-| `ORBOK_DATA_DIR` | Override the local data directory — standard mode only; rejected if combined with `--portable` |
+| `ORBOK_DATA_DIR` | Override the whole local profile — catalog, cache, models, and settings — standard mode only; rejected if combined with `--portable` |
 | `RUST_LOG` | Tracing log level (e.g. `orbok=debug`) |
 
 See [Quick Start: Data directory](../users/quick_start.md#data-directory)
