@@ -93,7 +93,7 @@ run_package() {
   (cd "$tmp_repo" && bash scripts/package.sh "$1") 2>&1
 }
 run_verify() {
-  (cd "$tmp_repo" && bash scripts/verify-release-archive.sh "dist/orbok-v$1.tar.gz") 2>&1
+  (cd "$tmp_repo" && bash scripts/verify-release-archive.sh "dist/orbok-$1.tar.gz") 2>&1
 }
 
 # ── Clean packaging succeeds, verifier agrees ─────────────────────────────
@@ -113,7 +113,7 @@ echo "untracked" > untracked-file.txt
 untracked_pkg_status=0
 run_package 1.0.1 >"$tmp_work/pkg-untracked.log" 2>&1 || untracked_pkg_status=$?
 check "packaging succeeds with an untracked file present" "0" "$untracked_pkg_status"
-in_archive="$(tar tf dist/orbok-v1.0.1.tar.gz | grep -c "untracked-file.txt" || true)"
+in_archive="$(tar tf dist/orbok-1.0.1.tar.gz | grep -c "untracked-file.txt" || true)"
 check "untracked file is absent from the archive" "0" "$in_archive"
 rm -f untracked-file.txt
 
@@ -125,7 +125,7 @@ git commit -q -m "add gitignore"
 ignored_pkg_status=0
 run_package 1.0.2 >"$tmp_work/pkg-ignored.log" 2>&1 || ignored_pkg_status=$?
 check "packaging succeeds with an ignored file present" "0" "$ignored_pkg_status"
-in_archive="$(tar tf dist/orbok-v1.0.2.tar.gz | grep -c "local.ignored" || true)"
+in_archive="$(tar tf dist/orbok-1.0.2.tar.gz | grep -c "local.ignored" || true)"
 check "ignored file is absent from the archive" "0" "$in_archive"
 rm -f local.ignored
 
@@ -137,7 +137,7 @@ git commit -q -m "accidentally track a local-only path"
 forbidden_pkg_status=0
 run_package 1.0.3 >"$tmp_work/pkg-forbidden.log" 2>&1 || forbidden_pkg_status=$?
 check "packaging succeeds with a force-tracked forbidden path present" "0" "$forbidden_pkg_status"
-in_archive="$(tar tf dist/orbok-v1.0.3.tar.gz | grep -c "\.git-exclude" || true)"
+in_archive="$(tar tf dist/orbok-1.0.3.tar.gz | grep -c "\.git-exclude" || true)"
 check "force-tracked forbidden path is excluded from the archive by policy" "0" "$in_archive"
 git rm -rq .git-exclude
 git commit -q -m "remove the accidentally-tracked path"
@@ -149,7 +149,7 @@ git commit -q -m "add a filename with spaces"
 spaces_pkg_status=0
 run_package 1.0.4 >"$tmp_work/pkg-spaces.log" 2>&1 || spaces_pkg_status=$?
 check "packaging succeeds with a tracked filename containing spaces" "0" "$spaces_pkg_status"
-in_archive="$(tar tf dist/orbok-v1.0.4.tar.gz | grep -c "^\./docs/a file with spaces\.md$" || true)"
+in_archive="$(tar tf dist/orbok-1.0.4.tar.gz | grep -c "^\./docs/a file with spaces\.md$" || true)"
 check "the spaced filename is present, correctly, exactly once" "1" "$in_archive"
 spaces_verify_status=0
 run_verify 1.0.4 >"$tmp_work/verify-spaces.log" 2>&1 || spaces_verify_status=$?
@@ -177,31 +177,31 @@ final_pkg_status=0
 final_pkg_out="$(run_package 2.0.0)" || final_pkg_status=$?
 check "final clean packaging exits 0" "0" "$final_pkg_status"
 
-exec_mode="$(tar tvf dist/orbok-v2.0.0.tar.gz 2>/dev/null | awk '$0 ~ /scripts\/run\.sh$/ { print $1 }')"
+exec_mode="$(tar tvf dist/orbok-2.0.0.tar.gz 2>/dev/null | awk '$0 ~ /scripts\/run\.sh$/ { print $1 }')"
 case "$exec_mode" in
   -rwxr-xr-x*) echo "ok: tracked executable script keeps its executable mode in the archive" ;;
   *) echo "FAIL: tracked executable script mode is '$exec_mode', expected -rwxr-xr-x*" >&2; fail=1 ;;
 esac
-ordinary_mode="$(tar tvf dist/orbok-v2.0.0.tar.gz 2>/dev/null | awk '$0 ~ /README\.md$/ { print $1 }')"
+ordinary_mode="$(tar tvf dist/orbok-2.0.0.tar.gz 2>/dev/null | awk '$0 ~ /README\.md$/ { print $1 }')"
 case "$ordinary_mode" in
   -rw-r--r--*) echo "ok: ordinary tracked file gets a stable non-executable mode" ;;
   *) echo "FAIL: ordinary file mode is '$ordinary_mode', expected -rw-r--r--*" >&2; fail=1 ;;
 esac
 
-root_entries="$(tar tf dist/orbok-v2.0.0.tar.gz | grep -c '^\./$' || true)"
+root_entries="$(tar tf dist/orbok-2.0.0.tar.gz | grep -c '^\./$' || true)"
 check "exactly one canonical ./ root entry" "1" "$root_entries"
-non_canonical="$(tar tf dist/orbok-v2.0.0.tar.gz | grep -vc '^\./' || true)"
+non_canonical="$(tar tf dist/orbok-2.0.0.tar.gz | grep -vc '^\./' || true)"
 check "every entry uses canonical ./ naming" "0" "$non_canonical"
-dup_entries="$(tar tf dist/orbok-v2.0.0.tar.gz | sort | uniq -d | wc -l | tr -d ' ')"
+dup_entries="$(tar tf dist/orbok-2.0.0.tar.gz | sort | uniq -d | wc -l | tr -d ' ')"
 check "no duplicate entries in the archive" "0" "$dup_entries"
 
 # ── Two clean builds are byte-identical ───────────────────────────────────
 sleep 1.1
 run_package 2.0.1-a >"$tmp_work/pkg-repro-a.log" 2>&1
-mv dist/orbok-v2.0.1-a.tar.gz "$tmp_work/repro-a.tar.gz"
+mv dist/orbok-2.0.1-a.tar.gz "$tmp_work/repro-a.tar.gz"
 sleep 1.1
 run_package 2.0.1-b >"$tmp_work/pkg-repro-b.log" 2>&1
-mv dist/orbok-v2.0.1-b.tar.gz "$tmp_work/repro-b.tar.gz"
+mv dist/orbok-2.0.1-b.tar.gz "$tmp_work/repro-b.tar.gz"
 # Rename both to the same name before hashing -- the archive filename
 # differs (it embeds the version), the point is the *content* bytes match.
 hash_a="$(sha256sum "$tmp_work/repro-a.tar.gz" | awk '{print $1}')"
@@ -214,12 +214,12 @@ rm -f "$tmp_work/repro-a.tar.gz" "$tmp_work/repro-b.tar.gz"
 # policy never approved, using plain tar (bypassing package.sh entirely --
 # this simulates a producer bug, not a policy change).
 mkdir -p "$tmp_work/bad-archive-staging"
-(cd "$tmp_work/bad-archive-staging" && tar xf "$tmp_repo/dist/orbok-v2.0.0.tar.gz")
+(cd "$tmp_work/bad-archive-staging" && tar xf "$tmp_repo/dist/orbok-2.0.0.tar.gz")
 echo "not reviewed" > "$tmp_work/bad-archive-staging"/unreviewed-extra-file.txt
 tar -C "$tmp_work/bad-archive-staging" --format=pax --sort=name --owner=0 --group=0 --numeric-owner \
-  -cf - . | gzip -n -9 > "$tmp_repo/dist/orbok-v2.0.0-tampered.tar.gz"
+  -cf - . | gzip -n -9 > "$tmp_repo/dist/orbok-2.0.0-tampered.tar.gz"
 tampered_verify_status=0
-(cd "$tmp_repo" && bash scripts/verify-release-archive.sh dist/orbok-v2.0.0-tampered.tar.gz) \
+(cd "$tmp_repo" && bash scripts/verify-release-archive.sh dist/orbok-2.0.0-tampered.tar.gz) \
   >"$tmp_work/verify-tampered.log" 2>&1 || tampered_verify_status=$?
 check "verifier rejects a tampered archive containing an unreviewed extra file" "1" "$tampered_verify_status"
 if [ "$tampered_verify_status" = "1" ]; then
@@ -231,12 +231,12 @@ rm -rf "$tmp_work/bad-archive-staging"
 
 # Same idea, the other direction: a file the policy requires is missing.
 mkdir -p "$tmp_work/incomplete-archive-staging"
-(cd "$tmp_work/incomplete-archive-staging" && tar xf "$tmp_repo/dist/orbok-v2.0.0.tar.gz")
+(cd "$tmp_work/incomplete-archive-staging" && tar xf "$tmp_repo/dist/orbok-2.0.0.tar.gz")
 rm -f "$tmp_work/incomplete-archive-staging"/NOTICE
 tar -C "$tmp_work/incomplete-archive-staging" --format=pax --sort=name --owner=0 --group=0 --numeric-owner \
-  -cf - . | gzip -n -9 > "$tmp_repo/dist/orbok-v2.0.0-incomplete.tar.gz"
+  -cf - . | gzip -n -9 > "$tmp_repo/dist/orbok-2.0.0-incomplete.tar.gz"
 incomplete_verify_status=0
-(cd "$tmp_repo" && bash scripts/verify-release-archive.sh dist/orbok-v2.0.0-incomplete.tar.gz) \
+(cd "$tmp_repo" && bash scripts/verify-release-archive.sh dist/orbok-2.0.0-incomplete.tar.gz) \
   >"$tmp_work/verify-incomplete.log" 2>&1 || incomplete_verify_status=$?
 check "verifier rejects an archive missing a policy-required file" "1" "$incomplete_verify_status"
 rm -rf "$tmp_work/incomplete-archive-staging"

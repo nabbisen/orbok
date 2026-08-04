@@ -207,8 +207,9 @@ id, name, version, and dimension.
 
 ## Packaging Checklist (RFC-017, RFC-051)
 
-- [ ] Checksum file accompanies every archive (`orbok-vX.Y.Z.tar.gz.sha256`)
-- [ ] Archive name includes version: `orbok-vX.Y.Z.tar.gz`
+- [ ] Checksum file accompanies every archive (`orbok-X.Y.Z.tar.gz.sha256`)
+- [ ] Archive name includes version: `orbok-X.Y.Z.tar.gz` (no `v` prefix —
+      matches the release tag convention, e.g. `0.24.0` not `v0.24.0`)
 - [ ] Archive contains: `Cargo.toml`, **`Cargo.lock`**, all `crates/`, `rfcs/`,
       `docs/`, `scripts/` — the audited lock ships with the source, since
       release gates and audit run against it (RFC-051 §3)
@@ -217,7 +218,7 @@ id, name, version, and dimension.
 - [ ] `orbok --version` output matches the Cargo.toml version
 - [ ] `./scripts/package.sh <version>` built from a clean tracked tree (dirty
       tracked content fails packaging by design — commit or stash first)
-- [ ] `./scripts/verify-release-archive.sh dist/orbok-vX.Y.Z.tar.gz` passes —
+- [ ] `./scripts/verify-release-archive.sh dist/orbok-X.Y.Z.tar.gz` passes —
       independently derives the expected file set from `git ls-tree` plus
       `scripts/release-path-policy.sh`, never from `package.sh`'s own output
       (RFC-051 §6)

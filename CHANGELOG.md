@@ -74,6 +74,14 @@ next release tag.
   WAL-reset corruption bug) was already backported into 3.51.3 before
   3.53.0 shipped. See `rfcs/done/053-rusqlite-line-and-msrv-policy.md`.
 
+- **Release archive naming drops the `v` prefix:** `scripts/package.sh` now
+  produces `orbok-X.Y.Z.tar.gz` (was `orbok-vX.Y.Z.tar.gz`), matching the
+  project's release tag convention (`0.24.0`, not `v0.24.0`), which the two
+  had always disagreed with. Archives already published in `dist/` or
+  attached to a release are not renamed (DEC-005: a shipped tarball is
+  never remade) — both spellings coexist in history, and the old name is
+  what was actually published for those releases.
+
 ### Tests
 
 - **RFC-049 isolation suite now runs in CI:** the app binary's own test

@@ -9,8 +9,8 @@
 #   ./scripts/package.sh 0.17.0
 #
 # Output (written to dist/ at the repository root, never into the source tree):
-#   dist/orbok-v0.17.0.tar.gz
-#   dist/orbok-v0.17.0.tar.gz.sha256
+#   dist/orbok-0.17.0.tar.gz
+#   dist/orbok-0.17.0.tar.gz.sha256
 #
 # Archive layout (flat — one `./` root entry, then `./<repo-relative-path>`
 # entries, canonical naming, no parent directory beyond the root):
@@ -47,12 +47,12 @@ if [[ $# -ne 1 ]]; then
     exit 1
 fi
 VERSION="$1"
-ARCHIVE="orbok-v${VERSION}.tar.gz"
+ARCHIVE="orbok-${VERSION}.tar.gz"
 DIST_DIR="${REPO_ROOT}/dist"
 mkdir -p "${DIST_DIR}"
 
 COMMIT="$(git rev-parse HEAD)"
-echo "Packaging orbok-v${VERSION} from commit ${COMMIT} ..."
+echo "Packaging orbok-${VERSION} from commit ${COMMIT} ..."
 
 # ── Dirty-tracked-content check (RFC-051 §4) ───────────────────────────
 # Untracked/ignored files are structurally absent from a git-tree-derived

@@ -83,9 +83,9 @@ orbok uses Rust 2018+ module layout throughout:
 
 ```sh
 bash scripts/package.sh 0.17.0
-# Produces dist/orbok-v0.17.0.tar.gz and dist/orbok-v0.17.0.tar.gz.sha256
+# Produces dist/orbok-0.17.0.tar.gz and dist/orbok-0.17.0.tar.gz.sha256
 
-bash scripts/verify-release-archive.sh dist/orbok-v0.17.0.tar.gz
+bash scripts/verify-release-archive.sh dist/orbok-0.17.0.tar.gz
 # Independently re-derives the expected file set from `git ls-tree` plus
 # scripts/release-path-policy.sh -- never from package.sh's own output --
 # and checks Cargo.lock is present and coherent (`cargo metadata --locked`
