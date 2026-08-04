@@ -110,41 +110,102 @@ check_file() {
   done < <(grep -nP '^\s*"\{\}: ' "$file" 2>/dev/null || true)
 }
 
+# ── Discovery contract (RFC-052 §6) ────────────────────────────────────────
+#
+# "The checker discovers tracked files under designated UI and
+# platform-integration directories and compares that set exactly with a
+# classified allowlist... A new unclassified tracked file fails the gate."
+#
+# Designated directories:
+#   - crates/ui/src/**  (the whole UI crate — RFC-027 gives it zero fs/db
+#     access, so everything here is potential display surface), except two
+#     subdirectories excluded by directory, not by individual file:
+#       - i18n/   the catalog's own destination files, not a source to
+#                  classify
+#       - tests/  test code, not production UI
+#   - crates/app/src/*.rs  (flat, top-level only). Platform-integration
+#     files — native dialogs, the diagnostics preview — live here.
+#     Subdirectories (bootstrap/, runtime_context/, runtime_storage/) are
+#     backend/filesystem/database glue with no rendering path, out of
+#     RFC-027's UI boundary by architecture rather than by checker
+#     classification.
+#
+# Every file `git ls-files` returns under those roots must appear in
+# exactly one of SCAN_FILES (below, scanned by check_file) or
+# EXCLUDED_FILES (below, individually reasoned). A file in neither bucket
+# fails the gate by name, so a new file cannot go unexamined the way an
+# enumerated allowlist of patterns could miss it (Review 141 §3(c)).
+discover_files() {
+  git ls-files -- \
+    'crates/ui/src/*.rs' ':!crates/ui/src/i18n/*' ':!crates/ui/src/tests/*' \
+    'crates/app/src/*.rs' ':!crates/app/src/*/*' \
+    2>/dev/null | sort -u
+}
+
+SCAN_FILES=(
+  crates/ui/src/a11y.rs
+  crates/ui/src/components.rs
+  crates/ui/src/notice.rs
+  crates/ui/src/shell.rs
+  crates/ui/src/state.rs
+  crates/ui/src/state/location.rs
+  crates/ui/src/state/model_consent.rs
+  crates/ui/src/state/search.rs
+  crates/ui/src/views.rs
+  crates/ui/src/views/wizard.rs
+  crates/app/src/diagnostics.rs
+  crates/app/src/main.rs
+)
+
+# file → reason, one entry per non-scanned file discovery yields today.
+# Verified in full (not sampled) via
+#   grep -nP '"[A-Za-z][a-zA-Z]*(?:[ ][a-zA-Z][a-zA-Z]*){1,}[^"]*"' <file>
+# before writing each reason.
+declare -A EXCLUDED_FILES=(
+  ["crates/ui/src/i18n.rs"]="the catalog itself — destination, not a source to classify"
+  ["crates/ui/src/lib.rs"]="crate root: module declarations and re-exports only, verified zero display text"
+  ["crates/ui/src/tests.rs"]="test module router, not production UI"
+  ["crates/ui/src/theme.rs"]="persisted-setting serialization identifiers only (\"system\"/\"light\"/\"dark\"/etc.), verified zero display text in full (review-request 132 §3); display text for themes already routes through MessageKey::Theme*"
+  ["crates/app/src/bootstrap.rs"]="module declarations only, verified zero display text"
+  ["crates/app/src/download.rs"]="developer-facing tracing/log and panic/expect strings only, verified in full; errors reach users only via typed UserNotice variants routed through the catalog, never shown raw"
+  ["crates/app/src/history.rs"]="developer-facing tracing/log strings only, verified in full"
+  ["crates/app/src/lib.rs"]="crate root: module declarations only, verified zero display text"
+  ["crates/app/src/model_flow.rs"]="developer-facing tracing/log/panic/assert strings and inline #[cfg(test)] module content only, verified in full"
+  ["crates/app/src/physical_identity.rs"]="io::Error Display strings only — a backend error type never rendered raw to users (RFC-052 §3), verified in full"
+  ["crates/app/src/runtime_context.rs"]="Display impl strings for a backend error type (RFC-049), same RFC-052 §3 exemption as physical_identity.rs, verified in full"
+  ["crates/app/src/runtime_isolation_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code"
+  ["crates/app/src/runtime_storage.rs"]="Display impl strings for a backend error type, same exemption as runtime_context.rs, verified in full"
+  ["crates/app/src/settings.rs"]="io::Error Display string only, verified in full"
+)
+
+is_scan_file() {
+  local file="$1" f
+  for f in "${SCAN_FILES[@]}"; do
+    [ "$f" = "$file" ] && return 0
+  done
+  return 1
+}
+
+# classify_file <path>
+# Echoes "scan", "exclude", or "unclassified". Pure function of SCAN_FILES/
+# EXCLUDED_FILES — takes no git state, so the self-test can exercise the
+# "new file matches neither bucket" case with a fabricated path (Review 141
+# §3(c)'s own hypothetical, "crates/ui/src/panels.rs") without needing a
+# throwaway git repository.
+classify_file() {
+  local file="$1"
+  if is_scan_file "$file"; then
+    echo scan
+  elif [ -n "${EXCLUDED_FILES[$file]:-}" ]; then
+    echo exclude
+  else
+    echo unclassified
+  fi
+}
+
 main() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.."
   local allowlist="scripts/i18n-literal-allowlist.txt"
-
-  # ── Discovery roots (HANDOFF-052 §2 item 2) ─────────────────────────────
-  # Tracked files only. Deliberately excludes: the catalog itself
-  # (crates/ui/src/i18n.rs and i18n/{en,ja}.rs — the destination, not a
-  # source to classify), test code (crates/ui/src/tests.rs, tests/*.rs —
-  # not production UI), and crates/ui/src/theme.rs (persisted-setting
-  # identifiers only, verified zero display text — see review-request 132).
-  local files
-  files=$(git ls-files \
-    'crates/ui/src/views.rs' \
-    'crates/ui/src/views/*.rs' \
-    'crates/ui/src/components.rs' \
-    'crates/ui/src/shell.rs' \
-    'crates/ui/src/notice.rs' \
-    'crates/ui/src/a11y.rs' \
-    'crates/ui/src/state.rs' \
-    'crates/ui/src/state/*.rs' \
-    'crates/app/src/main.rs' \
-    'crates/app/src/diagnostics.rs' \
-    2>/dev/null || true)
-
-  # Self-check: a wrong root, a moved file, or an empty git index must fail
-  # loudly rather than silently pass on nothing checked (Response 130 §3's
-  # "a check must be able to detect that it is not checking anything",
-  # applied here per Task 005 §3).
-  local file_count
-  file_count=$(echo "$files" | grep -c . || true)
-  if [ "$file_count" -lt 8 ]; then
-    flag "discovery yielded only $file_count file(s) — expected at least 8; check the discovery roots above"
-    echo "i18n-literal gate: failed" >&2
-    exit 1
-  fi
 
   if [ ! -f "$allowlist" ]; then
     flag "allowlist file missing: $allowlist"
@@ -152,9 +213,32 @@ main() {
     exit 1
   fi
 
-  for file in $files; do
-    check_file "$allowlist" "$file"
-  done
+  local discovered
+  discovered=$(discover_files)
+
+  # Self-check: a wrong root or an empty git index must fail loudly rather
+  # than silently pass on nothing checked (Response 130 §3's "a check must
+  # be able to detect that it is not checking anything"). The exhaustive
+  # per-file classification below is the primary guarantee; this floor is
+  # defense-in-depth against discovery breaking entirely.
+  local discovered_count
+  discovered_count=$(echo "$discovered" | grep -c . || true)
+  if [ "$discovered_count" -lt 20 ]; then
+    flag "discovery yielded only $discovered_count file(s) — expected at least 20; check the designated directories"
+    echo "i18n-literal gate: failed" >&2
+    exit 1
+  fi
+
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    case "$(classify_file "$file")" in
+      scan) check_file "$allowlist" "$file" ;;
+      exclude) : ;;
+      unclassified)
+        flag "$file: new tracked file under a designated directory with no classification — add it to SCAN_FILES or EXCLUDED_FILES (with a reason) in scripts/check-i18n-literals.sh"
+        ;;
+    esac
+  done <<<"$discovered"
 
   if [ "$fail" -ne 0 ]; then
     echo "i18n-literal gate: failed" >&2
@@ -166,8 +250,8 @@ main() {
 
 # Only run the discovery-rooted scan when executed directly. The self-test
 # (check-i18n-literals.test.sh) sources this file to reuse check_file()/
-# is_allowlisted() against fixture files instead, without triggering the
-# real repository's discovery+self-check.
+# is_allowlisted()/classify_file() against fixture files and fabricated
+# paths instead, without triggering the real repository's discovery+scan.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   main
 fi
