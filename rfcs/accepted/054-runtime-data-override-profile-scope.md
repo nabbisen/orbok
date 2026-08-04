@@ -3,10 +3,12 @@
 **Project:** orbok\
 **RFC:** 054\
 **Title:** Runtime Data Override Profile Scope\
-**Status:** Proposed\
+**Status:** Accepted\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-04\
-**Related RFCs:** RFC-049 Portable Runtime Data Isolation (this narrows a gap in it); RFC-030 Portable Mode; RFC-039 Privacy Modes and Local Data Visibility; RFC-019 Test Matrix and Release Readiness
+**Accepted:** 2026-08-04 by the project owner\
+**Related RFCs:** RFC-049 Portable Runtime Data Isolation (this narrows a gap in it); RFC-030 Portable Mode; RFC-039 Privacy Modes and Local Data Visibility; RFC-019 Test Matrix and Release Readiness\
+**Handoff:** [`HANDOFF-054-runtime-data-override-profile-scope.md`](../handoffs/HANDOFF-054-runtime-data-override-profile-scope.md)
 
 ---
 
@@ -109,6 +111,22 @@ exercising environment resolution. That is legitimate for unit-level
 determinism, but it means the environment path — the one users and CI actually
 take — has no cross-platform coverage. The suite passes on all three legs
 without ever testing the thing that is broken.
+
+### 2.7 The release-readiness "fresh" gate is not fresh
+
+`docs/src/maintainers/release_readiness.md:35` instructs the maintainer to run
+`ORBOK_DATA_DIR=<fresh-temp-dir> cargo run -p orbok -- --check`, and
+`.github/workflows/ci.yml:117-119` does the same with an explicit
+`rm -rf "$ORBOK_DATA_DIR"` beforehand. Both are described as establishing a
+*fresh* profile.
+
+Under current behaviour neither is. The `rm -rf` cannot reach the settings file,
+because the settings file is not under `ORBOK_DATA_DIR`. On a CI runner this is
+latent — the config directory starts empty — but for the maintainer running the
+same gate locally before cutting a release it is active: **their real
+`settings.json` participates in a check documented as clean-profile.** A gate
+that silently tests something other than what it claims is the defect class this
+project has been removing elsewhere; this is another instance of it.
 
 ## 3. Decision
 
