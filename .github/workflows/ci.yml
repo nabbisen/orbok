@@ -11,6 +11,16 @@ env:
 
 jobs:
   # ── Fast gate: runs on every PR (< 5 min target) ──────────────────
+  # Measured at 4 min 33 s as of eb9b3d5 (Review 144 §3) -- ~27 s of
+  # headroom left. The RFC-052 §6 additions (design-token/i18n-literal
+  # checkers, the scoped `tests::i18n` step) cost ~+1 min 52 s versus the
+  # immediately preceding run. The two shell checkers are near-free
+  # (pure grep over source text); the cost is compiling orbok-ui for the
+  # exhaustive catalog test, which is paid whether that step runs one test
+  # or its whole suite. If this budget is ever breached, extracting `i18n`
+  # into a crate without the iced/wgpu/snora dependency tree would remove
+  # that cost -- a real refactor, not recommended pre-emptively, recorded
+  # here so the option is known rather than rediscovered under pressure.
   fast:
     name: Fast gate (fmt + clippy + unit tests)
     runs-on: ubuntu-latest
