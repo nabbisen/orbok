@@ -25,6 +25,24 @@ cargo test -p orbok-embed --features tract --lib
 # RFC lifecycle integrity gate
 bash scripts/check-rfc-lifecycle.sh
 
+# Design-token gate (RFC-032/052 §5) -- no literal font size, padding,
+# spacing, radius, or colour in crates/ui/src/{views.rs, views/*.rs,
+# shell.rs, components.rs}
+bash scripts/check-design-tokens.sh
+bash scripts/check-design-tokens.test.sh   # self-test: clean + planted-violation fixtures
+
+# i18n literal-copy gate (RFC-052 §6) -- every designated UI/platform-
+# integration file routes visible copy through the typed catalog; see
+# scripts/check-i18n-literals.sh's own header for the exact designated
+# directories and SCAN_FILES/EXCLUDED_FILES classification
+bash scripts/check-i18n-literals.sh
+bash scripts/check-i18n-literals.test.sh   # self-test: fixtures + discovery/classification exhaustiveness
+
+# Exhaustive (Locale, MessageKey) catalog tests (RFC-052 §4 rule 2) --
+# already included in "Standard workspace library gate" above; scoped
+# separately here for the fast gate, which excludes orbok-ui otherwise
+cargo test -p orbok-ui --lib tests::i18n
+
 # Strict supply-chain audit gate
 cargo audit --deny warnings
 

@@ -26,6 +26,12 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --exclude orbok --exclude orbok-ui --exclude orbok-bench -- -D warnings
 
+      - name: design-token gate (RFC-032/052 §5)
+        run: bash scripts/check-design-tokens.sh
+
+      - name: i18n literal-copy gate (RFC-052 §6)
+        run: bash scripts/check-i18n-literals.sh
+
       - name: unit tests (no GUI crates)
         env:
           ORBOK_DATA_DIR: /tmp/orbok-ci
@@ -35,6 +41,15 @@ jobs:
             --exclude orbok-ui \
             --exclude orbok-bench \
             -- --test-threads=4
+
+      # RFC-052 §6/HANDOFF-052 §4 item 1: exhaustive (Locale, MessageKey)
+      # catalog tests must run in both fast and release CI. orbok-ui is
+      # otherwise excluded above for build-time reasons (it pulls in the
+      # full iced/wgpu/snora GUI dependency tree), so this is scoped to the
+      # i18n test module only rather than orbok-ui's full suite (which
+      # already runs in the release gate below).
+      - name: exhaustive i18n catalog tests
+        run: cargo test -p orbok-ui --lib tests::i18n
 
   # ── Release gate: runs on main and release branches ──────────────
   release:
@@ -65,6 +80,21 @@ jobs:
 
       - name: RFC lifecycle integrity
         run: bash scripts/check-rfc-lifecycle.sh
+
+      # RFC-052 §6/HANDOFF-052 §4 item 1. Exhaustive (Locale, MessageKey)
+      # catalog tests are already covered by "workspace library tests"
+      # above (--workspace --lib includes orbok-ui, unlike the fast gate).
+      - name: design-token gate self-test (RFC-032/052 §5)
+        run: bash scripts/check-design-tokens.test.sh
+
+      - name: design-token gate (RFC-032/052 §5)
+        run: bash scripts/check-design-tokens.sh
+
+      - name: i18n literal-copy gate self-test (RFC-052 §6)
+        run: bash scripts/check-i18n-literals.test.sh
+
+      - name: i18n literal-copy gate (RFC-052 §6)
+        run: bash scripts/check-i18n-literals.sh
 
       - name: build --release
         run: cargo build --release --package orbok
