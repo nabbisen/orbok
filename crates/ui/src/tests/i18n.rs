@@ -1,10 +1,9 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
 use crate::i18n::{
-    Locale, files_indexed, fmt_label_value, model_exact_size, model_file_position,
+    ALL_KEYS, Locale, files_indexed, fmt_label_value, model_exact_size, model_file_position,
     model_transfer_progress, source_summary, tr, wizard_file_size_mb,
 };
-use crate::tests::ALL_KEYS;
 
 // RFC-031 §9: every key resolves to a non-empty string in every locale.
 #[test]
