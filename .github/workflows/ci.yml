@@ -117,7 +117,25 @@ jobs:
           ORBOK_DATA_DIR: /tmp/orbok-release-check
         run: |
           rm -rf "$ORBOK_DATA_DIR"
+          # RFC-054 §9.6: with an ORBOK_DATA_DIR override active, the
+          # runner's real platform config directory must be untouched --
+          # not merely unused for the resolved path (RFC-054 §4.5).
+          # Snapshots $HOME for any orbok-named entry before and after,
+          # rather than duplicating dirs'/app-json-settings' own per-OS
+          # config-path resolution in a second, driftable implementation,
+          # and rather than setting HOME/APPDATA to fake a location --
+          # HANDOFF-054's Slice 2 section explicitly rules out both.
+          before="$(find "$HOME" -maxdepth 4 -iname '*orbok*' 2>/dev/null | sort)"
           ./target/release/orbok --check
+          after="$(find "$HOME" -maxdepth 4 -iname '*orbok*' 2>/dev/null | sort)"
+          if [ "$before" != "$after" ]; then
+            echo "error: orbok --check with an ORBOK_DATA_DIR override created or modified something under \$HOME -- RFC-054 §4.5 requires the platform config directory be untouched, not merely unused" >&2
+            echo "before:" >&2
+            echo "$before" >&2
+            echo "after:" >&2
+            echo "$after" >&2
+            exit 1
+          fi
 
       - name: benchmark smoke (10 docs)
         env:
