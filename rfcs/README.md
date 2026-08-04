@@ -76,13 +76,13 @@ may start" a checked state rather than an implicit convention.
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
 | 052 | [UI Localization and Design-Gate Compliance](accepted/052-ui-localization-and-design-gate-compliance.md) | Accepted — implementation complete pending §9's manual Japanese QA (Owner Task 001) |
+| 055 | [Fail-Closed Settings Path Resolution](accepted/055-settings-path-fail-closed.md) | Accepted 2026-08-04 — implementation not started |
 
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 055 | [Fail-Closed Settings Path Resolution](proposed/055-settings-path-fail-closed.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
@@ -102,7 +102,7 @@ set; it is also now implemented on `main`. RFC-048's real-model measurement
 work is accepted and in progress (Owner Task 003); RFC-047 remains paused
 behind the other blockers and has not been accepted. RFC-054 is implemented on `main`; it narrowed a cross-platform gap found in RFC-049 after
 it shipped: `ORBOK_DATA_DIR` relocates a profile's data but not its settings,
-and the workaround for that exists only on Linux. RFC-055 is the
+and the workaround for that exists only on Linux. RFC-055 is accepted and awaiting implementation; it is the
 `app-json-settings` dependency track — it makes settings-path resolution
 fail-closed and decides what portable mode does where no platform configuration
 directory exists.

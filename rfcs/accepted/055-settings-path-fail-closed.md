@@ -3,11 +3,13 @@
 **Project:** orbok\
 **RFC:** 055\
 **Title:** Fail-Closed Settings Path Resolution\
-**Status:** Proposed\
+**Status:** Accepted\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-04\
+**Accepted:** 2026-08-04 by the project owner\
 **Related RFCs:** RFC-049 Portable Runtime Data Isolation; RFC-054 Runtime Data Override Profile Scope; RFC-030 Portable Mode; RFC-053 rusqlite Line and Rust MSRV Policy (dependency-track precedent)\
-**Supersedes decision:** none — establishes the `app-json-settings` usage contract
+**Supersedes decision:** none — establishes the `app-json-settings` usage contract\
+**Handoff:** [`HANDOFF-055-settings-path-fail-closed.md`](../handoffs/HANDOFF-055-settings-path-fail-closed.md)
 
 ---
 
