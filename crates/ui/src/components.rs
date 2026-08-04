@@ -311,12 +311,11 @@ pub fn danger_action<'a>(
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
-    // button::danger_maybe already handles padding via snora; wrap in our
-    // standard page padding for consistency with the danger zone section.
+    // button::danger_maybe already handles padding via snora; no extra
+    // container padding is needed (RFC-052 §5 -- the prior zero padding
+    // here was redundant and has been removed, not replaced with a helper).
     let btn = snora::design::button::danger_maybe(tokens, label, on);
-    iced::widget::container(btn)
-        .padding(Padding::from([0.0, 0.0]))
-        .into()
+    iced::widget::container(btn).into()
 }
 
 // ── Filter chips (RFC-041 §18.2) ──────────────────────────────────────
