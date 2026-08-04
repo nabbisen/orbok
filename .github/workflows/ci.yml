@@ -125,9 +125,19 @@ jobs:
           # config-path resolution in a second, driftable implementation,
           # and rather than setting HOME/APPDATA to fake a location --
           # HANDOFF-054's Slice 2 section explicitly rules out both.
-          before="$(find "$HOME" -maxdepth 4 -iname '*orbok*' 2>/dev/null | sort)"
+          #
+          # Review 149 §5.1: the snapshot includes each entry's mtime
+          # (`-printf '%p %T@\n'`), not just its path. A path-only snapshot
+          # cannot detect an existing file being rewritten in place (e.g. if
+          # ~/.config/orbok/ already existed and --check overwrote
+          # settings.json inside it, "created or modified" would be a false
+          # claim -- the path list would be identical before and after).
+          # Runner ephemerality happened to make that gap unobservable
+          # today; the mtime column makes the check true regardless of
+          # runner state rather than relying on it.
+          before="$(find "$HOME" -maxdepth 4 -iname '*orbok*' -printf '%p %T@\n' 2>/dev/null | sort)"
           ./target/release/orbok --check
-          after="$(find "$HOME" -maxdepth 4 -iname '*orbok*' 2>/dev/null | sort)"
+          after="$(find "$HOME" -maxdepth 4 -iname '*orbok*' -printf '%p %T@\n' 2>/dev/null | sort)"
           if [ "$before" != "$after" ]; then
             echo "error: orbok --check with an ORBOK_DATA_DIR override created or modified something under \$HOME -- RFC-054 §4.5 requires the platform config directory be untouched, not merely unused" >&2
             echo "before:" >&2
@@ -222,6 +232,20 @@ jobs:
       # leg, and this step must not be starved of a chance to run by it.
       - name: RFC-049 runtime isolation and boundary tests
         run: cargo test -p orbok --bin orbok --locked
+
+      # Review 149 §2: `--bin orbok` above and `--lib` are disjoint test
+      # sets (`cargo test -p orbok --bin orbok -- --list` contains zero
+      # `runtime_context` tests; `--lib` contains all of them), and until
+      # this step, nothing ran `orbok`'s `--lib` target anywhere in this
+      # matrix -- `fast`/`security`/`release` all run it, but all three are
+      # ubuntu-only. That silently limited RFC-054 §9.1's access-seam test
+      # (`standard_override_never_authorizes_a_path_under_the_platform_config_dir`)
+      # to Linux, the exact "green because nothing on macOS/Windows was
+      # asked the question" shape RFC-054 §2.6 was written about. This also
+      # brings the other 13 `runtime_context` tests (RFC-049's own) onto
+      # macOS and Windows for the first time.
+      - name: orbok library tests (runtime_context, cross-platform)
+        run: cargo test -p orbok --lib --locked
 
       # Pre-existing, unrelated to RFC-049: fails today on macos-latest at
       # tests::path_guard::ignore_policy_blocks_internal_symlink (orbok-fs).
