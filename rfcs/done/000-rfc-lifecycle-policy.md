@@ -153,6 +153,30 @@ burden with no payoff.
 This RFC is written for the 4-folder variant. The 5-folder
 variant works identically with one extra transition.
 
+### Adoption note (2026-08-04): this project uses the 5-folder variant
+
+Every RFC accepted for implementation in this project so far (049, 050,
+051, 052, 053) was implemented while still sitting in `proposed/`, with
+authorization coming from task directives issued outside the RFC file
+itself — not from a folder move. `proposed/` had stopped meaning what
+this policy says: "Implementer should not yet start work — the design
+may change."
+
+The project owner's decision (2026-08-04), and the reasoning worth
+preserving: do not resolve this by making the convention implicit. An
+implicit rule cannot be checked, and an unenforceable rule collapses.
+This project adopts the [5-folder variant](#folder-layout-5-folder-variant)
+described above instead of leaving the drift unaddressed. `rfcs/accepted/`
+is a real, checked state now: design is settled and the implementer may
+start, but the work has not yet shipped. `scripts/check-rfc-lifecycle.sh`
+enforces it the same way it enforces `proposed/`, `done/`, and `archive/`.
+
+This is selecting a documented option already described in this RFC, not
+amending the policy — the anti-pattern this section itself warns against
+("Formalising `accepted/` in small projects") does not apply here, since
+the triggering evidence is the opposite of an empty, unused folder: every
+prior accepted RFC needed the state and didn't have it.
+
 ## Status field inside each RFC
 
 Each RFC carries a `Status` field at the top, alongside other

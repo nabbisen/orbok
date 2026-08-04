@@ -1,12 +1,12 @@
 # RFC-048: Real-Model Benchmark Performance Recovery
 
-**Project:** orbok  
-**RFC:** 048  
-**Title:** Real-Model Benchmark Performance Recovery  
-**Status:** Proposed  
-**Target milestone:** v1.0.0 benchmark readiness  
-**Date:** 2026-07-13  
-**Related RFCs:** RFC-016 Benchmark and Retrieval Evaluation Plan; RFC-021 Default Embedding Model Selection; RFC-023 Vector ANN Indexing; RFC-047 v1.0.0 RC Evidence Collection and Review  
+**Project:** orbok\
+**RFC:** 048\
+**Title:** Real-Model Benchmark Performance Recovery\
+**Status:** Accepted (2026-08-04) — measurement-first recovery sequence in progress (Owner Task 003)\
+**Target milestone:** v1.0.0 benchmark readiness\
+**Date:** 2026-07-13\
+**Related RFCs:** RFC-016 Benchmark and Retrieval Evaluation Plan; RFC-021 Default Embedding Model Selection; RFC-023 Vector ANN Indexing; RFC-047 v1.0.0 RC Evidence Collection and Review\
 **Handoff:** [`HANDOFF-048-real-model-performance-recovery.md`](../handoffs/HANDOFF-048-real-model-performance-recovery.md)
 
 ---

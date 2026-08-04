@@ -3,8 +3,16 @@
 Managed by RFC-000. Last updated: 2026-08-04 (main after v0.24.0).
 
 The folder an RFC lives in is the source of truth for its state
-(`done/` = Implemented, `proposed/` = under review, `archive/` =
-Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
+(`done/` = Implemented, `proposed/` = under review, `accepted/` = review
+complete and the implementer may start, `archive/` = Withdrawn/Superseded).
+Each RFC's `Status` field mirrors its folder.
+
+This project uses RFC-000's [5-folder variant](done/000-rfc-lifecycle-policy.md#folder-layout-5-folder-variant)
+(adopted 2026-08-04 — see that RFC's adoption note for why) because every RFC
+accepted for implementation here (049, 050, 051, 052, 053) shipped while
+still sitting in `proposed/`, with authorization coming from task directives
+instead of the folder. `accepted/` makes "the owner signed off, implementer
+may start" a checked state rather than an implicit convention.
 
 ## Implemented
 
@@ -61,13 +69,18 @@ Withdrawn/Superseded). Each RFC's `Status` field mirrors its folder.
 | 053 | [rusqlite Line and Rust MSRV Policy](done/053-rusqlite-line-and-msrv-policy.md) | main at `6342cde`; release pending |
 | 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | main at `56d63a6`; release pending |
 
+## Accepted
+
+| ID | Title | Status |
+|---|---|---|
+| 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
+| 052 | [UI Localization and Design-Gate Compliance](accepted/052-ui-localization-and-design-gate-compliance.md) | Accepted — implementation complete pending §9's manual Japanese QA (Owner Task 001) |
+
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 048 | [Real-Model Benchmark Performance Recovery](proposed/048-real-model-performance-recovery.md) | Proposed |
-| 052 | [UI Localization and Design-Gate Compliance](proposed/052-ui-localization-and-design-gate-compliance.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
@@ -79,9 +92,13 @@ that must be resolved before release-candidate promotion. RFC-049, RFC-050,
 and RFC-051 are now implemented on `main`; RFC-050's normative model trust
 data and provenance evidence are recorded in
 [`APPENDIX-B-default-model-trust-root.md`](appendices/APPENDIX-B-default-model-trust-root.md).
-RFC-052 remains open. RFC-053 (rusqlite line and Rust MSRV
-policy) is a separate dependency-maintenance track, not part of the
-architecture-review blocker set; it is also now implemented on `main`.
+RFC-052's dev-team implementation is complete and accepted, pending the
+project owner's manual Japanese QA (Owner Task 001) before it can move to
+`done/`. RFC-053 (rusqlite line and Rust MSRV policy) is a separate
+dependency-maintenance track, not part of the architecture-review blocker
+set; it is also now implemented on `main`. RFC-048's real-model measurement
+work is accepted and in progress (Owner Task 003); RFC-047 remains paused
+behind the other blockers and has not been accepted.
 
 ## Archive
 

@@ -3,7 +3,7 @@
 **Status:** Accepted Phase 4 consent/threat-model evidence; consolidated by Review 105
 **RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)
 **Handoff:** [`../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md`](../handoffs/HANDOFF-050-trusted-atomic-model-delivery.md)  
-**Localization policy:** [RFC-052](../proposed/052-ui-localization-and-design-gate-compliance.md) and [HANDOFF-052](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
+**Localization policy:** [RFC-052](../accepted/052-ui-localization-and-design-gate-compliance.md) and [HANDOFF-052](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 
 This appendix records the accepted bounded Phase 4 consent and threat-model
 evidence implemented after Architecture Review 094 and consolidated by Review

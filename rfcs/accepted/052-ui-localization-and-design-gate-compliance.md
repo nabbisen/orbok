@@ -1,12 +1,12 @@
 # RFC-052: UI Localization and Design-Gate Compliance
 
-**Project:** orbok  
-**RFC:** 052  
-**Title:** UI Localization and Design-Gate Compliance  
-**Status:** Proposed  
-**Target milestone:** v1.0.0 UI compliance  
-**Date:** 2026-07-14  
-**Related RFCs:** RFC-031 GUI Internationalization; RFC-032 Design Tokens; RFC-034 Accessibility; RFC-035 Inclusive Design  
+**Project:** orbok\
+**RFC:** 052\
+**Title:** UI Localization and Design-Gate Compliance\
+**Status:** Accepted (2026-08-04) — implementation complete pending the manual Japanese QA required by §9\
+**Target milestone:** v1.0.0 UI compliance\
+**Date:** 2026-07-14\
+**Related RFCs:** RFC-031 GUI Internationalization; RFC-032 Design Tokens; RFC-034 Accessibility; RFC-035 Inclusive Design\
 **Handoff:** [`HANDOFF-052-ui-localization-and-design-gate-compliance.md`](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 
 ---

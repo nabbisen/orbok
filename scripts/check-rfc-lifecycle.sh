@@ -28,6 +28,7 @@ require_dir() {
 
 require_dir rfcs/done
 require_dir rfcs/proposed
+require_dir rfcs/accepted
 require_dir rfcs/archive
 
 read_status() {
@@ -76,6 +77,12 @@ done < <(git ls-files 'rfcs/proposed/*.md')
 while read -r file; do
   [ -n "$file" ] || continue
   check_id_prefix "$file"
+  check_status_prefix "$file" "**Status:** Accepted"
+done < <(git ls-files 'rfcs/accepted/*.md')
+
+while read -r file; do
+  [ -n "$file" ] || continue
+  check_id_prefix "$file"
   status="$(read_status "$file")"
   if [ -z "$status" ]; then
     flag "$file has no Status field"
@@ -94,6 +101,9 @@ trap 'rm -rf "$tmp_dir"' EXIT
 { grep -E '^\| [0-9]{3} \| .*]\(proposed/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
   | sed -E 's/^\| ([0-9]{3}) \| .*]\((proposed\/[^)]+\.md)\) \|.*$/\1 \2/' \
   > "$tmp_dir/index-proposed.txt"
+{ grep -E '^\| [0-9]{3} \| .*]\(accepted/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
+  | sed -E 's/^\| ([0-9]{3}) \| .*]\((accepted\/[^)]+\.md)\) \|.*$/\1 \2/' \
+  > "$tmp_dir/index-accepted.txt"
 { grep -E '^\| [0-9]{3} \| .*]\(archive/[^)]+\.md\) \|' <<< "$readme_index" || true; } \
   | sed -E 's/^\| ([0-9]{3}) \| .*]\((archive\/[^)]+\.md)\) \|.*$/\1 \2/' \
   > "$tmp_dir/index-archive.txt"
@@ -102,6 +112,7 @@ tracked_rfc_paths="$tmp_dir/tracked-rfc-paths.txt"
 {
   git ls-files 'rfcs/done/*.md'
   git ls-files 'rfcs/proposed/*.md'
+  git ls-files 'rfcs/accepted/*.md'
   git ls-files 'rfcs/archive/*.md'
 } | sed 's#^rfcs/##' | sort > "$tracked_rfc_paths"
 
@@ -123,11 +134,13 @@ check_index_entries() {
 
 check_index_entries "$tmp_dir/index-done.txt"
 check_index_entries "$tmp_dir/index-proposed.txt"
+check_index_entries "$tmp_dir/index-accepted.txt"
 check_index_entries "$tmp_dir/index-archive.txt"
 
 index_paths="$tmp_dir/index-paths.txt"
 cut -d' ' -f2 "$tmp_dir/index-done.txt" > "$index_paths"
 cut -d' ' -f2 "$tmp_dir/index-proposed.txt" >> "$index_paths"
+cut -d' ' -f2 "$tmp_dir/index-accepted.txt" >> "$index_paths"
 cut -d' ' -f2 "$tmp_dir/index-archive.txt" >> "$index_paths"
 sort "$index_paths" > "$tmp_dir/index-paths.sorted"
 
@@ -139,7 +152,7 @@ while read -r path; do
 done < "$tracked_rfc_paths"
 
 file_ids="$tmp_dir/file-ids.txt"
-git ls-files 'rfcs/done/*.md' 'rfcs/proposed/*.md' 'rfcs/archive/*.md' \
+git ls-files 'rfcs/done/*.md' 'rfcs/proposed/*.md' 'rfcs/accepted/*.md' 'rfcs/archive/*.md' \
   | xargs -r -n1 basename \
   | cut -d- -f1 \
   | grep -E '^[0-9]{3}$' \
@@ -149,6 +162,7 @@ index_ids="$tmp_dir/index-ids.txt"
 {
   cut -d' ' -f1 "$tmp_dir/index-done.txt"
   cut -d' ' -f1 "$tmp_dir/index-proposed.txt"
+  cut -d' ' -f1 "$tmp_dir/index-accepted.txt"
   cut -d' ' -f1 "$tmp_dir/index-archive.txt"
 } | grep -E '^[0-9]{3}$' | sort > "$index_ids"
 

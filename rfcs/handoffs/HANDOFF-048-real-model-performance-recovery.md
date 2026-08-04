@@ -1,11 +1,11 @@
 # Implementation Handoff — RFC-048: Real-Model Benchmark Performance Recovery
 
-**Project:** orbok  
-**RFC:** 048  
-**Lifecycle stage:** Design + handoff  
-**Target milestone:** v1.0.0 benchmark readiness  
-**Primary owners:** benchmark/search/embed pipeline  
-**RFC:** [`../proposed/048-real-model-performance-recovery.md`](../proposed/048-real-model-performance-recovery.md)
+**Project:** orbok\
+**RFC:** 048\
+**Lifecycle stage:** Accepted; measurement-first recovery sequence in progress (Owner Task 003)\
+**Target milestone:** v1.0.0 benchmark readiness\
+**Primary owners:** benchmark/search/embed pipeline\
+**RFC:** [`../accepted/048-real-model-performance-recovery.md`](../accepted/048-real-model-performance-recovery.md)
 
 > **Scope rule:** Start with measurement. Do not optimize, change thresholds,
 > or reroute the release-candidate path until the benchmark identifies the
