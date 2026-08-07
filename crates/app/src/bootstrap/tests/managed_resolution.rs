@@ -18,7 +18,7 @@ fn test_context(data_dir: &std::path::Path) -> RuntimeContext {
         data_dir,
         PlatformRuntimePaths {
             standard_data_dir: Some(data_dir),
-            standard_settings_dir: data_dir,
+            standard_settings_dir: Some(data_dir),
         },
     )
     .unwrap()

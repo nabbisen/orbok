@@ -11,9 +11,13 @@
 //!
 //! ## Note for the crate author
 //!
-//! `ConfigManager::new()` derives the config directory from the binary name.
-//! The crate package and binary are both named `orbok` (resolved in v0.20.1),
-//! so config paths are now stable.
+//! The config directory identity is the explicit literal `"orbok"`
+//! (`ConfigManager::for_app("orbok")`, RFC-055 §3), not derived from the
+//! running executable's name. The crate package and binary happen to
+//! also be named `orbok`, but that is no longer load-bearing: renaming
+//! the binary cannot change the settings location, and an executable
+//! name that failed to resolve cannot silently fall back to a shared
+//! literal (RFC-055 §2.4).
 
 use app_json_settings::ConfigManager;
 #[cfg(test)]
@@ -95,12 +99,15 @@ impl Default for OrbokSettings {
     }
 }
 
-/// Load settings from the platform config directory, or return defaults
-/// if the file does not exist yet.
-pub fn standard_settings_file() -> PathBuf {
-    ConfigManager::<OrbokSettings>::new()
+/// The standard profile's settings file path under the platform config
+/// directory, or an error if that directory cannot be resolved (RFC-055
+/// §3 -- reported, never substituted). Path derivation only: settings I/O
+/// goes through `orbok::runtime_storage`'s RFC-049 boundary, never through
+/// this crate's own `load`/`save`/`load_or_default`.
+pub fn standard_settings_file() -> app_json_settings::Result<PathBuf> {
+    Ok(ConfigManager::<OrbokSettings>::for_app("orbok")?
         .with_filename("settings.json")
-        .path()
+        .path())
 }
 
 /// Test-fixture only: production settings load/save now goes through
@@ -129,6 +136,16 @@ pub fn save_settings(path: &Path, settings: &OrbokSettings) -> std::io::Result<(
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     std::fs::write(path, bytes)
 }
+
+// A separate file, not an inline `mod tests { ... }`, deliberately: the
+// production-boundary scan in `runtime_isolation_tests.rs` reads this
+// file's raw source text via `include_str!` and asserts `for_app("orbok")`
+// appears exactly once and `new()` appears nowhere in it. A test that
+// calls both (RFC-055 §9.1's compatibility measurement, below) belongs
+// outside that text, exactly as `runtime_context.rs` already keeps its
+// `tests` module in `runtime_context/tests.rs` rather than inline.
+#[cfg(test)]
+mod tests;
 
 impl OrbokSettings {
     /// Build effective [`PrivacySettings`] from the persisted strings,

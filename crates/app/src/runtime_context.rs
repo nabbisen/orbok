@@ -71,8 +71,13 @@ impl RuntimeSelection {
 pub struct PlatformRuntimePaths<'a> {
     /// Existing standard-mode data location, including the `orbok` component.
     pub standard_data_dir: Option<&'a Path>,
-    /// Existing standard-mode settings directory, including the app component.
-    pub standard_settings_dir: &'a Path,
+    /// Existing standard-mode settings directory, including the app
+    /// component. `None` when the platform configuration directory could
+    /// not be resolved (RFC-055 §3) -- captured unconditionally either
+    /// way, per RFC-049's capture-once-then-decide design; whether that
+    /// absence is fatal depends on the selected mode, decided in
+    /// [`RuntimeContext::resolve`], not here.
+    pub standard_settings_dir: Option<&'a Path>,
 }
 
 /// Immutable paths for the one active runtime profile.
@@ -104,13 +109,24 @@ impl RuntimeContext {
             .map(|path| anchor_and_normalize(&startup_dir, path))
             .transpose()?
             .unwrap_or_else(|| portable_data_dir.clone());
-        let standard_settings_dir =
-            anchor_and_normalize(&startup_dir, platform.standard_settings_dir)?;
+        let standard_settings_dir = platform
+            .standard_settings_dir
+            .map(|path| anchor_and_normalize(&startup_dir, path))
+            .transpose()?;
 
         let data_dir = match selection.mode {
             RuntimeMode::Portable => {
+                // RFC-055 §4.4: when the platform settings directory could
+                // not be resolved, there is no standard-profile settings
+                // location to alias against -- skip only this comparison,
+                // deliberately narrowed, not the whole alias check. The
+                // data-directory alias check below is unaffected and always
+                // runs.
+                let aliases_standard_settings = standard_settings_dir
+                    .as_deref()
+                    .is_some_and(|dir| paths_overlap(&portable_data_dir, dir));
                 if paths_overlap(&portable_data_dir, &standard_default_data_dir)
-                    || paths_overlap(&portable_data_dir, &standard_settings_dir)
+                    || aliases_standard_settings
                 {
                     return Err(RuntimeContextError::ProfilePathAlias);
                 }
@@ -131,6 +147,13 @@ impl RuntimeContext {
         // so reusing it is sufficient; nothing further derives from
         // standard_settings_dir in this case, and the platform config
         // directory it names is never read or written.
+        //
+        // RFC-055 §3/§4.3: without an override, Standard mode needs the
+        // platform settings directory -- if the platform could not resolve
+        // one, fail here with a remedy-naming error rather than substitute
+        // anything. Portable mode and Standard-with-override never reach
+        // this branch, so an unresolvable platform directory does not stop
+        // them (RFC-055 §3 point 3, the RFC's central decision).
         let settings_dir = match selection.mode {
             RuntimeMode::Portable => data_dir.clone(),
             RuntimeMode::Standard => {
@@ -138,6 +161,7 @@ impl RuntimeContext {
                     data_dir.clone()
                 } else {
                     standard_settings_dir
+                        .ok_or(RuntimeContextError::StandardSettingsDirectoryUnavailable)?
                 }
             }
         };
@@ -311,6 +335,12 @@ pub enum RuntimeContextError {
     ProfilePathAlias,
     StartupDirectoryNotAbsolute,
     ResolvedPathNotAbsolute,
+    /// RFC-055 §4.3: Standard mode without an `ORBOK_DATA_DIR` override
+    /// needs the platform configuration directory for settings, and it
+    /// could not be resolved. The environments that hit this -- containers,
+    /// service accounts, kiosks -- are read from a log, not a screen, so
+    /// the message names the remedy rather than only the failure.
+    StandardSettingsDirectoryUnavailable,
 }
 
 impl fmt::Display for RuntimeContextError {
@@ -327,6 +357,12 @@ impl fmt::Display for RuntimeContextError {
             Self::ResolvedPathNotAbsolute => {
                 formatter.write_str("resolved runtime path must be absolute")
             }
+            Self::StandardSettingsDirectoryUnavailable => formatter.write_str(
+                "the platform configuration directory could not be resolved, and standard \
+                 mode without an ORBOK_DATA_DIR override needs it for settings; run with \
+                 --portable, or set ORBOK_DATA_DIR to a writable directory, to start without \
+                 a platform configuration directory",
+            ),
         }
     }
 }

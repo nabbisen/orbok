@@ -60,24 +60,31 @@ pub fn resolve_runtime_context(
     let startup_dir = std::env::current_dir()?;
     let data_override = std::env::var_os("ORBOK_DATA_DIR");
     let standard_data_dir = dirs::data_local_dir().map(|directory| directory.join("orbok"));
-    let standard_settings_file = crate::settings::standard_settings_file();
-    let standard_settings_dir = standard_settings_file
-        .parent()
-        .ok_or("standard settings path has no parent directory")?;
+    // RFC-055 §3/§4.2: capture stays unconditional -- resolve the platform
+    // settings directory here regardless of mode, and record absence as
+    // `None` rather than branching on mode before resolving. `.ok()`
+    // discards the specific `ConfigError` (whichever of `for_app`'s two
+    // fallible steps produced it -- in practice always `ConfigError::
+    // Platform`, since "orbok" is a fixed, always-valid path component)
+    // without matching on it, so a future upstream variant addition needs
+    // no change here.
+    let standard_settings_dir = crate::settings::standard_settings_file()
+        .ok()
+        .and_then(|file| file.parent().map(|dir| dir.to_path_buf()));
     let selection = RuntimeSelection::resolve(portable, data_override)?;
     let context = RuntimeContext::resolve(
         selection,
         &startup_dir,
         PlatformRuntimePaths {
             standard_data_dir: standard_data_dir.as_deref(),
-            standard_settings_dir,
+            standard_settings_dir: standard_settings_dir.as_deref(),
         },
     )?;
     if context.mode() == RuntimeMode::Portable {
         orbok::physical_identity::validate_physical_profile_separation(
             &context,
             standard_data_dir.as_deref(),
-            standard_settings_dir,
+            standard_settings_dir.as_deref(),
         )?;
     }
     Ok(context)

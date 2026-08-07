@@ -15,7 +15,7 @@ fn contexts(root: &Path) -> (RuntimeContext, RuntimeContext) {
     std::fs::create_dir_all(&startup).unwrap();
     let platform = PlatformRuntimePaths {
         standard_data_dir: Some(&standard_data),
-        standard_settings_dir: &standard_settings,
+        standard_settings_dir: Some(&standard_settings),
     };
     let standard = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, None).unwrap(),

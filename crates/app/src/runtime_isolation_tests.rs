@@ -92,12 +92,14 @@ fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
     assert!(!outside_boundary.contains("CacheService::new"));
     assert_eq!(runtime_storage.matches("Catalog::open").count(), 1);
     assert_eq!(runtime_storage.matches("CacheService::new").count(), 1);
+    // RFC-055 §3/§4.2: the fail-closed for_app() constructor, not new().
     assert_eq!(
         settings
-            .matches("ConfigManager::<OrbokSettings>::new()")
+            .matches(r#"ConfigManager::<OrbokSettings>::for_app("orbok")"#)
             .count(),
         1
     );
+    assert!(!settings.contains("ConfigManager::<OrbokSettings>::new()"));
     assert!(!settings.contains("at_custom_dir"));
 }
 
@@ -138,7 +140,7 @@ fn contexts(root: &Path) -> (Profile, Profile) {
     std::fs::create_dir_all(&startup).unwrap();
     let platform = PlatformRuntimePaths {
         standard_data_dir: Some(&standard_data),
-        standard_settings_dir: &standard_settings,
+        standard_settings_dir: Some(&standard_settings),
     };
     let standard_context = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, None).unwrap(),
@@ -607,7 +609,7 @@ fn frozen_startup_anchor_survives_a_later_current_directory_change() {
             &original,
             PlatformRuntimePaths {
                 standard_data_dir: Some(&other.path().join("standard")),
-                standard_settings_dir: &other.path().join("settings"),
+                standard_settings_dir: Some(&other.path().join("settings")),
             },
         )
         .unwrap();
@@ -663,7 +665,7 @@ fn standard_override_relocates_settings_through_a_real_run_check() {
         &startup,
         PlatformRuntimePaths {
             standard_data_dir: Some(&platform_data),
-            standard_settings_dir: &platform_settings,
+            standard_settings_dir: Some(&platform_settings),
         },
     )
     .unwrap();
@@ -698,12 +700,12 @@ fn physical_symlink_alias_is_rejected_before_persistent_access() {
             &startup,
             PlatformRuntimePaths {
                 standard_data_dir: Some(&standard),
-                standard_settings_dir: &settings,
+                standard_settings_dir: Some(&settings),
             },
         )
         .unwrap(),
         Some(&standard),
-        &settings,
+        Some(&settings),
     );
     assert!(result.is_err());
     assert!(!standard.join(orbok_db::CATALOG_FILE_NAME).exists());
@@ -732,7 +734,7 @@ fn physical_catalog_object_identity_alias_is_rejected() {
         &startup,
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard),
-            standard_settings_dir: &settings,
+            standard_settings_dir: Some(&settings),
         },
     )
     .unwrap();
@@ -741,7 +743,7 @@ fn physical_catalog_object_identity_alias_is_rejected() {
         orbok::physical_identity::validate_physical_profile_separation(
             &context,
             Some(&standard),
-            &settings
+            Some(&settings)
         )
         .is_err()
     );
@@ -760,7 +762,7 @@ fn physical_bind_mount_identity_alias_is_rejected() {
             &startup,
             PlatformRuntimePaths {
                 standard_data_dir: Some(&standard),
-                standard_settings_dir: &settings,
+                standard_settings_dir: Some(&settings),
             },
         )
         .unwrap();
@@ -768,7 +770,7 @@ fn physical_bind_mount_identity_alias_is_rejected() {
             orbok::physical_identity::validate_physical_profile_separation(
                 &context,
                 Some(&standard),
-                &settings
+                Some(&settings)
             )
             .is_err()
         );
@@ -930,7 +932,7 @@ fn physical_junction_alias_is_rejected_before_persistent_access() {
         &startup,
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard),
-            standard_settings_dir: &settings,
+            standard_settings_dir: Some(&settings),
         },
     )
     .unwrap();
@@ -939,7 +941,7 @@ fn physical_junction_alias_is_rejected_before_persistent_access() {
         orbok::physical_identity::validate_physical_profile_separation(
             &context,
             Some(&standard),
-            &settings
+            Some(&settings)
         )
         .is_err()
     );

@@ -42,6 +42,31 @@ next release tag.
 
 ### Changed
 
+- **RFC-055 — Settings path resolution fails closed instead of silently
+  substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest
+  comment recording why the floor is pinned rather than left at a bare
+  `"2"` (a routine `cargo update` had already once adopted a fallback
+  behavior no one reviewed). `settings::standard_settings_file()` now uses
+  `ConfigManager::for_app("orbok")`, an explicit, fixed application
+  identity, in place of `ConfigManager::new()`'s two silent fallbacks: a
+  relative-path substitution when the platform configuration directory
+  cannot be resolved, and the shared literal `"app"` when the executable's
+  own name cannot be determined — the latter meant two differently-named,
+  unrelated executables that both hit it could silently read and overwrite
+  each other's settings. Standard mode without an `ORBOK_DATA_DIR`
+  override now reports a startup error naming both remedies (`--portable`,
+  `ORBOK_DATA_DIR`) when the platform configuration directory cannot be
+  resolved, instead of substituting a path no one asked for; portable mode
+  and standard mode with an override never needed that directory and are
+  unaffected. **Cost:** a user who renamed the `orbok` executable
+  previously got a settings directory derived from the new binary name
+  under `new()`; under the fixed `"orbok"` identity the directory is
+  always `<config>/orbok/` regardless of executable name, so a
+  renamed-executable user's settings now resolve to the same location an
+  unrenamed installation would use, not the location their renamed binary
+  previously read. This is an accepted cost, not a migration — no
+  unrenamed user's settings location changes on any platform. See
+  `rfcs/accepted/055-settings-path-fail-closed.md`.
 - **RFC-054 — `ORBOK_DATA_DIR` now relocates the whole profile, settings
   included:** previously the override moved the catalog, cache, and model
   directories but left the settings file at the platform config directory
@@ -117,6 +142,18 @@ next release tag.
   test running the real `bootstrap::run_check` path against a temporary
   override directory, confirming settings.json is created there and that
   the platform config directory is never even created, not merely unused.
+- **RFC-055:** added the five required cases — `for_app("orbok")` and
+  `new()` measured (not reasoned) to resolve under the same platform
+  configuration directory, strengthening to full path equality whenever
+  the running process's own derived name happens to be `"orbok"`; Standard
+  mode without an override failing closed with the remedy-naming error
+  when the platform settings directory is absent; portable mode and
+  Standard-mode-with-override both starting normally in that same
+  situation; and two tests proving the narrowed portable alias check
+  (RFC-055 §4.4) still rejects a data-directory alias when the settings
+  directory is absent, so the narrowing can't regress into deleting the
+  whole check. All five are driven through the `PlatformRuntimePaths`
+  injection seam — none mutate process environment variables.
 
 ### Docs
 
@@ -149,6 +186,11 @@ next release tag.
   now lists the platform config (settings) path alongside the data path,
   and both docs state that `ORBOK_DATA_DIR` relocates the whole profile,
   not just the data directory.
+- Documented RFC-055's fail-closed behavior in
+  `docs/src/intermediate/settings.md`: what happens when the platform
+  configuration directory cannot be resolved, and that only unoverridden
+  standard mode is affected — portable mode and standard mode with
+  `ORBOK_DATA_DIR` both start normally.
 
 ---
 

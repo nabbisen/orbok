@@ -18,20 +18,28 @@ use std::path::{Path, PathBuf};
 
 /// Reject a portable profile whose resolved or physical location overlaps
 /// the standard profile's data or settings location.
+///
+/// RFC-055 §4.4: `standard_settings_dir` is `None` when the platform
+/// configuration directory could not be resolved. There is no standard
+/// profile settings location to alias against in that case, so -- mirroring
+/// how `standard_data_dir` was already handled here -- it is simply absent
+/// from `standard_paths`, narrowing only this comparison. The data-directory
+/// comparison is unaffected either way.
 pub fn validate_physical_profile_separation(
     context: &RuntimeContext,
     standard_data_dir: Option<&Path>,
-    standard_settings_dir: &Path,
+    standard_settings_dir: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let portable_paths = [
         context.data_dir().to_path_buf(),
         context.catalog_file().to_path_buf(),
         context.settings_file().to_path_buf(),
     ];
-    let mut standard_paths = vec![
-        standard_settings_dir.to_path_buf(),
-        standard_settings_dir.join("settings.json"),
-    ];
+    let mut standard_paths = Vec::new();
+    if let Some(settings_dir) = standard_settings_dir {
+        standard_paths.push(settings_dir.to_path_buf());
+        standard_paths.push(settings_dir.join("settings.json"));
+    }
     if let Some(data_dir) = standard_data_dir {
         standard_paths.push(data_dir.to_path_buf());
         standard_paths.push(data_dir.join(orbok_db::CATALOG_FILE_NAME));

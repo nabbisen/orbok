@@ -16,7 +16,7 @@ fn absolute(parts: &[&str]) -> PathBuf {
 fn platform_paths<'a>(data: &'a Path, settings: &'a Path) -> PlatformRuntimePaths<'a> {
     PlatformRuntimePaths {
         standard_data_dir: Some(data),
-        standard_settings_dir: settings,
+        standard_settings_dir: Some(settings),
     }
 }
 
@@ -146,7 +146,7 @@ fn missing_platform_data_root_preserves_the_anchored_standard_fallback() {
         &startup,
         PlatformRuntimePaths {
             standard_data_dir: None,
-            standard_settings_dir: &standard_settings,
+            standard_settings_dir: Some(&standard_settings),
         },
     )
     .unwrap();
@@ -166,7 +166,7 @@ fn portable_mode_fails_closed_when_it_would_alias_the_standard_fallback() {
         &startup,
         PlatformRuntimePaths {
             standard_data_dir: None,
-            standard_settings_dir: &standard_settings,
+            standard_settings_dir: Some(&standard_settings),
         },
     )
     .unwrap_err();
@@ -202,6 +202,131 @@ fn portable_mode_fails_closed_when_standard_settings_overlap_its_profile() {
         selection,
         &startup,
         platform_paths(&standard_data, &standard_settings),
+    )
+    .unwrap_err();
+
+    assert_eq!(error, RuntimeContextError::ProfilePathAlias);
+}
+
+// RFC-055 §9.2: Standard mode without an override needs the platform
+// settings directory; when it is absent, resolution fails closed with the
+// distinct, remedy-naming error rather than substituting anything.
+#[test]
+fn standard_mode_without_override_fails_closed_when_platform_settings_dir_is_absent() {
+    let startup = absolute(&["launch", "directory"]);
+    let standard_data = absolute(&["local-data", "orbok"]);
+    let selection = RuntimeSelection::resolve(false, None).unwrap();
+
+    let error = RuntimeContext::resolve(
+        selection,
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(&standard_data),
+            standard_settings_dir: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error,
+        RuntimeContextError::StandardSettingsDirectoryUnavailable
+    );
+    let message = error.to_string();
+    assert!(message.contains("--portable"));
+    assert!(message.contains("ORBOK_DATA_DIR"));
+}
+
+// RFC-055 §9.3: Portable mode never needs the platform settings directory
+// -- an absent one must not stop startup.
+#[test]
+fn portable_mode_starts_normally_when_platform_settings_dir_is_absent() {
+    let startup = absolute(&["launch", "directory"]);
+    let standard_data = absolute(&["local-data", "orbok"]);
+    let selection = RuntimeSelection::resolve(true, None).unwrap();
+
+    let context = RuntimeContext::resolve(
+        selection,
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(&standard_data),
+            standard_settings_dir: None,
+        },
+    )
+    .unwrap();
+
+    let portable = startup.join("orbok-data");
+    assert_eq!(context.mode(), RuntimeMode::Portable);
+    assert_eq!(context.data_dir(), portable);
+    assert_eq!(context.settings_file(), portable.join("settings.json"));
+}
+
+// RFC-055 §9.4: Standard mode with an ORBOK_DATA_DIR override relocates
+// settings alongside the rest of the profile (RFC-054 §3/§4.1) and never
+// reaches the platform settings directory -- an absent one must not stop
+// startup.
+#[test]
+fn standard_mode_with_override_starts_normally_when_platform_settings_dir_is_absent() {
+    let startup = absolute(&["launch", "directory"]);
+    let standard_data = absolute(&["local-data", "orbok"]);
+    let selection = RuntimeSelection::resolve(false, Some("override-profile".into())).unwrap();
+
+    let context = RuntimeContext::resolve(
+        selection,
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(&standard_data),
+            standard_settings_dir: None,
+        },
+    )
+    .unwrap();
+
+    let overridden = startup.join("override-profile");
+    assert_eq!(context.mode(), RuntimeMode::Standard);
+    assert_eq!(context.data_dir(), overridden);
+    assert_eq!(context.settings_file(), overridden.join("settings.json"));
+}
+
+// RFC-055 §9.5: the portable alias check narrows (RFC-055 §4.4) to skip
+// only the settings-dir comparison when it is absent -- the data-directory
+// alias check is unaffected and must still fire. A test that only proves
+// startup succeeds (as above) would pass even if the whole alias check
+// had been deleted instead of narrowed.
+#[test]
+fn portable_mode_still_rejects_a_data_dir_alias_when_settings_dir_is_absent() {
+    let startup = absolute(&["launch", "directory"]);
+    let standard_data = startup.join("orbok-data");
+    let selection = RuntimeSelection::resolve(true, None).unwrap();
+
+    let error = RuntimeContext::resolve(
+        selection,
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(&standard_data),
+            standard_settings_dir: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error, RuntimeContextError::ProfilePathAlias);
+}
+
+// RFC-055 §9.5 continued: the same unaffected check must also fire via the
+// missing-platform-data-root fallback path (both platform dirs absent),
+// proving the narrowing is specific to the settings comparison and not an
+// accidental side effect of `standard_data_dir` still being `Some` in the
+// test above.
+#[test]
+fn portable_mode_still_rejects_the_missing_data_root_fallback_alias_when_settings_dir_is_absent() {
+    let startup = absolute(&["launch", "directory"]);
+    let selection = RuntimeSelection::resolve(true, None).unwrap();
+
+    let error = RuntimeContext::resolve(
+        selection,
+        &startup,
+        PlatformRuntimePaths {
+            standard_data_dir: None,
+            standard_settings_dir: None,
+        },
     )
     .unwrap_err();
 
