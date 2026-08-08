@@ -291,9 +291,10 @@ setter — not against the upstream reply the handoff was itself derived from.
 The handoff had become the review baseline, and the source it was derived from
 stopped being consulted.
 
-[Task 008](../../.git-exclude/tasks/dev-team/008-rfc055-checked-filename-setter.md)
-closes the gap: `standard_settings_file()` now uses `try_with_filename`, and the
-dependency floor moves `2.6.0 → 2.7.0`. The setter change alone needed no version
+Task 008, a dev-team task directive (not linked here — task files live under
+the untracked `.git-exclude/` directory and are not part of the release
+archive `rfcs/` ships in) closes the gap: `standard_settings_file()` now uses
+`try_with_filename`, and the dependency floor moves `2.6.0 → 2.7.0`. The setter change alone needed no version
 move — `try_with_filename` exists in 2.6.0 — but 2.7.0 is where
 `validate_plain_file_name` starts rejecting Windows reserved device names
 (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, case-insensitively and
