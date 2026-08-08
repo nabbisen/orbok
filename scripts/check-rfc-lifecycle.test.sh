@@ -267,6 +267,88 @@ git add rfcs/done/001-test.md
 link_fixed_result="$(run_gate)"
 check "removing the broken link makes the gate pass again" "pass" "$link_fixed_result"
 
+# ── Link integrity into rfcs/ from outside files (Review 154 §5) ──────────
+# A link from a tracked file outside rfcs/ into rfcs/ must resolve; a
+# broken link to something *outside* rfcs/ is out of this gate's scope and
+# must not be flagged -- proving the check is scoped to rfcs/-bound
+# targets only, not a general link checker.
+
+cat > CHANGELOG.md <<'EOF'
+# Changelog
+
+See [rfcs/README.md](rfcs/README.md) for the RFC index.
+See [rfcs/done/999](rfcs/done/999-does-not-exist.md) for a nonexistent RFC.
+See [some other doc](docs/does-not-exist.md) for an out-of-scope broken link.
+EOF
+git add CHANGELOG.md
+
+outside_broken_result="$(run_gate)"
+check "a broken link into rfcs/ from an outside file is caught" "fail" "$outside_broken_result"
+if [ "$outside_broken_result" = "fail" ]; then
+  if grep -q "broken relative link into rfcs/ -> rfcs/done/999-does-not-exist.md" "$tmp_repo/.gate-output"; then
+    echo "ok: failure names the broken rfcs/ link from the outside file"
+  else
+    echo "FAIL: gate failed, but not for the expected rfcs/-link reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+  if grep -q "docs/does-not-exist.md" "$tmp_repo/.gate-output"; then
+    echo "FAIL: an out-of-scope broken link (outside rfcs/) was flagged; scoping is broken" >&2
+    fail=1
+  else
+    echo "ok: the out-of-scope broken link (outside rfcs/) is not flagged"
+  fi
+fi
+
+# Fix only the rfcs/ link; the out-of-scope broken link must not block a pass.
+cat > CHANGELOG.md <<'EOF'
+# Changelog
+
+See [rfcs/README.md](rfcs/README.md) for the RFC index.
+See [some other doc](docs/does-not-exist.md) for an out-of-scope broken link.
+EOF
+git add CHANGELOG.md
+outside_fixed_result="$(run_gate)"
+check "fixing only the rfcs/ link makes the gate pass, out-of-scope link notwithstanding" "pass" "$outside_fixed_result"
+
+# ── An off-by-one '../' count that misses rfcs/ entirely is still caught ──
+# This reproduces the actual class of bug Review 154 found in
+# docs/src/maintainers/rfcs.md: a link that says "rfcs/" but, due to one
+# too few "../", resolves to a sibling directory ("a/rfcs/...") that was
+# never created. Scoping by the resolved path (as an earlier draft of this
+# check did) misses this entirely, since the resolved path never lands
+# under rfcs/ in the first place -- proving the fix must key off the
+# link's written target, not its (wrong) resolution.
+
+mkdir -p a/b
+cat > a/b/page.md <<'EOF'
+# Nested page
+
+See [rfcs/README.md](../rfcs/README.md) for the RFC index.
+EOF
+git add a/b/page.md
+
+offbyone_result="$(run_gate)"
+check "an off-by-one relative path that misses rfcs/ entirely is still caught" "fail" "$offbyone_result"
+if [ "$offbyone_result" = "fail" ]; then
+  if grep -q "broken relative link into rfcs/ -> \.\./rfcs/README.md" "$tmp_repo/.gate-output"; then
+    echo "ok: failure names the off-by-one link even though it resolves outside rfcs/"
+  else
+    echo "FAIL: gate failed, but not for the expected off-by-one reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+fi
+
+cat > a/b/page.md <<'EOF'
+# Nested page
+
+See [rfcs/README.md](../../rfcs/README.md) for the RFC index.
+EOF
+git add a/b/page.md
+offbyone_fixed_result="$(run_gate)"
+check "correcting the '../' count makes the gate pass again" "pass" "$offbyone_fixed_result"
+
 if [ "$fail" -ne 0 ]; then
   echo "check-rfc-lifecycle.test.sh: FAILED" >&2
   exit 1

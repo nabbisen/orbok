@@ -209,20 +209,21 @@ else
   fi
 fi
 
-# ── Link integrity: every relative .md link under rfcs/ must resolve ──────
+# ── Link integrity ─────────────────────────────────────────────────────
 # Required before the next RFC folder move (Review 146 §5): a folder move
 # silently breaks every inbound cross-reference to the moved file, and
 # nothing previously checked for that -- Task 007 Part A's own review
 # found two broken links (APPENDIX-C, APPENDIX-D) this script did not
-# catch. Resolves every relative Markdown link inside every tracked
-# rfcs/*.md file (README.md, and every state/handoffs/appendices
-# subdirectory) against the git index, the same source of truth as every
-# other check here. Fenced code blocks are blanked (not removed, so line
-# numbers in any failure message still match the file) before link
-# extraction, so RFC-000's own seven deliberately non-existent
-# illustrative example links are never flagged.
-check_links_in_file() {
+# catch. Shared resolution walk: reads a file from the git index (the same
+# source of truth as every other check here), blanks fenced code blocks
+# (not removes -- so line numbers in any failure message still match the
+# file, and RFC-000's own seven deliberately non-existent illustrative
+# example links are never flagged), and for every relative Markdown link
+# target on every line, calls $handler with the file, line number, the
+# target as written, and the target resolved to a repo-root-relative path.
+for_each_md_link() {
   local file="$1"
+  local handler="$2"
   local dir
   dir="$(dirname "$file")"
   local content
@@ -246,17 +247,57 @@ check_links_in_file() {
       target="${target%%#*}"
       [ -n "$target" ] || continue
       resolved="$(realpath -m --relative-to=. "$dir/$target" 2>/dev/null || true)"
-      if [ -z "$resolved" ] || ! git show ":$resolved" > /dev/null 2>&1; then
-        flag "$file:$lineno: broken relative link -> $target (resolves to ${resolved:-?})"
-      fi
+      "$handler" "$file" "$lineno" "$target" "$resolved"
     done < <(grep -oP '(?<=\]\()[^)]+\.md(?=[)#])' <<< "$line" 2>/dev/null || true)
   done <<< "$stripped"
 }
 
+# Every relative .md link inside an rfcs/*.md file must resolve, regardless
+# of where it points -- README.md, and every state/handoffs/appendices
+# subdirectory.
+check_link_target() {
+  local file="$1" lineno="$2" target="$3" resolved="$4"
+  if [ -z "$resolved" ] || ! git show ":$resolved" > /dev/null 2>&1; then
+    flag "$file:$lineno: broken relative link -> $target (resolves to ${resolved:-?})"
+  fi
+}
+
 while read -r file; do
   [ -n "$file" ] || continue
-  check_links_in_file "$file"
+  for_each_md_link "$file" check_link_target
 done < <(git ls-files 'rfcs/*.md')
+
+# Every relative link *into* rfcs/ from anywhere else in the tracked tree
+# must also resolve (Review 154 §5): the check above only walks rfcs/*.md
+# itself, so a stale link into rfcs/ from CHANGELOG.md, README.md, or
+# docs/ was invisible to this gate -- exactly how the CHANGELOG's stale
+# rfcs/accepted/ -> rfcs/done/ link and a seven-week-old off-by-one in
+# docs/src/maintainers/rfcs.md both went uncaught (Review 154 §4-5).
+#
+# Scope is decided by the target *as written* (does it name an "rfcs/"
+# path component), not by where it resolves. A wrong "../" count is
+# exactly docs/src/maintainers/rfcs.md's bug: the link says "rfcs/" but
+# resolves to "docs/rfcs/..." -- outside rfcs/ entirely. Filtering on the
+# resolved path would have missed the very case this check exists for;
+# filtering on the written target catches it regardless of where a bad
+# resolution lands. Only files outside rfcs/ itself are walked here, since
+# rfcs/*.md's own links -- including ones into rfcs/ -- are already fully
+# covered by the check above.
+check_link_into_rfcs() {
+  local file="$1" lineno="$2" target="$3" resolved="$4"
+  case "$target" in
+    rfcs/*|*/rfcs/*) ;;
+    *) return ;;
+  esac
+  if [ -z "$resolved" ] || ! git show ":$resolved" > /dev/null 2>&1; then
+    flag "$file:$lineno: broken relative link into rfcs/ -> $target (resolves to ${resolved:-?})"
+  fi
+}
+
+while read -r file; do
+  [ -n "$file" ] || continue
+  for_each_md_link "$file" check_link_into_rfcs
+done < <(git ls-files '*.md' | grep -v '^rfcs/')
 
 if [ "$fail" -ne 0 ]; then
   echo "rfc lifecycle gate: failed" >&2

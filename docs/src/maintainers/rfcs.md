@@ -1,6 +1,6 @@
 # RFC Index
 
-See [`rfcs/README.md`](../../rfcs/README.md) for the full machine-maintained index.
+See [`rfcs/README.md`](../../../rfcs/README.md) for the full machine-maintained index.
 
 ## Part 1 — Foundation (v0.1–v0.2)
 RFC-001 through RFC-007: data lifecycle, catalog schema, source boundary,
