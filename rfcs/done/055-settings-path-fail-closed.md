@@ -275,3 +275,33 @@ We should also send a short correction upstream: our original report told them
 `2.0.3` panics, and §2.1 shows it substitutes for the `HOME` case. Their RFC 037
 amendment describes the fallback as a behavioural change introduced in 2.1.0,
 which is not accurate for that case, and they acted on our report in good faith.
+
+## 12. Amendment (2026-08-08, Task 008): the floor moves to 2.7.0 for the checked filename setter
+
+§3.2's migration, as given in the maintainers' first reply, used
+`try_with_filename("settings.json")?` — the validated setter. What shipped used
+`with_filename("settings.json")`, the unvalidated one. Both compile identically
+against `OrbokSettings`'s fixed literal, so the difference produced no defect:
+`"settings.json"` passes every check either setter would apply. But it left a
+gap between what this RFC decided and what the code does, and the gap survived
+three implementation reviews (151, 152, 153) because each checked the code
+against [HANDOFF-055](../handoffs/HANDOFF-055-settings-path-fail-closed.md)
+§3.2, which named only the constructor and said nothing about the filename
+setter — not against the upstream reply the handoff was itself derived from.
+The handoff had become the review baseline, and the source it was derived from
+stopped being consulted.
+
+[Task 008](../../.git-exclude/tasks/dev-team/008-rfc055-checked-filename-setter.md)
+closes the gap: `standard_settings_file()` now uses `try_with_filename`, and the
+dependency floor moves `2.6.0 → 2.7.0`. The setter change alone needed no version
+move — `try_with_filename` exists in 2.6.0 — but 2.7.0 is where
+`validate_plain_file_name` starts rejecting Windows reserved device names
+(`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, case-insensitively and
+as a stem with an extension, so `nul.json` too). Nothing depends on that check
+today — the filename is a fixed literal, not derived from any input — but it is
+the version in which the checked setter actually carries the check that matters
+on one of orbok's three platforms, and the two changes share a documentation
+cost cheaper paid once.
+
+Nothing else in this RFC's decision, required behavior, or acceptance criteria
+changes.

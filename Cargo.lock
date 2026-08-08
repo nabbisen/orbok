@@ -121,9 +121,9 @@ checksum = "fb5dfbc6d8d2675589ccbe4d0fd61df2419075625f8c1a62325e718e2b0049f9"
 
 [[package]]
 name = "app-json-settings"
-version = "2.6.0"
+version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e0a4d7ecf16442fd773d73be1263678d59a36c80c837a36b9f58e59afbfa0ab"
+checksum = "afab780d14c55d3f64e2ff5d5e1566067893d95f2893038d12e53e50e5933ed7"
 dependencies = [
  "serde",
  "serde_json",

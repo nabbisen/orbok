@@ -66,7 +66,15 @@ next release tag.
   unrenamed installation would use, not the location their renamed binary
   previously read. This is an accepted cost, not a migration — no
   unrenamed user's settings location changes on any platform. See
-  `rfcs/accepted/055-settings-path-fail-closed.md`.
+  `rfcs/done/055-settings-path-fail-closed.md`.
+- **RFC-055 follow-up (Task 008) — the checked filename setter:**
+  `app-json-settings` moves `2.6.0 → 2.7.0`; `standard_settings_file()` now
+  uses the validated `try_with_filename` setter (from 2.7.0, rejecting
+  Windows reserved device names) rather than the unvalidated `with_filename`
+  the implementation had shipped with, closing a gap between RFC-055 §3.2's
+  migration reference and the code that three implementation reviews had
+  not caught. No behavior change for orbok's fixed `"settings.json"`
+  literal. See `rfcs/done/055-settings-path-fail-closed.md` §12.
 - **RFC-054 — `ORBOK_DATA_DIR` now relocates the whole profile, settings
   included:** previously the override moved the catalog, cache, and model
   directories but left the settings file at the platform config directory

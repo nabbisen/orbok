@@ -106,7 +106,7 @@ impl Default for OrbokSettings {
 /// this crate's own `load`/`save`/`load_or_default`.
 pub fn standard_settings_file() -> app_json_settings::Result<PathBuf> {
     Ok(ConfigManager::<OrbokSettings>::for_app("orbok")?
-        .with_filename("settings.json")
+        .try_with_filename("settings.json")?
         .path())
 }
 

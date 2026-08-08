@@ -62,7 +62,7 @@ localcache                  = { version = "0.21", features = ["compression", "tr
 iced                        = { version = "0.14", features = ["tokio"] }
 snora                       = { version = "0.25", features = ["design"] }
 rfd                         = "0.15"
-# app-json-settings — RFC-055: the 2.6.0 floor is deliberate, not "latest
+# app-json-settings — RFC-055: the 2.7.0 floor is deliberate, not "latest
 # 2.x". 2.0.3's ConfigManager::new() silently substitutes on two failures
 # orbok must not tolerate: a missing platform config directory falls back
 # to the working directory, and an undeterminable executable name falls
@@ -72,7 +72,13 @@ rfd                         = "0.15"
 # let a routine `cargo update` adopt that fallback behavior with no code
 # change and no review (RFC-055 §2.3) -- this floor is what makes "orbok
 # requires the fail-closed constructor" a checked fact, not a habit.
-app-json-settings           = { version = "2.6.0" }
+# The 2.7.0 floor is for try_with_filename's validation, which from 2.7.0
+# rejects Windows reserved device names (NUL, CON, ... including as a
+# stem with an extension, so nul.json too). orbok passes a fixed literal
+# ("settings.json") today, so nothing depends on it; the floor exists so
+# the checked setter is meaningfully checked if that ever changes
+# (Task 008).
+app-json-settings           = { version = "2.7.0" }
 
 # shared utilities
 serde                       = { version = "1", features = ["derive"] }
