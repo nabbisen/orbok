@@ -2,9 +2,9 @@
 
 **Project:** orbok\
 **RFC:** 055\
-**Lifecycle stage:** Accepted 2026-08-04; implementation not started\
+**Lifecycle stage:** Implemented with RFC-055 on `main` at `9da7a4c`; release pending\
 **Primary owner:** workspace manifests; `crates/app` settings and runtime context\
-**RFC:** [`../accepted/055-settings-path-fail-closed.md`](../accepted/055-settings-path-fail-closed.md)
+**RFC:** [`../done/055-settings-path-fail-closed.md`](../done/055-settings-path-fail-closed.md)
 
 > **Scope rule:** This changes how the settings *path* is derived and what
 > happens when it cannot be. It does **not** adopt `load`/`save` from the
