@@ -3,9 +3,11 @@
 **Project:** orbok\
 **RFC:** 052\
 **Title:** UI Localization and Design-Gate Compliance\
-**Status:** Accepted (2026-08-04) — implementation complete pending the manual Japanese QA required by §9\
+**Status:** Implemented (main at `2204caa`; release pending)\
 **Target milestone:** v1.0.0 UI compliance\
 **Date:** 2026-07-14\
+**Accepted:** 2026-08-04 by the project owner\
+**Manual Japanese QA (§9):** performed 2026-08-08 by the project owner, a native speaker — all 21 Phase 2 strings accepted, no amendments. This is the one §9 criterion no automated check can stand in for; recorded here because the evidence is a person's judgement and exists nowhere else in the repository.\
 **Related RFCs:** RFC-031 GUI Internationalization; RFC-032 Design Tokens; RFC-034 Accessibility; RFC-035 Inclusive Design\
 **Handoff:** [`HANDOFF-052-ui-localization-and-design-gate-compliance.md`](../handoffs/HANDOFF-052-ui-localization-and-design-gate-compliance.md)
 

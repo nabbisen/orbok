@@ -2,9 +2,9 @@
 
 **Project:** orbok\
 **RFC:** 052\
-**Lifecycle stage:** Accepted; dev-team implementation complete, pending RFC-052 §9's manual Japanese QA (Owner Task 001)\
+**Lifecycle stage:** Implemented with RFC-052 on `main` at `2204caa`; release pending\
 **Primary owners:** `orbok-ui`, platform UI integration, CI\
-**RFC:** [`../accepted/052-ui-localization-and-design-gate-compliance.md`](../accepted/052-ui-localization-and-design-gate-compliance.md)
+**RFC:** [`../done/052-ui-localization-and-design-gate-compliance.md`](../done/052-ui-localization-and-design-gate-compliance.md)
 
 > **Scope rule:** Enforce existing RFC-031/032 decisions. Do not redesign the
 > UI or create broad exceptions to make heuristic checks pass.

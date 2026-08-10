@@ -70,13 +70,13 @@ may start" a checked state rather than an implicit convention.
 | 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | main at `56d63a6`; release pending |
 | 054 | [Runtime Data Override Profile Scope](done/054-runtime-data-override-profile-scope.md) | main at `6bcedd9`; release pending |
 | 055 | [Fail-Closed Settings Path Resolution](done/055-settings-path-fail-closed.md) | main at `9da7a4c`; release pending |
+| 052 | [UI Localization and Design-Gate Compliance](done/052-ui-localization-and-design-gate-compliance.md) | main at `2204caa`; release pending |
 
 ## Accepted
 
 | ID | Title | Status |
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
-| 052 | [UI Localization and Design-Gate Compliance](accepted/052-ui-localization-and-design-gate-compliance.md) | Accepted — implementation complete pending §9's manual Japanese QA (Owner Task 001) |
 
 ## Proposed
 
@@ -94,9 +94,9 @@ that must be resolved before release-candidate promotion. RFC-049, RFC-050,
 and RFC-051 are now implemented on `main`; RFC-050's normative model trust
 data and provenance evidence are recorded in
 [`APPENDIX-B-default-model-trust-root.md`](appendices/APPENDIX-B-default-model-trust-root.md).
-RFC-052's dev-team implementation is complete and accepted, pending the
-project owner's manual Japanese QA (Owner Task 001) before it can move to
-`done/`. RFC-053 (rusqlite line and Rust MSRV policy) is a separate
+RFC-052 is implemented: the dev-team work landed and CI-green, and the project
+owner completed §9's manual Japanese QA on 2026-08-08, accepting all 21 Phase 2
+strings without amendment. RFC-053 (rusqlite line and Rust MSRV policy) is a separate
 dependency-maintenance track, not part of the architecture-review blocker
 set; it is also now implemented on `main`. RFC-048's real-model measurement
 work is accepted and in progress (Owner Task 003); RFC-047 remains paused
