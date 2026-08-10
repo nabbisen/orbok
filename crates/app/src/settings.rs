@@ -40,7 +40,10 @@ pub struct OrbokSettings {
     /// One of: `"balanced"` | `"high_accuracy"` | `"space_saving"`.
     pub index_mode: String,
 
-    /// UI locale code — `"en"` or `"ja"` (RFC-031).
+    /// UI locale code — `"en"` | `"ja"` | `"auto"` (RFC-031 §48). `"auto"`
+    /// is not a `Locale` variant; `Locale::parse` returns `None` for it by
+    /// design, which is what lets the startup priority chain fall through
+    /// to OS detection (RFC-031 §130, §166) -- see the default below.
     pub locale: String,
 
     /// UI theme (RFC-032). One of: `"system"` | `"light"` | `"dark"` |
@@ -84,7 +87,14 @@ impl Default for OrbokSettings {
             embedding_model_dir: None,
             reranker_model_dir: None,
             index_mode: "balanced".into(),
-            locale: "en".into(),
+            // RFC-031 §48/§166, Task 009: "auto" is load-bearing, not "en".
+            // A fresh profile must reach OS locale detection; "en" as the
+            // literal default would satisfy Locale::parse on the first
+            // priority-chain step and never fall through. Existing profiles
+            // that already have "en" written to disk (every profile that
+            // has ever launched orbok, per RFC-049 C4) are unaffected --
+            // this default applies to new profiles only.
+            locale: "auto".into(),
             theme: "system".into(),
             text_scale: "default".into(),
             reduced_motion: false,

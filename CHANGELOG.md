@@ -126,6 +126,21 @@ next release tag.
   never remade) — both spellings coexist in history, and the old name is
   what was actually published for those releases.
 
+### Fixed
+
+- **RFC-031 — a fresh profile's `auto` locale never reached OS detection
+  (Task 009):** `OrbokSettings::default().locale` was `"en"`, a value
+  `Locale::parse` accepts — so the settings → catalog → OS-environment
+  priority chain stopped at the first step on every new profile, and
+  `Locale::from_env()` never ran. A user on a Japanese OS installing orbok
+  for the first time got an English UI; RFC-031 §166 requires the opposite.
+  The default is now `"auto"`, the sentinel `Locale::parse` deliberately
+  does not match, which is what lets the chain fall through to OS
+  detection as designed. Existing profiles are unaffected: every profile
+  that has ever launched orbok already has `"en"` written to disk
+  (RFC-049 C4), and this change applies to new profiles only — no
+  migration, no change for a working installation.
+
 ### Tests
 
 - **RFC-049 isolation suite now runs in CI:** the app binary's own test
@@ -162,6 +177,20 @@ next release tag.
   directory is absent, so the narrowing can't regress into deleting the
   whole check. All five are driven through the `PlatformRuntimePaths`
   injection seam — none mutate process environment variables.
+- **Task 009:** extracted the locale settings/catalog/OS-environment
+  priority chain into a pure, directly testable `resolve_locale` function
+  and added coverage at the priority-chain level — a default-constructed
+  `OrbokSettings` resolves through to an injected OS-detected locale
+  rather than stopping at the settings value, an explicit `"en"` setting
+  still wins over a Japanese environment, and the catalog step still takes
+  priority over the environment. Confirmed the new test actually catches
+  the regression, not just that it passes today: reverted the one-word
+  default back to `"en"` and confirmed it fails, then restored it. The
+  existing OS-detection unit tests (`Locale::from_env_values` in
+  `crates/ui/src/tests/i18n.rs`) proved parsing worked but could not fail
+  when the startup chain never called them, which is exactly what
+  shipped. Driven entirely through injected parameters, matching
+  HANDOFF-055 §5 — no process environment variable mutation.
 
 ### Docs
 
@@ -199,6 +228,9 @@ next release tag.
   configuration directory cannot be resolved, and that only unoverridden
   standard mode is affected — portable mode and standard mode with
   `ORBOK_DATA_DIR` both start normally.
+- Updated `docs/src/intermediate/settings.md`'s `ui.locale` row for
+  Task 009: values now list `auto` alongside `en`/`ja`, and the default
+  reads `auto` rather than `en`.
 
 ---
 

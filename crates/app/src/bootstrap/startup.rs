@@ -53,19 +53,15 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     // Load persisted OrbokSettings (app-json-settings).
     let settings = storage.load_settings::<OrbokSettings>()?;
 
-    // Locale priority: user settings file → catalog → OS LANG env → default (En).
-    // The OS detection satisfies RFC-031 §3 "auto locale resolves Japanese
-    // OS environments to ja".
-    let locale = Locale::parse(&settings.locale)
-        .or_else(|| {
-            SettingsRepository::new(&catalog)
-                .get::<String>("ui.locale")
-                .ok()
-                .flatten()
-                .and_then(|s| Locale::parse(&s))
-        })
-        .or_else(Locale::from_env)
-        .unwrap_or_default();
+    let catalog_locale = SettingsRepository::new(&catalog)
+        .get::<String>("ui.locale")
+        .ok()
+        .flatten();
+    let locale = resolve_locale(
+        &settings.locale,
+        catalog_locale.as_deref(),
+        Locale::from_env(),
+    );
 
     // Verify embedding model files (design §startup-verify).
     let resolved_model = match resolve_model_dir(context, probe, &catalog, &settings) {
@@ -126,6 +122,36 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         ..Default::default()
     };
     Ok(state)
+}
+
+/// RFC-031 §48/§130/§166 locale priority chain: settings file → catalog →
+/// OS environment → default (`En`). Pure and injectable: `env_locale` is
+/// resolved once by the caller (`Locale::from_env()` in production) and
+/// passed in as already-decided data, rather than this function reading
+/// `std::env` itself -- the same capture-once-then-decide shape
+/// RFC-049/054/055 use for process inputs, and the only way to exercise
+/// this chain in a test without mutating process environment variables
+/// (`unsafe` in this edition, races the parallel harness; see
+/// HANDOFF-055 §5).
+///
+/// `Locale::parse` returning `None` for `"auto"` (RFC-031's third settings
+/// value, alongside `"en"`/`"ja"`) is load-bearing, not incidental: it is
+/// the sentinel that lets a fresh profile's settings value fall through to
+/// `catalog_locale` and then `env_locale` instead of stopping at the first
+/// step. Adding an `"auto" => Some(...)` arm to `Locale::parse` would
+/// silently disable OS detection again (Task 009) -- if `parse` ever needs
+/// to change to accommodate `"auto"`, this fall-through is being bypassed
+/// somewhere else, and that is a decision to stop and report, not make
+/// here.
+pub(crate) fn resolve_locale(
+    settings_locale: &str,
+    catalog_locale: Option<&str>,
+    env_locale: Option<Locale>,
+) -> Locale {
+    Locale::parse(settings_locale)
+        .or_else(|| catalog_locale.and_then(Locale::parse))
+        .or(env_locale)
+        .unwrap_or_default()
 }
 
 /// Headless backend validation (`--check` mode, RFC-017).

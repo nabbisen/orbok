@@ -2,3 +2,5 @@
 
 #[cfg(test)]
 mod managed_resolution;
+#[cfg(test)]
+mod startup_locale;

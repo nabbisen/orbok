@@ -24,7 +24,7 @@
 | Setting | Values | Default |
 |---|---|---|
 | `privacy.search_history_retention` | `none`, `session` | `none` |
-| `ui.locale` | `en`, `ja` | `en` |
+| `ui.locale` | `en`, `ja`, `auto` | `auto` |
 
 ## Environment variables
 
