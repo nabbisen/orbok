@@ -126,10 +126,10 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
 
 /// RFC-031 §48/§130/§166 locale priority chain: settings file → catalog →
 /// OS environment → default (`En`). Pure and injectable: `env_locale` is
-/// resolved once by the caller (`Locale::from_env()` in production) and
-/// passed in as already-decided data, rather than this function reading
-/// `std::env` itself -- the same capture-once-then-decide shape
-/// RFC-049/054/055 use for process inputs, and the only way to exercise
+/// resolved once by the caller (the real OS-environment detector, in
+/// production) and passed in as already-decided data, rather than this
+/// function reading `std::env` itself -- the same capture-once-then-decide
+/// shape RFC-049/054/055 use for process inputs, and the only way to exercise
 /// this chain in a test without mutating process environment variables
 /// (`unsafe` in this edition, races the parallel harness; see
 /// HANDOFF-055 §5).

@@ -101,6 +101,18 @@ fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
     );
     assert!(!settings.contains("ConfigManager::<OrbokSettings>::new()"));
     assert!(!settings.contains("at_custom_dir"));
+
+    // Task 009 (Review 156 §3): resolve_locale's OS-detection seam is
+    // tested in isolation (bootstrap/tests/startup_locale.rs) via an
+    // injected env_locale parameter -- nothing previously guarded that the
+    // production call site actually wires the real Locale::from_env() into
+    // it. Swapping that argument for None (or a hardcoded literal) would
+    // silently reinstate the exact defect Task 009 fixed, and no
+    // startup_locale test would notice, since each supplies env_locale
+    // directly rather than observing production's wiring. This corpus
+    // already includes startup.rs via read_top_level_rs_files above; only
+    // the assertion was missing.
+    assert_eq!(bootstrap.matches("Locale::from_env()").count(), 1);
 }
 
 /// A `RuntimeContext` plus the test's own independently-computed expectation
