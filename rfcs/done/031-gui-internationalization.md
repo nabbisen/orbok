@@ -190,3 +190,55 @@ avoid-list (BM25, RRF, cross-encoder, …) applies equally to Japanese.
 Adopt a compile-time-checked typed message catalog in `orbok-ui` with
 `en` (source) and `ja` locales, locale setting persisted in
 `app_settings`, and a documented migration path to Fluent.
+
+---
+
+## 11. Amendment (2026-08-08): §7's `auto` criterion was unmet from implementation until `3d2b47d`
+
+§7's acceptance criterion — *"`auto` locale resolves Japanese OS environments to
+`ja`"* — was recorded as met when this RFC moved to `done/`. It was not, and it
+stayed unmet in every release that shipped afterwards. A user installing orbok
+on a Japanese-locale OS got an English interface.
+
+**What was actually built.** Everything §5 describes exists and works:
+`Locale::from_env` reads `LANG` then `LANGUAGE`, `Locale::parse` deliberately
+does not recognise `"auto"` so that value falls through the priority chain, and
+the chain itself resolves settings → catalog → environment → default. No part of
+that machinery was broken.
+
+**Why the criterion was unmet anyway.** `OrbokSettings::default().locale` was
+`"en"`, not `"auto"` (§5's `ui.locale = "en" | "ja" | "auto"` names three values;
+the default was one of the concrete two). `Locale::parse("en")` returns `Some`,
+and `Option::or_else` evaluates its closure only on `None` — so on every fresh
+profile the chain stopped at its first element and `Locale::from_env` was never
+called. The environment branch was reachable in production only from a
+`settings.json` holding an unrecognised locale string.
+
+**Why no test caught it.** §8's requirement 4 — *"OS-locale auto-detection unit
+tests with mocked environment"* — was satisfied literally. Those tests call the
+detection helper directly and pass; they cannot fail when nothing in the startup
+path invokes it. The requirement asked for unit tests of the detector and got
+them. It did not ask that the detector be reached, and so nothing checked that
+it was.
+
+That is the substance worth carrying out of this amendment: **an acceptance
+criterion phrased as a behaviour, verified by a test of a component, is not
+verified.** The gap held for the entire life of the RFC and was found by the
+project owner asking what language a fresh install starts in — not by review and
+not by CI.
+
+**The fix** (Task 009, `3d2b47d`) changes the default to `"auto"` and extracts
+the priority chain into `bootstrap::startup::resolve_locale`, which takes the
+OS-detected value as a parameter so the chain is testable without mutating
+process environment variables. Coverage now includes the default resolving
+through to OS detection, and an explicit `"en"` still winning over a Japanese
+environment.
+
+**Existing profiles are deliberately unchanged.** Every profile that has ever
+launched orbok already has `"en"` written to disk (RFC-049's first-run settings
+write), and a settings file lacking the field fails to deserialize rather than
+adopting the new default — so no installation silently switches language. The
+fix reaches new profiles only, which is the population §7's criterion was about.
+
+Nothing in this RFC's design, rules, or criteria changes. §7's criterion is
+unchanged and is now met.
