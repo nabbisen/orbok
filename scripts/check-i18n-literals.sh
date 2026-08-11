@@ -175,6 +175,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/app/src/runtime_context.rs"]="Display impl strings for a backend error type (RFC-049), same RFC-052 §3 exemption as physical_identity.rs, verified in full"
   ["crates/app/src/runtime_isolation_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code"
   ["crates/app/src/runtime_storage.rs"]="Display impl strings for a backend error type, same exemption as runtime_context.rs, verified in full"
+  ["crates/app/src/scheduler_host.rs"]="developer-facing tracing::warn! log string only, verified in full; the only user-visible signal this module produces is Message::HealthUpdated, an existing typed variant already routed through the UI's own i18n'd rendering, not a raw string from here"
   ["crates/app/src/settings.rs"]="io::Error Display string only, verified in full"
 )
 
