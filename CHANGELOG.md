@@ -151,6 +151,23 @@ next release tag.
 
 ### Fixed
 
+- **RFC-006 — every chunk embedded the whole document, not its own
+  section (Task 012 Part A):** `EmbeddingWorker::prepare_batch` built
+  every chunk's embedding text from the full joined extraction output,
+  with only a heading prefix distinguishing children from the parent and
+  from each other. RFC-006 §7.2/§17.2 specify "child chunk by default" —
+  each child should embed its own section. Review 159 §3 measured the
+  consequence on the real model: a document's own chunks were
+  cosine-similar to three or four decimal places (0.9933–0.9965), so
+  vector search could not discriminate which section of a document
+  matched. Chunk text is now reconstructed at embedding time from the
+  extraction segments whose line range overlaps the chunk's own
+  `[line_start, line_end]` — chunk text itself is never persisted
+  (contentless FTS design, RFC-007 §8.1). No migration: at the time this
+  landed, `EmbeddingWorker` was not yet wired into the shipped
+  application (dev-team Task 012), so zero embeddings existed anywhere to
+  invalidate.
+
 - **RFC-031 — a fresh profile's `auto` locale never reached OS detection
   (Task 009):** `OrbokSettings::default().locale` was `"en"`, a value
   `Locale::parse` accepts — so the settings → catalog → OS-environment

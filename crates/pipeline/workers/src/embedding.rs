@@ -127,22 +127,21 @@ impl<'a> EmbeddingWorker<'a> {
             return Ok(None);
         }
 
-        // Build chunk texts: combine heading + normalized text from extraction
-        // segments aligned to the chunk line range. For now, use the full
-        // document text for the parent chunk and per-section text for children.
-        let all_text: String = extract_output
-            .segments
-            .iter()
-            .map(|s| s.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Build chunk texts: each chunk's own text (RFC-006 §7.2/§17.2 --
+        // "child chunk by default"), reconstructed from the extraction
+        // segments whose line range overlaps the chunk's own span, plus
+        // optional compact heading context. Not the whole document for
+        // every chunk (Task 012 Part A) -- that made every chunk of a
+        // document cosine-near-identical, since vector search cannot
+        // discriminate which section matches when every candidate carries
+        // the same text.
         let texts: Vec<String> = chunks
             .iter()
             .map(|chunk| {
-                if let Some(heading) = &chunk.heading_path {
-                    format!("{heading}\n{all_text}")
-                } else {
-                    all_text.clone()
+                let text = chunk_text(chunk, &extract_output);
+                match &chunk.heading_path {
+                    Some(heading) => format!("{heading}\n{text}"),
+                    None => text,
                 }
             })
             .collect();
@@ -170,4 +169,32 @@ impl<'a> EmbeddingWorker<'a> {
     pub fn model(&self) -> &dyn EmbeddingModel {
         self.model.as_ref()
     }
+}
+
+/// A chunk's own text, reconstructed from the extraction segments whose
+/// line range overlaps the chunk's own `[line_start, line_end]` (RFC-006
+/// Task 012 Part A). Chunk text is not itself persisted -- contentless
+/// FTS indexing discards it (`ChunkSpec::normalized_text`'s own doc
+/// comment, RFC-007 §8.1) -- so this is how the text the chunker
+/// originally computed for this chunk (`orbok_extract::chunker::chunk`)
+/// is reconstructed later, at embedding time, from the two things that
+/// *are* persisted: the chunk's line range and the cached extraction
+/// segments.
+///
+/// Overlap, not containment: a fallback/windowed chunk's line range is a
+/// fractional interpolation within its section's real segment boundaries
+/// (`append_text_windows`), not itself a real segment boundary, so no
+/// segment is ever fully *contained* in a narrow window -- containment
+/// would return empty text for every windowed chunk. Overlap always
+/// includes at least the segment(s) the window was cut from.
+fn chunk_text(chunk: &ChunkRecord, extract_output: &ExtractOutput) -> String {
+    extract_output
+        .segments
+        .iter()
+        .filter(|segment| {
+            segment.line_start <= chunk.line_end && segment.line_end >= chunk.line_start
+        })
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }

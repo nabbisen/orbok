@@ -295,6 +295,106 @@ fn stale_chunks_excluded_from_vector_search() {
     );
 }
 
+/// Records the text of every `embed_batch` call, delegating the actual
+/// (mock) computation to `MockEmbeddingModel` -- used only to inspect
+/// what `EmbeddingWorker::prepare_batch` built, since `PreparedBatch`
+/// itself is private to `embedding.rs`.
+struct RecordingEmbeddingModel {
+    inner: MockEmbeddingModel,
+    calls: std::sync::Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+}
+
+impl orbok_models::EmbeddingModel for RecordingEmbeddingModel {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn version(&self) -> &str {
+        self.inner.version()
+    }
+    fn dimension(&self) -> u32 {
+        self.inner.dimension()
+    }
+    fn embed_batch(&self, texts: &[&str]) -> orbok_core::OrbokResult<Vec<Vec<f32>>> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(texts.iter().map(|text| text.to_string()).collect());
+        self.inner.embed_batch(texts)
+    }
+}
+
+// Task 012 Part A / RFC-006 §7.2, §17.2: sibling chunks of one document
+// must embed their own section text, not the whole document repeated
+// with only a heading prefix differing (the defect Review 159 §3 found
+// and measured at cosine similarity 0.99+ between a document's own
+// chunks). Asserted on the text itself, not on cosine similarity -- a
+// cosine threshold would be a model-dependent test of the model, not of
+// `prepare_batch`.
+#[test]
+fn sibling_chunks_embed_their_own_section_text_not_the_whole_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let file_id = seed_and_run(
+        &catalog,
+        &cache,
+        dir.path(),
+        "doc.md",
+        "# Guide\n\n\
+         ## Install\n\n\
+         Run the installer and follow the prompts.\n\n\
+         ## Configure\n\n\
+         Edit the config file to set your preferences.\n",
+    );
+    seed_mock_model(&catalog);
+
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let model = RecordingEmbeddingModel {
+        inner: MockEmbeddingModel,
+        calls: calls.clone(),
+    };
+    let model_id = orbok_core::ModelId::from_string("mock_mock-v1".to_string());
+    let embed = EmbeddingWorker::with_model(&catalog, &cache, Box::new(model), model_id);
+    embed.run(&file_id).unwrap();
+
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.len(), 1, "one embed_batch call for this file's batch");
+    let texts = &calls[0];
+    assert!(
+        texts.len() >= 3,
+        "expected a parent chunk plus at least two section children, got {}: {texts:?}",
+        texts.len()
+    );
+
+    // No two chunks in the batch may be identical -- the exact defect
+    // this fixes: every chunk previously embedded the same whole-document
+    // body, differing only by a heading prefix on top of that shared body.
+    for i in 0..texts.len() {
+        for j in (i + 1)..texts.len() {
+            assert_ne!(
+                texts[i], texts[j],
+                "chunk {i} and chunk {j} embedded identical text: {:?}",
+                texts[i]
+            );
+        }
+    }
+
+    // Genuine section isolation, not just a different heading prefix on
+    // the same body: an Install-section chunk must not also carry
+    // Configure's distinguishing content, and vice versa.
+    assert!(
+        texts
+            .iter()
+            .any(|text| text.contains("installer") && !text.contains("config file")),
+        "expected an Install-section chunk without Configure's content: {texts:?}"
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|text| text.contains("config file") && !text.contains("installer")),
+        "expected a Configure-section chunk without Install's content: {texts:?}"
+    );
+}
+
 // RFC-008 §24 test 8: deleted vector index doesn't delete source catalog.
 #[test]
 fn deleting_embeddings_does_not_delete_catalog() {
