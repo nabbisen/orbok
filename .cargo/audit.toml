@@ -44,4 +44,37 @@ ignore = [
     # reports 0.20.1 as the current crate version, so there is no direct
     # dependency update available in this release prep.
     "RUSTSEC-2026-0206",
+
+    # ── lru 0.16.4 — "use-after-free due to lack of panic safety in
+    #    LruCache::pop()" (unsound, published 2026-05-12). Added 2026-08-12.
+    #
+    # Chain: lru <- cryoglyph <- iced_wgpu <- iced_renderer <- iced.
+    # cryoglyph is iced's own glyph-cache crate. orbok depends on iced
+    # directly (crates/app, crates/ui), so this is NOT introduced by snora or
+    # lucide-icons -- they appear in `cargo tree -i` only as fellow consumers
+    # of iced.
+    #
+    # Not reachable from orbok, for two independent reasons, both verified
+    # against the pinned sources rather than assumed:
+    #
+    #   1. The advisory's trigger is a panic inside the *key type's* `Drop`
+    #      while the node is freed but not yet detached. cryoglyph's cache is
+    #      `LruCache<CacheKey, GlyphDetails, Hasher>`, and cosmic-text's
+    #      `CacheKey` is `#[derive(Clone, Copy, ...)]`. A `Copy` type cannot
+    #      implement `Drop` -- the compiler forbids it -- so the key's
+    #      `drop_in_place` is a no-op that cannot panic.
+    #   2. cryoglyph never calls the affected function. It calls `pop_lru()`
+    #      (text_atlas.rs:91,101), which takes a different path with no
+    #      `drop_in_place` of the key at all.
+    #
+    # Cannot be resolved locally: patched is >= 0.18.2, cryoglyph requires
+    # `lru = "0.16"`, and `cargo update -p lru` moves nothing. The fix must
+    # come from iced. Reported upstream --
+    # .git-exclude/upstream-requests/iced-report-lru-rustsec-2026-0253-2026-08-12.md
+    # -- including the verification that cryoglyph 0.1.0 compiles unmodified
+    # against lru 0.18.2 with only its version requirement changed.
+    #
+    # REMOVE WHEN: iced ships a cryoglyph requiring lru >= 0.18.2. Re-check on
+    # any iced upgrade; this entry must not outlive that release.
+    "RUSTSEC-2026-0253",
 ]
