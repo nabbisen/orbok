@@ -674,6 +674,21 @@ mod tests {
         };
 
         fn value_info(name: &str, datum: DataType, dimensions: &[i64]) -> ValueInfoProto {
+            value_info_with_dims(
+                name,
+                datum,
+                dimensions
+                    .iter()
+                    .map(|dimension| DimensionValue::DimValue(*dimension))
+                    .collect(),
+            )
+        }
+
+        fn value_info_with_dims(
+            name: &str,
+            datum: DataType,
+            dimensions: Vec<DimensionValue>,
+        ) -> ValueInfoProto {
             ValueInfoProto {
                 name: name.to_owned(),
                 r#type: Some(TypeProto {
@@ -682,10 +697,10 @@ mod tests {
                         elem_type: datum as i32,
                         shape: Some(TensorShapeProto {
                             dim: dimensions
-                                .iter()
-                                .map(|dimension| tract_onnx::pb::tensor_shape_proto::Dimension {
+                                .into_iter()
+                                .map(|value| tract_onnx::pb::tensor_shape_proto::Dimension {
                                     denotation: String::new(),
-                                    value: Some(DimensionValue::DimValue(*dimension)),
+                                    value: Some(value),
                                 })
                                 .collect(),
                         }),
@@ -718,7 +733,23 @@ mod tests {
                     name: "embedding".into(),
                     ..Default::default()
                 }],
-                input: vec![value_info("input_ids", DataType::Int64, &[1, 512])],
+                // RFC-048 (Task 010): a literal `DimValue(512)` here bakes a
+                // fixed shape into tract's optimized plan (`into_optimized()`
+                // is called with no `with_input_fact`), so any batch whose
+                // padded length differs -- which `PaddingStrategy::
+                // BatchLongest` produces by design -- fails to run. Real
+                // ONNX transformer exports declare batch and sequence-length
+                // as symbolic axes for exactly this reason; this fixture now
+                // matches that instead of a shape that only ever happened to
+                // work because production always sent exactly 512.
+                input: vec![value_info_with_dims(
+                    "input_ids",
+                    DataType::Int64,
+                    vec![
+                        DimensionValue::DimParam("batch_size".into()),
+                        DimensionValue::DimParam("sequence_length".into()),
+                    ],
+                )],
                 output: vec![value_info("embedding", DataType::Float, &[1, 2])],
                 ..Default::default()
             }),

@@ -140,6 +140,30 @@ next release tag.
   that has ever launched orbok already has `"en"` written to disk
   (RFC-049 C4), and this change applies to new profiles only — no
   migration, no change for a working installation.
+- **RFC-048 — every embedding paid for 512 tokens of padding it didn't
+  need (Task 010):** the ONNX tokenizer padded every input to a fixed
+  512 tokens regardless of its real length — a benchmark corpus averaging
+  ~64 tokens per document (and ~12 for a typical query) did roughly 8×
+  (documents) to 40× (queries) more forward-pass work than necessary.
+  Padding strategy moves from `Fixed(max_seq_len)` to `BatchLongest`
+  (pads to the longest sequence in each batch); truncation at 512 tokens
+  is unchanged. Verified before landing that this does not change what an
+  embedding means: `mean_pool_sequence_output` already excludes padding
+  positions from its sum and divisor, and a direct before/after
+  measurement against the real model found cosine similarity 1.000000 on
+  every vector across a mixed short/long/Japanese test set, at both a
+  full and a short-only batch composition. On real-model benchmark
+  re-measurement (1000 documents, same protocol as RFC-048's baseline,
+  different host — see `rfcs/accepted/048-real-model-performance-recovery.md`
+  §1 for the original numbers): document embedding time dropped from
+  2,836,465 ms to 201,451 ms and search p99 from 913.37 ms to 154.33 ms,
+  flipping the p99 gate from FAIL to PASS; recall@5 stayed 100%. Indexing
+  throughput improved from 0.4 to 4.9 files/s but still falls short of
+  the 10 files/s gate — document embedding remains the majority of
+  indexing time even without the padding waste. Keyword retrieval
+  (141.27 ms, unaffected by this change) is now 91.5% of search p99,
+  confirming RFC-048 §5's prediction that it becomes the next bottleneck;
+  it is out of scope here and gets its own task.
 
 ### Tests
 
@@ -191,6 +215,16 @@ next release tag.
   when the startup chain never called them, which is exactly what
   shipped. Driven entirely through injected parameters, matching
   HANDOFF-055 §5 — no process environment variable mutation.
+- **Task 010:** added `rfc048_batch_longest_padding_preserves_embeddings`
+  (`crates/search/embed/src/tract_backend.rs`), `#[ignore]`d since it
+  needs the real `multilingual-e5-small` model on disk. Loads the same
+  ONNX model twice — once with the previous `Fixed(max_seq_len)` padding
+  strategy, once with the new `BatchLongest` — via a new test-only
+  `TractEmbeddingModel::load_with_padding_strategy` entry point, and
+  asserts cosine similarity per vector across a mixed-length, Japanese-
+  inclusive batch and a short-only batch (a much shorter `BatchLongest`
+  pad length than the mixed batch, maximizing the chance of catching a
+  regression). Every vector measured at cosine similarity 1.000000.
 
 ### Docs
 

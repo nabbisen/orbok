@@ -67,10 +67,31 @@ struct TractEmbeddingModel {
 
 impl TractEmbeddingModel {
     fn load(config: &EmbeddingModelConfig) -> OrbokResult<Self> {
+        // RFC-048 §4 approach A: pad to the batch's longest sequence rather
+        // than a fixed 512 -- every input previously paid for 512 tokens of
+        // forward-pass work regardless of its real length (§1/§2). Padding
+        // positions are excluded from `mean_pool_sequence_output`'s sum and
+        // divisor, so this does not change what an embedding means (§3);
+        // `rfc048_padding_strategy_verification` below measures that
+        // directly against the previous `Fixed(max_seq_len)` behavior
+        // rather than reasoning it from the pooling code alone.
+        Self::load_with_padding_strategy(config, PaddingStrategy::BatchLongest)
+    }
+
+    /// Test-only entry point (RFC-048 §3): loads with an explicit padding
+    /// strategy so `BatchLongest` (production, via [`Self::load`]) can be
+    /// measured against `Fixed(max_seq_len)` (the previous behavior) within
+    /// one test run, on the same loaded model, rather than needing two
+    /// separate commits checked out.
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn load_with_padding_strategy(
+        config: &EmbeddingModelConfig,
+        strategy: PaddingStrategy,
+    ) -> OrbokResult<Self> {
         let tokenizer_path = config.tokenizer_path.as_ref().ok_or_else(|| {
             OrbokError::Cache("tokenizer file is required for ONNX inference".into())
         })?;
-        let tokenizer = load_tokenizer(tokenizer_path, config.max_seq_len as usize)?;
+        let tokenizer = load_tokenizer(tokenizer_path, config.max_seq_len as usize, strategy)?;
 
         let model = tract_onnx::onnx()
             .model_for_path(&config.weights_path)
@@ -128,9 +149,16 @@ impl EmbeddingModel for TractEmbeddingModel {
     }
 }
 
-fn load_tokenizer(path: &str, max_seq_len: usize) -> OrbokResult<Tokenizer> {
+fn load_tokenizer(
+    path: &str,
+    max_seq_len: usize,
+    strategy: PaddingStrategy,
+) -> OrbokResult<Tokenizer> {
     let mut tokenizer = Tokenizer::from_file(path)
         .map_err(|e| OrbokError::Cache(format!("tokenizer load failed: {e}")))?;
+    // RFC-048 §4: truncation stays fixed at max_seq_len regardless of
+    // padding strategy -- truncation is correct and unrelated to the
+    // padding-waste defect this file's `load` fixes.
     tokenizer
         .with_truncation(Some(TruncationParams {
             max_length: max_seq_len,
@@ -140,7 +168,7 @@ fn load_tokenizer(path: &str, max_seq_len: usize) -> OrbokResult<Tokenizer> {
 
     let (pad_token, pad_id) = pad_token(&tokenizer);
     tokenizer.with_padding(Some(PaddingParams {
-        strategy: PaddingStrategy::Fixed(max_seq_len),
+        strategy,
         direction: PaddingDirection::Right,
         pad_to_multiple_of: None,
         pad_id,
@@ -405,5 +433,124 @@ mod tests {
             Err(err) => assert!(err.to_string().contains("tokenizer file is required")),
             Ok(_) => panic!("ONNX backend should require a tokenizer path"),
         }
+    }
+}
+
+/// RFC-048 §3: required verification that changing the padding strategy
+/// from `Fixed(max_seq_len)` to `BatchLongest` does not change embeddings.
+///
+/// `mean_pool_sequence_output` already skips positions where the
+/// attention mask is 0 and divides by the real token count, so in exact
+/// arithmetic the amount of trailing padding should not influence the
+/// pooled vector at all -- real tokens are always summed in the same
+/// order regardless of how much padding follows them (`PaddingDirection::
+/// Right`). Cosine similarity, not exact equality, is asserted anyway:
+/// the transformer's internal matrix reductions are not associative, and
+/// a differently-shaped padded tensor can take a different kernel or
+/// vectorization path in tract, producing small floating-point
+/// differences even though the mathematical result is the same. A 0.999
+/// cosine-similarity floor is comfortably above the numerical-noise level
+/// such reduction-order differences produce on L2-normalized 384-dim
+/// vectors, while still tight enough to fail loudly if padding actually
+/// leaked into the pooled representation.
+///
+/// `#[ignore]`d: needs the real multilingual-e5-small model on disk,
+/// which CI does not have. Run manually:
+///
+/// ```sh
+/// RFC048_MODEL_DIR=~/.local/share/orbok/models/multilingual-e5-small \
+///   cargo test -p orbok-embed --features tract --release \
+///   rfc048_batch_longest_padding_preserves_embeddings -- --ignored --nocapture
+/// ```
+#[cfg(test)]
+mod rfc048_padding_strategy_verification {
+    use super::*;
+
+    const TOLERANCE: f32 = 0.999;
+
+    fn model_dir() -> std::path::PathBuf {
+        std::env::var("RFC048_MODEL_DIR")
+            .map(std::path::PathBuf::from)
+            .expect(
+                "RFC048_MODEL_DIR must point at the multilingual-e5-small model directory \
+                 (e.g. ~/.local/share/orbok/models/multilingual-e5-small)",
+            )
+    }
+
+    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+        let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        dot / (norm_a * norm_b)
+    }
+
+    #[test]
+    #[ignore = "requires the real embedding model on disk; see RFC048_MODEL_DIR"]
+    fn rfc048_batch_longest_padding_preserves_embeddings() {
+        let dir = model_dir();
+        let config = crate::recommended_config_from_model_dir(&dir);
+
+        let fixed = TractEmbeddingModel::load_with_padding_strategy(
+            &config,
+            PaddingStrategy::Fixed(config.max_seq_len as usize),
+        )
+        .expect("load with the previous Fixed(max_seq_len) strategy");
+        let batch_longest =
+            TractEmbeddingModel::load_with_padding_strategy(&config, PaddingStrategy::BatchLongest)
+                .expect("load with the new BatchLongest strategy");
+
+        // Mix of lengths, including a >512-token document to exercise
+        // truncation identically under both strategies, and Japanese text
+        // short and long (RFC-048 §3: "mix short and long, include
+        // Japanese"). Two batches, not one: "short_only" forces a much
+        // shorter BatchLongest pad length than "mixed" does, maximizing
+        // the chance of catching a regression where padding amount does
+        // leak into the pooled result.
+        let long_en: String = "The quick brown fox jumps over the lazy dog. ".repeat(60);
+        let long_ja: String =
+            "検索エンジンはドキュメントを効率的に見つけるためのツールです。".repeat(8);
+        let batches: [(&str, Vec<&str>); 2] = [
+            (
+                "mixed",
+                vec![
+                    "orbok-catalog.sqlite3",
+                    "A short document about local search and file indexing.",
+                    long_en.as_str(),
+                    "検索は高速です。",
+                    long_ja.as_str(),
+                ],
+            ),
+            (
+                "short_only",
+                vec![
+                    "orbok-catalog.sqlite3",
+                    "A short document about local search and file indexing.",
+                    "検索は高速です。",
+                ],
+            ),
+        ];
+
+        let mut worst = f32::INFINITY;
+        for (batch_label, texts) in &batches {
+            let fixed_vectors = fixed.embed_batch(texts).expect("embed_batch (Fixed)");
+            let batch_longest_vectors = batch_longest
+                .embed_batch(texts)
+                .expect("embed_batch (BatchLongest)");
+            for (index, text) in texts.iter().enumerate() {
+                let similarity =
+                    cosine_similarity(&fixed_vectors[index], &batch_longest_vectors[index]);
+                worst = worst.min(similarity);
+                println!(
+                    "{batch_label}[{index}] ({} chars): cosine_similarity={similarity:.6}",
+                    text.chars().count()
+                );
+                assert!(
+                    similarity >= TOLERANCE,
+                    "{batch_label}[{index}] cosine similarity {similarity} below tolerance \
+                     {TOLERANCE} -- padding strategy change altered this embedding's meaning"
+                );
+            }
+        }
+        println!("worst cosine similarity across all vectors: {worst:.6}");
     }
 }
