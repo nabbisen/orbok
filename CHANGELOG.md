@@ -84,8 +84,18 @@ next release tag.
   ~1.1s. See the review request for the `Scheduler::fail` retry-vs-
   `model_missing` gap this surfaced (an RFC-036 amendment candidate, not
   fixed here) and the HANDOFF §3.2 catalog-contention findings.
-
-### Changed
+- **RFC-056 — source scanning routed through the scheduler too (Review 162
+  §2):** Slice 1's `scan_and_index_source` still called `Scanner::scan`
+  inline, so its cost scaled with source size — a Windows CI run measured
+  2.06s for 400 files against a 37.8ms Linux measurement for the same
+  scan, which Slice 1 mistook for platform I/O variance and tolerated with
+  a loosened test ceiling. It was not variance: discovery is RFC-036 §6.1's
+  own first work category, with its own queue and priority
+  (`JobKind::ScanSource`) that nothing produced before now.
+  `scan_and_index_source` enqueues a `Scan` job and returns (measured:
+  ~118µs for 400 files); `scheduler_host` dispatches it, running the same
+  `Scanner::scan` that used to block the caller. The RFC-056 §9 acceptance
+  test is restored to its literal "under 2 seconds" assertion.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

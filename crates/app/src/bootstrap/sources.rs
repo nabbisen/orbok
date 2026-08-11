@@ -75,37 +75,30 @@ pub fn add_source(
     ))
 }
 
-/// Scan a source and enqueue its indexing jobs, then return promptly
-/// (RFC-056 §3). Execution of the enqueued `Extract`/`Chunk`/`Embedding`
-/// jobs happens off this call, in the `scheduler_host` background task
-/// (RFC-056 §4.1) -- this function no longer drives `run_pending` itself,
-/// so the returned `IndexHealth` reflects only what scanning itself
-/// changed (typically zero newly-indexed files), not the eventual result
-/// of preparing the source. The caller observes real progress via the
-/// `Message::HealthUpdated` events the background task emits as jobs
-/// complete.
+/// Enqueue a source's scan, then return promptly (RFC-056 §3, §9 criterion
+/// 1 -- Review 162 §2: scanning itself is scheduled work now, not just the
+/// `Extract`/`Chunk`/`Embedding` jobs a scan discovers). Execution --
+/// walking the source, hashing files, and enqueuing the resulting
+/// `Extract`/`Chunk`/`Embedding` jobs -- happens off this call, in the
+/// `scheduler_host` background task (RFC-056 §4.1) dispatching the
+/// `JobKind::ScanSource` job this enqueues. The returned `IndexHealth`
+/// reflects only catalog state as of this call (typically zero newly
+/// discovered/indexed files yet), not the eventual result of preparing the
+/// source. The caller observes real progress via the `Message::HealthUpdated`
+/// events the background task emits as jobs complete.
 pub fn scan_and_index_source(
     catalog: &Catalog,
     source_id_str: &str,
 ) -> Result<orbok_ui::state::IndexHealth, Box<dyn std::error::Error>> {
-    use orbok_core::SourceId;
-    use orbok_db::repo::SourceRepository;
-    use orbok_fs::{ScanRequest, Scanner};
-    use std::sync::atomic::AtomicBool;
+    use orbok_core::{JobType, SourceId};
+    use orbok_db::repo::{IndexJobRepository, SourceRepository};
 
     let source_id = SourceId::from_string(source_id_str.to_string());
     let src = SourceRepository::new(catalog)
         .get(&source_id)?
         .ok_or("source not found")?;
 
-    Scanner::new(catalog).scan(
-        &ScanRequest {
-            source_id: src.source_id.clone(),
-            force_hash: false,
-            enqueue_index_jobs: true,
-        },
-        &AtomicBool::new(false),
-    )?;
+    IndexJobRepository::new(catalog).enqueue(JobType::Scan, Some(&src.source_id), None)?;
 
     Ok(super::get_health(catalog))
 }

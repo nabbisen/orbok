@@ -11,18 +11,28 @@
 //! and terminated with RFC-008 §15's `model_missing` category, exactly as
 //! the legacy `run_pending` dispatcher already does -- there is no
 //! `EmbeddingWorker` here yet; that is Slice 2.
+//!
+//! **Scan routing** (Review 162 §2): discovery is RFC-036 §6.1's own first
+//! work category, with its own queue and priority (`JobKind::ScanSource`)
+//! that nothing produced before this. `scan_and_index_source` now enqueues
+//! a `Scan` job instead of calling `Scanner::scan` inline, so the scan/hash
+//! pass -- which scales with source size, not a fixed cost Slice 1's
+//! measurement mistook it for -- runs here, off the caller's thread, same
+//! as everything else this module hosts.
 
 use futures::SinkExt as _;
 use futures::channel::mpsc::Sender;
 use orbok::runtime_storage::ProfileCache;
-use orbok_core::{JobId, JobType};
+use orbok_core::{JobId, JobType, OrbokResult, SourceId};
 use orbok_db::Catalog;
 use orbok_db::repo::IndexJobRepository;
+use orbok_fs::{ScanRequest, Scanner};
 use orbok_ui::state::Message;
 use orbok_workers::{
     ChunkAndIndexWorker, ExtractionWorker, IndexJob, JobKind, JobState, Scheduler,
 };
 use std::collections::HashSet;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 /// How long the loop sleeps after finding nothing to do before checking the
@@ -105,6 +115,7 @@ pub(crate) async fn run_with_context(
 
         let file_id = job.file_id.clone();
         let result = match (job.kind, &file_id) {
+            (JobKind::ScanSource, _) => run_scan(&catalog, job.source_id.clone()),
             (JobKind::ExtractFile, Some(file_id)) => extract.run(file_id),
             (JobKind::ChunkFile, Some(file_id)) | (JobKind::UpdateKeywordIndex, Some(file_id)) => {
                 chunk.run(file_id)
@@ -130,6 +141,25 @@ pub(crate) async fn run_with_context(
         }
         report_health(&catalog, &mut output).await;
     }
+}
+
+/// Discover files under `source_id`, hash them, and enqueue the resulting
+/// `Extract`/`Chunk`/`Embedding` jobs (RFC-004 change detection makes
+/// re-scanning an unchanged source a cheap no-op, verified by Task 013's
+/// tests and carried through unchanged here). A fresh, unshared cancel
+/// token: cancelling a scan mid-flight is RFC-036 §12.3/§18.6, Slice 3's
+/// scope, not wired here.
+fn run_scan(catalog: &Catalog, source_id: SourceId) -> OrbokResult<()> {
+    Scanner::new(catalog)
+        .scan(
+            &ScanRequest {
+                source_id,
+                force_hash: false,
+                enqueue_index_jobs: true,
+            },
+            &AtomicBool::new(false),
+        )
+        .map(|_summary| ())
 }
 
 async fn report_health(catalog: &Catalog, output: &mut Sender<Message>) {

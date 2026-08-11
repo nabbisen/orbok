@@ -73,14 +73,23 @@ fn job_counts_by_status(catalog: &Catalog, status: JobStatus) -> u64 {
         .unwrap_or(0)
 }
 
-fn total_job_count(catalog: &Catalog) -> u64 {
-    use orbok_db::repo::IndexJobRepository;
-    IndexJobRepository::new(catalog)
-        .count_by_status()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(_, n)| n)
-        .sum()
+/// Every `job_type != 'scan'` row, regardless of status. `Scan` itself is
+/// excluded: since the scan-routing follow-up (Review 162 §2),
+/// `scan_and_index_source` enqueues exactly one `Scan` row per call by
+/// design (RFC-056 §9's `scan_and_index_source` gate is a single insert,
+/// not a scan) -- RFC-004's "unchanged source, no growth" guarantee (Task
+/// 013) is about what a scan *discovers* downstream
+/// (`Extract`/`Chunk`/`Embedding`/`KeywordIndex`), not about the `Scan`
+/// job itself, which is expected to appear once per explicit re-scan.
+fn non_scan_job_count(catalog: &Catalog) -> i64 {
+    catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type != 'scan'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
 }
 
 /// RFC-056 §8.1/§8.2, Handoff Slice 1: jobs enqueued directly by
@@ -126,21 +135,18 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
 }
 
 /// RFC-056 §9 first acceptance criterion: adding a source of a few hundred
-/// files returns control to the caller in under 2 seconds. `scan_and_index_source`
-/// no longer drives `run_pending`, so this needs no background loop at all --
-/// it is testing exactly the synchronous cost that RFC-056 exists to remove.
+/// files returns control to the caller in under 2 seconds.
 ///
-/// The CI-enforced ceiling here is looser than the RFC's literal "under 2
-/// seconds": Windows CI runners measured 2.06s for the same 400-file scan
-/// that took 37.8ms on Linux, a cross-platform I/O variance (many-small-file
-/// directory walks are known to be slower under Windows Defender's
-/// real-time scanning), not a regression toward the ~57.6s the old
-/// synchronous `run_pending` path measured (Task 013 Phase 2). 10s guards
-/// against that regression with a wide margin while tolerating the slowest
-/// CI runner observed; the exact number is always printed and reported
-/// per-platform in the review request rather than silently loosened past.
+/// Review 162 §2: the Slice 1 version of this test loosened its ceiling to
+/// tolerate a 2.06s Windows CI measurement, attributing it to cross-platform
+/// I/O variance -- wrong. `scan_and_index_source` still called `Scanner::scan`
+/// inline at the time, so the number scaled with source size, not a fixed
+/// per-platform constant. Scanning is now itself a `JobKind::ScanSource` job
+/// this function only enqueues (one row insert), so this needs no background
+/// loop at all -- it is testing exactly the synchronous cost RFC-056 exists
+/// to remove, restored to the RFC's literal figure.
 #[tokio::test]
-async fn scan_and_index_source_returns_control_far_below_the_synchronous_baseline() {
+async fn scan_and_index_source_returns_control_in_under_two_seconds() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
     let catalog = bootstrap::open_catalog(&context).unwrap();
@@ -155,10 +161,8 @@ async fn scan_and_index_source_returns_control_far_below_the_synchronous_baselin
 
     println!("scan_and_index_source (enqueue-only, 400 files): {elapsed:?}");
     assert!(
-        elapsed < Duration::from_secs(10),
-        "scan_and_index_source took {elapsed:?}, must stay far below the ~57.6s pre-RFC-056 \
-         synchronous baseline (RFC-056 §9's literal 2s target is a production expectation, \
-         verified directly at 37.8ms on Linux -- see the review request for cross-platform detail)"
+        elapsed < Duration::from_secs(2),
+        "scan_and_index_source took {elapsed:?}, must return control in under 2s (RFC-056 §9)"
     );
 }
 
@@ -210,14 +214,21 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
         "one model_missing failure per file, matching run_pending's existing behaviour"
     );
 
-    let before = total_job_count(&ui_catalog);
-    // Re-scan the same, unchanged source -- must not enqueue anything new.
+    let before = non_scan_job_count(&ui_catalog);
+    // Re-scan the same, unchanged source -- the Scan job itself is a new
+    // row by design (Review 162 §2), but must not discover anything new
+    // downstream.
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
-    tokio::time::sleep(Duration::from_millis(800)).await;
-    let after = total_job_count(&ui_catalog);
+    wait_until(
+        Duration::from_secs(20),
+        "the re-scan's Scan job resolves",
+        || job_counts_by_status(&ui_catalog, JobStatus::Queued) == 0,
+    )
+    .await;
+    let after = non_scan_job_count(&ui_catalog);
     assert_eq!(
         before, after,
-        "re-scanning an unchanged source must not grow the job table"
+        "re-scanning an unchanged source must not grow the non-Scan job table"
     );
 
     handle.abort();
