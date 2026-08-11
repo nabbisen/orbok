@@ -502,10 +502,16 @@ mod rfc048_padding_strategy_verification {
         // Mix of lengths, including a >512-token document to exercise
         // truncation identically under both strategies, and Japanese text
         // short and long (RFC-048 §3: "mix short and long, include
-        // Japanese"). Two batches, not one: "short_only" forces a much
-        // shorter BatchLongest pad length than "mixed" does, maximizing
-        // the chance of catching a regression where padding amount does
-        // leak into the pooled result.
+        // Japanese"). Two batches, not one -- and this split is load-
+        // bearing, not belt-and-braces (Review 158 §3): "mixed" contains
+        // the >512-token document, so BatchLongest pads that whole batch
+        // to 512, definitionally identical to Fixed(512) there -- it
+        // exercises truncation but carries zero discriminating power for
+        // this test's actual claim. Every bit of sensitivity to a padding
+        // regression comes from "short_only," which forces a much shorter
+        // BatchLongest pad length than "mixed" does. Without it this test
+        // would pass vacuously; do not delete it as redundant with the
+        // larger batch.
         let long_en: String = "The quick brown fox jumps over the lazy dog. ".repeat(60);
         let long_ja: String =
             "検索エンジンはドキュメントを効率的に見つけるためのツールです。".repeat(8);
