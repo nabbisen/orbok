@@ -39,6 +39,29 @@ next release tag.
   A missing `settings.json` is created with default values on first load at
   the active profile's resolved path in both modes. See
   `rfcs/done/049-portable-runtime-data-isolation.md`.
+- **RFC-048 — embedding batch-shape instrumentation (Task 011):** answers
+  "is the 10 files/s indexing throughput gate reachable by batching
+  changes alone" with a measurement, not a guess. `EmbeddingModel` gains
+  an additive `embed_batch_with_stats` method (default: delegates to
+  `embed_batch`, reports no stats — every existing backend and call site
+  is unaffected); `TractEmbeddingModel` reports real per-call batch size,
+  padded sequence length, and real-vs-padded token-position counts as a
+  byproduct of tokenization it already performs, costing nothing extra on
+  the plain `embed_batch` path. `orbok-bench`'s `timing_ms` gains an
+  `embedding_batches` block (distributions plus the derived
+  padded-token-positions-per-doc and projected-throughput-without-padding-
+  skew figures) alongside two new `BenchmarkResult` methods. Measured on
+  the real model, 1000 documents: padding skew is now only ~4.9% of
+  padded token-positions (0.9509 real/padded ratio) — most of the
+  remaining indexing cost is genuinely real token-position volume, not
+  waste. Answer: **no**, 10 files/s is not reachable by batching changes
+  alone — projected throughput with padding skew fully eliminated is
+  ~5.0 files/s, against 4.8 files/s measured, both well short of the
+  target. See the review request for the full figures and the next
+  candidate (chunk text-building currently embeds the full document text
+  for every chunk, not just the parent, despite the code's own comment
+  claiming otherwise — unconfirmed as the cause, and explicitly out of
+  this task's scope to change).
 
 ### Changed
 

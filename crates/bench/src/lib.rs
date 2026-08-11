@@ -81,6 +81,7 @@ pub fn run_bench_with_options(
     let mut model_evidence = None;
     let mut model_load_ms = 0;
     let mut document_embedding_ms = 0;
+    let mut embedding_batches = None;
     if let Some(model_dir) = options.model_dir.as_deref() {
         let model_load_start = std::time::Instant::now();
         let model = load_real_model(model_dir)?;
@@ -93,11 +94,20 @@ pub fn run_bench_with_options(
             dimension: model.dimension(),
         });
         let embed = orbok_workers::EmbeddingWorker::with_model(&catalog, &cache, model, id.clone());
+        // RFC-048 Task 011: run_with_stats returns exactly the same
+        // vectors, persisted exactly the same way, as run() -- see
+        // EmbeddingWorker::run_with_stats's doc comment for why this
+        // costs nothing extra for run() itself, and §6 below for the
+        // check that it doesn't move document_embedding_ms either.
+        let mut batch_stats = Vec::new();
         let document_embedding_start = std::time::Instant::now();
         for file_id in indexed_file_ids(&catalog)? {
-            embed.run(&file_id)?;
+            if let Some(stats) = embed.run_with_stats(&file_id)? {
+                batch_stats.push(stats);
+            }
         }
         document_embedding_ms = elapsed_ms(document_embedding_start);
+        embedding_batches = Some(metrics::embedding_batch_metrics(&batch_stats));
         model_id = Some(id.as_str().to_string());
         real_model = Some(embed);
     }
@@ -136,6 +146,7 @@ pub fn run_bench_with_options(
             model_load_ms,
             document_embedding_ms,
             search: search_timing,
+            embedding_batches,
         },
         corpus_bytes: corpus_size,
         catalog_bytes: catalog_size,

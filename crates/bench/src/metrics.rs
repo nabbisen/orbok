@@ -29,6 +29,80 @@ pub struct SearchTimingMetrics {
     pub rerank_ms: LatencyMetrics,
 }
 
+/// Distribution summary (min/mean/p50/max) for a batch-level measurement
+/// (RFC-048 Task 011).
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct DistributionMetrics {
+    pub min: f64,
+    pub mean: f64,
+    pub p50: f64,
+    pub max: f64,
+}
+
+fn distribution_metrics(mut values: Vec<f64>) -> DistributionMetrics {
+    if values.is_empty() {
+        return DistributionMetrics {
+            min: 0.0,
+            mean: 0.0,
+            p50: 0.0,
+            max: 0.0,
+        };
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let p50_index = (0.50 * values.len() as f64) as usize;
+    DistributionMetrics {
+        min: values[0],
+        mean,
+        p50: values[p50_index.min(values.len() - 1)],
+        max: values[values.len() - 1],
+    }
+}
+
+/// Aggregated embedding-batch statistics across an entire indexing run
+/// (RFC-048 Task 011): how much of the embedding cost is padding skew
+/// versus real token positions, and the batch/sequence-length shape that
+/// produced it. `batch_size`'s distribution is also chunks-per-document,
+/// under the current per-file batching (`EmbeddingWorker::run` embeds one
+/// file's active chunks in a single call) -- reported once rather than
+/// duplicated as two identical distributions.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EmbeddingBatchMetrics {
+    pub call_count: usize,
+    pub batch_size: DistributionMetrics,
+    pub padded_seq_len: DistributionMetrics,
+    pub real_token_positions_total: u64,
+    pub padded_token_positions_total: u64,
+    /// `real_token_positions_total / padded_token_positions_total`. 1.0
+    /// would mean no padding skew at all; the RFC-048 baseline's
+    /// `Fixed(512)` padding made this ratio roughly `avg_tokens / 512`.
+    pub real_to_padded_ratio: f64,
+}
+
+pub fn embedding_batch_metrics(
+    stats: &[orbok_models::EmbeddingBatchStats],
+) -> EmbeddingBatchMetrics {
+    let batch_sizes: Vec<f64> = stats.iter().map(|s| s.batch_size as f64).collect();
+    let seq_lens: Vec<f64> = stats.iter().map(|s| s.padded_seq_len as f64).collect();
+    let real_token_positions_total: u64 = stats.iter().map(|s| s.real_token_positions).sum();
+    let padded_token_positions_total: u64 = stats
+        .iter()
+        .map(|s| s.batch_size as u64 * s.padded_seq_len as u64)
+        .sum();
+    EmbeddingBatchMetrics {
+        call_count: stats.len(),
+        batch_size: distribution_metrics(batch_sizes),
+        padded_seq_len: distribution_metrics(seq_lens),
+        real_token_positions_total,
+        padded_token_positions_total,
+        real_to_padded_ratio: if padded_token_positions_total > 0 {
+            real_token_positions_total as f64 / padded_token_positions_total as f64
+        } else {
+            0.0
+        },
+    }
+}
+
 /// Recall@k result.
 #[derive(Debug, serde::Serialize)]
 pub struct RecallMetrics {

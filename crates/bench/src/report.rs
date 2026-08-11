@@ -1,6 +1,6 @@
 //! Benchmark report writer (RFC-016 §12): JSON and Markdown output.
 
-use crate::metrics::{LatencyMetrics, RecallMetrics, SearchTimingMetrics};
+use crate::metrics::{EmbeddingBatchMetrics, LatencyMetrics, RecallMetrics, SearchTimingMetrics};
 use std::fs;
 use std::path::Path;
 
@@ -27,6 +27,10 @@ pub struct BenchmarkTimingBreakdown {
     pub model_load_ms: u64,
     pub document_embedding_ms: u64,
     pub search: SearchTimingMetrics,
+    /// RFC-048 Task 011: batch/padding-shape statistics for the document
+    /// embedding phase above. `None` in keyword-only mode, where no real
+    /// embedding backend runs.
+    pub embedding_batches: Option<EmbeddingBatchMetrics>,
 }
 
 /// Non-secret model identity recorded for release evidence.
@@ -61,6 +65,42 @@ impl BenchmarkResult {
         fs::write(path, json)
     }
 
+    /// RFC-048 Task 011 §3/§7: projected indexing throughput if padding
+    /// skew were eliminated -- i.e. only real (non-padding) token
+    /// positions were ever processed -- holding the measured
+    /// cost-per-padded-token-position constant, as the task specifies.
+    /// `None` in keyword-only mode, or if there is nothing to project
+    /// from (zero padded positions or zero documents).
+    pub fn projected_files_per_sec_without_padding_skew(&self) -> Option<f64> {
+        let batches = self.timing_ms.embedding_batches.as_ref()?;
+        if batches.padded_token_positions_total == 0 || self.n_docs == 0 {
+            return None;
+        }
+        let ms_per_padded_position = self.timing_ms.document_embedding_ms as f64
+            / batches.padded_token_positions_total as f64;
+        let projected_document_embedding_ms =
+            batches.real_token_positions_total as f64 * ms_per_padded_position;
+        let projected_index_elapsed_ms = self.timing_ms.corpus_generation_ms as f64
+            + self.timing_ms.extraction_chunking_keyword_index_ms as f64
+            + self.timing_ms.model_load_ms as f64
+            + projected_document_embedding_ms;
+        if projected_index_elapsed_ms <= 0.0 {
+            return None;
+        }
+        Some((self.n_docs as f64 * 1000.0) / projected_index_elapsed_ms)
+    }
+
+    /// RFC-048 Task 011 §3: padded token-positions per document (the
+    /// benchmark's whole corpus, not just files that reached embedding).
+    /// `None` in keyword-only mode.
+    pub fn padded_token_positions_per_doc(&self) -> Option<f64> {
+        let batches = self.timing_ms.embedding_batches.as_ref()?;
+        if self.n_docs == 0 {
+            return None;
+        }
+        Some(batches.padded_token_positions_total as f64 / self.n_docs as f64)
+    }
+
     pub fn write_markdown(&self, path: &Path) -> std::io::Result<()> {
         let recall_status = if self.recall_at_k.recall >= 0.75 {
             "PASS"
@@ -87,6 +127,41 @@ impl BenchmarkResult {
                 )
             })
             .unwrap_or_else(|| "none".to_string());
+        let embedding_batch_section = self
+            .timing_ms
+            .embedding_batches
+            .as_ref()
+            .map(|batches| {
+                format!(
+                    "## Embedding Batch Shape (RFC-048 Task 011)\n\n\
+                     | Metric | Value |\n|---|---|\n\
+                     | `embed_batch` calls | {} |\n\
+                     | Batch size (= chunks/doc) — min/mean/p50/max | {:.0} / {:.1} / {:.0} / {:.0} |\n\
+                     | Padded seq len — min/mean/p50/max | {:.0} / {:.1} / {:.0} / {:.0} |\n\
+                     | Real token positions (total) | {} |\n\
+                     | Padded token positions (total) | {} |\n\
+                     | Real / padded ratio | {:.4} |\n\
+                     | Padded token positions / doc | {:.1} |\n\
+                     | Projected throughput without padding skew | {} |\n\n",
+                    batches.call_count,
+                    batches.batch_size.min,
+                    batches.batch_size.mean,
+                    batches.batch_size.p50,
+                    batches.batch_size.max,
+                    batches.padded_seq_len.min,
+                    batches.padded_seq_len.mean,
+                    batches.padded_seq_len.p50,
+                    batches.padded_seq_len.max,
+                    batches.real_token_positions_total,
+                    batches.padded_token_positions_total,
+                    batches.real_to_padded_ratio,
+                    self.padded_token_positions_per_doc().unwrap_or(0.0),
+                    self.projected_files_per_sec_without_padding_skew()
+                        .map(|value| format!("{value:.1} files/s"))
+                        .unwrap_or_else(|| "n/a".to_string()),
+                )
+            })
+            .unwrap_or_default();
         let md = format!(
             "# orbok Benchmark Report\n\n\
              ## Corpus\n\n\
@@ -105,6 +180,7 @@ impl BenchmarkResult {
              | Extraction/chunking/keyword indexing | {} ms |\n\
              | Model load | {} ms |\n\
              | Document embedding | {} ms |\n\n\
+             {embedding_batch_section}\
              ## Search Latency\n\n\
              | Percentile | Latency |\n|---|---|\n\
              | p50 | {:.2} ms |\n\
@@ -193,7 +269,7 @@ impl BenchmarkResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{LatencyMetrics, RecallMetrics, SearchTimingMetrics};
+    use crate::metrics::{DistributionMetrics, LatencyMetrics, RecallMetrics, SearchTimingMetrics};
 
     #[test]
     fn markdown_records_model_evidence_without_paths() {
@@ -258,12 +334,82 @@ mod tests {
         assert_eq!(json["model"]["dimension"], 384);
     }
 
+    // RFC-048 Task 011: the embedding-batch section only renders, and the
+    // derived figures only compute, when embedding_batches is Some (a
+    // hybrid-real-model run) -- confirmed absent above for a run with
+    // embedding_batches: None (timing_breakdown()'s default), confirmed
+    // present and numerically correct here.
+    #[test]
+    fn embedding_batch_section_reports_measured_and_derived_figures() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut timing = timing_breakdown();
+        timing.document_embedding_ms = 1000;
+        timing.embedding_batches = Some(EmbeddingBatchMetrics {
+            call_count: 10,
+            batch_size: DistributionMetrics {
+                min: 1.0,
+                mean: 2.0,
+                p50: 2.0,
+                max: 4.0,
+            },
+            padded_seq_len: DistributionMetrics {
+                min: 10.0,
+                mean: 50.0,
+                p50: 40.0,
+                max: 100.0,
+            },
+            real_token_positions_total: 500,
+            padded_token_positions_total: 1000,
+            real_to_padded_ratio: 0.5,
+        });
+        let result = BenchmarkResult {
+            n_docs: 10,
+            mode: BenchmarkMode::HybridRealModel,
+            model: None,
+            timing_ms: timing,
+            corpus_bytes: 1024,
+            catalog_bytes: 2048,
+            index_elapsed_ms: 1100,
+            indexing_files_per_sec: 9.0,
+            search_latency_ms: latency(),
+            recall_at_k: RecallMetrics {
+                k: 5,
+                recall: 1.0,
+                queries_evaluated: 1,
+                queries_with_any_hit: 1,
+            },
+        };
+
+        // padded_token_positions_per_doc = 1000 / 10 docs = 100.0.
+        assert_eq!(result.padded_token_positions_per_doc(), Some(100.0));
+        // ms_per_padded_position = 1000ms / 1000 positions = 1.0.
+        // projected_document_embedding_ms = 500 real positions * 1.0 = 500.
+        // projected_index_elapsed_ms = 10 + 20 + 15 + 500 = 545.
+        // projected files/s = 10 docs * 1000 / 545 ms.
+        let projected = result
+            .projected_files_per_sec_without_padding_skew()
+            .unwrap();
+        assert!(
+            (projected - (10.0 * 1000.0 / 545.0)).abs() < 1e-9,
+            "projected throughput {projected} did not match the hand-computed figure"
+        );
+
+        let markdown_path = dir.path().join("report.md");
+        result.write_markdown(&markdown_path).unwrap();
+        let markdown = std::fs::read_to_string(markdown_path).unwrap();
+        assert!(markdown.contains("## Embedding Batch Shape (RFC-048 Task 011)"));
+        assert!(markdown.contains("| `embed_batch` calls | 10 |"));
+        assert!(markdown.contains("| Real / padded ratio | 0.5000 |"));
+        assert!(markdown.contains("| Padded token positions / doc | 100.0 |"));
+    }
+
     fn timing_breakdown() -> BenchmarkTimingBreakdown {
         BenchmarkTimingBreakdown {
             corpus_generation_ms: 10,
             extraction_chunking_keyword_index_ms: 20,
             model_load_ms: 15,
             document_embedding_ms: 25,
+            embedding_batches: None,
             search: SearchTimingMetrics {
                 total_ms: latency(),
                 keyword_ms: latency(),

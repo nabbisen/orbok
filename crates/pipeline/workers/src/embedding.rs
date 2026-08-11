@@ -5,6 +5,7 @@
 use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
 use orbok_core::{FileId, ModelId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
+use orbok_db::repo::ChunkRecord;
 use orbok_db::repo::{
     ChunkRepository, EmbeddingRepository, FileRepository, NewEmbedding, SourceRepository,
 };
@@ -12,6 +13,21 @@ use orbok_extract::ExtractOutput;
 use orbok_fs::{GuardedSource, PathGuard};
 use orbok_models::{EmbeddingModel, MockEmbeddingModel};
 use std::path::Path;
+
+/// One file's active chunks and their built embedding texts, ready to
+/// hand to `embed_batch`/`embed_batch_with_stats`. Shared between `run`
+/// and `run_with_stats` so both call `embed_batch*` on the exact same
+/// batch, built exactly once.
+struct PreparedBatch {
+    chunks: Vec<ChunkRecord>,
+    texts: Vec<String>,
+}
+
+impl PreparedBatch {
+    fn text_refs(&self) -> Vec<&str> {
+        self.texts.iter().map(|text| text.as_str()).collect()
+    }
+}
 
 /// Embedding worker for one file.
 pub struct EmbeddingWorker<'a> {
@@ -51,6 +67,40 @@ impl<'a> EmbeddingWorker<'a> {
 
     /// Embed all active chunks of a file and persist vectors.
     pub fn run(&self, file_id: &FileId) -> OrbokResult<()> {
+        let Some(batch) = self.prepare_batch(file_id)? else {
+            return Ok(());
+        };
+        let vectors = self.model.embed_batch(&batch.text_refs())?;
+        self.persist(&batch, vectors)
+    }
+
+    /// `run`, plus this file's embedding batch statistics (RFC-048 Task
+    /// 011) — `None` when there was nothing to embed (no fresh extraction
+    /// cache yet, or no active chunks), matching `run`'s own early-return
+    /// cases. Shares `prepare_batch`/`persist` with `run` so the batching
+    /// itself is identical either way; the only difference is calling
+    /// `embed_batch_with_stats` instead of `embed_batch`, which costs
+    /// nothing extra for `run`'s plain path (RFC-048 Task 011 §4 --
+    /// `TractEmbeddingModel::embed_batch` still skips the stats
+    /// computation entirely).
+    pub fn run_with_stats(
+        &self,
+        file_id: &FileId,
+    ) -> OrbokResult<Option<orbok_models::EmbeddingBatchStats>> {
+        let Some(batch) = self.prepare_batch(file_id)? else {
+            return Ok(None);
+        };
+        let (vectors, stats) = self.model.embed_batch_with_stats(&batch.text_refs())?;
+        self.persist(&batch, vectors)?;
+        Ok(stats)
+    }
+
+    /// Fetch a file's fresh extraction output and active chunks, and build
+    /// the per-chunk embedding texts. `None` for either of `run`'s two
+    /// legitimate skip cases (no fresh extraction cache yet, or no active
+    /// chunks) -- shared so both `run` and `run_with_stats` skip on
+    /// exactly the same conditions.
+    fn prepare_batch(&self, file_id: &FileId) -> OrbokResult<Option<PreparedBatch>> {
         let files = FileRepository::new(self.catalog);
         let record = files.get_by_id(file_id)?.ok_or(OrbokError::FileNotFound)?;
         let sources = SourceRepository::new(self.catalog);
@@ -68,13 +118,13 @@ impl<'a> EmbeddingWorker<'a> {
             EngineOptions::default(),
         )?;
         let Some(extract_output) = CacheService::get_fresh(&engine, &validated)? else {
-            return Ok(()); // No extraction cache yet — skip (will retry later).
+            return Ok(None); // No extraction cache yet — skip (will retry later).
         };
 
         // Get active chunks for this file.
         let chunks = ChunkRepository::new(self.catalog).list_for_file(file_id)?;
         if chunks.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
 
         // Build chunk texts: combine heading + normalized text from extraction
@@ -97,11 +147,12 @@ impl<'a> EmbeddingWorker<'a> {
             })
             .collect();
 
-        let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-        let vectors = self.model.embed_batch(&text_refs)?;
+        Ok(Some(PreparedBatch { chunks, texts }))
+    }
 
+    fn persist(&self, batch: &PreparedBatch, vectors: Vec<Vec<f32>>) -> OrbokResult<()> {
         let embeddings = EmbeddingRepository::new(self.catalog);
-        for (chunk, vector) in chunks.iter().zip(vectors) {
+        for (chunk, vector) in batch.chunks.iter().zip(vectors) {
             embeddings.upsert(&NewEmbedding {
                 chunk_id: chunk.chunk_id.clone(),
                 model_id: self.model_id.clone(),

@@ -6,7 +6,7 @@
 
 use crate::EmbeddingModelConfig;
 use orbok_core::{OrbokError, OrbokResult};
-use orbok_models::{EmbeddingModel, l2_normalize};
+use orbok_models::{EmbeddingBatchStats, EmbeddingModel, l2_normalize};
 use tokenizers::{
     Encoding, Tokenizer,
     utils::{
@@ -113,6 +113,62 @@ impl TractEmbeddingModel {
     }
 }
 
+impl TractEmbeddingModel {
+    /// Shared implementation for `embed_batch`/`embed_batch_with_stats`.
+    /// `want_stats` is `false` on the plain `embed_batch` path so
+    /// production callers pay nothing extra: `batch`/`seq_len` are already
+    /// computed either way (needed for `build_inputs`), and the only
+    /// genuinely new work -- summing each encoding's attention mask
+    /// (RFC-048 Task 011 item 4) -- is skipped unless a caller explicitly
+    /// asks for it via `embed_batch_with_stats`.
+    fn embed_batch_inner(
+        &self,
+        texts: &[&str],
+        want_stats: bool,
+    ) -> OrbokResult<(Vec<Vec<f32>>, Option<EmbeddingBatchStats>)> {
+        if texts.is_empty() {
+            return Ok((Vec::new(), want_stats.then(EmbeddingBatchStats::default)));
+        }
+
+        let encodings = self
+            .tokenizer
+            .encode_batch(texts.to_vec(), true)
+            .map_err(|e| OrbokError::Cache(format!("tokenization failed: {e}")))?;
+        let batch = encodings.len();
+        let seq_len = sequence_len(&encodings)?;
+        let stats = want_stats.then(|| {
+            let real_token_positions: u64 = encodings
+                .iter()
+                .map(|encoding| {
+                    encoding
+                        .get_attention_mask()
+                        .iter()
+                        .filter(|&&mask| mask != 0)
+                        .count() as u64
+                })
+                .sum();
+            EmbeddingBatchStats {
+                batch_size: batch,
+                padded_seq_len: seq_len,
+                real_token_positions,
+            }
+        });
+        let inputs = build_inputs(&self.inputs, &encodings, batch, seq_len)?;
+        let outputs = self
+            .model
+            .run(inputs.into())
+            .map_err(|e| OrbokError::Cache(format!("ONNX inference failed: {e}")))?;
+        let output = outputs
+            .into_iter()
+            .next()
+            .ok_or_else(|| OrbokError::Cache("ONNX inference returned no outputs".into()))?
+            .into_tensor();
+        let vectors =
+            vectors_from_output(&output, &encodings, batch, seq_len, self.dimension as usize)?;
+        Ok((vectors, stats))
+    }
+}
+
 impl EmbeddingModel for TractEmbeddingModel {
     fn name(&self) -> &str {
         &self.name
@@ -125,27 +181,14 @@ impl EmbeddingModel for TractEmbeddingModel {
     }
 
     fn embed_batch(&self, texts: &[&str]) -> OrbokResult<Vec<Vec<f32>>> {
-        if texts.is_empty() {
-            return Ok(Vec::new());
-        }
+        Ok(self.embed_batch_inner(texts, false)?.0)
+    }
 
-        let encodings = self
-            .tokenizer
-            .encode_batch(texts.to_vec(), true)
-            .map_err(|e| OrbokError::Cache(format!("tokenization failed: {e}")))?;
-        let batch = encodings.len();
-        let seq_len = sequence_len(&encodings)?;
-        let inputs = build_inputs(&self.inputs, &encodings, batch, seq_len)?;
-        let outputs = self
-            .model
-            .run(inputs.into())
-            .map_err(|e| OrbokError::Cache(format!("ONNX inference failed: {e}")))?;
-        let output = outputs
-            .into_iter()
-            .next()
-            .ok_or_else(|| OrbokError::Cache("ONNX inference returned no outputs".into()))?
-            .into_tensor();
-        vectors_from_output(&output, &encodings, batch, seq_len, self.dimension as usize)
+    fn embed_batch_with_stats(
+        &self,
+        texts: &[&str],
+    ) -> OrbokResult<(Vec<Vec<f32>>, Option<EmbeddingBatchStats>)> {
+        self.embed_batch_inner(texts, true)
     }
 }
 

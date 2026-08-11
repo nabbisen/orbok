@@ -144,6 +144,20 @@ pub struct VectorCandidate {
     pub score: f32,
 }
 
+/// Per-call batch statistics for measurement only (RFC-048 Task 011) —
+/// never consulted by embedding logic itself. `padded_seq_len` is what
+/// the backend's padding strategy actually resolved to for this call;
+/// `real_token_positions` is the sum, across the whole batch, of each
+/// item's non-padding token count (from its attention mask, where the
+/// backend has one). `batch_size * padded_seq_len` is the padded
+/// token-position count the call actually paid for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EmbeddingBatchStats {
+    pub batch_size: usize,
+    pub padded_seq_len: usize,
+    pub real_token_positions: u64,
+}
+
 /// Local embedding model abstraction (RFC-008 §6).
 ///
 /// Implementations must not transmit text externally (NFR-001).
@@ -157,6 +171,19 @@ pub trait EmbeddingModel: Send + Sync {
     /// Embed a batch of normalized texts. Returns one vector per input,
     /// each L2-normalized.
     fn embed_batch(&self, texts: &[&str]) -> orbok_core::OrbokResult<Vec<Vec<f32>>>;
+
+    /// `embed_batch`, plus this call's batch statistics (RFC-048 Task 011)
+    /// — `None` when a backend doesn't track them. The default
+    /// implementation delegates to `embed_batch` and reports no stats, so
+    /// every existing backend and call site is unaffected; a backend that
+    /// can report real figures overrides this instead, as a byproduct of
+    /// work it already performs, adding no cost to plain `embed_batch`.
+    fn embed_batch_with_stats(
+        &self,
+        texts: &[&str],
+    ) -> orbok_core::OrbokResult<(Vec<Vec<f32>>, Option<EmbeddingBatchStats>)> {
+        Ok((self.embed_batch(texts)?, None))
+    }
 }
 
 /// Compute cosine similarity between two L2-normalized vectors.
