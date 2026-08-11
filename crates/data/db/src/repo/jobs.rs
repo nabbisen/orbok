@@ -70,6 +70,31 @@ impl<'a> IndexJobRepository<'a> {
         Ok(())
     }
 
+    /// Fail a job with a named category (RFC-008 §15 -- e.g. `"model_missing"`
+    /// for an `Embedding` job dispatched with no embedding model configured).
+    /// Distinct from `set_status(Failed)`: this is for a job the dispatcher
+    /// never attempted, not one whose attempt raised an error, so the reason
+    /// belongs in `error_category`/`error_message` rather than only in a log
+    /// line. `error_category`/`error_message` exist in the schema (RFC-002)
+    /// but nothing has written them before this.
+    pub fn fail_with_category(
+        &self,
+        id: &JobId,
+        category: &str,
+        message: Option<&str>,
+    ) -> OrbokResult<()> {
+        let now = now_iso8601();
+        let conn = self.catalog.lock();
+        conn.execute(
+            "UPDATE index_jobs SET status = 'failed', error_category = ?2, \
+             error_message = ?3, updated_at = ?4, \
+             completed_at = COALESCE(completed_at, ?4) WHERE job_id = ?1",
+            params![id.as_str(), category, message, now],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
     /// Queued jobs in priority/FIFO order.
     pub fn list_queued(&self, limit: u32) -> OrbokResult<Vec<JobRecord>> {
         let conn = self.catalog.lock();

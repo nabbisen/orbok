@@ -4,9 +4,9 @@
 
 use crate::chunk_adapter::to_chunk_specs;
 use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
-use orbok_core::{ErrorCategory, ExtractionId, FileId, OrbokError, OrbokResult};
+use orbok_core::{ErrorCategory, ExtractionId, FileId, JobType, OrbokError, OrbokResult};
 use orbok_db::Catalog;
-use orbok_db::repo::{ChunkRepository, FileRepository, SourceRepository};
+use orbok_db::repo::{ChunkRepository, FileRepository, IndexJobRepository, SourceRepository};
 use orbok_extract::{ExtractOutput, chunk};
 use orbok_fs::{GuardedSource, PathGuard};
 use rusqlite::params;
@@ -62,6 +62,16 @@ impl<'a> ChunkAndIndexWorker<'a> {
         }
 
         ChunkRepository::new(self.catalog).insert_bundle(file_id, &extraction_id, &specs)?;
+
+        // RFC-008 §19 "Chunk Change Handling": a new embedding job is
+        // queued after rechunking. Mirrors extract.rs's JobType::Chunk
+        // enqueue -- dispatcher-agnostic: both run_pending and RFC-036's
+        // Scheduler consume JobType::Embedding (scheduler/job.rs:96).
+        IndexJobRepository::new(self.catalog).enqueue(
+            JobType::Embedding,
+            Some(&record.source_id),
+            Some(file_id),
+        )?;
         Ok(())
     }
 

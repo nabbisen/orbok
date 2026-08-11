@@ -30,6 +30,22 @@ fn seed_and_run(
     name: &str,
     content: &str,
 ) -> orbok_core::FileId {
+    seed_and_run_with_embedding(catalog, cache, root, name, content, None)
+}
+
+/// `seed_and_run`, plus an optional embedding worker for `run_pending`'s
+/// single dispatch pass -- needed so a test can observe the
+/// `Embedding` job `ChunkAndIndexWorker::run` now enqueues (Task 013)
+/// actually get dispatched in the same pass that creates it, the way
+/// production's single `run_pending` call would.
+fn seed_and_run_with_embedding(
+    catalog: &Catalog,
+    cache: &CacheService,
+    root: &std::path::Path,
+    name: &str,
+    content: &str,
+    embed_worker: Option<&EmbeddingWorker<'_>>,
+) -> orbok_core::FileId {
     let path = root.join(name);
     fs::write(&path, content).unwrap();
     let canonical = fs::canonicalize(&path)
@@ -80,7 +96,7 @@ fn seed_and_run(
 
     let extract = ExtractionWorker::new(catalog, cache);
     let chunk = ChunkAndIndexWorker::new(catalog, cache);
-    run_pending(catalog, &extract, &chunk, None, 50).unwrap();
+    run_pending(catalog, &extract, &chunk, embed_worker, 50).unwrap();
     file.file_id
 }
 
@@ -393,6 +409,143 @@ fn sibling_chunks_embed_their_own_section_text_not_the_whole_document() {
             .any(|text| text.contains("config file") && !text.contains("installer")),
         "expected a Configure-section chunk without Install's content: {texts:?}"
     );
+}
+
+// Task 013 Phase 1 / RFC-008 §19: chunking enqueues an Embedding job, and
+// run_pending dispatches it in the same pass when a worker is supplied --
+// ending with embeddings rows where the profile previously had none.
+#[test]
+fn embedding_job_enqueued_by_chunking_produces_embeddings_with_a_configured_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    seed_mock_model(&catalog);
+    let embed = EmbeddingWorker::with_mock(&catalog, &cache);
+
+    let before = EmbeddingRepository::new(&catalog)
+        .count_active("mock_mock-v1")
+        .unwrap();
+    assert_eq!(before, 0, "profile must start with zero embeddings");
+
+    seed_and_run_with_embedding(
+        &catalog,
+        &cache,
+        dir.path(),
+        "doc.md",
+        "# Guide\n\nSome content about the install process.\n",
+        Some(&embed),
+    );
+
+    let after = EmbeddingRepository::new(&catalog)
+        .count_active("mock_mock-v1")
+        .unwrap();
+    assert!(
+        after > 0,
+        "embeddings must be created (was {before}, still {after})"
+    );
+}
+
+// Task 013 Phase 1 / RFC-008 §15: a job that did no work is not
+// Succeeded. With no embedding model configured, the Embedding job
+// chunking enqueues must fail with the named `model_missing` category
+// -- not silently succeed (the defect Task 012 found), and not stay
+// queued to spin. Also covers Task 013 §3's retry-policy assertion:
+// re-scanning the same unchanged file must not grow the job table --
+// the terminal-failure rule is only meaningful if nothing re-enqueues
+// the same work forever.
+#[test]
+fn no_model_configured_fails_embedding_as_model_missing_without_unbounded_job_growth() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+
+    let source_dir = dir.path().join("source");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("doc.md"),
+        "# Guide\n\nSome content about the install process.\n",
+    )
+    .unwrap();
+    let root_canon = fs::canonicalize(&source_dir)
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    let src = SourceRepository::new(&catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: Some("source".into()),
+            original_path: root_canon.clone(),
+            canonical_path: root_canon,
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+
+    let extract = ExtractionWorker::new(&catalog, &cache);
+    let chunk = ChunkAndIndexWorker::new(&catalog, &cache);
+    let scan_request = orbok_fs::ScanRequest {
+        source_id: src.source_id.clone(),
+        force_hash: false,
+        enqueue_index_jobs: true,
+    };
+
+    orbok_fs::Scanner::new(&catalog)
+        .scan(&scan_request, &std::sync::atomic::AtomicBool::new(false))
+        .unwrap();
+    run_pending(&catalog, &extract, &chunk, None, 50).unwrap();
+
+    // The Embedding job chunking enqueued must be Failed with
+    // model_missing, not Succeeded and not left Queued.
+    let (category, status): (Option<String>, String) = catalog
+        .lock()
+        .query_row(
+            "SELECT error_category, status FROM index_jobs WHERE job_type = 'embedding'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed");
+    assert_eq!(category.as_deref(), Some("model_missing"));
+
+    let embeddings: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        embeddings, 0,
+        "no model configured must mean no embeddings, not an error partway through"
+    );
+
+    let jobs_after_first: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM index_jobs", [], |row| row.get(0))
+        .unwrap();
+
+    // Re-scan the same, unchanged file (RFC-004 change detection).
+    orbok_fs::Scanner::new(&catalog)
+        .scan(&scan_request, &std::sync::atomic::AtomicBool::new(false))
+        .unwrap();
+    run_pending(&catalog, &extract, &chunk, None, 50).unwrap();
+
+    let jobs_after_second: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM index_jobs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        jobs_after_first, jobs_after_second,
+        "re-scanning an unchanged file must not enqueue new jobs -- \
+         a spinning model_missing job would grow this every scan"
+    );
+
+    // Search still works keyword-only -- "no model means today's
+    // behaviour exactly, not a failure" (RFC-009 §21).
+    let service = HybridSearchService::keyword_only(&catalog);
+    let results = service.search("install", SearchMode::Auto, 10).unwrap();
+    assert!(!results.is_empty(), "keyword search must still work");
 }
 
 // RFC-008 §24 test 8: deleted vector index doesn't delete source catalog.

@@ -167,6 +167,25 @@ next release tag.
   landed, `EmbeddingWorker` was not yet wired into the shipped
   application (dev-team Task 012), so zero embeddings existed anywhere to
   invalidate.
+- **RFC-008 §15/§19 — chunking never queued an embedding job, and the
+  dispatcher lied when one ran anyway (Task 013 Phase 1):** the shipped
+  application had never generated a single embedding — `EmbeddingWorker`
+  was constructed nowhere in `crates/app`, and even where `run_pending`'s
+  `Embedding` job-type arm existed to dispatch one, nothing anywhere
+  enqueued a `JobType::Embedding` job for it to find. `ChunkAndIndexWorker`
+  now enqueues one after chunking succeeds, mirroring how extraction
+  already queues a `Chunk` job (RFC-008 §19, "new embedding job is queued
+  after rechunking"). `run_pending`'s `Embedding` arm no longer marks a
+  job `Succeeded` when no embedding model is configured — RFC-008 §15
+  names `model_missing` as a distinct failure category, and a job that
+  did no work is not a success. `model_missing` is terminal (not
+  retried): nothing about the job changes until a model appears, and
+  RFC-008 §18 already re-queues embedding work when the active model
+  changes, which installing one is. This wiring is not yet reachable from
+  the shipped application — `crates/app` still constructs no
+  `EmbeddingWorker` — pending a blocking-time measurement (Task 013
+  Phase 2) before it can be connected to the synchronous scan/index path
+  without risking a frozen GUI.
 
 - **RFC-031 — a fresh profile's `auto` locale never reached OS detection
   (Task 009):** `OrbokSettings::default().locale` was `"en"`, a value

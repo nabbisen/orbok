@@ -87,6 +87,21 @@ pub fn run_pending(
         }
         let job = &batch[0];
         jobs.set_status(&job.job_id, JobStatus::Running)?;
+
+        // RFC-008 §15: a job that did no work is not Succeeded. Handled
+        // before the generic result match below (not via a generic
+        // `Err`) because this is a named, terminal failure category, not
+        // a runtime error from attempting the work -- there is no
+        // attempt to report on. Terminal, not retried here: nothing about
+        // this job changes until a model becomes available, and §18 step
+        // 3 already re-queues embedding work when the active model
+        // changes, which an installation is (Review 160 §5).
+        if job.job_type == JobType::Embedding && embed_worker.is_none() {
+            jobs.fail_with_category(&job.job_id, "model_missing", None)?;
+            processed += 1;
+            continue;
+        }
+
         let result = match job.job_type {
             JobType::Extract => {
                 if let Some(file_id) = &job.file_id {
@@ -102,13 +117,13 @@ pub fn run_pending(
                     Ok(())
                 }
             }
-            JobType::Embedding => {
-                if let (Some(file_id), Some(worker)) = (&job.file_id, embed_worker) {
-                    worker.run(file_id)
-                } else {
-                    Ok(())
-                }
-            }
+            JobType::Embedding => match (&job.file_id, embed_worker) {
+                (Some(file_id), Some(worker)) => worker.run(file_id),
+                // embed_worker is Some here (the check above already
+                // handled None); a missing file_id would be a malformed
+                // job, which no current enqueue path produces.
+                _ => Ok(()),
+            },
             _ => Ok(()), // Other job types are no-ops in v0.2.
         };
         match result {
