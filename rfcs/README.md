@@ -77,13 +77,13 @@ may start" a checked state rather than an implicit convention.
 | ID | Title | Status |
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
+| 056 | [Hosting the Indexing Scheduler in the Application](accepted/056-hosting-the-indexing-scheduler.md) | Accepted 2026-08-11 — implementation not started |
 
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 056 | [Hosting the Indexing Scheduler in the Application](proposed/056-hosting-the-indexing-scheduler.md) | Proposed |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in
@@ -103,7 +103,7 @@ set; it is also now implemented on `main`. RFC-048's real-model measurement
 work is accepted and in progress (Owner Task 003); RFC-047 remains paused
 behind the other blockers and has not been accepted. RFC-054 is implemented on `main`; it narrowed a cross-platform gap found in RFC-049 after
 it shipped: `ORBOK_DATA_DIR` relocates a profile's data but not its settings,
-and the workaround for that exists only on Linux. RFC-056 proposes hosting
+and the workaround for that exists only on Linux. RFC-056 is accepted and awaiting implementation; it hosts
 RFC-036's scheduler in the application: the policy engine and the background
 execution pattern both already exist, and indexing has never been connected to
 either — see RFC-008 §27 and RFC-009 §24 for how that went unnoticed. RFC-055 is implemented on `main`; it is the

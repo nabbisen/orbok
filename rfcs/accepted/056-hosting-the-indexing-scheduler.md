@@ -3,9 +3,11 @@
 **Project:** orbok\
 **RFC:** 056\
 **Title:** Hosting the Indexing Scheduler in the Application\
-**Status:** Proposed\
+**Status:** Accepted\
 **Target milestone:** indexing pipeline conformance\
 **Date:** 2026-08-11\
+**Accepted:** 2026-08-11 by the project owner\
+**Handoff:** [`HANDOFF-056-hosting-the-indexing-scheduler.md`](../handoffs/HANDOFF-056-hosting-the-indexing-scheduler.md)\
 **Related RFCs:** RFC-036 Resource-Aware Indexing Scheduler (this hosts it, and does not re-specify it); RFC-049 Portable Runtime Data Isolation (`ProfileModelStore` is the boundary-crossing precedent); RFC-008 §15/§19 embedding job lifecycle; RFC-050 Trusted Atomic Model Delivery (the lease); RFC-039 Privacy Modes
 
 ---
