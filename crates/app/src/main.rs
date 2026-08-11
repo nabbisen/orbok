@@ -15,6 +15,7 @@ mod history;
 mod model_flow;
 #[cfg(test)]
 mod runtime_isolation_tests;
+mod scheduler_host;
 mod settings;
 
 use orbok_ui::i18n::{dialog_title_add_source, dialog_title_choose_search_folder};
@@ -104,8 +105,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let path = folder.to_string_lossy().to_string();
                         app.update(Message::SourcePathChanged(path.clone()));
                         if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                            let cache = bootstrap::cache_service(&runtime)
-                                .expect("active cache path must be authorized");
                             match bootstrap::add_source(&catalog, &path) {
                                 Ok((card, sensitive)) => {
                                     if let Some(warning) = sensitive {
@@ -116,9 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     let source_id = card.source_id.clone();
                                     app.update(Message::SourceAdded(card));
-                                    match bootstrap::scan_and_index_source(
-                                        &catalog, &cache, &source_id,
-                                    ) {
+                                    match bootstrap::scan_and_index_source(&catalog, &source_id) {
                                         Ok(health) => app.update(Message::ScanCompleted(health)),
                                         Err(e) => {
                                             tracing::error!("scan failed: {e}");
@@ -299,10 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Begin background preparation and immediately search
                         // whatever is already indexed (RFC-045 §14, §8.1).
-                        let cache = bootstrap::cache_service(&runtime)
-                            .expect("active cache path must be authorized");
-                        match bootstrap::scan_and_index_source(&catalog, &cache, source_id.as_str())
-                        {
+                        match bootstrap::scan_and_index_source(&catalog, source_id.as_str()) {
                             Ok(health) => app.update(Message::ScanCompleted(health)),
                             Err(e) => tracing::warn!("initial scan failed: {e}"),
                         }
@@ -406,19 +400,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .title(|app: &OrbokApp| app.title())
     .theme(|app: &OrbokApp| app.iced_theme())
     .font(orbok_ui::LUCIDE_FONT_BYTES)
-    .subscription(|app: &OrbokApp| {
+    .subscription(move |app: &OrbokApp| {
         let focused = app.search_focused;
-        iced::keyboard::listen()
-            .with(focused)
-            .filter_map(|(focused, event)| {
-                use iced::keyboard::Event;
-                match event {
-                    Event::KeyPressed { key, modifiers, .. } => {
-                        key_to_message(&key, modifiers, focused)
+        iced::Subscription::batch([
+            scheduler_host::subscription(portable),
+            iced::keyboard::listen()
+                .with(focused)
+                .filter_map(|(focused, event)| {
+                    use iced::keyboard::Event;
+                    match event {
+                        Event::KeyPressed { key, modifiers, .. } => {
+                            key_to_message(&key, modifiers, focused)
+                        }
+                        _ => None,
                     }
-                    _ => None,
-                }
-            })
+                }),
+        ])
     })
     .run()?;
     Ok(())

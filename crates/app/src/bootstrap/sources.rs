@@ -1,6 +1,5 @@
 //! Source registration, scan/index execution, removal, and folder lookup.
 
-use orbok::runtime_storage::ProfileCache;
 use orbok_db::Catalog;
 
 // ── Source management ─────────────────────────────────────────────────
@@ -76,18 +75,22 @@ pub fn add_source(
     ))
 }
 
-/// Scan a source synchronously and return the updated index health.
-/// In production this would run in a background thread; for v0.9 it
-/// runs synchronously so the UI reflects results immediately.
+/// Scan a source and enqueue its indexing jobs, then return promptly
+/// (RFC-056 §3). Execution of the enqueued `Extract`/`Chunk`/`Embedding`
+/// jobs happens off this call, in the `scheduler_host` background task
+/// (RFC-056 §4.1) -- this function no longer drives `run_pending` itself,
+/// so the returned `IndexHealth` reflects only what scanning itself
+/// changed (typically zero newly-indexed files), not the eventual result
+/// of preparing the source. The caller observes real progress via the
+/// `Message::HealthUpdated` events the background task emits as jobs
+/// complete.
 pub fn scan_and_index_source(
     catalog: &Catalog,
-    cache: &ProfileCache,
     source_id_str: &str,
 ) -> Result<orbok_ui::state::IndexHealth, Box<dyn std::error::Error>> {
     use orbok_core::SourceId;
     use orbok_db::repo::SourceRepository;
     use orbok_fs::{ScanRequest, Scanner};
-    use orbok_workers::{ChunkAndIndexWorker, ExtractionWorker, run_pending};
     use std::sync::atomic::AtomicBool;
 
     let source_id = SourceId::from_string(source_id_str.to_string());
@@ -103,11 +106,6 @@ pub fn scan_and_index_source(
         },
         &AtomicBool::new(false),
     )?;
-
-    let cache_service = cache.service();
-    let extract = ExtractionWorker::new(catalog, cache_service);
-    let chunk = ChunkAndIndexWorker::new(catalog, cache_service);
-    run_pending(catalog, &extract, &chunk, None, 2000)?;
 
     Ok(super::get_health(catalog))
 }

@@ -174,6 +174,28 @@ impl Scheduler {
         Ok(())
     }
 
+    // ── Rehydration (RFC-056 §4.5) ──────────────────────────────────────
+
+    /// Load a job that is already persisted in the catalog — e.g. one
+    /// enqueued directly via `IndexJobRepository::enqueue` by the scanner
+    /// or a worker (bypassing `Scheduler::enqueue`), or one recovered from
+    /// a previous session — into the in-memory queue without re-inserting
+    /// it into the catalog.
+    ///
+    /// The catalog, not `QueueSet`, is the durable source of truth: a
+    /// freshly constructed `Scheduler` starts with empty queues and must be
+    /// told about every `queued` row before `tick()` can dispatch it. This
+    /// is that telling. Silently drops the job if its queue is full —
+    /// callers periodically re-rehydrate, so a job dropped this pass is
+    /// picked up on the next once room exists, and the catalog row is
+    /// untouched either way.
+    pub fn load_persisted(&mut self, job: IndexJob) {
+        let queue = self.queues.queue_for(job.kind);
+        if !queue.is_full() {
+            queue.push(job);
+        }
+    }
+
     // ── Dispatch ─────────────────────────────────────────────────────────
 
     /// Dispatch one job from the queues (RFC-036 §8, §9).

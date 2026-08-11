@@ -62,6 +62,28 @@ next release tag.
   for every chunk, not just the parent, despite the code's own comment
   claiming otherwise — unconfirmed as the cause, and explicitly out of
   this task's scope to change).
+- **RFC-056 Slice 1 — the indexing scheduler is now hosted in the
+  application:** `scan_and_index_source` no longer runs `run_pending`
+  synchronously — it scans, enqueues, and returns (measured: 37.8ms for
+  400 files, against a 2s gate). A new `scheduler_host` module spawns
+  RFC-036's `Scheduler` as a long-lived `iced::Subscription` (the same
+  `tokio::spawn`-backed pattern already used for model download, adapted
+  for a perpetual rather than one-shot task) that pulls jobs via
+  `Scheduler::tick()` and executes them through the existing
+  `ExtractionWorker`/`ChunkAndIndexWorker`, reporting progress through
+  `Message::HealthUpdated`. Jobs enqueued directly by the scanner/workers
+  (bypassing `Scheduler::enqueue`) are picked up by a new
+  `Scheduler::load_persisted` rehydration path, run only when the
+  in-memory queue empties (an unconditional per-iteration rehydration was
+  tried first and is O(n²) over a job backlog — fine at 10 files, did not
+  finish 300 within 90s; fixed before this landed). `GenerateEmbedding`
+  jobs still terminate as `model_missing` (RFC-008 §15), exactly as
+  `run_pending` already did — this slice hosts extract/chunk/keyword
+  dispatch only; connecting `EmbeddingWorker` is RFC-056 Slice 2. Measured
+  on this host: 300 files fully indexed via the background loop in
+  ~1.1s. See the review request for the `Scheduler::fail` retry-vs-
+  `model_missing` gap this surfaced (an RFC-036 amendment candidate, not
+  fixed here) and the HANDOFF §3.2 catalog-contention findings.
 
 ### Changed
 
