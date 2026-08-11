@@ -462,3 +462,55 @@ Required tests:
 Use RRF as the initial hybrid fusion method.
 
 Implement it behind a small rank-fusion module so alternative methods can be tested later.
+
+---
+
+## 24. Amendment (2026-08-11): hybrid fusion has never had a vector side to fuse
+
+This RFC's fusion, modes, limits, deduplication and explanation metadata are all
+implemented and correct. But the application has never produced a single
+embedding — see [RFC-008 §27](008-embedding-model-and-vector-storage.md#27-amendment-2026-08-11-this-rfc-was-marked-implemented-while-the-application-never-invoked-it)
+for the evidence — so in every release since v0.3.0 the vector side of every
+fusion has been empty.
+
+`bootstrap/search.rs` does construct `HybridSearchService::with_model` when a
+model resolves, so the cost is paid: the model loads, the query is embedded, and
+the vector scan runs against zero rows. Results are keyword-only, and nothing in
+the UI distinguishes that from hybrid retrieval working normally.
+
+### §21's criteria could not detect it, and one of them names the failure as a feature
+
+§21 reads in part:
+
+> - RRF fusion is implemented.
+> - **Search works without embedding model.**
+> - UI can display degradation notices.
+
+The second is a genuine and valuable requirement — degrading to keyword-only is
+correct behaviour when no model is present. But it means **the exact state orbok
+has been in is indistinguishable, at the level of these criteria, from a
+satisfied requirement.** There is no criterion asserting that hybrid search
+*does* fuse a non-empty vector side when a model **is** present, so the
+difference between "correctly degraded" and "silently never engaged" is not
+expressible here.
+
+"UI can display degradation notices" has the same shape as RFC-008 §23's
+capability wording: the UI *can*, and nothing requires that it *does* when the
+vector side is empty. A user with a working installed model sees no notice,
+because from the search layer's perspective nothing degraded — it asked for
+vectors and got an empty set, which is a valid result.
+
+### What this does and does not change
+
+**No design change.** RRF, the modes, the limits, and the degradation path are
+all as specified and all correct. The gap is upstream, in RFC-008's pipeline
+never running.
+
+Two things worth carrying into the remediation, neither decided here:
+
+1. Whether an empty vector side with a model present should raise a degradation
+   notice, rather than being indistinguishable from a healthy hybrid search that
+   simply found no semantic matches.
+2. Whether a future criterion should assert positively that fusion receives a
+   non-empty vector side under a known-good corpus — the check that would have
+   caught this.

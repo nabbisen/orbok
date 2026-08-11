@@ -509,3 +509,63 @@ Required tests:
 Implement embedding and vector search behind abstractions.
 
 Start with correctness-first local embeddings and exact vector search. Defer ANN and quantization until benchmarks justify them.
+
+---
+
+## 27. Amendment (2026-08-11): this RFC was marked Implemented while the application never invoked it
+
+Recorded at v0.3.0 as Implemented. The **capability** was built and is exercised
+by tests and by `orbok-bench`. The **application never called it**, and had not
+by the time this note was written.
+
+Evidence, from the workspace and from a real profile:
+
+- `EmbeddingWorker` is constructed in exactly two places — `crates/bench/src/lib.rs`
+  and test modules. Never in `crates/app`.
+- `crates/app/src/bootstrap/sources.rs` passes `None` for the embedding worker to
+  `run_pending`, whose `JobType::Embedding` arm then returns `Ok(())` and marks
+  the job **Succeeded**.
+- A real profile: 361 files, 4,834 chunks, **0 embeddings**.
+- §15's job lifecycle (`Queued → LoadingModel → Embedding → WritingVector`) has
+  no production driver. `Scheduler::tick()`, named in `orbok-workers`' own
+  documentation as the production dispatcher, is not wired into the application.
+
+So orbok has performed keyword-only retrieval in every release since v0.3.0,
+while `bootstrap/search.rs` still constructs `HybridSearchService::with_model` —
+loading the model, embedding the query, and scanning an empty vector set.
+
+### Why §23's criteria could not detect this
+
+§23 is phrased in **capability** terms, and every item was truthfully checkable
+throughout:
+
+> - Embedding backend abstraction exists.
+> - Chunks **can be** embedded locally.
+> - Model change **marks** embeddings stale/incompatible.
+
+The abstraction exists. Chunks *can be* embedded — the benchmark does it.
+`mark_embedding_dependents_stale` exists and is tested, though it has no
+production caller. Each criterion is satisfied by code that exists, and none of
+them says the shipped application does any of it.
+
+**An acceptance criterion phrased as "X can be done" is not a statement about the
+product.** That is the reusable lesson, and it is structural rather than an
+oversight in any one bullet: criteria written this way cannot detect the gap
+between a capability and its use, no matter how carefully they are checked.
+RFC-031 §11 records a narrower instance of the same shape — a requirement
+satisfied by a unit test of a component whose integration was dead.
+
+Criteria in future RFCs should name observable behaviour of the shipped
+application. Had §23 read "indexing a source produces embeddings for its chunks,"
+this would have been caught at v0.3.0.
+
+### Status of the design
+
+**Nothing in this RFC's design is wrong or superseded.** §15's lifecycle, §23's
+requirements, and the storage model all stand. The defect is that the application
+does not invoke them. Remediation is tracked as a dev-team conformance task, not
+a new RFC, precisely because no design decision needs revisiting.
+
+The `Status` line is left as Implemented pending that work, rather than being
+silently rewritten; this note is the accurate record of what "Implemented" has
+meant for this RFC.
