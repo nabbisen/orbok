@@ -284,6 +284,20 @@ next release tag.
   inclusive batch and a short-only batch (a much shorter `BatchLongest`
   pad length than the mixed batch, maximizing the chance of catching a
   regression). Every vector measured at cosine similarity 1.000000.
+- **Task 013 Phase 2:** added
+  `measure_scan_and_index_blocking_time_with_a_real_model`
+  (`crates/app/src/bootstrap/tests/embedding_blocking_measurement.rs`),
+  `#[ignore]`d for the same reason. Reuses the real production
+  resolution/construction path (`resolve_model_dir` →
+  `recommended_config_from_model_dir` → `create_embedding_model` →
+  `run_pending` with a real `EmbeddingWorker`) without touching
+  `crates/app/src/bootstrap/sources.rs` or `main.rs` — the measurement
+  this test exists to take is exactly what decides whether that
+  connection is safe to make, per Task 013 §5's explicit gate. Measured
+  on the real model, 400 documents: 56.9s (142.2 ms/doc), extrapolating
+  to ~51s–~12 minutes across the source sizes Task 013 §4's blocking-time
+  table names — the gate fails, so nothing wires this into the shipped
+  application yet.
 
 ### Docs
 
