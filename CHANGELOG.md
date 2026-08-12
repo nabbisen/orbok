@@ -198,6 +198,19 @@ next release tag.
   helper requires an absent destination and both paths under the
   managed model root, neither of which holds here. Existing files keep
   their current mode until their next write (no migration pass).
+- **RFC-049 — settings temp file hardened further (Task 018):** the
+  `0600` mode is now applied at the `open(2)` call itself
+  (`OpenOptionsExt::mode`) rather than via a `set_permissions` call
+  after creation, so the temp file is never observable at the process
+  umask, not even empty. The temp filename is now unique per process
+  (a PID suffix) rather than a fixed `<path>.tmp`, closing a latent
+  gap nothing enforced: two `orbok` processes on the same profile
+  could otherwise interleave their writes through the open call's
+  truncate, since there is no single-instance lock in `crates/app`.
+  Kept `create`-and-truncate semantics rather than `create_new`,
+  whose failure mode is worse — a temp file orphaned by a hard crash
+  would block every future write permanently instead of risking an
+  already-narrow collision window.
 - **RFC-006 — every chunk embedded the whole document, not its own
   section (Task 012 Part A):** `EmbeddingWorker::prepare_batch` built
   every chunk's embedding text from the full joined extraction output,

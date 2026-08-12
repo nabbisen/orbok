@@ -244,32 +244,26 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
 }
 
 fn sibling_temp_path(path: &Path) -> PathBuf {
-    // Predictable, not random: this is a single-writer settings file (one
-    // profile, one process), not a location with concurrent writers that
-    // need collision avoidance.
+    // Unique per process, not merely predictable (Task 018 §2, following
+    // Review 167 §3): a fixed name would let two `orbok` processes on the
+    // same profile interleave their writes through the open call's
+    // truncate -- nothing in `crates/app` enforces single-instance. Keeps
+    // `create`'s truncate-on-open shape rather than `create_new`, whose
+    // failure mode is worse: a temp file orphaned by a hard crash (where
+    // the cleanup below never ran) would block every future write
+    // permanently instead of just risking a rare, already-narrow
+    // collision window. Simplest of the shapes considered, and sufficient
+    // given how unlikely two live instances on one profile are.
     let mut name = path.as_os_str().to_os_string();
-    name.push(".tmp");
+    name.push(".tmp.");
+    name.push(std::process::id().to_string());
     PathBuf::from(name)
 }
 
 fn write_and_rename(temp_path: &Path, target: &Path, bytes: &[u8]) -> io::Result<()> {
     use std::io::Write as _;
 
-    let mut file = std::fs::File::create(temp_path)?;
-
-    // Permissions before content, before the rename: the file must never
-    // be briefly world-readable at its final path, and there is no reason
-    // for the plaintext to sit under the default umask even at the temp
-    // path in between.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    }
-    // Windows: no `0600` equivalent attempted here — ACL-based hardening
-    // is out of scope for this task (Task 016 §3). `std::fs::rename`
-    // below already replaces an existing destination on Windows
-    // (`MOVEFILE_REPLACE_EXISTING`), so replace semantics come free.
+    let mut file = open_hardened_temp_file(temp_path)?;
 
     file.write_all(bytes)?;
     // Crash durability, not just atomicity: without this, the temp file's
@@ -280,6 +274,29 @@ fn write_and_rename(temp_path: &Path, target: &Path, bytes: &[u8]) -> io::Result
     drop(file);
 
     std::fs::rename(temp_path, target)
+}
+
+/// Open (create-or-truncate) `temp_path` with its final permissions
+/// already applied at the `open(2)` call itself (Task 018 §1, following a
+/// refinement offered back by the `app-json-settings` maintainers) rather
+/// than via a later `set_permissions`: on Unix the file is then never
+/// observable at the process umask, not even empty, not even for one
+/// syscall -- the previous window was already vanishingly small, but this
+/// removes it rather than shrinking it further.
+fn open_hardened_temp_file(temp_path: &Path) -> io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    // Windows: no `0600` equivalent attempted here — ACL-based hardening
+    // is out of scope for this task (Task 016 §3). `std::fs::rename` in
+    // `write_and_rename` already replaces an existing destination on
+    // Windows (`MOVEFILE_REPLACE_EXISTING`), so replace semantics come
+    // free regardless.
+    options.open(temp_path)
 }
 
 /// A managed-model store sealed to the profile it was constructed for. Owns

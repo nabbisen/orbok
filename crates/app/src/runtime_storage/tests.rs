@@ -118,6 +118,33 @@ fn non_not_found_read_failure_falls_back_to_default_without_writing() {
 
 #[cfg(unix)]
 #[test]
+fn temp_file_is_mode_0600_immediately_at_open_before_any_content_is_written() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    // Task 018 §1: the mode is applied in the `open(2)` call itself
+    // (`OpenOptionsExt::mode`), not via a later `set_permissions` -- this
+    // calls the same private helper `write_and_rename` uses, directly,
+    // which is the one seam that lets "before any content is written" be
+    // observed at all: `write_and_rename` writes and renames in the same
+    // call, so nothing outside it can see an intermediate state.
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.json.tmp.probe");
+
+    let file = super::open_hardened_temp_file(&path).unwrap();
+    assert_eq!(
+        file.metadata().unwrap().permissions().mode() & 0o777,
+        0o600,
+        "mode must be correct at open, before any write"
+    );
+    assert_eq!(
+        file.metadata().unwrap().len(),
+        0,
+        "and the file must still be empty at that point"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn saved_settings_file_is_mode_0600() {
     use std::os::unix::fs::PermissionsExt as _;
 
