@@ -59,6 +59,43 @@ awareness. Source removal cancels queued work (§18.6).
 Both settings exist in `OrbokSettings` and are read nowhere today. This slice is
 what makes them honest.
 
+### Slice 4 — the UI half (added 2026-08-12; my omission)
+
+**RFC-056 §4.4 was assigned to no slice when this handoff was written.** That was
+an error, and it matters more now than it did then: Slice 1 deferred indexing and
+the scan-routing follow-up (`c3e535e`) deferred discovery too, so a user who adds
+a folder now sees *nothing happen* until background work reports back. The
+behaviour is correct and `scan_and_index_source`'s doc comment describes it
+accurately. What is missing is anything telling the user preparation is underway.
+
+RFC-036 §14 already specifies this, including the copy:
+
+> **§14.1** `Preparing "Documents" for search` / `124 files ready. You can search
+> now.` — and explicitly *not* `Indexing queue depth: 412`.
+>
+> **§14.2** Search must work for prepared files while background work continues.
+
+So this is conformance, not design. Scope:
+
+1. Progress surfaced from the `Message::HealthUpdated` events the host already
+   emits — no new plumbing needed.
+2. §14.1's copy, through the RFC-031 i18n catalog like every other visible
+   string. Note `scheduler_host.rs` is currently in the i18n gate's
+   `EXCLUDED_FILES` on the grounds that its only literal is a `tracing` line
+   (`5b2a57c`); adding user-visible copy there would make that classification
+   wrong, so put the copy in the UI layer where it belongs.
+3. §14.2 — confirm search works against prepared files mid-run. Slice 1's
+   `search_latency_while_background_indexing_is_running` already exercises the
+   mechanism; this is about the user-facing guarantee.
+
+**Ordering:** independent of Slices 2 and 3, and safe to take before either. It
+is the slice a user would notice first, which is an argument for not leaving it
+last.
+
+`Message::ScanCompleted` is also worth revisiting here: it now fires when a scan
+is *enqueued*, and `state.rs:725` already handles it identically to
+`HealthUpdated`, so it may simply be redundant (Review 163 §3).
+
 ## 3. The two things most likely to go wrong
 
 **3.1 — The RFC-049 boundary.** Everything the task needs must reach it as a

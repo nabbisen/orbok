@@ -645,3 +645,79 @@ clear non-technical progress
 ```
 
 This is essential for orbok’s poor-machine performance promise.
+
+---
+
+## 20. Amendment (2026-08-12): two gaps found on first execution
+
+This RFC was marked Implemented at v0.17.0. The scheduler was built and unit
+tested; **the application never ran it** until RFC-056 wired it in
+(`7599ee9`), so until then no code path exercised `Scheduler::fail` against a
+real failure. Both findings below came from that first integration, were
+reported rather than absorbed by the implementer, and are recorded here because
+neither is a design change this RFC should have to rediscover.
+
+### 20.1 `fail()` has no concept of a terminal failure category
+
+`dispatch.rs`'s `fail(job, error_kind, catalog)` takes an arbitrary
+`error_kind: &str`, increments `attempt_count`, and retries until
+`MAX_JOB_ATTEMPTS` (3). Two consequences:
+
+1. **Categories that cannot succeed on retry are retried anyway.** RFC-008 §15
+   names `model_missing`, and Review 160 §5 established it is terminal: nothing
+   about the job changes until a model appears, and RFC-008 §18 step 3 already
+   re-queues embedding work when the active model changes — which an
+   installation is. Two attempts are wasted for every such job.
+2. **The permanent-failure branch never writes `error_category`.** It calls
+   `set_status(&job.id, JobStatus::Failed)`; `error_kind` reaches only a
+   `tracing::warn!` and a `SchedulerEvent::JobFailed`. The
+   `error_category` column — which Task 013 (`d198713`) began writing via
+   `fail_with_category`, and which RFC-008 §15's diagnostics contract depends on
+   — is left null.
+
+RFC-056 Slice 1 worked around this by calling
+`IndexJobRepository::fail_with_category` directly for `GenerateEmbedding` jobs,
+bypassing `Scheduler::fail` for that one category. That replicates
+`run_pending`'s existing behaviour rather than inventing policy, and is correct
+as a stopgap.
+
+**It stops being sufficient at RFC-056 Slice 2.** Embedding introduces
+`out_of_memory` and `inference_error` (RFC-008 §15), which *should* retry. An
+all-or-nothing bypass cannot distinguish them from `model_missing`. The
+resolution — a retryable/terminal distinction on the category, with the category
+persisted on permanent failure — belongs in this RFC's model, not in a caller's
+special case.
+
+### 20.2 A retried job can be silently dropped under backpressure
+
+Also in `fail()`'s retry branch:
+
+```rust
+job.state = JobState::Pending;
+let id = job.id.clone();
+let queue = self.queues.queue_for(job.kind);
+if !queue.is_full() {
+    queue.push(job);
+}
+let jobs = IndexJobRepository::new(catalog);
+jobs.set_status(&id, JobStatus::Queued)?;
+```
+
+If the queue is full the push is skipped, but `set_status(Queued)` runs
+regardless. The catalog then says `queued` while no in-memory copy exists. A
+rehydration pass that tracks already-seen ids will not reload it, because the id
+was seen before the retry — so the job is durably recorded as queued and never
+runs again.
+
+Unlikely to fire at current capacities (`limits.rs`), and pre-existing rather
+than introduced by RFC-056. Recorded because "a job vanished" is expensive to
+diagnose from scratch, and because §10's backpressure model is where the answer
+belongs: either the push must not be skipped, or the skip must be reflected in
+the persisted state.
+
+### Status
+
+Neither finding changes this RFC's design. Both are gaps between what §10 and
+§11 describe and what `dispatch.rs` does, surfaced the first time the scheduler
+ran against real work. §20.1 needs resolving as part of RFC-056 Slice 2; §20.2
+is recorded for whoever next touches the backpressure path.
