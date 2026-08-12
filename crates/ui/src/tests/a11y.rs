@@ -42,23 +42,40 @@ fn contrast_usage_guard_all_presets() {
 
 #[test]
 fn key_map_shortcuts() {
-    let ctrl = Modifiers::CTRL;
+    // `Modifiers::COMMAND` mirrors iced's own primary-modifier convention
+    // (the same one `shell.rs`'s `modifiers.command()` checks): Cmd on
+    // macOS, Ctrl elsewhere. A bare `Modifiers::CTRL` happens to equal this
+    // off-macOS, which is exactly how this test passed on Linux/Windows
+    // while never actually exercising what a Mac keyboard sends (Task 017 /
+    // Review 168 §2) -- `command()` checks the Cmd/Logo bit there, not Ctrl.
+    let primary = Modifiers::COMMAND;
     let none = Modifiers::default();
 
     assert!(
         matches!(
-            key_to_message(&Key::Character("k".into()), ctrl, false),
+            key_to_message(&Key::Character("k".into()), primary, false),
             Some(Message::FocusSearch)
         ),
-        "Ctrl+K → FocusSearch"
+        "Cmd/Ctrl+K → FocusSearch"
     );
 
     assert!(
         matches!(
-            key_to_message(&Key::Character(",".into()), ctrl, false),
+            key_to_message(&Key::Character(",".into()), primary, false),
             Some(Message::Switch(ViewId::Settings))
         ),
-        "Ctrl+, → Settings"
+        "Cmd/Ctrl+, → Settings"
+    );
+
+    // On macOS, plain Ctrl is *not* the primary modifier -- Ctrl+K must not
+    // fire the shortcut there; only Cmd+K does. Off-macOS `Modifiers::CTRL`
+    // equals `primary`, so this is the same assertion as above restated,
+    // which stays true either way and costs nothing to leave unconditional
+    // rather than `#[cfg]`-gating a second copy of it.
+    assert_eq!(
+        key_to_message(&Key::Character("k".into()), Modifiers::CTRL, false).is_some(),
+        cfg!(not(target_os = "macos")),
+        "bare Ctrl+K must fire only on platforms where Ctrl is the primary modifier"
     );
 
     assert!(
