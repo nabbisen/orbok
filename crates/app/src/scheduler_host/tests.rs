@@ -650,10 +650,6 @@ async fn search_latency_while_background_indexing_is_running() {
     let search_catalog = bootstrap::open_catalog(&context).unwrap();
     let mut latencies = Vec::new();
     let overall_start = Instant::now();
-    // 300 files * ~144ms/doc of simulated embedding cost alone is ~43s,
-    // serialized through the loop's one-job-at-a-time dispatch -- 120s
-    // leaves comfortable headroom over that plus extract/chunk/scan
-    // overhead on a slower CI runner.
     // Loop until every job -- Scan, Extract, Chunk, and (this test's whole
     // point) Embedding -- has reached a terminal state, not merely until
     // `indexed_count` hits 300: `indexed` is set at the chunk stage,
@@ -662,7 +658,18 @@ async fn search_latency_while_background_indexing_is_running() {
     // before `SlowEmbeddingModel`'s sleeps ever ran -- exactly the gap
     // that made the first cut of this fix measure ~1.1s, identical to the
     // no-embedding baseline, despite the slow model being wired in.
-    let sampling = tokio::time::timeout(Duration::from_secs(120), async {
+    //
+    // 300 files * ~144ms/doc of simulated embedding cost alone is ~43s,
+    // serialized through the loop's one-job-at-a-time dispatch; measured
+    // ~45s locally, in isolation. 120s (comfortable headroom over that in
+    // isolation) still timed out on Windows CI, where this test's worker
+    // threads share the runner with every other test in the same binary
+    // running concurrently (`cargo test` doesn't serialize test
+    // functions) -- the same cross-platform I/O/scheduling variance
+    // Review 162 §2.2 already found for scanning. 300s absorbs that
+    // without shrinking the file count or the per-document cost, both of
+    // which are what makes the measurement below realistic.
+    let sampling = tokio::time::timeout(Duration::from_secs(300), async {
         while job_counts_by_status(&ui_catalog, JobStatus::Queued) > 0 {
             let start = Instant::now();
             let _ = bootstrap::run_search(&context, &search_catalog, "install", 20);
@@ -687,7 +694,7 @@ async fn search_latency_while_background_indexing_is_running() {
     );
     assert!(
         sampling.is_ok(),
-        "300 files did not finish indexing within 120s while a concurrent search ran every 10ms -- \
+        "300 files did not finish indexing within 300s while a concurrent search ran every 10ms -- \
          see the no-concurrency baseline for comparison; report this per HANDOFF §3.2"
     );
 }
