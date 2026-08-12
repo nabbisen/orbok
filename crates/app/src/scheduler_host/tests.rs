@@ -145,6 +145,16 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
 /// this function only enqueues (one row insert), so this needs no background
 /// loop at all -- it is testing exactly the synchronous cost RFC-056 exists
 /// to remove, restored to the RFC's literal figure.
+///
+/// Review 163 §2: the timing assertion alone cannot detect a revert to
+/// inline scanning on a fast-enough CI runner -- 400 files scanned inline
+/// measured ~37.8ms on Linux, comfortably under 2s, so the Fast/Release
+/// gates (both Linux) would not have caught Slice 1's original defect; only
+/// Windows's slower runner did, by coincidence of being the slowest
+/// platform rather than by the test's own design. Structural assertions
+/// alongside the timing one make the property platform-independent: no
+/// files discovered yet, and the `Scan` job it enqueued is still `queued` --
+/// both false the instant scanning runs inline instead of being deferred.
 #[tokio::test]
 async fn scan_and_index_source_returns_control_in_under_two_seconds() {
     let temp = tempfile::tempdir().unwrap();
@@ -163,6 +173,32 @@ async fn scan_and_index_source_returns_control_in_under_two_seconds() {
     assert!(
         elapsed < Duration::from_secs(2),
         "scan_and_index_source took {elapsed:?}, must return control in under 2s (RFC-056 §9)"
+    );
+
+    let discovered_files: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE source_id = ?1",
+            [card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        discovered_files, 0,
+        "no file discovery may have run yet -- scanning must be deferred, not inline"
+    );
+
+    let scan_job_status: String = catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_type = 'scan' AND source_id = ?1",
+            [card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        scan_job_status, "queued",
+        "the Scan job this call enqueued must still be queued -- the walk has not run"
     );
 }
 
