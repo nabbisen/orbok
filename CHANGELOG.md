@@ -123,8 +123,19 @@ next release tag.
   `IndexJobRepository::enqueue_with_priority` now takes the caller's id
   instead of generating one. RFC-036 §17.1's retry-limit test section had
   no test that ever called `Scheduler::fail`; three now exercise its
-  retry/terminal split directly. See the review request for the full test
-  list.
+  retry/terminal split directly. RFC-056 §9's second criterion
+  (`embeddings` non-zero **and equal to the chunk count**) is now asserted
+  as an equality, not merely non-zero. HANDOFF §3.2's concurrent-search
+  question — carried unanswered through Slice 1 (too fast to create
+  contention) and this slice's first cut (a test double left `None`) —
+  is finally measured against a deliberately slow embedding double
+  (~144ms/document, Task 011 Phase 2's real-model figure): 300 files with
+  concurrent search sampling every 10ms averaged **~48ms** per search
+  (max ~56ms), against Slice 1's no-embedding baseline of ~270µs.
+  Reported, not fixed — HANDOFF §3.2 treats a measurable regression as a
+  finding, and a second catalog connection under WAL is a design
+  conversation, not a Slice 2 change. See the review request for the full
+  test list.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

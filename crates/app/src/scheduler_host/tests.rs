@@ -42,6 +42,55 @@ impl EmbeddingModel for AlwaysFailsEmbeddingModel {
     }
 }
 
+/// A model whose `embed_batch` sleeps for a realistic per-document cost
+/// before returning mock vectors -- creates a genuine contention window
+/// deterministically, in CI, without needing `RFC048_MODEL_DIR` or the
+/// real 449 MB model (Review 171 §3). `EmbeddingWorker` batches one file's
+/// chunks into a single `embed_batch` call
+/// (`crates/pipeline/workers/src/embedding.rs`), so sleeping once per call
+/// approximates Task 011 Phase 2's measured ~144ms/document real-model
+/// cost.
+struct SlowEmbeddingModel;
+
+impl EmbeddingModel for SlowEmbeddingModel {
+    fn name(&self) -> &str {
+        "slow"
+    }
+    fn version(&self) -> &str {
+        "v1"
+    }
+    fn dimension(&self) -> u32 {
+        8
+    }
+    fn embed_batch(&self, texts: &[&str]) -> OrbokResult<Vec<Vec<f32>>> {
+        std::thread::sleep(Duration::from_millis(144));
+        MockEmbeddingModel.embed_batch(texts)
+    }
+}
+
+/// Register a model row for a mock-shaped embedding backend (dimension 8,
+/// matching `MockEmbeddingModel`/`SlowEmbeddingModel`), returning its
+/// `ModelId` -- shared by every test that wires a mock-shaped model
+/// through `EmbeddingWorkerParts::for_test`, since `embeddings.model_id`
+/// carries a foreign key to a real `models` row.
+fn register_mock_model(catalog: &Catalog, name: &str) -> ModelId {
+    use orbok_db::repo::{ModelRepository, ModelRole, ModelStatus, NewModel};
+    ModelRepository::new(catalog)
+        .insert(NewModel {
+            role: ModelRole::Embedding,
+            model_name: name.to_string(),
+            model_version: "v1".to_string(),
+            local_path: None,
+            license_summary: None,
+            size_bytes: None,
+            backend: Some(name.to_string()),
+            dimension: Some(8),
+            status: ModelStatus::Available,
+        })
+        .unwrap()
+        .model_id
+}
+
 fn test_context(data_dir: &Path) -> RuntimeContext {
     RuntimeContext::resolve(
         RuntimeSelection::resolve(false, Some(data_dir.as_os_str().to_os_string())).unwrap(),
@@ -364,11 +413,17 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
     handle.abort();
 }
 
-/// The success-path complement to the test above: a real `EmbeddingWorker`
-/// (the mock model, standing in for a loaded backend) actually embeds and
-/// persists vectors through the hosting loop, not just terminates jobs.
+/// The success-path complement to the test above: `EmbeddingWorker` (the
+/// mock model standing in for a loaded backend -- the *dispatch path* is
+/// real, the model is not, see the name) actually embeds and persists
+/// vectors through the hosting loop, not just terminates jobs.
+///
+/// Review 171 §4: asserts RFC-056 §9 criterion 2 literally --
+/// `embeddings` non-zero *and equal to the chunk count* -- rather than
+/// merely non-zero, which would still pass if only one of the three
+/// seeded files had embedded.
 #[tokio::test]
-async fn embedding_worker_with_a_real_model_indexes_files_and_writes_embeddings() {
+async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
     let ui_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -380,24 +435,7 @@ async fn embedding_worker_with_a_real_model_indexes_files_and_writes_embeddings(
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
-
-    let model_id = {
-        use orbok_db::repo::{ModelRepository, ModelRole, ModelStatus, NewModel};
-        ModelRepository::new(&loop_catalog)
-            .insert(NewModel {
-                role: ModelRole::Embedding,
-                model_name: "mock".to_string(),
-                model_version: "v1".to_string(),
-                local_path: None,
-                license_summary: None,
-                size_bytes: None,
-                backend: Some("mock".to_string()),
-                dimension: Some(8),
-                status: ModelStatus::Available,
-            })
-            .unwrap()
-            .model_id
-    };
+    let model_id = register_mock_model(&loop_catalog, "mock");
     let embedding_parts = Some(EmbeddingWorkerParts::for_test(
         Box::new(MockEmbeddingModel),
         model_id.clone(),
@@ -430,9 +468,22 @@ async fn embedding_worker_with_a_real_model_indexes_files_and_writes_embeddings(
             |row| row.get(0),
         )
         .unwrap();
+    let active_chunks: i64 = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunks c JOIN files f ON c.file_id = f.file_id \
+             WHERE f.source_id = ?1 AND c.chunk_status = 'active'",
+            [card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
     assert!(
-        embedding_rows > 0,
-        "a real EmbeddingWorker run must persist at least one embedding row"
+        active_chunks > 0,
+        "the seeded documents must have produced at least one chunk"
+    );
+    assert_eq!(
+        embedding_rows, active_chunks,
+        "RFC-056 §9 criterion 2: embeddings must be non-zero and equal the chunk count"
     );
     assert_eq!(
         job_counts_by_status(&ui_catalog, JobStatus::Failed),
@@ -554,7 +605,22 @@ async fn background_indexing_baseline_with_no_concurrent_access() {
 /// Reported, not gated on a strict threshold -- per the handoff, a
 /// measurable regression is a finding to report, not something to work
 /// around speculatively in this slice.
-#[tokio::test]
+///
+/// Review 171 §3: Slice 1's version of this test passed `None` for
+/// `embedding_parts`, so the loop's own work was extract/chunk only -- too
+/// fast (whole 300-file run in ~1.1s) to create a meaningful contention
+/// window, leaving HANDOFF §3.2's question unanswered through two more
+/// slices ("re-run that measurement in Slice 2 with embedding's ~144ms
+/// per document in the loop", Review 164 §3). `SlowEmbeddingModel` puts
+/// that realistic per-document cost in the loop so the question is
+/// finally asked against something slow enough to matter.
+/// `flavor = "multi_thread"`: the background loop and the search-sampling
+/// loop must run on genuinely separate OS threads for
+/// `SlowEmbeddingModel`'s `std::thread::sleep` to block only the loop's
+/// own work rather than starving the search task outright on a
+/// single-threaded executor -- the same pattern `model_delivery.rs`'s
+/// tests already use where genuine concurrency matters.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn search_latency_while_background_indexing_is_running() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
@@ -567,15 +633,37 @@ async fn search_latency_while_background_indexing_is_running() {
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "slow");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(SlowEmbeddingModel),
+        model_id,
+    ));
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     let search_catalog = bootstrap::open_catalog(&context).unwrap();
     let mut latencies = Vec::new();
     let overall_start = Instant::now();
-    let sampling = tokio::time::timeout(Duration::from_secs(90), async {
-        while indexed_count(&ui_catalog) < 300 {
+    // 300 files * ~144ms/doc of simulated embedding cost alone is ~43s,
+    // serialized through the loop's one-job-at-a-time dispatch -- 120s
+    // leaves comfortable headroom over that plus extract/chunk/scan
+    // overhead on a slower CI runner.
+    // Loop until every job -- Scan, Extract, Chunk, and (this test's whole
+    // point) Embedding -- has reached a terminal state, not merely until
+    // `indexed_count` hits 300: `indexed` is set at the chunk stage,
+    // before embedding even starts (RFC-008 §19's job is a separate,
+    // later queue entry), so gating on it alone would let this loop exit
+    // before `SlowEmbeddingModel`'s sleeps ever ran -- exactly the gap
+    // that made the first cut of this fix measure ~1.1s, identical to the
+    // no-embedding baseline, despite the slow model being wired in.
+    let sampling = tokio::time::timeout(Duration::from_secs(120), async {
+        while job_counts_by_status(&ui_catalog, JobStatus::Queued) > 0 {
             let start = Instant::now();
             let _ = bootstrap::run_search(&context, &search_catalog, "install", 20);
             latencies.push(start.elapsed());
@@ -592,13 +680,14 @@ async fn search_latency_while_background_indexing_is_running() {
         .checked_div(latencies.len().max(1) as u32)
         .unwrap_or_default();
     println!(
-        "300 files indexed with concurrent search sampling every 10ms: total {overall:?} \
-         ({} search samples, avg {avg:?}, max {max:?} per search)",
+        "300 files indexed with a ~144ms/doc simulated embedding cost and concurrent \
+         search sampling every 10ms: total {overall:?} ({} search samples, avg {avg:?}, \
+         max {max:?} per search) -- HANDOFF §3.2",
         latencies.len()
     );
     assert!(
         sampling.is_ok(),
-        "300 files did not finish indexing within 90s while a concurrent search ran every 10ms -- \
+        "300 files did not finish indexing within 120s while a concurrent search ran every 10ms -- \
          see the no-concurrency baseline for comparison; report this per HANDOFF §3.2"
     );
 }
