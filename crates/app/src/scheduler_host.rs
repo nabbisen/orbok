@@ -6,11 +6,14 @@
 //! subscription wires in, per RFC-056's Handoff §4 ("every test exercises
 //! the shipped application's path, not a worker invoked directly").
 //!
-//! **Slice 1** (RFC-056 Handoff §2): hosts extract/chunk/keyword dispatch
-//! through the existing workers. `GenerateEmbedding` jobs are recognized
-//! and terminated with RFC-008 §15's `model_missing` category, exactly as
-//! the legacy `run_pending` dispatcher already does -- there is no
-//! `EmbeddingWorker` here yet; that is Slice 2.
+//! **Slice 2** (RFC-056 Handoff §2, RFC-036 §20.1): `GenerateEmbedding`
+//! jobs dispatch through a real `EmbeddingWorker`, resolved once at
+//! startup via [`crate::bootstrap::embedding_resolution`] (RFC-050 lease
+//! held for the loop's whole lifetime). No model configured, or the model
+//! fails to load, is not distinguished from any other unavailable-worker
+//! case here -- both surface as RFC-008 §15's `model_missing`, matching
+//! Slice 1's own terminal-category choice, but now routed through
+//! `Scheduler::fail` like every other job kind rather than bypassing it.
 //!
 //! **Scan routing** (Review 162 §2): discovery is RFC-036 §6.1's own first
 //! work category, with its own queue and priority (`JobKind::ScanSource`)
@@ -20,16 +23,18 @@
 //! measurement mistook it for -- runs here, off the caller's thread, same
 //! as everything else this module hosts.
 
+use crate::bootstrap::embedding_resolution::EmbeddingWorkerParts;
 use futures::SinkExt as _;
 use futures::channel::mpsc::Sender;
+use orbok::runtime_context::AllowRuntimePathProbe;
 use orbok::runtime_storage::ProfileCache;
-use orbok_core::{JobId, JobType, OrbokResult, SourceId};
+use orbok_core::{JobId, JobType, OrbokError, OrbokResult, SourceId};
 use orbok_db::Catalog;
 use orbok_db::repo::IndexJobRepository;
 use orbok_fs::{ScanRequest, Scanner};
 use orbok_ui::state::Message;
 use orbok_workers::{
-    ChunkAndIndexWorker, ExtractionWorker, IndexJob, JobKind, JobState, Scheduler,
+    ChunkAndIndexWorker, EmbeddingWorker, ExtractionWorker, IndexJob, JobKind, JobState, Scheduler,
 };
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
@@ -56,7 +61,22 @@ pub async fn run(portable: bool, output: Sender<Message>) {
     let Ok(cache) = crate::bootstrap::cache_service(&runtime) else {
         return;
     };
-    run_with_context(catalog, cache, output).await
+    // Best-effort: a settings load failure or an unresolved/unloadable
+    // model falls back to `None` here, which the loop below treats as
+    // RFC-008 §15 `model_missing` for any `GenerateEmbedding` job it
+    // dispatches -- the same fail-closed shape `bootstrap::search`'s
+    // hybrid-search fallback already uses for the same resolution.
+    let embedding_parts = crate::bootstrap::load_runtime_settings(&runtime)
+        .ok()
+        .and_then(|settings| {
+            crate::bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+                &runtime,
+                &AllowRuntimePathProbe,
+                &catalog,
+                &settings,
+            )
+        });
+    run_with_context(catalog, cache, embedding_parts, output).await
 }
 
 /// The hosting loop's core logic (RFC-056 §4.1): pulls jobs from
@@ -66,6 +86,7 @@ pub async fn run(portable: bool, output: Sender<Message>) {
 pub(crate) async fn run_with_context(
     catalog: Catalog,
     cache: ProfileCache,
+    embedding_parts: Option<EmbeddingWorkerParts>,
     mut output: Sender<Message>,
 ) {
     let mut scheduler = Scheduler::with_defaults();
@@ -73,6 +94,14 @@ pub(crate) async fn run_with_context(
     let cache_service = cache.service();
     let extract = ExtractionWorker::new(&catalog, cache_service);
     let chunk = ChunkAndIndexWorker::new(&catalog, cache_service);
+    // `embedding_parts`' RFC-050 lease guard (if any) is held inside this
+    // `EmbeddingWorker` for the loop's entire lifetime -- the loop never
+    // returns, so nothing needs to `drop` it explicitly (the same pattern
+    // `bootstrap/tests/embedding_blocking_measurement.rs` established for
+    // a shorter-lived scan/index pass).
+    let embed = embedding_parts.map(|parts| {
+        EmbeddingWorker::with_model(&catalog, cache_service, parts.model, parts.model_id)
+    });
 
     loop {
         // `rehydrate` is a full `queued`-rows scan (RFC-036's queues have
@@ -96,23 +125,6 @@ pub(crate) async fn run_with_context(
             }
         };
 
-        // RFC-008 §15: no `EmbeddingWorker` exists in this slice (RFC-056
-        // Slice 2 adds one). Fail exactly as `run_pending` already does --
-        // terminal, not retried through `Scheduler::fail`'s attempt
-        // bookkeeping, which has no equivalent short-circuit (see the
-        // Slice 1 review request for that gap, reported rather than fixed
-        // here per the Handoff's scope rule).
-        if job.kind == JobKind::GenerateEmbedding {
-            let _ = IndexJobRepository::new(&catalog).fail_with_category(
-                &job.id,
-                "model_missing",
-                None,
-            );
-            known.remove(&job.id);
-            report_health(&catalog, &mut output).await;
-            continue;
-        }
-
         let file_id = job.file_id.clone();
         let result = match (job.kind, &file_id) {
             (JobKind::ScanSource, _) => run_scan(&catalog, job.source_id.clone()),
@@ -120,6 +132,16 @@ pub(crate) async fn run_with_context(
             (JobKind::ChunkFile, Some(file_id)) | (JobKind::UpdateKeywordIndex, Some(file_id)) => {
                 chunk.run(file_id)
             }
+            (JobKind::GenerateEmbedding, Some(file_id)) => match &embed {
+                Some(embed) => embed.run(file_id),
+                // No model resolved at startup (RFC-008 §15) -- terminal,
+                // via the same `OrbokError::Embedding` categorization path
+                // every other embedding failure now goes through.
+                None => Err(OrbokError::Embedding {
+                    category: "model_missing",
+                    message: "no embedding model configured".to_string(),
+                }),
+            },
             _ => Ok(()),
         };
 
@@ -136,7 +158,8 @@ pub(crate) async fn run_with_context(
                 // which then never reappears in `list_queued`. Removing it
                 // here would risk `rehydrate` loading a second in-memory
                 // copy of a job `fail`'s own retry path already re-queued.
-                let _ = scheduler.fail(job, "worker_error", &catalog);
+                let error_kind = error_kind_for(&error);
+                let _ = scheduler.fail(job, error_kind, Some(&error.to_string()), &catalog);
             }
         }
         report_health(&catalog, &mut output).await;
@@ -201,6 +224,19 @@ fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<J
             attempt_count: 0,
             last_error_kind: None,
         });
+    }
+}
+
+/// The category `Scheduler::fail` (RFC-036 §20.1) matches on to decide
+/// retry vs. terminal. An `OrbokError::Embedding` carries its own RFC-008
+/// §15 category directly; every other error kind -- scan, extract, chunk
+/// failures -- keeps the pre-Slice-2 `"worker_error"` label, which is not
+/// in `is_terminal_category`'s set, so those jobs retry exactly as they
+/// always have.
+fn error_kind_for(error: &OrbokError) -> &'static str {
+    match error {
+        OrbokError::Embedding { category, .. } => category,
+        _ => "worker_error",
     }
 }
 

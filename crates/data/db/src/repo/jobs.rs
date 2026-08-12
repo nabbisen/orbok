@@ -148,15 +148,23 @@ impl<'a> IndexJobRepository<'a> {
         Ok(out)
     }
 
-    /// Enqueue a job with an explicit priority (RFC-036 §8).
+    /// Enqueue a job with an explicit priority (RFC-036 §8), under a
+    /// caller-supplied `id` rather than generating one (unlike `enqueue`):
+    /// the sole caller, `Scheduler::enqueue`, already holds an in-memory
+    /// `IndexJob` with its own id and pushes that same job into its queue
+    /// right after this call returns. Generating a second, different id
+    /// here (the original behaviour) left the catalog row and the
+    /// in-memory job permanently out of sync -- every later
+    /// `Scheduler::complete`/`fail` call updates by the in-memory job's
+    /// id, which would then match zero catalog rows.
     pub fn enqueue_with_priority(
         &self,
+        id: &JobId,
         job_type: JobType,
         source_id: Option<&SourceId>,
         file_id: Option<&FileId>,
         priority: i64,
-    ) -> OrbokResult<JobId> {
-        let id = JobId::generate();
+    ) -> OrbokResult<()> {
         let now = now_iso8601();
         let conn = self.catalog.lock();
         conn.execute(
@@ -174,7 +182,7 @@ impl<'a> IndexJobRepository<'a> {
             ],
         )
         .map_err(db_err)?;
-        Ok(id)
+        Ok(())
     }
 
     /// Record a failed attempt and its error kind (RFC-036 §11).

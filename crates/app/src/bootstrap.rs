@@ -18,6 +18,7 @@ use orbok::runtime_context::{
 use orbok::runtime_storage::ProfileModelStore;
 
 mod cleanup;
+pub(crate) mod embedding_resolution;
 mod model_resolution;
 mod preferences;
 mod search;

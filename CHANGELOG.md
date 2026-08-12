@@ -96,6 +96,35 @@ next release tag.
   ~118µs for 400 files); `scheduler_host` dispatches it, running the same
   `Scanner::scan` that used to block the caller. The RFC-056 §9 acceptance
   test is restored to its literal "under 2 seconds" assertion.
+- **RFC-056 Slice 2 — the scheduler now runs a real `EmbeddingWorker`
+  (RFC-036 §20.1):** `GenerateEmbedding` jobs dispatch through
+  `EmbeddingWorker`, resolved once at startup (RFC-050 lease held for the
+  hosting loop's whole lifetime) instead of Slice 1's fixed `model_missing`
+  bypass. This required closing the design gap RFC-036 §20.1 recorded
+  first: `Scheduler::fail` had no concept of a terminal failure category —
+  it retried `model_missing` uselessly and never wrote `error_category` on
+  a permanent failure, only `set_status(Failed)`. `fail` now takes an
+  `error_message` and matches `error_kind` against RFC-008 §15's terminal
+  set (`model_missing`, `model_invalid`, `backend_unavailable`,
+  `input_too_long`, `canceled`); every other category (`out_of_memory`,
+  `inference_error`, `write_error`, and non-embedding `worker_error`)
+  retries up to the existing attempt limit, then fails through
+  `IndexJobRepository::fail_with_category` rather than a bare status flip.
+  `OrbokError` gains an `Embedding` variant carrying the RFC-008 §15
+  category directly; `EmbeddingWorker::run`/`run_with_stats` categorize
+  `embed_batch` failures as `inference_error` and persist failures as
+  `write_error`. Writing the coverage Review 165 §5 set as the bar for this
+  slice (a test that makes a worker genuinely fail, not just the
+  pre-dispatch `model_missing` short-circuit) surfaced a second,
+  independent bug: `Scheduler::enqueue` generated its own catalog-row id
+  and discarded it, leaving the persisted job under a different id than the
+  in-memory one it queued — every later `complete`/`fail` call on a job
+  enqueued this way would have silently matched zero catalog rows.
+  `IndexJobRepository::enqueue_with_priority` now takes the caller's id
+  instead of generating one. RFC-036 §17.1's retry-limit test section had
+  no test that ever called `Scheduler::fail`; three now exercise its
+  retry/terminal split directly. See the review request for the full test
+  list.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

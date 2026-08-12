@@ -7,11 +7,40 @@
 
 use super::run_with_context;
 use crate::bootstrap;
+use crate::bootstrap::embedding_resolution::EmbeddingWorkerParts;
 use orbok::runtime_context::{PlatformRuntimePaths, RuntimeContext, RuntimeSelection};
-use orbok_core::JobStatus;
+use orbok_core::{JobStatus, ModelId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
+use orbok_models::{EmbeddingModel, MockEmbeddingModel};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+/// A model that always fails to embed, with a stable, RFC-008 §15
+/// `inference_error`-categorized error -- for RFC-036 §20.1's retry/
+/// terminal split, this is a retryable category, so a job dispatched
+/// through it must retry `MAX_JOB_ATTEMPTS` times before permanently
+/// failing (Review 165 §5's bar: a test that makes a worker genuinely
+/// fail, not one that only exercises the pre-dispatch `model_missing`
+/// short-circuit).
+struct AlwaysFailsEmbeddingModel;
+
+impl EmbeddingModel for AlwaysFailsEmbeddingModel {
+    fn name(&self) -> &str {
+        "always-fails"
+    }
+    fn version(&self) -> &str {
+        "v1"
+    }
+    fn dimension(&self) -> u32 {
+        8
+    }
+    fn embed_batch(&self, _texts: &[&str]) -> OrbokResult<Vec<Vec<f32>>> {
+        Err(OrbokError::Embedding {
+            category: "inference_error",
+            message: "AlwaysFailsEmbeddingModel always fails".to_string(),
+        })
+    }
+}
 
 fn test_context(data_dir: &Path) -> RuntimeContext {
     RuntimeContext::resolve(
@@ -110,7 +139,7 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 10 files indexed", || {
@@ -119,9 +148,10 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
     .await;
 
     // Every indexed file also gets a `GenerateEmbedding` job (RFC-008 §19),
-    // which this slice fails as `model_missing` (no `EmbeddingWorker` yet)
-    // -- ten expected `failed` rows, not zero. Non-embedding failures would
-    // mean extract/chunk itself broke, which is what this asserts against.
+    // which fails as `model_missing` here since this test passes `None`
+    // for `embedding_parts` -- ten expected `failed` rows, not zero.
+    // Non-embedding failures would mean extract/chunk itself broke, which
+    // is what this asserts against.
     let non_embedding_failures: i64 = ui_catalog
         .lock()
         .query_row(
@@ -202,12 +232,13 @@ async fn scan_and_index_source_returns_control_in_under_two_seconds() {
     );
 }
 
-/// RFC-008 §15, carried into the hosting loop: with no `EmbeddingWorker`
-/// (Slice 1 has none), `GenerateEmbedding` jobs fail as `model_missing`,
-/// terminally -- not retried, and re-scanning the same unchanged source
-/// does not grow the job table (RFC-004 change detection at the `Scanner`
-/// level), exactly matching the guarantee Task 013/Review 161 established
-/// for the legacy `run_pending` path.
+/// RFC-008 §15, carried into the hosting loop: with no model configured
+/// (`embedding_parts: None`), `GenerateEmbedding` jobs fail as
+/// `model_missing`, terminally -- not retried (RFC-036 §20.1's terminal
+/// category set) -- and re-scanning the same unchanged source does not
+/// grow the job table (RFC-004 change detection at the `Scanner` level),
+/// exactly matching the guarantee Task 013/Review 161 established for the
+/// legacy `run_pending` path.
 #[tokio::test]
 async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unbounded_growth() {
     let temp = tempfile::tempdir().unwrap();
@@ -222,7 +253,7 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 5 files indexed", || {
@@ -270,6 +301,148 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     handle.abort();
 }
 
+/// RFC-036 §20.1 / Review 165 §5: a worker that genuinely fails -- not the
+/// pre-dispatch `model_missing` short-circuit every test above exercises --
+/// must retry up to the attempt limit, then permanently fail with its own
+/// RFC-008 §15 category recorded in the catalog. This is the concrete bar
+/// Review 165 §5 set for Slice 2: the seven fail mutants that survived
+/// mutation testing did so because nothing before this exercised
+/// `Scheduler::fail`/`scheduler_host::run` against a worker that actually
+/// errors mid-embed.
+#[tokio::test]
+async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 2);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(AlwaysFailsEmbeddingModel),
+        ModelId::from_string("always-fails_v1".to_string()),
+    ));
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    wait_until(
+        Duration::from_secs(20),
+        "both embedding jobs permanently fail",
+        || job_counts_by_status(&ui_catalog, JobStatus::Failed) == 2,
+    )
+    .await;
+
+    let categories: Vec<String> = {
+        let conn = ui_catalog.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT error_category FROM index_jobs \
+                 WHERE job_type = 'embedding' AND status = 'failed'",
+            )
+            .unwrap();
+        stmt.query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(categories.len(), 2);
+    assert!(
+        categories.iter().all(|c| c == "inference_error"),
+        "must carry the worker's real RFC-008 §15 category, not model_missing: {categories:?}"
+    );
+
+    handle.abort();
+}
+
+/// The success-path complement to the test above: a real `EmbeddingWorker`
+/// (the mock model, standing in for a loaded backend) actually embeds and
+/// persists vectors through the hosting loop, not just terminates jobs.
+#[tokio::test]
+async fn embedding_worker_with_a_real_model_indexes_files_and_writes_embeddings() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+
+    let model_id = {
+        use orbok_db::repo::{ModelRepository, ModelRole, ModelStatus, NewModel};
+        ModelRepository::new(&loop_catalog)
+            .insert(NewModel {
+                role: ModelRole::Embedding,
+                model_name: "mock".to_string(),
+                model_version: "v1".to_string(),
+                local_path: None,
+                license_summary: None,
+                size_bytes: None,
+                backend: Some("mock".to_string()),
+                dimension: Some(8),
+                status: ModelStatus::Available,
+            })
+            .unwrap()
+            .model_id
+    };
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(MockEmbeddingModel),
+        model_id.clone(),
+    ));
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    wait_until(Duration::from_secs(20), "all 3 files indexed", || {
+        indexed_count(&ui_catalog) == 3
+    })
+    .await;
+    wait_until(
+        Duration::from_secs(20),
+        "no jobs left queued (embedding jobs resolved)",
+        || job_counts_by_status(&ui_catalog, JobStatus::Queued) == 0,
+    )
+    .await;
+
+    let embedding_rows: i64 = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1",
+            [model_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        embedding_rows > 0,
+        "a real EmbeddingWorker run must persist at least one embedding row"
+    );
+    assert_eq!(
+        job_counts_by_status(&ui_catalog, JobStatus::Failed),
+        0,
+        "a working model must not produce any failed jobs"
+    );
+
+    handle.abort();
+}
+
 /// RFC-036 §16 / RFC-056 §9: a job left `running` by an abrupt exit is
 /// reset to `queued` by the existing RFC-018 startup recovery (unchanged
 /// by this slice, already running at real app startup) and then picked up
@@ -312,7 +485,7 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(
@@ -339,7 +512,7 @@ async fn index_via_background_loop(
     let loop_catalog = bootstrap::open_catalog(context).unwrap();
     let loop_cache = bootstrap::cache_service(context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
     wait_until(
         Duration::from_secs(90),
@@ -395,7 +568,7 @@ async fn search_latency_while_background_indexing_is_running() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     let search_catalog = bootstrap::open_catalog(&context).unwrap();

@@ -22,6 +22,21 @@ use orbok_core::{JobId, JobStatus, OrbokResult, SourceId, now_iso8601};
 use orbok_db::Catalog;
 use orbok_db::repo::IndexJobRepository;
 
+/// RFC-008 §15 categories that must not retry (RFC-036 §20.1): nothing
+/// about the same job changes on a subsequent attempt (a missing/invalid
+/// model, a blocked backend, input that will always be too long), or a
+/// retry would be actively wrong (an intentional cancellation). Every
+/// other category -- including the two RFC-008 §15 categories a later
+/// attempt genuinely could clear (`out_of_memory`, `inference_error`),
+/// `write_error`, and non-embedding kinds like `"worker_error"` -- retries
+/// by default up to `MAX_JOB_ATTEMPTS`.
+fn is_terminal_category(error_kind: &str) -> bool {
+    matches!(
+        error_kind,
+        "model_missing" | "model_invalid" | "backend_unavailable" | "input_too_long" | "canceled"
+    )
+}
+
 /// The resource-aware scheduler (RFC-036 §5–§16).
 pub struct Scheduler {
     #[allow(dead_code)] // reserved for future per-queue tuning
@@ -160,9 +175,12 @@ impl Scheduler {
             self.events
                 .push(SchedulerEvent::QueueBackpressureReleased(kind));
         }
-        // Persist job to catalog for crash recovery.
+        // Persist job to catalog for crash recovery, under this same job's
+        // own id (RFC-036 §16) -- `complete`/`fail` later update the
+        // catalog row by this id, so the two must never diverge.
         let jobs = IndexJobRepository::new(catalog);
         jobs.enqueue_with_priority(
+            &job.id,
             job.kind.as_job_type(),
             Some(&job.source_id),
             job.file_id.as_ref(),
@@ -232,16 +250,24 @@ impl Scheduler {
         Ok(())
     }
 
-    /// Mark a job as failed; retry if under the attempt limit (RFC-036 §11).
+    /// Mark a job as failed; retry if under the attempt limit and the
+    /// category itself is retryable (RFC-036 §11, §20.1).
+    ///
+    /// `error_message` is recorded alongside a terminal failure's category
+    /// (the diagnostics-contract `error_category`/`error_message` columns,
+    /// RFC-002) -- it is discarded on a retry, where only `error_kind`
+    /// (`last_error_kind`) is tracked, matching `increment_attempt`'s
+    /// existing shape.
     pub fn fail(
         &mut self,
         mut job: IndexJob,
         error_kind: &str,
+        error_message: Option<&str>,
         catalog: &Catalog,
     ) -> OrbokResult<()> {
         job.attempt_count += 1;
         job.last_error_kind = Some(error_kind.to_string());
-        if job.attempt_count < MAX_JOB_ATTEMPTS {
+        if job.attempt_count < MAX_JOB_ATTEMPTS && !is_terminal_category(error_kind) {
             // Re-queue for retry (RFC-036 §17.1 retry limit test).
             tracing::debug!(
                 job = job.id.as_str(),
@@ -263,10 +289,11 @@ impl Scheduler {
                 job = job.id.as_str(),
                 attempts = job.attempt_count,
                 error = error_kind,
-                "job permanently failed after max attempts"
+                terminal_category = is_terminal_category(error_kind),
+                "job permanently failed"
             );
             let jobs = IndexJobRepository::new(catalog);
-            jobs.set_status(&job.id, JobStatus::Failed)?;
+            jobs.fail_with_category(&job.id, error_kind, error_message)?;
             self.failed_count += 1;
             self.emit(SchedulerEvent::JobFailed {
                 id: job.id.clone(),

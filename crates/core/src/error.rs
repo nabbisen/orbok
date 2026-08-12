@@ -97,6 +97,24 @@ pub enum OrbokError {
         message: String,
     },
 
+    /// RFC-008 §15's embedding job failure categories, written directly as
+    /// the literal spec'd strings (`"model_missing"`, `"inference_error"`,
+    /// etc.) rather than through an intermediate enum like
+    /// [`ErrorCategory`] — deliberately, following Task 013/Review 161:
+    /// `ErrorCategory::ModelUnavailable` stringifies to
+    /// `"model_unavailable"`, which does not match RFC-008 §15's own
+    /// vocabulary, and reusing the extraction-shaped [`Extraction`] variant
+    /// for an embedding-job failure would be semantically wrong. `category`
+    /// is `&'static str` rather than `String`: every caller passes a
+    /// literal from RFC-008 §15's named set, and `Scheduler::fail`
+    /// (RFC-036 §20.1) matches directly on it to decide whether the
+    /// category is retryable.
+    #[error("embedding job failed: {category} — {message}")]
+    Embedding {
+        category: &'static str,
+        message: String,
+    },
+
     #[error("invalid value in catalog column {column}: {value}")]
     InvalidCatalogValue { column: &'static str, value: String },
 

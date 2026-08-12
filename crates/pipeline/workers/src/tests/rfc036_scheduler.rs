@@ -7,7 +7,11 @@ use crate::scheduler::{
     BoundedQueue, IndexJob, JobKind, JobState, QueueCapacity, QueueKind, QueueSet, ResourceMode,
     Scheduler, SchedulerEvent, WorkPriority,
 };
-use orbok_core::SourceId;
+use orbok_core::{
+    HiddenFilePolicy, IndexMode, PersistenceMode, SourceId, SourceType, SymlinkPolicy,
+};
+use orbok_db::Catalog;
+use orbok_db::repo::{NewSource, SourceRepository};
 
 fn src() -> SourceId {
     SourceId::generate()
@@ -19,6 +23,31 @@ fn job(kind: JobKind) -> IndexJob {
 
 fn job_for(source_id: SourceId, kind: JobKind) -> IndexJob {
     IndexJob::new(source_id, kind)
+}
+
+/// An in-memory catalog with one real `sources` row -- `index_jobs.source_id`
+/// carries a foreign key (`ON DELETE CASCADE`), enforced (`catalog.rs` turns
+/// on `PRAGMA foreign_keys`), so `Scheduler::enqueue`/`fail`'s catalog writes
+/// need a source row to reference, unlike the pure in-memory-queue tests
+/// above this section.
+fn catalog_with_source() -> (Catalog, SourceId) {
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = SourceRepository::new(&catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: None,
+            original_path: "/tmp/rfc036-fail-test".to_string(),
+            canonical_path: "/tmp/rfc036-fail-test".to_string(),
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+    (catalog, source.source_id)
 }
 
 // ── §17.1 Priority ordering ───────────────────────────────────────────────
@@ -241,6 +270,107 @@ fn queue_set_cancel_source_removes_across_queues() {
 }
 
 // ── §17.1 Retry limit ────────────────────────────────────────────────────
+
+// RFC-036 §20.1 / Review 165 §5: a retryable category (not in
+// `is_terminal_category`'s set) is re-queued in-memory and in the catalog.
+#[test]
+fn fail_retries_a_non_terminal_category_under_the_attempt_limit() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::ExtractFile), &catalog)
+        .unwrap();
+    let job = sched.tick().unwrap();
+    let id = job.id.clone();
+
+    sched.fail(job, "worker_error", None, &catalog).unwrap();
+
+    let retried = sched.tick().expect("a retryable failure must be re-queued");
+    assert_eq!(retried.id, id);
+    assert_eq!(retried.attempt_count, 1);
+
+    let status: String = catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_id = ?1",
+            [id.as_str()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "queued");
+}
+
+// RFC-036 §20.1: a terminal category (RFC-008 §15's `model_missing`) must
+// not retry even on the very first attempt, and its category/message land
+// in the catalog's diagnostics columns -- the gap RFC-036 §20.1 named
+// (`Scheduler::fail` previously only called `set_status(Failed)`, leaving
+// `error_category` null).
+#[test]
+fn fail_does_not_retry_a_terminal_category_even_on_the_first_attempt() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::GenerateEmbedding), &catalog)
+        .unwrap();
+    let job = sched.tick().unwrap();
+    let id = job.id.clone();
+
+    sched
+        .fail(job, "model_missing", Some("no model configured"), &catalog)
+        .unwrap();
+
+    assert!(
+        sched.tick().is_none(),
+        "a terminal category must not be re-queued"
+    );
+
+    let (status, category, message): (String, String, String) = catalog
+        .lock()
+        .query_row(
+            "SELECT status, error_category, error_message FROM index_jobs WHERE job_id = ?1",
+            [id.as_str()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed");
+    assert_eq!(category, "model_missing");
+    assert_eq!(message, "no model configured");
+}
+
+// RFC-036 §17.1 / §20.1: a retryable category still terminates once the
+// attempt limit (`MAX_JOB_ATTEMPTS` = 3, `scheduler/limits.rs`) is
+// exhausted -- retry is bounded, not unconditional.
+#[test]
+fn fail_exhausts_retries_then_permanently_fails_a_retryable_category() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::GenerateEmbedding), &catalog)
+        .unwrap();
+
+    for _ in 0..2 {
+        let job = sched.tick().expect("still under the attempt limit");
+        sched.fail(job, "inference_error", None, &catalog).unwrap();
+    }
+    let job = sched.tick().expect("third attempt: still queued going in");
+    let id = job.id.clone();
+    assert_eq!(job.attempt_count, 2, "two prior failed attempts recorded");
+    sched.fail(job, "inference_error", None, &catalog).unwrap();
+
+    assert!(
+        sched.tick().is_none(),
+        "the attempt limit is exhausted -- must not retry a third time"
+    );
+    let status: String = catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_id = ?1",
+            [id.as_str()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "failed");
+}
 
 // RFC-036 §17.1: WorkPriority ordering is correct.
 #[test]

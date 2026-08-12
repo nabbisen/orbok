@@ -70,8 +70,12 @@ impl<'a> EmbeddingWorker<'a> {
         let Some(batch) = self.prepare_batch(file_id)? else {
             return Ok(());
         };
-        let vectors = self.model.embed_batch(&batch.text_refs())?;
+        let vectors = self
+            .model
+            .embed_batch(&batch.text_refs())
+            .map_err(categorize_inference_error)?;
         self.persist(&batch, vectors)
+            .map_err(categorize_write_error)
     }
 
     /// `run`, plus this file's embedding batch statistics (RFC-048 Task
@@ -90,8 +94,12 @@ impl<'a> EmbeddingWorker<'a> {
         let Some(batch) = self.prepare_batch(file_id)? else {
             return Ok(None);
         };
-        let (vectors, stats) = self.model.embed_batch_with_stats(&batch.text_refs())?;
-        self.persist(&batch, vectors)?;
+        let (vectors, stats) = self
+            .model
+            .embed_batch_with_stats(&batch.text_refs())
+            .map_err(categorize_inference_error)?;
+        self.persist(&batch, vectors)
+            .map_err(categorize_write_error)?;
         Ok(stats)
     }
 
@@ -168,6 +176,37 @@ impl<'a> EmbeddingWorker<'a> {
 
     pub fn model(&self) -> &dyn EmbeddingModel {
         self.model.as_ref()
+    }
+}
+
+/// Wrap a model's `embed_batch`/`embed_batch_with_stats` failure as RFC-008
+/// §15's `inference_error` category (RFC-036 §20.1), unless the model
+/// already returned a categorized `OrbokError::Embedding` itself -- a
+/// future backend with finer-grained detection (e.g. a real `out_of_memory`
+/// signal) must not be overwritten here. Every current backend
+/// (`MockEmbeddingModel`, `TractEmbeddingModel`) returns uncategorized
+/// errors today, so this is the only place that classification happens in
+/// practice.
+fn categorize_inference_error(error: OrbokError) -> OrbokError {
+    match error {
+        already @ OrbokError::Embedding { .. } => already,
+        other => OrbokError::Embedding {
+            category: "inference_error",
+            message: other.to_string(),
+        },
+    }
+}
+
+/// Wrap a vector-persist failure as RFC-008 §15's `write_error` category --
+/// the `WritingVector` phase of the job lifecycle (RFC-008 §15), distinct
+/// from the `Embedding` phase `categorize_inference_error` covers.
+fn categorize_write_error(error: OrbokError) -> OrbokError {
+    match error {
+        already @ OrbokError::Embedding { .. } => already,
+        other => OrbokError::Embedding {
+            category: "write_error",
+            message: other.to_string(),
+        },
     }
 }
 
