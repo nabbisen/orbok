@@ -202,12 +202,10 @@ jobs:
     name: Cross-platform smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      # A pre-existing, unrelated orbok-fs failure on macos-latest
-      # (tests::path_guard::ignore_policy_blocks_internal_symlink) must not
-      # cancel the windows-latest leg via fail-fast before it reaches the
-      # RFC-049 isolation/denial tests added below — that would silently
-      # deny the Windows evidence this correction needs. fail-fast: false
-      # lets every OS leg run to completion independently.
+      # fail-fast: false lets every OS leg run to completion independently.
+      # This is a platform CONFORMANCE matrix (RFC-019 §7): a failure on one
+      # platform must not cancel the other two before they report their own
+      # results -- each leg's outcome is itself evidence, not just a gate.
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -224,12 +222,9 @@ jobs:
       # run natively per platform, not just cross-compile-checked. This is
       # also the app binary's (`orbok`, `--bin orbok`) only test coverage in
       # CI today: `fast` excludes it and `release` runs `--lib` only, neither
-      # of which reaches `main.rs`'s own test module. Placed immediately
-      # after the build step and before "test core crates" (Review 113 F3):
-      # a pre-existing, unrelated failure in that later step
-      # (tests::path_guard::ignore_policy_blocks_internal_symlink on
-      # macos-latest — see finding below) aborts the remaining steps in its
-      # leg, and this step must not be starved of a chance to run by it.
+      # of which reaches `main.rs`'s own test module. Placed early in this
+      # job (Review 113 F3): if a later step in this leg fails, this step
+      # must not be starved of a chance to run by it.
       - name: RFC-049 runtime isolation and boundary tests
         run: cargo test -p orbok --bin orbok --locked
 
@@ -247,10 +242,6 @@ jobs:
       - name: orbok library tests (runtime_context, cross-platform)
         run: cargo test -p orbok --lib --locked
 
-      # Pre-existing, unrelated to RFC-049: fails today on macos-latest at
-      # tests::path_guard::ignore_policy_blocks_internal_symlink (orbok-fs).
-      # Tracked as a separate finding, not fixed here; kept blocking (no
-      # continue-on-error) so the failure stays visible rather than silent.
       - name: test core crates
         env:
           ORBOK_DATA_DIR: /tmp/orbok-cross
@@ -261,3 +252,51 @@ jobs:
 
       - name: RFC-050 abrupt-exit recovery matrix
         run: cargo test -p orbok-workers abrupt_process_exit_at_each_durability_boundary_recovers_coherently --lib
+
+      # RFC-019 §7's platform matrix (Task 014): Release Smoke's minimum is
+      # "Yes" for Windows and macOS, not just Linux, but the `release` job
+      # below is `runs-on: ubuntu-latest` only -- the `orbok` binary has
+      # never been built, versioned, or self-checked on either platform.
+      # Cheapest correct shape: run the platform-relevant core (build
+      # --release, --version, --check headless) here on all three legs,
+      # rather than duplicating the whole `release` job's packaging/archive/
+      # benchmark-smoke steps, which are not platform-matrix concerns and
+      # stay ubuntu-only. Deliberately narrower than `release`'s own
+      # `--check headless` step: that step additionally asserts (RFC-054
+      # §9.6) that the real platform config directory is untouched, via a
+      # `find -printf`-based `$HOME` snapshot -- a GNU coreutils extension
+      # BSD `find` (macOS) does not support. Replicating that exact script
+      # here would risk a false "macOS failure" that is a non-portable CI
+      # script bug, not the product defect this task exists to surface, so
+      # this step verifies only that `--check` itself exits successfully on
+      # each platform; the deeper $HOME-isolation assertion remains
+      # ubuntu-only in `release` below.
+      - name: build --release
+        run: cargo build --release --package orbok
+
+      - name: --version
+        shell: bash
+        run: |
+          bin="target/release/orbok"
+          if [ "${{ runner.os }}" = "Windows" ]; then bin="target/release/orbok.exe"; fi
+          "$bin" --version
+
+      - name: --check headless
+        shell: bash
+        env:
+          ORBOK_DATA_DIR: ${{ runner.temp }}/orbok-cross-check
+        run: |
+          bin="target/release/orbok"
+          if [ "${{ runner.os }}" = "Windows" ]; then bin="target/release/orbok.exe"; fi
+          rm -rf "$ORBOK_DATA_DIR"
+          "$bin" --check
+
+      # RFC-019 §7 / Task 014 §2: `orbok-ui`'s 94 tests (including
+      # `iced_test::Simulator`'s headless view-rendering suite) have only
+      # ever run on Linux -- `fast` excludes `orbok-ui` for build-time
+      # reasons, `cross` never mentioned it, and `release`'s `--workspace
+      # --lib` reaches it but that job is ubuntu-only. `iced_test::Simulator`
+      # is headless by design, so there is no technical reason this cannot
+      # run on all three legs.
+      - name: orbok-ui library tests (cross-platform)
+        run: cargo test -p orbok-ui --lib --locked
