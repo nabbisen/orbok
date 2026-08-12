@@ -429,6 +429,43 @@ fn fail_marks_blocked_not_queued_when_the_retry_push_is_skipped() {
     );
 }
 
+// RFC-036 §12.2 / Review 174 §3: `resume` must fix up catalog rows a
+// *different* `Scheduler` instance paused, not just its own -- a fresh
+// process always constructs a fresh `Scheduler` (`resource_mode` starts
+// `Normal`), so gating the catalog `UPDATE` on "was this `Scheduler`
+// itself marked `Paused`" would silently strand rows a previous session
+// paused, which is exactly RFC-056 §9 criterion 4's restart scenario.
+#[test]
+fn resume_fixes_up_paused_rows_even_on_a_scheduler_that_was_never_paused_itself() {
+    let (catalog, source_id) = catalog_with_source();
+
+    // A previous session: pause via one `Scheduler`.
+    let mut first = Scheduler::with_defaults();
+    first
+        .enqueue(job_for(source_id, JobKind::ExtractFile), &catalog)
+        .unwrap();
+    first.pause(&catalog).unwrap();
+    let status: String = catalog
+        .lock()
+        .query_row("SELECT status FROM index_jobs", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(status, "paused");
+
+    // A restart: resume via a brand new `Scheduler`, never itself paused.
+    let mut second = Scheduler::with_defaults();
+    assert_eq!(second.resource_mode(), ResourceMode::Normal);
+    second.resume(&catalog).unwrap();
+
+    let status: String = catalog
+        .lock()
+        .query_row("SELECT status FROM index_jobs", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        status, "queued",
+        "resume must fix up rows a different (or restarted) Scheduler paused"
+    );
+}
+
 // RFC-036 §17.1: WorkPriority ordering is correct.
 #[test]
 fn work_priority_ord_is_correct() {

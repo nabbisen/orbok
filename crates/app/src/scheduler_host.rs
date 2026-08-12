@@ -108,7 +108,18 @@ pub(crate) async fn run_with_context(
     mut output: Sender<Message>,
 ) {
     let mut scheduler = Scheduler::with_defaults();
-    if !background_indexing_enabled {
+    if background_indexing_enabled {
+        // RFC-056 §9 criterion 4: turning `background_indexing` back on
+        // must resume work a prior session left `paused`, not just leave
+        // the setting honest for the off case. Always called, not gated
+        // on any local state -- `resume` itself always runs its catalog
+        // fix-up now (a fresh `Scheduler`, which every real restart
+        // constructs, has no way to know a *previous* session paused
+        // anything), so this is cheap on the normal path (matches zero
+        // rows) and correct on the restart-after-off path (matches the
+        // rows that previous session paused).
+        let _ = scheduler.resume(&catalog);
+    } else {
         // RFC-036 §12.2 Safe Pause, applied before any job has been
         // dispatched: "finish the current small unit" is vacuously true
         // here (there is none yet), "stop taking new work" is `tick()`'s

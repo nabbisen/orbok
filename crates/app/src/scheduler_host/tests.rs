@@ -397,6 +397,72 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
     handle.abort();
 }
 
+/// RFC-056 §9 criterion 4 (Review 174 §3, required): *"turning it on
+/// resumes it"* -- the second half of the criterion, which the previous
+/// test alone leaves untested and which was previously false:
+/// `Scheduler::resume` had zero callers anywhere. The round trip, not
+/// resume in isolation: a test that only asserted "resume un-pauses"
+/// would pass against a `resume` nothing calls, the exact shape §1.3's
+/// self-caught gap in the review request had. Two separate
+/// `run_with_context` spawns, matching how
+/// `interrupted_running_job_is_recovered_and_completes_after_restart`
+/// already simulates a restart -- a real restart always constructs a
+/// fresh `Scheduler`, so this is the scenario that actually matters, not
+/// pause/resume on one live instance.
+#[tokio::test]
+async fn background_indexing_off_then_on_pauses_then_resumes() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 5);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    // Off: the queued Scan job is paused, nothing indexes.
+    {
+        let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+        let loop_cache = bootstrap::cache_service(&context).unwrap();
+        let (tx, rx) = futures::channel::mpsc::channel(64);
+        let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, false, tx));
+        drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        handle.abort();
+    }
+    assert_eq!(
+        indexed_count(&ui_catalog),
+        0,
+        "nothing may index while paused"
+    );
+    let scan_status: String = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_type = 'scan' AND source_id = ?1",
+            [card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(scan_status, "paused");
+
+    // On, via a fresh `Scheduler` (a real restart constructs one): the
+    // rows the previous run paused must be resumed, not left stranded.
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    wait_until(
+        Duration::from_secs(20),
+        "all 5 files indexed after resuming",
+        || indexed_count(&ui_catalog) == 5,
+    )
+    .await;
+
+    handle.abort();
+}
+
 /// RFC-036 §20.1 / Review 165 §5: a worker that genuinely fails -- not the
 /// pre-dispatch `model_missing` short-circuit every test above exercises --
 /// must retry up to the attempt limit, then permanently fail with its own

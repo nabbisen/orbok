@@ -117,12 +117,22 @@ impl Scheduler {
     }
 
     /// Resume background work after a pause (RFC-036 §12.2).
+    ///
+    /// Unlike `pause`, the catalog fix-up below does not gate on
+    /// `self.resource_mode` (Review 174 §3): `resource_mode` is
+    /// process-local in-memory state that starts `Normal` on every fresh
+    /// `Scheduler` (`ResourceMode::default()`), including the one a real
+    /// restart always constructs -- but `paused` persists to the catalog
+    /// (`pause`'s own `UPDATE`). A guard here would make `resume` a no-op
+    /// on exactly the restart case RFC-056 §9 criterion 4 requires
+    /// ("turning it on resumes it"), since the fresh scheduler was never
+    /// `Paused` in memory even though the catalog says otherwise.
     pub fn resume(&mut self, catalog: &Catalog) -> OrbokResult<()> {
-        if self.resource_mode != ResourceMode::Paused {
-            return Ok(());
-        }
+        let was_paused = self.resource_mode == ResourceMode::Paused;
         self.resource_mode = ResourceMode::Normal;
-        self.emit(SchedulerEvent::ResourceModeChanged(ResourceMode::Normal));
+        if was_paused {
+            self.emit(SchedulerEvent::ResourceModeChanged(ResourceMode::Normal));
+        }
         // Restore paused jobs to queued so they are picked up again.
         let conn = catalog.lock();
         conn.execute(

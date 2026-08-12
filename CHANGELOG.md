@@ -141,7 +141,15 @@ next release tag.
   dispatches (`Scheduler::pause`, called once at startup — a standing
   preference honored the same way `EmbeddingWorker` resolution already is,
   not the interactive per-session Pause/Resume control RFC-036 §12.1/§14.3
-  describe, which is Slice 4's UI half). `pause_on_battery` is documented
+  describe, which is Slice 4's UI half). Turning it back on now actually
+  resumes work a prior session paused (Review 174 §3, required): the first
+  cut only wired `pause`, leaving `background_indexing` one-way — setting
+  it back to `true` and restarting did nothing, since `Scheduler::resume`
+  had zero callers anywhere and, once wired, its own early-return guard
+  (`resource_mode == Paused`) never held on the fresh `Scheduler` a real
+  restart always constructs, silently stranding every previously-paused
+  row. `resume` no longer gates its catalog fix-up on that in-memory flag.
+  `pause_on_battery` is documented
   but left unwired: RFC-036 §13.2 explicitly allows P0 to skip
   battery/thermal detection, and no battery-state signal source exists
   anywhere in this codebase to read from — wiring it would mean choosing
