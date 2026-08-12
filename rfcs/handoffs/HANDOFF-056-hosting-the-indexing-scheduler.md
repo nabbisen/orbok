@@ -59,6 +59,23 @@ awareness. Source removal cancels queued work (§18.6).
 Both settings exist in `OrbokSettings` and are read nowhere today. This slice is
 what makes them honest.
 
+**Two items carried in from earlier reviews. Recorded here rather than left in
+review threads, because that is how they get lost:**
+
+- **RFC-036 §20.2 — the backpressure drop.** `Scheduler::fail`'s retry branch
+  skips `queue.push` when the target queue is full but still calls
+  `set_status(Queued)`, so the catalog records a job that no longer exists in
+  memory and rehydration will not reload it. It lives in the same queue-state
+  machinery this slice wires for pause/resume, which is why RFC-036 §20's
+  "whoever next touches the backpressure path" resolves to Slice 3
+  (Review 171 §5).
+- **§3.2b — settle what the 48 ms actually is.** Sample the same search *after*
+  indexing completes: full catalog, no concurrent writes. Stays near 48 ms ⇒ the
+  cost is catalog size and there is no contention story. Falls toward 270 µs ⇒
+  the concurrent writes are real and worth designing against. A handful of lines
+  in `search_latency_while_background_indexing_is_running`, which you have just
+  written (Review 172 §3).
+
 ### Slice 4 — the UI half (added 2026-08-12; my omission)
 
 **RFC-056 §4.4 was assigned to no slice when this handoff was written.** That was
@@ -118,6 +135,27 @@ writing many chunks in one transaction is the obvious candidate. **Measure a
 search's latency while indexing is running**; if it degrades noticeably, report
 the number rather than working around it — a second connection is a real option
 under WAL, but it is a design change and belongs in a conversation.
+
+> **Correction (2026-08-12, after Slice 2 — Review 172 §3). The question above
+> is wrong and was mine.**
+>
+> **That guard is never shared.** `scheduler_host::run` opens its own catalog
+> (`scheduler_host.rs:58`), and the module's own comment states that
+> `scan_and_index_source` writes *"on the UI's own `Catalog` connection."* Two
+> connections, two mutexes, by construction — so no repository operation on the
+> indexing side can hold a guard the UI is waiting on. The "second connection
+> under WAL" I offered as a possible remedy is what the code already does.
+>
+> The architecture answers the concern. The question was badly asked, not the
+> design badly built.
+>
+> Slice 2 measured search latency under indexing anyway and found **~48 ms
+> average / ~56 ms max, against a ~270 µs Slice 1 baseline**. That number is real
+> and its *cause is unestablished*: WAL-level effects across the two
+> connections, catalog growth over a 45 s sampling window versus Slice 1's
+> 1.1 s, and residual scheduling artefact from the test's blocking sleep are all
+> consistent with it, and the test separates none of them. **Do not quote it as
+> "indexing makes search 180× slower"** until §3.2b settles which.
 
 ## 4. Testing — the requirement that matters most
 
