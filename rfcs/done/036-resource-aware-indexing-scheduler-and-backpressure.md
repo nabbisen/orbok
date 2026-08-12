@@ -721,3 +721,17 @@ Neither finding changes this RFC's design. Both are gaps between what §10 and
 §11 describe and what `dispatch.rs` does, surfaced the first time the scheduler
 ran against real work. §20.1 needs resolving as part of RFC-056 Slice 2; §20.2
 is recorded for whoever next touches the backpressure path.
+
+**Update (2026-08-12): both resolved.** §20.1 landed in RFC-056 Slice 2:
+`is_terminal_category` gives `fail()` the terminal/retryable distinction RFC-008
+§15 requires, and the permanent-failure branch now calls
+`IndexJobRepository::fail_with_category` instead of a bare `set_status`.
+
+§20.2 landed in RFC-056 Slice 3, which turned out to be "whoever next touches
+the backpressure path" — pause/resume, wired the same slice, shares the queue-
+state machinery. `fail()`'s retry branch now records `JobStatus::Blocked`
+(rather than `Queued`) when the in-memory push is skipped for lack of room, and
+`scheduler_host::rehydrate` re-discovers `blocked` rows separately from
+`queued` ones, bypassing the `known`-id gate that only makes sense for a row
+that might still be correctly tracked in memory. A job dropped under
+backpressure is recovered once room exists, rather than durably lost.

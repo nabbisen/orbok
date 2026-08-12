@@ -5,13 +5,13 @@
 
 use crate::scheduler::{
     BoundedQueue, IndexJob, JobKind, JobState, QueueCapacity, QueueKind, QueueSet, ResourceMode,
-    Scheduler, SchedulerEvent, WorkPriority,
+    Scheduler, SchedulerConfig, SchedulerEvent, WorkPriority,
 };
 use orbok_core::{
-    HiddenFilePolicy, IndexMode, PersistenceMode, SourceId, SourceType, SymlinkPolicy,
+    HiddenFilePolicy, IndexMode, JobType, PersistenceMode, SourceId, SourceType, SymlinkPolicy,
 };
 use orbok_db::Catalog;
-use orbok_db::repo::{NewSource, SourceRepository};
+use orbok_db::repo::{IndexJobRepository, NewSource, SourceRepository};
 
 fn src() -> SourceId {
     SourceId::generate()
@@ -370,6 +370,63 @@ fn fail_exhausts_retries_then_permanently_fails_a_retryable_category() {
         )
         .unwrap();
     assert_eq!(status, "failed");
+}
+
+// RFC-036 §20.2: a retry whose in-memory push is skipped for lack of room
+// must be recorded honestly as `blocked`, not `queued` -- `queued` claims
+// an in-memory copy exists when none does, and (per the amendment) a
+// rehydration pass that has already seen this id, as every retried job
+// has, would otherwise never reload it.
+#[test]
+fn fail_marks_blocked_not_queued_when_the_retry_push_is_skipped() {
+    let (catalog, source_id) = catalog_with_source();
+    let capacity = QueueCapacity {
+        extract_queue_max: 1,
+        ..QueueCapacity::default()
+    };
+    let mut sched = Scheduler::new(SchedulerConfig {
+        capacity,
+        ..SchedulerConfig::default()
+    });
+
+    // Fill the extract queue's single slot so job_b's retry below has
+    // nowhere to go.
+    sched
+        .enqueue(job_for(source_id.clone(), JobKind::ExtractFile), &catalog)
+        .unwrap();
+
+    // job_b's catalog row is inserted directly rather than through
+    // `Scheduler::enqueue` (which would reject it -- the queue is already
+    // full): the same shape a worker's direct `IndexJobRepository::enqueue`
+    // call already produces in production, bypassing the in-memory queue
+    // entirely until rehydration picks it up.
+    let job_b = job_for(source_id, JobKind::ExtractFile);
+    IndexJobRepository::new(&catalog)
+        .enqueue_with_priority(
+            &job_b.id,
+            JobType::Extract,
+            Some(&job_b.source_id),
+            None,
+            job_b.priority.as_i64(),
+        )
+        .unwrap();
+
+    sched
+        .fail(job_b.clone(), "worker_error", None, &catalog)
+        .unwrap();
+
+    let status: String = catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_id = ?1",
+            [job_b.id.as_str()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        status, "blocked",
+        "a retry with no room in the queue must be recorded as blocked, not queued"
+    );
 }
 
 // RFC-036 §17.1: WorkPriority ordering is correct.

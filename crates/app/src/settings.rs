@@ -65,6 +65,15 @@ pub struct OrbokSettings {
     pub background_indexing: bool,
 
     /// Pause background indexing when on battery power.
+    ///
+    /// Read nowhere yet: RFC-036 §13.2 explicitly allows P0 to skip
+    /// battery/thermal detection ("scheduler should allow future policy"),
+    /// and no battery-state signal source exists anywhere in this
+    /// codebase to read from -- unlike `background_indexing`, wiring this
+    /// setting to `Scheduler::pause` (RFC-056 Slice 3) would mean
+    /// choosing and integrating a cross-platform battery API, a new
+    /// capability decision, not hosting plumbing. Left for whoever adds
+    /// that capability; this field exists so the setting round-trips.
     pub pause_on_battery: bool,
 
     /// Privacy mode (RFC-039 §5). One of: "standard" | "strict" | "portable".

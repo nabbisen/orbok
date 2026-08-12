@@ -188,7 +188,7 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 10 files indexed", || {
@@ -302,7 +302,7 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 5 files indexed", || {
@@ -350,6 +350,53 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     handle.abort();
 }
 
+/// RFC-036 §12 / RFC-019, RFC-056 Slice 3: `background_indexing = false`
+/// pauses the loop before any job dispatches -- no file gets indexed, and
+/// a `Scan` job already `queued` when the loop starts is marked `paused`
+/// in the catalog (RFC-036 §12.2's "persist progress") rather than left
+/// `queued` forever with nothing ever picking it up.
+#[tokio::test]
+async fn background_indexing_disabled_pauses_before_any_job_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 5);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, false, tx));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    // Several idle cycles (IDLE_POLL is 300ms), to prove the loop stays
+    // paused rather than "hasn't gotten to it yet."
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert_eq!(
+        indexed_count(&ui_catalog),
+        0,
+        "no file may be indexed while background_indexing is disabled"
+    );
+    let scan_status: String = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT status FROM index_jobs WHERE job_type = 'scan' AND source_id = ?1",
+            [card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        scan_status, "paused",
+        "the queued Scan job must be paused, not left queued forever"
+    );
+
+    handle.abort();
+}
+
 /// RFC-036 §20.1 / Review 165 §5: a worker that genuinely fails -- not the
 /// pre-dispatch `model_missing` short-circuit every test above exercises --
 /// must retry up to the attempt limit, then permanently fail with its own
@@ -380,6 +427,7 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
@@ -445,6 +493,7 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
@@ -536,7 +585,7 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(
@@ -555,6 +604,265 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
     handle.abort();
 }
 
+/// RFC-036 §20.2: a `blocked` row -- the honest state `Scheduler::fail`'s
+/// retry branch records when its in-memory push is skipped for lack of
+/// room, rather than falsely `queued` -- is recovered by `rehydrate` once
+/// room exists, its catalog status corrected back to `queued`. Calls
+/// `super::rehydrate` directly (a private fn, reachable from this child
+/// module): it is the real function `run_with_context`'s loop calls, not a
+/// reimplementation of its logic, matching how `dispatch.rs`'s own unit
+/// tests exercise `Scheduler::fail` without going through this module at
+/// all -- triggering genuine backpressure through the full application
+/// path would need thousands of files against `Scheduler::with_defaults`'s
+/// real capacities.
+#[test]
+fn rehydrate_recovers_a_blocked_job_once_queue_room_exists() {
+    use orbok_core::{
+        HiddenFilePolicy, IndexMode, JobType, PersistenceMode, SourceType, SymlinkPolicy,
+    };
+    use orbok_db::repo::{IndexJobRepository, NewSource, SourceRepository};
+    use orbok_workers::{IndexJob, JobKind, JobState, QueueCapacity, Scheduler, SchedulerConfig};
+    use std::collections::HashSet;
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = SourceRepository::new(&catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: None,
+            original_path: "/tmp/rehydrate-blocked-test".to_string(),
+            canonical_path: "/tmp/rehydrate-blocked-test".to_string(),
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+
+    let capacity = QueueCapacity {
+        extract_queue_max: 1,
+        ..QueueCapacity::default()
+    };
+    let mut sched = Scheduler::new(SchedulerConfig {
+        capacity,
+        ..SchedulerConfig::default()
+    });
+    let mut known = HashSet::new();
+    let jobs = IndexJobRepository::new(&catalog);
+
+    // job_a fills the single extract slot, seeded directly the way a real
+    // rehydrate() pass would (catalog row + in-memory copy + `known`).
+    let job_a_id = orbok_core::JobId::generate();
+    jobs.enqueue_with_priority(
+        &job_a_id,
+        JobType::Extract,
+        Some(&source.source_id),
+        None,
+        0,
+    )
+    .unwrap();
+    known.insert(job_a_id.clone());
+    assert!(sched.load_persisted(IndexJob {
+        id: job_a_id.clone(),
+        file_id: None,
+        source_id: source.source_id.clone(),
+        kind: JobKind::ExtractFile,
+        priority: JobKind::ExtractFile.default_priority(),
+        state: JobState::Pending,
+        attempt_count: 0,
+        last_error_kind: None,
+    }));
+
+    // job_b's retry has nowhere to go while job_a still occupies the
+    // queue's one slot -- `sched.fail` records it `blocked` (RFC-036
+    // §20.2, verified directly against `Scheduler::fail` in
+    // `rfc036_scheduler.rs`).
+    let job_b_id = orbok_core::JobId::generate();
+    jobs.enqueue_with_priority(
+        &job_b_id,
+        JobType::Extract,
+        Some(&source.source_id),
+        None,
+        0,
+    )
+    .unwrap();
+    let job_b = IndexJob {
+        id: job_b_id.clone(),
+        file_id: None,
+        source_id: source.source_id.clone(),
+        kind: JobKind::ExtractFile,
+        priority: JobKind::ExtractFile.default_priority(),
+        state: JobState::Pending,
+        attempt_count: 0,
+        last_error_kind: None,
+    };
+    sched.fail(job_b, "worker_error", None, &catalog).unwrap();
+    assert_eq!(
+        jobs.status_of(&job_b_id).unwrap(),
+        Some(JobStatus::Blocked),
+        "precondition: job_b must be blocked before recovery is attempted"
+    );
+
+    // Room now exists: job_a is popped (simulating dispatch), freeing the
+    // one extract slot.
+    let popped = sched.tick().expect("job_a must still be dispatchable");
+    assert_eq!(popped.id, job_a_id);
+
+    super::rehydrate(&mut sched, &catalog, &mut known);
+
+    assert_eq!(
+        jobs.status_of(&job_b_id).unwrap(),
+        Some(JobStatus::Queued),
+        "a recovered blocked row's catalog status must be corrected back to queued"
+    );
+    assert!(
+        known.contains(&job_b_id),
+        "a recovered blocked row must be tracked in `known` like any other in-memory job"
+    );
+    let recovered = sched
+        .tick()
+        .expect("job_b must be dispatchable again after recovery");
+    assert_eq!(recovered.id, job_b_id);
+}
+
+/// `job_is_still_queued` directly -- the exact check the dispatch loop
+/// makes before running a popped job (RFC-036 §12.3). Proven at the
+/// function level because the integration test below cannot distinguish
+/// this fix from the pre-existing graceful degradation a stale job
+/// already gets via `FileNotFound`/`SourceNotFound` errors and retry
+/// exhaustion: both converge on "no crash, catalog ends up clean" without
+/// this check, so that test alone would pass identically with or without
+/// it (verified while writing it -- see the review request).
+#[test]
+fn job_is_still_queued_reflects_the_catalog_row_honestly() {
+    use orbok_core::{
+        HiddenFilePolicy, IndexMode, JobType, PersistenceMode, SourceType, SymlinkPolicy,
+    };
+    use orbok_db::repo::{IndexJobRepository, NewSource, SourceRepository};
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = SourceRepository::new(&catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: None,
+            original_path: "/tmp/job-is-still-queued-test".to_string(),
+            canonical_path: "/tmp/job-is-still-queued-test".to_string(),
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+    let jobs = IndexJobRepository::new(&catalog);
+
+    let id = orbok_core::JobId::generate();
+    jobs.enqueue_with_priority(&id, JobType::Extract, Some(&source.source_id), None, 0)
+        .unwrap();
+    assert!(
+        super::job_is_still_queued(&catalog, &id),
+        "a freshly enqueued row is queued"
+    );
+
+    jobs.set_status(&id, JobStatus::Canceled).unwrap();
+    assert!(
+        !super::job_is_still_queued(&catalog, &id),
+        "a canceled row is not queued"
+    );
+
+    // Deleted entirely -- RFC-036 §12.3's actual production path, source
+    // removal cascade-deleting via the FK on `sources`, not a status
+    // update.
+    SourceRepository::new(&catalog)
+        .delete_with_all_data(&source.source_id)
+        .unwrap();
+    assert!(
+        !super::job_is_still_queued(&catalog, &id),
+        "a row deleted out from under it is not queued"
+    );
+}
+
+/// RFC-036 §12.3, RFC-056 Slice 3: removing a source mid-flight -- its
+/// `index_jobs` rows cascade-deleted by the FK on `sources`
+/// (`bootstrap::remove_source`) -- does not crash or wedge the hosting
+/// loop. The dispatch-time freshness check in `scheduler_host.rs` skips
+/// any popped job whose catalog row is no longer `queued`, so the loop
+/// keeps processing an unrelated source added afterward. (This test alone
+/// cannot prove the freshness check specifically did the work -- see
+/// `job_is_still_queued_reflects_the_catalog_row_honestly` above for that;
+/// this one guards the surrounding system against a real crash/wedge
+/// regardless of cause.)
+#[tokio::test]
+async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let doomed_dir = temp.path().join("doomed");
+    seed_markdown_docs(&doomed_dir, 50);
+    let (doomed_card, _) =
+        bootstrap::add_source(&ui_catalog, &doomed_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &doomed_card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    // Let the loop actually start discovering/dispatching this source's
+    // jobs before removing it out from under it -- a genuine race, not a
+    // removal before anything existed to race with.
+    wait_until(
+        Duration::from_secs(20),
+        "at least one job exists for the doomed source",
+        || non_scan_job_count(&ui_catalog) > 0,
+    )
+    .await;
+
+    bootstrap::remove_source(&ui_catalog, doomed_card.source_id.as_str()).unwrap();
+
+    // Prove the loop is still alive and functioning: a second, unrelated
+    // source added afterward is indexed normally. Robust to how far the
+    // doomed source got before removal -- the cascade delete removes any
+    // of its already-`indexed` `files` rows too, so they cannot inflate
+    // this count.
+    let survivor_dir = temp.path().join("survivor");
+    seed_markdown_docs(&survivor_dir, 3);
+    let (survivor_card, _) =
+        bootstrap::add_source(&ui_catalog, &survivor_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &survivor_card.source_id).unwrap();
+
+    wait_until(
+        Duration::from_secs(20),
+        "the survivor source's 3 files are indexed",
+        || indexed_count(&ui_catalog) == 3,
+    )
+    .await;
+
+    let doomed_rows: i64 = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM sources WHERE source_id = ?1",
+            [doomed_card.source_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(doomed_rows, 0, "the removed source's row must be gone");
+
+    let integrity = orbok_workers::check_catalog_integrity(&ui_catalog).unwrap();
+    assert!(
+        integrity.is_clean(),
+        "a source removed mid-flight must leave no orphaned/partial state: {integrity:?}"
+    );
+
+    handle.abort();
+}
+
 async fn index_via_background_loop(
     context: &RuntimeContext,
     ui_catalog: &Catalog,
@@ -563,7 +871,7 @@ async fn index_via_background_loop(
     let loop_catalog = bootstrap::open_catalog(context).unwrap();
     let loop_cache = bootstrap::cache_service(context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, tx));
+    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
     wait_until(
         Duration::from_secs(90),
@@ -643,6 +951,7 @@ async fn search_latency_while_background_indexing_is_running() {
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
@@ -696,5 +1005,36 @@ async fn search_latency_while_background_indexing_is_running() {
         sampling.is_ok(),
         "300 files did not finish indexing within 300s while a concurrent search ran every 10ms -- \
          see the no-concurrency baseline for comparison; report this per HANDOFF §3.2"
+    );
+
+    // §3.2b (HANDOFF-056, Review 172 §3): settle what the during-indexing
+    // average actually is. The loop above only exits once every job is
+    // terminal, and the background task is now stopped, so this samples
+    // the identical search against a full catalog with no concurrent
+    // writes. If this stays near the during-indexing average, the cost is
+    // catalog size, not contention; if it falls back toward Slice 1's
+    // ~270µs no-embedding baseline, the concurrent writes during indexing
+    // are the real cost.
+    let post_indexing_latencies: Vec<Duration> = (0..20)
+        .map(|_| {
+            let start = Instant::now();
+            let _ = bootstrap::run_search(&context, &search_catalog, "install", 20);
+            start.elapsed()
+        })
+        .collect();
+    let post_max = post_indexing_latencies
+        .iter()
+        .max()
+        .copied()
+        .unwrap_or_default();
+    let post_sum: Duration = post_indexing_latencies.iter().sum();
+    let post_avg = post_sum
+        .checked_div(post_indexing_latencies.len().max(1) as u32)
+        .unwrap_or_default();
+    println!(
+        "post-indexing (full catalog, no concurrent writes), {} search samples: \
+         avg {post_avg:?}, max {post_max:?} -- compare against the during-indexing \
+         figure above to settle §3.2b",
+        post_indexing_latencies.len()
     );
 }

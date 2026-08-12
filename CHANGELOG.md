@@ -136,6 +136,33 @@ next release tag.
   finding, and a second catalog connection under WAL is a design
   conversation, not a Slice 2 change. See the review request for the full
   test list.
+- **RFC-056 Slice 3 — settings, pause, cancel, and RFC-036 §20.2 closed:**
+  `background_indexing = false` now pauses the scheduler before any job
+  dispatches (`Scheduler::pause`, called once at startup — a standing
+  preference honored the same way `EmbeddingWorker` resolution already is,
+  not the interactive per-session Pause/Resume control RFC-036 §12.1/§14.3
+  describe, which is Slice 4's UI half). `pause_on_battery` is documented
+  but left unwired: RFC-036 §13.2 explicitly allows P0 to skip
+  battery/thermal detection, and no battery-state signal source exists
+  anywhere in this codebase to read from — wiring it would mean choosing
+  and integrating a cross-platform battery API, a new capability decision,
+  not hosting plumbing. Removing a source now cancels its queued work
+  cleanly: `bootstrap::remove_source` already cascade-deletes `index_jobs`
+  rows via the FK on `sources`, but the hosting loop had no way to notice
+  a job it already popped had gone stale mid-flight; a new dispatch-time
+  freshness check (`job_is_still_queued`) skips any popped job whose
+  catalog row is no longer `queued` before running it. RFC-036 §20.2's
+  backpressure drop is fixed: `Scheduler::fail`'s retry branch now records
+  `JobStatus::Blocked` (a status that existed in the schema but was never
+  written) instead of falsely `Queued` when the in-memory push is skipped
+  for lack of room, and `scheduler_host::rehydrate` re-discovers `blocked`
+  rows separately from `queued` ones — a job dropped under backpressure is
+  recovered once room exists, rather than durably lost. HANDOFF §3.2's
+  carried "settle what the 48ms actually is" experiment is answered:
+  sampling the same search again after indexing finishes (full catalog, no
+  concurrent writes) measured **~52ms average**, at or above the
+  during-indexing figure — the cost is catalog size, not concurrent-write
+  contention.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

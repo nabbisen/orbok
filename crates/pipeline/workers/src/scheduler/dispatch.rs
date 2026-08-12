@@ -207,11 +207,18 @@ impl Scheduler {
     /// callers periodically re-rehydrate, so a job dropped this pass is
     /// picked up on the next once room exists, and the catalog row is
     /// untouched either way.
-    pub fn load_persisted(&mut self, job: IndexJob) {
+    ///
+    /// Returns whether the job was actually pushed (RFC-036 §20.2):
+    /// `scheduler_host::rehydrate` needs this to know whether a `blocked`
+    /// row's catalog status may be corrected back to `queued` — it must
+    /// not, if this call also dropped it for lack of room.
+    pub fn load_persisted(&mut self, job: IndexJob) -> bool {
         let queue = self.queues.queue_for(job.kind);
-        if !queue.is_full() {
-            queue.push(job);
+        if queue.is_full() {
+            return false;
         }
+        queue.push(job);
+        true
     }
 
     // ── Dispatch ─────────────────────────────────────────────────────────
@@ -278,11 +285,27 @@ impl Scheduler {
             job.state = JobState::Pending;
             let id = job.id.clone();
             let queue = self.queues.queue_for(job.kind);
-            if !queue.is_full() {
+            let pushed = !queue.is_full();
+            if pushed {
                 queue.push(job);
             }
             let jobs = IndexJobRepository::new(catalog);
-            jobs.set_status(&id, JobStatus::Queued)?;
+            // RFC-036 §20.2: `queued` must not be written when the push was
+            // skipped for lack of room — that claims an in-memory copy
+            // exists when none does, and a rehydration pass that has
+            // already seen this id (every retried job has, by definition)
+            // will never reload it. `blocked` records the true state;
+            // `scheduler_host::rehydrate` re-discovers `blocked` rows
+            // separately, bypassing the `known` gate that only makes sense
+            // for a row that might still be correctly tracked in memory.
+            jobs.set_status(
+                &id,
+                if pushed {
+                    JobStatus::Queued
+                } else {
+                    JobStatus::Blocked
+                },
+            )?;
             jobs.increment_attempt(&id, error_kind)?;
         } else {
             tracing::warn!(

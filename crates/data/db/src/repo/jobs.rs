@@ -2,7 +2,7 @@
 
 use crate::catalog::{Catalog, db_err};
 use orbok_core::{FileId, JobId, JobStatus, JobType, OrbokResult, SourceId, now_iso8601};
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 /// A queued or running index job.
 #[derive(Debug, Clone)]
@@ -97,15 +97,29 @@ impl<'a> IndexJobRepository<'a> {
 
     /// Queued jobs in priority/FIFO order.
     pub fn list_queued(&self, limit: u32) -> OrbokResult<Vec<JobRecord>> {
+        self.list_by_status(JobStatus::Queued, limit)
+    }
+
+    /// `Blocked` jobs in priority/FIFO order (RFC-036 §20.2): a retry whose
+    /// in-memory re-queue was skipped under backpressure, recorded honestly
+    /// rather than as `queued` with no in-memory copy to match. Rehydration
+    /// re-discovers these separately from `list_queued`, since a `known`
+    /// job id must not gate a row that -- unlike an ordinary still-tracked
+    /// `queued` row -- has no live in-memory copy by construction.
+    pub fn list_blocked(&self, limit: u32) -> OrbokResult<Vec<JobRecord>> {
+        self.list_by_status(JobStatus::Blocked, limit)
+    }
+
+    fn list_by_status(&self, status: JobStatus, limit: u32) -> OrbokResult<Vec<JobRecord>> {
         let conn = self.catalog.lock();
         let mut stmt = conn
             .prepare(
                 "SELECT job_id, source_id, file_id, job_type, status FROM index_jobs \
-                 WHERE status = 'queued' ORDER BY priority DESC, created_at LIMIT ?1",
+                 WHERE status = ?1 ORDER BY priority DESC, created_at LIMIT ?2",
             )
             .map_err(db_err)?;
         let rows = stmt
-            .query_map(params![limit], |row| {
+            .query_map(params![status.as_str(), limit], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<String>>(1)?,
@@ -127,6 +141,23 @@ impl<'a> IndexJobRepository<'a> {
             });
         }
         Ok(out)
+    }
+
+    /// A single job's current status, or `None` if the row no longer
+    /// exists (RFC-056 Slice 3: source removal cascade-deletes `index_jobs`
+    /// rows via the FK on `sources`, so "gone" is an expected, not
+    /// exceptional, outcome here).
+    pub fn status_of(&self, id: &JobId) -> OrbokResult<Option<JobStatus>> {
+        let conn = self.catalog.lock();
+        conn.query_row(
+            "SELECT status FROM index_jobs WHERE job_id = ?1",
+            params![id.as_str()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(db_err)?
+        .map(|status| JobStatus::parse(&status))
+        .transpose()
     }
 
     /// Count of jobs per status (Indexing view summary cards).

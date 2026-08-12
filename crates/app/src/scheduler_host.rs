@@ -28,9 +28,9 @@ use futures::SinkExt as _;
 use futures::channel::mpsc::Sender;
 use orbok::runtime_context::AllowRuntimePathProbe;
 use orbok::runtime_storage::ProfileCache;
-use orbok_core::{JobId, JobType, OrbokError, OrbokResult, SourceId};
+use orbok_core::{JobId, JobStatus, JobType, OrbokError, OrbokResult, SourceId};
 use orbok_db::Catalog;
-use orbok_db::repo::IndexJobRepository;
+use orbok_db::repo::{IndexJobRepository, JobRecord};
 use orbok_fs::{ScanRequest, Scanner};
 use orbok_ui::state::Message;
 use orbok_workers::{
@@ -61,22 +61,39 @@ pub async fn run(portable: bool, output: Sender<Message>) {
     let Ok(cache) = crate::bootstrap::cache_service(&runtime) else {
         return;
     };
-    // Best-effort: a settings load failure or an unresolved/unloadable
-    // model falls back to `None` here, which the loop below treats as
-    // RFC-008 §15 `model_missing` for any `GenerateEmbedding` job it
-    // dispatches -- the same fail-closed shape `bootstrap::search`'s
-    // hybrid-search fallback already uses for the same resolution.
-    let embedding_parts = crate::bootstrap::load_runtime_settings(&runtime)
-        .ok()
-        .and_then(|settings| {
-            crate::bootstrap::embedding_resolution::resolve_embedding_worker_parts(
-                &runtime,
-                &AllowRuntimePathProbe,
-                &catalog,
-                &settings,
-            )
-        });
-    run_with_context(catalog, cache, embedding_parts, output).await
+    // Best-effort: a settings load failure falls back to defaults for both
+    // values derived below -- `None` for the embedding model, which the
+    // loop treats as RFC-008 §15 `model_missing` for any `GenerateEmbedding`
+    // job it dispatches (the same fail-closed shape `bootstrap::search`'s
+    // hybrid-search fallback already uses for the same resolution), and
+    // `true` for `background_indexing`, `OrbokSettings::default()`'s own
+    // value.
+    let settings = crate::bootstrap::load_runtime_settings(&runtime).ok();
+    let embedding_parts = settings.as_ref().and_then(|settings| {
+        crate::bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &runtime,
+            &AllowRuntimePathProbe,
+            &catalog,
+            settings,
+        )
+    });
+    // RFC-036 §12 / RFC-019: `background_indexing` is a standing
+    // preference, not the interactive per-session Pause/Resume control
+    // RFC-036 §12.1/§14.3 describe (that is Slice 4's UI half) -- honored
+    // once at startup, the same way `embedding_parts` itself is resolved
+    // once here rather than reactively. There is no live control surface
+    // yet that could change this setting mid-session.
+    let background_indexing_enabled = settings
+        .map(|settings| settings.background_indexing)
+        .unwrap_or(true);
+    run_with_context(
+        catalog,
+        cache,
+        embedding_parts,
+        background_indexing_enabled,
+        output,
+    )
+    .await
 }
 
 /// The hosting loop's core logic (RFC-056 §4.1): pulls jobs from
@@ -87,9 +104,20 @@ pub(crate) async fn run_with_context(
     catalog: Catalog,
     cache: ProfileCache,
     embedding_parts: Option<EmbeddingWorkerParts>,
+    background_indexing_enabled: bool,
     mut output: Sender<Message>,
 ) {
     let mut scheduler = Scheduler::with_defaults();
+    if !background_indexing_enabled {
+        // RFC-036 §12.2 Safe Pause, applied before any job has been
+        // dispatched: "finish the current small unit" is vacuously true
+        // here (there is none yet), "stop taking new work" is `tick()`'s
+        // own paused-mode short-circuit, and "persist progress" is
+        // `pause`'s catalog update -- any `queued` row already present
+        // (e.g. left over from a prior session) is marked `paused` too,
+        // not just future ones.
+        let _ = scheduler.pause(&catalog);
+    }
     let mut known: HashSet<JobId> = HashSet::new();
     let cache_service = cache.service();
     let extract = ExtractionWorker::new(&catalog, cache_service);
@@ -124,6 +152,23 @@ pub(crate) async fn run_with_context(
                 }
             }
         };
+
+        // RFC-036 §12.3 (source removal cancels queued work):
+        // `bootstrap::remove_source` cascade-deletes `index_jobs` rows for
+        // the removed source (the FK on `sources` does this) without
+        // reaching into this task's live in-memory queue -- there is no
+        // channel from the UI's synchronous call into a spawned task's
+        // state, and none is needed: the catalog is the source of truth
+        // (RFC-036 §16), and this check is what keeps the in-memory queue
+        // honest against it. A job popped here whose catalog row is no
+        // longer `queued` -- deleted by that cascade, or canceled by any
+        // future direct catalog mutation -- is stale: skip it without
+        // dispatching, completing, or failing it, since there is nothing
+        // left to update either way.
+        if !job_is_still_queued(&catalog, &job.id) {
+            known.remove(&job.id);
+            continue;
+        }
 
         let file_id = job.file_id.clone();
         let result = match (job.kind, &file_id) {
@@ -202,29 +247,72 @@ async fn report_health(catalog: &Catalog, output: &mut Sender<Message>) {
 /// so rehydration is the only piece still needed to complete RFC-036 §16
 /// for the in-memory queue.
 fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<JobId>) {
-    let Ok(records) = IndexJobRepository::new(catalog).list_queued(u32::MAX) else {
+    let jobs = IndexJobRepository::new(catalog);
+    let Ok(records) = jobs.list_queued(u32::MAX) else {
         return;
     };
     for record in records {
         if known.contains(&record.job_id) {
             continue;
         }
-        let Some(source_id) = record.source_id else {
-            continue; // No current enqueue path produces this; defensive.
+        let Some(job) = index_job_from_record(&record) else {
+            continue;
         };
-        let kind = job_kind_for(record.job_type);
-        known.insert(record.job_id.clone());
-        scheduler.load_persisted(IndexJob {
-            id: record.job_id,
-            file_id: record.file_id,
-            source_id,
-            kind,
-            priority: kind.default_priority(),
-            state: JobState::Pending,
-            attempt_count: 0,
-            last_error_kind: None,
-        });
+        known.insert(record.job_id);
+        scheduler.load_persisted(job);
     }
+
+    // RFC-036 §20.2: `Scheduler::fail`'s retry branch marks a job `blocked`
+    // (rather than `queued`) precisely when its in-memory push was skipped
+    // for lack of room -- it has no in-memory copy by construction, so
+    // `known` (which exists to avoid double-adding a row that might still
+    // be correctly tracked) must not gate it here. On a successful reload
+    // the catalog status is corrected back to `queued`; if there is still
+    // no room, it stays `blocked` for the next rehydration pass.
+    let Ok(blocked) = jobs.list_blocked(u32::MAX) else {
+        return;
+    };
+    for record in blocked {
+        let id = record.job_id.clone();
+        let Some(job) = index_job_from_record(&record) else {
+            continue;
+        };
+        if scheduler.load_persisted(job) {
+            known.insert(id.clone());
+            let _ = jobs.set_status(&id, JobStatus::Queued);
+        }
+    }
+}
+
+/// Build the in-memory `IndexJob` a `rehydrate` pass loads from a
+/// persisted `JobRecord`, or `None` for a source-less row -- defensive:
+/// no current enqueue path produces one.
+fn index_job_from_record(record: &JobRecord) -> Option<IndexJob> {
+    let source_id = record.source_id.clone()?;
+    let kind = job_kind_for(record.job_type);
+    Some(IndexJob {
+        id: record.job_id.clone(),
+        file_id: record.file_id.clone(),
+        source_id,
+        kind,
+        priority: kind.default_priority(),
+        state: JobState::Pending,
+        attempt_count: 0,
+        last_error_kind: None,
+    })
+}
+
+/// Whether a just-popped job's catalog row is still `queued` -- `false`
+/// covers both a row deleted out from under it (RFC-036 §12.3: source
+/// removal cascade-deletes `index_jobs` via the FK on `sources`) and a row
+/// whose status changed to anything else. `status_of` returning `Err` is
+/// treated the same as "not queued" -- fail-closed: a catalog read error
+/// is a reason to skip dispatch, not a reason to guess.
+fn job_is_still_queued(catalog: &Catalog, id: &JobId) -> bool {
+    matches!(
+        IndexJobRepository::new(catalog).status_of(id),
+        Ok(Some(JobStatus::Queued))
+    )
 }
 
 /// The category `Scheduler::fail` (RFC-036 §20.1) matches on to decide
