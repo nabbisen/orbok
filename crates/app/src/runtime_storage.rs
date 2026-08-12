@@ -208,6 +208,20 @@ where
     RuntimeStorage::new(context, probe).save_settings(value)
 }
 
+/// Write `value` to `path` as an atomic replace: serialize, write to a
+/// sibling temp file, harden its permissions, `fsync`, then rename over the
+/// target. The temp file lives in the same directory as `path` so the final
+/// rename stays on one filesystem (a cross-filesystem rename is not atomic
+/// and can fail or silently degrade to copy-then-delete) — this is Task
+/// 016 (Review 166 §3): `settings.json` previously went through a plain
+/// truncate-then-write, which a crash or power loss mid-write could leave
+/// truncated, and which was created at the process umask rather than
+/// hardened.
+///
+/// Deliberately not `model_durability::durable_rename`: that helper
+/// requires the destination to be absent (`DestinationExists`) and both
+/// paths under the managed model root, neither of which holds for
+/// replacing an existing settings file outside that root.
 fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let directory = path.parent().ok_or_else(|| {
         io::Error::new(
@@ -218,7 +232,54 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     std::fs::create_dir_all(directory)?;
     let bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    std::fs::write(path, bytes)
+
+    let temp_path = sibling_temp_path(path);
+    let result = write_and_rename(&temp_path, path, &bytes);
+    if result.is_err() {
+        // Best-effort: a failure here does not change which error the
+        // caller sees, it only avoids leaving the temp file behind.
+        let _ = std::fs::remove_file(&temp_path);
+    }
+    result
+}
+
+fn sibling_temp_path(path: &Path) -> PathBuf {
+    // Predictable, not random: this is a single-writer settings file (one
+    // profile, one process), not a location with concurrent writers that
+    // need collision avoidance.
+    let mut name = path.as_os_str().to_os_string();
+    name.push(".tmp");
+    PathBuf::from(name)
+}
+
+fn write_and_rename(temp_path: &Path, target: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::io::Write as _;
+
+    let mut file = std::fs::File::create(temp_path)?;
+
+    // Permissions before content, before the rename: the file must never
+    // be briefly world-readable at its final path, and there is no reason
+    // for the plaintext to sit under the default umask even at the temp
+    // path in between.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    // Windows: no `0600` equivalent attempted here — ACL-based hardening
+    // is out of scope for this task (Task 016 §3). `std::fs::rename`
+    // below already replaces an existing destination on Windows
+    // (`MOVEFILE_REPLACE_EXISTING`), so replace semantics come free.
+
+    file.write_all(bytes)?;
+    // Crash durability, not just atomicity: without this, the temp file's
+    // content can still be sitting in a page cache the OS never flushes
+    // before a power loss, and the rename that follows would durably point
+    // at nothing recoverable.
+    file.sync_all()?;
+    drop(file);
+
+    std::fs::rename(temp_path, target)
 }
 
 /// A managed-model store sealed to the profile it was constructed for. Owns

@@ -183,6 +183,21 @@ next release tag.
 
 ### Fixed
 
+- **RFC-049/RFC-039 — settings writes are now atomic and owner-only
+  (Task 016):** `settings.json` previously went through a plain
+  truncate-then-write at the process umask — a crash or power loss
+  mid-write could leave it truncated (silently reverting
+  `privacy_mode` and other settings to defaults on next load), and the
+  file was created world-readable on a typical Unix system despite
+  holding `privacy_mode` and model directory paths. `write_json` now
+  writes to a sibling temp file in the same directory, sets `0600`
+  (Unix; no ACL-based equivalent attempted on Windows, out of scope),
+  `fsync`s, and renames over the target — permissions set before the
+  rename so the file is never briefly world-readable at its final
+  path. Deliberately not `model_durability::durable_rename`: that
+  helper requires an absent destination and both paths under the
+  managed model root, neither of which holds here. Existing files keep
+  their current mode until their next write (no migration pass).
 - **RFC-006 — every chunk embedded the whole document, not its own
   section (Task 012 Part A):** `EmbeddingWorker::prepare_batch` built
   every chunk's embedding text from the full joined extraction output,
