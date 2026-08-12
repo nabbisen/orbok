@@ -170,6 +170,22 @@ next release tag.
   migration reference and the code that three implementation reviews had
   not caught. No behavior change for orbok's fixed `"settings.json"`
   literal. See `rfcs/done/055-settings-path-fail-closed.md` §12.
+- **RFC-055 follow-up (Task 019) — ask for the settings directory
+  directly:** `settings::standard_settings_file()` is now
+  `standard_settings_dir()`, returning `ConfigManager::folder_path()`
+  directly instead of `try_with_filename("settings.json")?.path()`. The
+  sole production caller (`bootstrap::resolve_runtime_context`) always
+  discarded the filename with `.parent()` immediately — `RuntimeContext`
+  re-derives the settings file path itself. Built the file-then-`.parent()`
+  version originally on an incorrect belief, reported to and corrected by
+  the `app-json-settings` maintainers, that `folder_path()` would require
+  keeping the `ConfigManager` alive past the call, which RFC-049 forbids;
+  it does not, since `.to_path_buf()` copies out within the same
+  expression. Not a regression on Task 008's checked-filename fix:
+  `try_with_filename` is no longer called at all, which is stronger than
+  passing a checked filename. No behavior change — same resolved path,
+  fewer steps to get there. See
+  `rfcs/done/055-settings-path-fail-closed.md` §13.
 - **RFC-054 — `ORBOK_DATA_DIR` now relocates the whole profile, settings
   included:** previously the override moved the catalog, cache, and model
   directories but left the settings file at the platform config directory

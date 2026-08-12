@@ -306,3 +306,27 @@ cost cheaper paid once.
 
 Nothing else in this RFC's decision, required behavior, or acceptance criteria
 changes.
+
+## 13. Amendment (2026-08-12, Task 019): `standard_settings_file()` becomes `standard_settings_dir()`
+
+§10's acceptance criteria and this RFC's own prose name
+`standard_settings_file()`. It now returns the settings **directory**:
+`settings::standard_settings_dir()`, via `ConfigManager::folder_path().to_path_buf()`
+rather than `try_with_filename("settings.json")?.path()`.
+
+The function's sole production caller (`bootstrap::resolve_runtime_context`)
+never wanted the file — it immediately discarded the filename with
+`.parent()`, since `RuntimeContext` re-derives the file path itself as
+`settings_dir.join(SETTINGS_FILE)`. Asking for the file at all was based on
+an incorrect belief, reported by us to the `app-json-settings` maintainers
+and corrected by them, that `folder_path()` would require keeping the
+`ConfigManager` alive past this call — RFC-049 forbids that. It does not:
+`folder_path()` borrows from the manager, `.to_path_buf()` copies out within
+the same expression, and the manager drops at the end of the statement.
+
+This is not a regression on §12's checked-setter fix: `try_with_filename` is
+no longer called at all, which is stronger than passing a checked filename —
+one that is never passed cannot be the wrong one.
+
+Nothing else in this RFC's decision, required behavior, or acceptance
+criteria changes.

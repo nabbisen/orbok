@@ -37,7 +37,7 @@ fn for_app_orbok_and_new_resolve_to_the_same_path() {
 
 /// Review 152 §3: the test above proves the crate's behavior for the
 /// literal `"orbok"` -- it constructs `for_app("orbok")` directly and
-/// never calls `standard_settings_file()`, so the link from "the crate
+/// never calls `standard_settings_dir()`, so the link from "the crate
 /// resolves this way for `\"orbok\"`" to "production actually passes
 /// `\"orbok\"`" was carried entirely by `runtime_isolation_tests.rs`'s
 /// `include_str!` source-text scan. That scan does catch a changed
@@ -45,8 +45,17 @@ fn for_app_orbok_and_new_resolve_to_the_same_path() {
 /// CI failure there), but it is a textual check, not a call through the
 /// production path. This closes the loop directly, asserting the actual
 /// production function's result against the same measured base.
+///
+/// Task 019: this asserts a **directory**, not `.../settings.json` -- the
+/// function itself was renamed from `standard_settings_file()` because its
+/// only production caller immediately discarded the filename with
+/// `.parent()`. Kept calling the production function and comparing
+/// against `base.join("orbok")` rather than weakening this while renaming
+/// it (Review 152 §3's whole point): verified by temporarily changing the
+/// production literal to something other than `"orbok"` and confirming
+/// this test fails, then restoring it.
 #[test]
-fn standard_settings_file_resolves_through_the_production_call_site() {
+fn standard_settings_dir_resolves_through_the_production_call_site() {
     let via_new = ConfigManager::<OrbokSettings>::new();
     let base = via_new
         .folder_path()
@@ -54,10 +63,10 @@ fn standard_settings_file_resolves_through_the_production_call_site() {
         .expect("new()'s folder_path always has a parent -- it is base.join(name)");
 
     assert_eq!(
-        super::standard_settings_file()
+        super::standard_settings_dir()
             .expect("platform configuration directory must resolve in this environment"),
-        base.join("orbok").join("settings.json"),
-        "standard_settings_file() must resolve under the same platform \
+        base.join("orbok"),
+        "standard_settings_dir() must resolve under the same platform \
          configuration directory new() would use for a process named \"orbok\""
     );
 }

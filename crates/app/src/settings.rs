@@ -109,15 +109,29 @@ impl Default for OrbokSettings {
     }
 }
 
-/// The standard profile's settings file path under the platform config
+/// The standard profile's settings **directory** under the platform config
 /// directory, or an error if that directory cannot be resolved (RFC-055
 /// §3 -- reported, never substituted). Path derivation only: settings I/O
 /// goes through `orbok::runtime_storage`'s RFC-049 boundary, never through
 /// this crate's own `load`/`save`/`load_or_default`.
-pub fn standard_settings_file() -> app_json_settings::Result<PathBuf> {
+///
+/// Directory, not file: the sole production caller
+/// (`bootstrap::resolve_runtime_context`) only ever wanted the directory --
+/// `RuntimeContext` re-derives the file path itself as
+/// `settings_dir.join(SETTINGS_FILE)`. Asking `app-json-settings` for the
+/// file via `try_with_filename` and then immediately discarding the
+/// filename with `.parent()` (Task 019) was based on an incorrect belief
+/// that `folder_path()` required keeping the `ConfigManager` alive beyond
+/// this call, which RFC-049 forbids -- it does not: `folder_path()` borrows
+/// from the manager, but `.to_path_buf()` copies out within the same
+/// expression, and the manager drops at the end of the statement.
+/// `try_with_filename` is not called at all here, which is stronger than
+/// Task 008's checked-setter fix (`rfcs/done/055-settings-path-fail-closed.md`
+/// §12): a filename that is never passed cannot be the wrong one.
+pub fn standard_settings_dir() -> app_json_settings::Result<PathBuf> {
     Ok(ConfigManager::<OrbokSettings>::for_app("orbok")?
-        .try_with_filename("settings.json")?
-        .path())
+        .folder_path()
+        .to_path_buf())
 }
 
 /// Test-fixture only: production settings load/save now goes through

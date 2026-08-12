@@ -64,14 +64,11 @@ pub fn resolve_runtime_context(
     // RFC-055 §3/§4.2: capture stays unconditional -- resolve the platform
     // settings directory here regardless of mode, and record absence as
     // `None` rather than branching on mode before resolving. `.ok()`
-    // discards the specific `ConfigError` (whichever of `for_app`'s two
-    // fallible steps produced it -- in practice always `ConfigError::
-    // Platform`, since "orbok" is a fixed, always-valid path component)
-    // without matching on it, so a future upstream variant addition needs
-    // no change here.
-    let standard_settings_dir = crate::settings::standard_settings_file()
-        .ok()
-        .and_then(|file| file.parent().map(|dir| dir.to_path_buf()));
+    // discards the specific `ConfigError` (`for_app`'s only fallible step --
+    // in practice always `ConfigError::Platform`, since "orbok" is a fixed,
+    // always-valid path component) without matching on it, so a future
+    // upstream variant addition needs no change here.
+    let standard_settings_dir = crate::settings::standard_settings_dir().ok();
     let selection = RuntimeSelection::resolve(portable, data_override)?;
     let context = RuntimeContext::resolve(
         selection,
