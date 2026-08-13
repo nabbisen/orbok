@@ -341,17 +341,27 @@ write "on battery" into a criterion the suite cannot satisfy.
 - [x] Nothing regresses with no signals present: the scheduler behaves exactly as
       it does today.
 
-**Slice 2 — open:**
+**Slice 2 — code complete** (Review 179; commit `1d2b234`), **one criterion
+blocked on hardware:**
 
-- [ ] With the battery source injected as "on battery", embedding stops **and
+- [x] With the battery source injected as "on battery", embedding stops **and
       extract/chunk/keyword keep running** — §4.3a's reduction, both halves.
-- [ ] On battery, through a search and out the other side, the machine is still
+      Verified complementary: removing the skip fails the first half only,
+      stopping all work fails the second half only.
+- [x] On battery, through a search and out the other side, the machine is still
       treated as on battery — §4.3c's derivation, asserted on the scheduling
       consequence.
-- [ ] Real battery detection is verified manually on at least one machine, and
-      the result recorded — not inferred from the injected test.
-- [ ] A profile whose `settings.json` predates the §4.4 rename keeps its
-      preference across an upgrade.
+- [x] A profile whose `settings.json` predates the §4.4 rename keeps its
+      preference across an upgrade — against literal legacy JSON, not a
+      round-tripped struct.
+- [ ] **Real battery detection is verified manually on at least one machine, and
+      the result recorded — not inferred from the injected test.** The
+      development host has no system battery: `/sys/class/power_supply/` contains
+      only `hidpp_battery_0` (`scope: Device`, a wireless mouse). The real
+      detector was exercised there and correctly returns `None` — the
+      no-battery-present branch, which is a real data point and *not* this
+      criterion. **Open, awaiting hardware with a battery.** This is the only
+      thing standing between RFC-057 and `done/`.
 
 ## 8. Risks
 
