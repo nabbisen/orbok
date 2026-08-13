@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 057\
 **Title:** Live Resource Signals for the Indexing Scheduler\
-**Status:** Accepted\
+**Status:** Implemented (main at `1d2b234`; release pending)\
 **Target milestone:** indexing responsiveness\
 **Date:** 2026-08-13\
 **Accepted:** 2026-08-13 by the project owner\
@@ -355,13 +355,19 @@ blocked on hardware:**
       preference across an upgrade — against literal legacy JSON, not a
       round-tripped struct.
 - [ ] **Real battery detection is verified manually on at least one machine, and
-      the result recorded — not inferred from the injected test.** The
+      the result recorded — not inferred from the injected test.**
+      **Deferred by the owner (2026-08-13) to after the next release.** The
       development host has no system battery: `/sys/class/power_supply/` contains
       only `hidpp_battery_0` (`scope: Device`, a wireless mouse). The real
       detector was exercised there and correctly returns `None` — the
       no-battery-present branch, which is a real data point and *not* this
-      criterion. **Open, awaiting hardware with a battery.** This is the only
-      thing standing between RFC-057 and `done/`.
+      criterion.
+
+      **This criterion is deferred, not met and not dropped.** It is tracked as
+      Owner Task 003 Part C so that closing this RFC does not lose it. Until it
+      is run, orbok's battery behaviour is verified against an injected source
+      only: the derivation and the policy are proven, the *detector's* reading on
+      real hardware is not.
 
 ## 8. Risks
 

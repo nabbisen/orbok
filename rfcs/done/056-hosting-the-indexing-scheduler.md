@@ -110,7 +110,7 @@ enqueues and returns.
    **Amended 2026-08-13:** only `background_indexing` was in scope. §13's
    resource awareness needs signal *sources* that RFC-036 §13.2 permits
    deferring and hosting cannot supply; `pause_on_battery` moves to
-   [RFC-057](../accepted/057-live-resource-signals.md). §9's fifth criterion was
+   [RFC-057](../done/057-live-resource-signals.md). §9's fifth criterion was
    derived from this over-broad sentence.
 
 ## 5. Non-goals
@@ -204,7 +204,7 @@ by code that exists but is not called.
 - [x] With `background_indexing` off, no new indexing work starts; turning it on
       resumes it.
 - [x] ~~With `pause_on_battery` on and the machine on battery, indexing pauses.~~
-      **Relocated to [RFC-057](../accepted/057-live-resource-signals.md), not
+      **Relocated to [RFC-057](../done/057-live-resource-signals.md), not
       dropped.** This criterion was drafting error, twice over. RFC-036 §13.2
       explicitly permits deferring battery detection ("P0 may not implement
       battery/thermal detection"), so hosting the scheduler could never have been

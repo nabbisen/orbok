@@ -4,7 +4,7 @@
 **RFC:** 057\
 **Lifecycle stage:** Accepted 2026-08-13; **both slices code-complete** — Slice 1 `7a7b728` (Reviews 177–178), Slice 2 `1d2b234` (Review 179). No dev-team work outstanding; RFC-057 §7's manual battery criterion awaits hardware\
 **Primary owner:** `crates/app` scheduler host and UI wiring; `orbok-workers` scheduler transitions\
-**RFC:** [`../accepted/057-live-resource-signals.md`](../accepted/057-live-resource-signals.md)
+**RFC:** [`../done/057-live-resource-signals.md`](../done/057-live-resource-signals.md)
 
 > **Scope rule:** This builds *signal sources* and the path that carries them.
 > It does **not** change what any `ResourceMode` does — that is RFC-036 §13's,

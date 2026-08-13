@@ -72,13 +72,13 @@ may start" a checked state rather than an implicit convention.
 | 055 | [Fail-Closed Settings Path Resolution](done/055-settings-path-fail-closed.md) | main at `9da7a4c`; release pending |
 | 052 | [UI Localization and Design-Gate Compliance](done/052-ui-localization-and-design-gate-compliance.md) | main at `2204caa`; release pending |
 | 056 | [Hosting the Indexing Scheduler in the Application](done/056-hosting-the-indexing-scheduler.md) | main at `190a5a7`; release pending |
+| 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | main at `1d2b234`; release pending — §7 manual battery criterion deferred to Owner Task 003 Part C |
 
 ## Accepted
 
 | ID | Title | Status |
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
-| 057 | [Live Resource Signals for the Indexing Scheduler](accepted/057-live-resource-signals.md) | Accepted 2026-08-13 — implementation not started |
 
 ## Proposed
 
