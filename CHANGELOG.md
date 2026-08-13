@@ -321,6 +321,23 @@ next release tag.
   defect directly (peak 323) before restoring it. Search latency is
   unchanged (48.02ms avg during indexing / 51.03ms after, matching every
   prior measurement in this programme).
+- **Task 021 — the macOS scanner-test flake now diagnoses itself:**
+  `tests::scanner::new_files_discovered_and_jobs_queued` failed on the
+  macOS CI leg twice in one session, on two unrelated commits, and
+  cleared on rerun both times, with the failing assertion's own log
+  unrecoverable afterward — GitHub serves the current attempt's log for a
+  superseded job id. Not a fix (the cause is unknown and the evidence for
+  it is gone): the test's six assertions now share a diagnostic snapshot
+  captured once after the scan — the full `ScanSummary`, a recursive
+  listing of the temp root with each entry's type, and the
+  `files.canonical_path` the scan actually wrote to the catalog alongside
+  the path the test computed via `fs::canonicalize` — so the next
+  occurrence identifies its own cause (an extra filesystem entry, or a
+  macOS `$TMPDIR`/`/private/var/folders` canonicalization mismatch, or
+  neither) without a second run. Verified by forcing both failure shapes
+  locally — an unexpected extra file, and a `get_by_path` lookup miss —
+  and confirming each failure message actually carries the summary, the
+  listing, and both path forms, then reverting.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

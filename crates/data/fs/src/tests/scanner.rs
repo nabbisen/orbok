@@ -3,11 +3,13 @@
 //! job queueing.
 
 use crate::tests::common::{register_dir_source, register_dir_source_with, scan};
-use crate::{ScanRequest, Scanner};
-use orbok_core::{FileStatus, HiddenFilePolicy, JobStatus, SymlinkPolicy};
+use crate::{ScanRequest, ScanSummary, Scanner};
+use orbok_core::{FileStatus, HiddenFilePolicy, JobStatus, SourceId, SymlinkPolicy};
 use orbok_db::Catalog;
 use orbok_db::repo::{FileRepository, IndexJobRepository};
+use std::fmt::Write as _;
 use std::fs;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 fn status_count(counts: &[(FileStatus, u64)], status: FileStatus) -> u64 {
@@ -16,6 +18,108 @@ fn status_count(counts: &[(FileStatus, u64)], status: FileStatus) -> u64 {
         .find(|(s, _)| *s == status)
         .map(|(_, n)| *n)
         .unwrap_or(0)
+}
+
+/// Task 021: `new_files_discovered_and_jobs_queued` has flaked twice on
+/// macOS CI, cleared both times on rerun, with the failing assertion's
+/// own log unrecoverable afterward (GitHub serves the latest attempt's
+/// log under the superseded attempt's job id). This renders everything
+/// needed to distinguish the task's hypotheses from a single failure, no
+/// second run required:
+///
+/// - The full `ScanSummary`, not just whichever count the failing
+///   assertion happened to check.
+/// - A recursive listing of the temp root with each entry's type --
+///   catches an unexpected extra/missing filesystem entry directly.
+/// - The `files.canonical_path` this scan actually wrote to the catalog,
+///   alongside the path the test itself computed via
+///   `fs::canonicalize` -- catches a canonicalization mismatch (macOS's
+///   `$TMPDIR` is a symlink into `/private/var/folders/...`, so the
+///   scanner and the test disagreeing on which form to store is a live
+///   hypothesis, not a hypothetical one).
+fn diagnostic_context(
+    catalog: &Catalog,
+    source_id: &SourceId,
+    root: &Path,
+    summary: &ScanSummary,
+) -> String {
+    let mut ctx = String::new();
+    let _ = writeln!(ctx, "ScanSummary: {summary:?}");
+
+    let _ = writeln!(
+        ctx,
+        "temp root (as the test constructed it): {}",
+        root.display()
+    );
+    match fs::canonicalize(root) {
+        Ok(canonical) => {
+            let _ = writeln!(
+                ctx,
+                "temp root (test-computed canonical form): {}",
+                canonical.display()
+            );
+        }
+        Err(error) => {
+            let _ = writeln!(
+                ctx,
+                "temp root canonicalization failed in the test: {error}"
+            );
+        }
+    }
+
+    let _ = writeln!(ctx, "recursive directory listing:");
+    list_dir_into(root, 1, &mut ctx);
+
+    let _ = writeln!(
+        ctx,
+        "catalog `files` rows for this source (canonical_path as the scanner wrote it, display_path):"
+    );
+    let conn = catalog.lock();
+    match conn.prepare("SELECT canonical_path, display_path FROM files WHERE source_id = ?1") {
+        Ok(mut stmt) => {
+            let rows = stmt.query_map([source_id.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            });
+            match rows {
+                Ok(rows) => {
+                    for row in rows.flatten() {
+                        let _ = writeln!(ctx, "  canonical_path={} display_path={}", row.0, row.1);
+                    }
+                }
+                Err(error) => {
+                    let _ = writeln!(ctx, "  <query_map failed: {error}>");
+                }
+            }
+        }
+        Err(error) => {
+            let _ = writeln!(ctx, "  <prepare failed: {error}>");
+        }
+    }
+
+    ctx
+}
+
+fn list_dir_into(dir: &Path, depth: usize, ctx: &mut String) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        let _ = writeln!(ctx, "{}<unreadable: {}>", "  ".repeat(depth), dir.display());
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let kind = if path.is_symlink() {
+            "symlink"
+        } else if path.is_dir() {
+            "dir"
+        } else if path.is_file() {
+            "file"
+        } else {
+            "other"
+        };
+        let _ = writeln!(ctx, "{}{} [{kind}]", "  ".repeat(depth), path.display());
+        if path.is_dir() && !path.is_symlink() {
+            list_dir_into(&path, depth + 1, ctx);
+        }
+    }
 }
 
 // RFC-004 §19 test 1: scan empty source.
@@ -45,31 +149,40 @@ fn new_files_discovered_and_jobs_queued() {
     let source = register_dir_source(&catalog, root.path());
 
     let summary = scan(&catalog, &source.source_id);
-    assert_eq!(summary.new_files, 2);
-    assert_eq!(summary.queued_index_jobs, 2);
+    // Task 021: captured once, right after the scan, and reused for
+    // every assertion below -- nothing mutates the catalog or the temp
+    // root between here and the end of the test, so one snapshot
+    // describes the state every assertion below is checking.
+    let ctx = diagnostic_context(&catalog, &source.source_id, root.path(), &summary);
+    assert_eq!(summary.new_files, 2, "{ctx}");
+    assert_eq!(summary.queued_index_jobs, 2, "{ctx}");
 
     let files = FileRepository::new(&catalog);
     let counts = files.count_by_status(&source.source_id).unwrap();
-    assert_eq!(status_count(&counts, FileStatus::Discovered), 2);
+    assert_eq!(status_count(&counts, FileStatus::Discovered), 2, "{ctx}");
 
     // Records carry hash + display path.
     let canonical_root = fs::canonicalize(root.path()).unwrap();
+    let expected_path = canonical_root.join("a.md");
     let rec = files
-        .get_by_path(
-            &source.source_id,
-            &canonical_root.join("a.md").to_string_lossy(),
-        )
-        .unwrap()
-        .unwrap();
-    assert!(rec.content_hash.is_some());
-    assert_eq!(rec.display_path, "a.md");
+        .get_by_path(&source.source_id, &expected_path.to_string_lossy())
+        .unwrap_or_else(|error| panic!("get_by_path query failed: {error}\n{ctx}"))
+        .unwrap_or_else(|| {
+            panic!(
+                "get_by_path returned None for {}\n{ctx}",
+                expected_path.display()
+            )
+        });
+    assert!(rec.content_hash.is_some(), "{ctx}");
+    assert_eq!(rec.display_path, "a.md", "{ctx}");
 
     let jobs = IndexJobRepository::new(&catalog);
-    assert_eq!(jobs.list_queued(10).unwrap().len(), 2);
+    assert_eq!(jobs.list_queued(10).unwrap().len(), 2, "{ctx}");
     assert!(
         jobs.count_by_status()
             .unwrap()
-            .contains(&(JobStatus::Queued, 2))
+            .contains(&(JobStatus::Queued, 2)),
+        "{ctx}"
     );
 }
 
