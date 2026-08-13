@@ -5,15 +5,30 @@
 //! `download.rs`'s own tests already establish for `run_with_installer`
 //! (RFC-056 Handoff §4).
 
-use super::run_with_context;
+use super::{ResourceObservation, run_with_context};
 use crate::bootstrap;
 use crate::bootstrap::embedding_resolution::EmbeddingWorkerParts;
+use futures::channel::mpsc::{Receiver, Sender};
 use orbok::runtime_context::{PlatformRuntimePaths, RuntimeContext, RuntimeSelection};
 use orbok_core::{JobStatus, ModelId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_models::{EmbeddingModel, MockEmbeddingModel};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+/// A closed resource-observation channel, for every test that isn't
+/// exercising RFC-057 §4.1 itself -- the sender half is dropped
+/// immediately, so `try_recv` inside the loop always returns
+/// `Err(Closed)`, the same as if nothing had ever signalled.
+fn no_resource_signals() -> Receiver<ResourceObservation> {
+    futures::channel::mpsc::channel(1).1
+}
+
+/// A resource-observation channel a test can send into while
+/// `run_with_context` is running, plus the sender it uses to do so.
+fn resource_signal_channel() -> (Sender<ResourceObservation>, Receiver<ResourceObservation>) {
+    futures::channel::mpsc::channel(16)
+}
 
 /// A model that always fails to embed, with a stable, RFC-008 §15
 /// `inference_error`-categorized error -- for RFC-036 §20.1's retry/
@@ -188,7 +203,14 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 10 files indexed", || {
@@ -302,7 +324,14 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(Duration::from_secs(20), "all 5 files indexed", || {
@@ -369,7 +398,14 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, false, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        false,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     // Several idle cycles (IDLE_POLL is 300ms), to prove the loop stays
@@ -425,7 +461,14 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
         let loop_catalog = bootstrap::open_catalog(&context).unwrap();
         let loop_cache = bootstrap::cache_service(&context).unwrap();
         let (tx, rx) = futures::channel::mpsc::channel(64);
-        let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, false, tx));
+        let handle = tokio::spawn(run_with_context(
+            loop_catalog,
+            loop_cache,
+            None,
+            false,
+            no_resource_signals(),
+            tx,
+        ));
         drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
         tokio::time::sleep(Duration::from_millis(500)).await;
         handle.abort();
@@ -450,7 +493,14 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(
@@ -459,6 +509,155 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
         || indexed_count(&ui_catalog) == 5,
     )
     .await;
+
+    handle.abort();
+}
+
+/// RFC-057 §4.2, HANDOFF-057 §3.1: the scheduling consequence, not the
+/// mode field. A live `UserActive` signal must make `queue.rs:222`'s
+/// existing skip actually fire -- an embedding job must not dispatch
+/// while the signal keeps arriving -- and going idle must let it resume.
+/// Asserted against `embeddings` table rows, not `scheduler.resource_mode()`
+/// (which this test has no access to anyway, running through the real
+/// `run_with_context` per RFC-056 §8.8, not a bare `Scheduler`).
+#[tokio::test]
+async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "mock");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(MockEmbeddingModel),
+        model_id.clone(),
+    ));
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+
+    // Keep the scheduler continuously "user active" -- well inside
+    // `USER_IDLE_TIMEOUT` -- starting *before* the loop is even spawned,
+    // so the channel already has a signal queued the instant the loop's
+    // first iteration drains it. Extract/chunk for one small file can
+    // otherwise finish in well under a millisecond -- faster than a
+    // signal sent only after spawning could land -- letting embedding
+    // dispatch once before the first observation ever arrived (caught
+    // while writing this test: the first cut raced and failed this way).
+    let keep_active = tokio::spawn(async move {
+        loop {
+            let _ = signal_tx.try_send(ResourceObservation::UserActive);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    });
+
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        true,
+        signal_rx,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    let embedding_row_count = |catalog: &Catalog, model_id: &ModelId| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1",
+                [model_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+
+    wait_until(
+        Duration::from_secs(20),
+        "the file is indexed (extract+chunk unaffected by UserActive)",
+        || indexed_count(&ui_catalog) == 1,
+    )
+    .await;
+
+    // Sustained window while still signalling active: embedding must not
+    // have run.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        embedding_row_count(&ui_catalog, &model_id),
+        0,
+        "embedding must defer to a live UserActive signal (RFC-036 §9.2, queue.rs:222)"
+    );
+
+    // Stop signalling; once idle, embedding resumes.
+    keep_active.abort();
+    wait_until(
+        Duration::from_secs(20),
+        "embedding resumes once the user goes idle",
+        || embedding_row_count(&ui_catalog, &model_id) > 0,
+    )
+    .await;
+
+    handle.abort();
+}
+
+/// RFC-057 §3.2 / HANDOFF-057 §3.2: a live, repeated `UserActive` signal
+/// must not resume a scheduler the user paused via `background_indexing`
+/// -- unlike `background_indexing_disabled_pauses_before_any_job_runs`,
+/// which never sends anything, this actually exercises the new channel
+/// path while paused.
+///
+/// **What this does not isolate:** in this exact scenario -- `pause()`
+/// runs at startup, before anything is ever rehydrated -- the in-memory
+/// queue is empty the whole time, so `rehydrate`'s own refusal to
+/// discover `paused` catalog rows would produce the same passing result
+/// even with `notify_user_active`'s `Paused` guard removed (confirmed:
+/// breaking the guard here did not fail this test). This is a real,
+/// valid end-to-end regression guard for the observable outcome, but it
+/// is not proof of the guard specifically -- see
+/// `notify_user_active_does_not_override_paused_with_a_job_already_queued`
+/// in `rfc036_scheduler.rs` for a test that isolates the guard alone (a
+/// job already sitting in memory when `pause()` runs, which the guard is
+/// the only thing standing between it and dispatch).
+#[tokio::test]
+async fn user_active_signal_does_not_override_paused() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        false, // background_indexing off -> Paused before the loop starts
+        signal_rx,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    for _ in 0..10 {
+        let _ = signal_tx.try_send(ResourceObservation::UserActive);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert_eq!(
+        indexed_count(&ui_catalog),
+        0,
+        "a UserActive signal must not un-pause a scheduler the user paused (background_indexing=false)"
+    );
 
     handle.abort();
 }
@@ -494,6 +693,7 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
         loop_cache,
         embedding_parts,
         true,
+        no_resource_signals(),
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
@@ -560,6 +760,7 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
         loop_cache,
         embedding_parts,
         true,
+        no_resource_signals(),
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
@@ -651,7 +852,14 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     wait_until(
@@ -877,7 +1085,14 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
     // Let the loop actually start discovering/dispatching this source's
@@ -937,7 +1152,14 @@ async fn index_via_background_loop(
     let loop_catalog = bootstrap::open_catalog(context).unwrap();
     let loop_cache = bootstrap::cache_service(context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = tokio::spawn(run_with_context(loop_catalog, loop_cache, None, true, tx));
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        no_resource_signals(),
+        tx,
+    ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
     wait_until(
         Duration::from_secs(90),
@@ -1018,6 +1240,7 @@ async fn search_latency_while_background_indexing_is_running() {
         loop_cache,
         embedding_parts,
         true,
+        no_resource_signals(),
         tx,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)

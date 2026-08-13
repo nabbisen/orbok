@@ -48,9 +48,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = bootstrap::load_initial_state(&runtime)?;
 
+    // RFC-057 §4.1: the resource-observation channel. Constructed once
+    // here, not inside the `.subscription(..)` closure below (which iced
+    // re-evaluates every frame), so `update` can hold a stable `Sender`
+    // for the app's whole lifetime; the receiver reaches the spawned task
+    // through `SchedulerSubscriptionData` (a plain `fn(&D) -> S` cannot
+    // capture it directly -- see that type's own doc comment).
+    let (resource_signal_tx, resource_signal_rx) =
+        futures::channel::mpsc::channel::<scheduler_host::ResourceObservation>(16);
+    let resource_signals = std::sync::Arc::new(std::sync::Mutex::new(Some(resource_signal_rx)));
+
     iced::application(
         move || OrbokApp::with_state(state.clone()),
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
+            // RFC-057 §4.2: search input/submission are RFC-036 §13.1's
+            // user-activity signals. Best effort -- `try_send` never
+            // blocks `update`, and a full channel silently drops one
+            // observation; typing produces many in quick succession, so
+            // losing one changes nothing observable.
+            if matches!(message, Message::QueryChanged(_) | Message::SubmitSearch) {
+                let _ = resource_signal_tx
+                    .clone()
+                    .try_send(scheduler_host::ResourceObservation::UserActive);
+            }
             if let Some(effect) = model_flow::reduce(&mut app.state, &message) {
                 return match effect {
                     model_flow::ModelFlowEffect::None => iced::Task::none(),
@@ -403,7 +423,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .subscription(move |app: &OrbokApp| {
         let focused = app.search_focused;
         iced::Subscription::batch([
-            scheduler_host::subscription(portable),
+            scheduler_host::subscription(scheduler_host::SchedulerSubscriptionData {
+                portable,
+                resource_signals: resource_signals.clone(),
+            }),
             iced::keyboard::listen()
                 .with(focused)
                 .filter_map(|(focused, event)| {

@@ -194,6 +194,37 @@ next release tag.
   site, and its own payload was stale-at-zero by construction (the health
   snapshot at scan-enqueue time, not completion) — both call sites now
   send `HealthUpdated` directly.
+- **RFC-057 Slice 1 — live user-activity signalling for the scheduler:**
+  RFC-036 §13's resource-awareness policy was fully implemented and
+  completely unreachable — `notify_user_active`/`notify_user_idle` had
+  zero production callers, so `queue.rs:222`'s existing "yield embedding
+  to active search" skip had never fired, and a user typing a query
+  competed with embedding at ~144ms/document the whole time. A new
+  channel drains into `scheduler_host`'s loop each iteration, carrying
+  `ResourceObservation`s (`UserActive` is the only variant so far) rather
+  than `ResourceMode` directly — producers report what they saw, the loop
+  decides what it means. `Message::QueryChanged`/`Message::SubmitSearch`
+  are the first producer (RFC-036 §13.1); continuous activity keeps the
+  scheduler `UserActive`, and 2 seconds without a further signal restores
+  `Normal`. The channel's receiver reaches the spawned task through a new
+  `SchedulerSubscriptionData` (`Subscription::run_with` requires a plain
+  `fn(&D) -> S`, which cannot capture a `Receiver` directly — `D`'s `Hash`
+  considers only `portable`, so the dedup identity `main.rs` already
+  relied on is unchanged). Verified against the actual scheduling
+  consequence, not the mode field: a live signal measurably prevents an
+  embedding job from dispatching, and idle lets it resume — both
+  confirmed by reverting `queue.rs:222`'s skip and watching the test fail.
+  `notify_user_active`'s existing `Paused` guard (nothing may silently
+  resume a scheduler `background_indexing = false` paused) is proven in
+  isolation with a job already sitting in the in-memory queue — the
+  end-to-end scenario alone cannot isolate it, since nothing ever reaches
+  the in-memory queue before a startup `pause()` in the only case Slice 1
+  can construct, so that test would pass even with the guard removed for
+  an unrelated reason (`rehydrate` never discovering `paused` rows
+  either). Search latency during background indexing is unchanged
+  (~48.9ms avg during / ~52.2ms after, matching Slice 2 of RFC-056's
+  48.0/51.4ms baseline within noise). Battery/thermal detection
+  (RFC-036 §13.2) is RFC-057 Slice 2, not this one.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

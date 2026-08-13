@@ -466,6 +466,39 @@ fn resume_fixes_up_paused_rows_even_on_a_scheduler_that_was_never_paused_itself(
     );
 }
 
+// RFC-057 §3.2 / HANDOFF-057 §3.2: `notify_user_active` must not override
+// `Paused`, isolated from every other protection -- `pause()` itself
+// never touches the in-memory queue, only `resource_mode` and the
+// catalog, so a job already sitting in memory when `pause()` runs is
+// exactly what a broken guard would silently resume. (An app-level test
+// through `scheduler_host` covering this same interaction cannot isolate
+// this specific guard: nothing ever reaches the in-memory queue before
+// `background_indexing = false`'s startup `pause()` runs, so that test
+// would pass even with this guard removed, for the unrelated reason that
+// `rehydrate` never discovers `paused` catalog rows either -- confirmed
+// while writing this test, see the review request.)
+#[test]
+fn notify_user_active_does_not_override_paused_with_a_job_already_queued() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::ExtractFile), &catalog)
+        .unwrap();
+    sched.pause(&catalog).unwrap();
+
+    sched.notify_user_active();
+
+    assert_eq!(
+        sched.resource_mode(),
+        ResourceMode::Paused,
+        "a user-activity signal must not override Paused"
+    );
+    assert!(
+        sched.tick().is_none(),
+        "a job already queued in memory must not dispatch while paused, even after a UserActive signal"
+    );
+}
+
 // RFC-036 §17.1: WorkPriority ordering is correct.
 #[test]
 fn work_priority_ord_is_correct() {

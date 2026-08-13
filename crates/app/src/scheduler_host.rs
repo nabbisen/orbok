@@ -22,10 +22,16 @@
 //! pass -- which scales with source size, not a fixed cost Slice 1's
 //! measurement mistook it for -- runs here, off the caller's thread, same
 //! as everything else this module hosts.
+//!
+//! **RFC-057 Slice 1:** the first live path into this task. `[ResourceObservation]`
+//! is drained each loop iteration and mapped to `Scheduler::notify_user_active`/
+//! `notify_user_idle` -- the transitions RFC-036 §13.1 already specifies but
+//! nothing had ever called. Producers report what they observed, not a
+//! `ResourceMode`; only this module decides what an observation means.
 
 use crate::bootstrap::embedding_resolution::EmbeddingWorkerParts;
 use futures::SinkExt as _;
-use futures::channel::mpsc::Sender;
+use futures::channel::mpsc::{Receiver, Sender};
 use orbok::runtime_context::AllowRuntimePathProbe;
 use orbok::runtime_storage::ProfileCache;
 use orbok_core::{JobId, JobStatus, JobType, OrbokError, OrbokResult, SourceId};
@@ -38,7 +44,7 @@ use orbok_workers::{
 };
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// How long the loop sleeps after finding nothing to do before checking the
 /// catalog again for newly-enqueued work. `scan_and_index_source` writes
@@ -47,11 +53,32 @@ use std::time::Duration;
 /// rather than a signal.
 const IDLE_POLL: Duration = Duration::from_millis(300);
 
+/// How long since the last `UserActive` observation before the scheduler
+/// is told the user has gone idle (RFC-057 §4.2). Search input fires far
+/// more often than this while someone is actually typing, so continuous
+/// activity never gaps; stopping resets to `Normal` within one interval of
+/// the last keystroke or submit.
+const USER_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// An observation a producer reports about the environment (RFC-057 §4.1)
+/// -- not a `ResourceMode` directly. Only [`run_with_context`]'s loop
+/// decides what an observation means for scheduling, per RFC-036 §13; a
+/// producer needs no knowledge of scheduler internals to send one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResourceObservation {
+    /// The user is actively typing or searching (RFC-036 §13.1).
+    UserActive,
+}
+
 /// Resolve the active profile's sealed handles and run the loop forever.
 /// Wired into `main.rs`'s `Subscription::run_with`; returns only if the
 /// profile's catalog or cache cannot be opened at all -- a running profile
 /// never sees this return.
-pub async fn run(portable: bool, output: Sender<Message>) {
+pub async fn run(
+    portable: bool,
+    resource_signals: Receiver<ResourceObservation>,
+    output: Sender<Message>,
+) {
     let Ok(runtime) = crate::bootstrap::resolve_runtime_context(portable) else {
         return;
     };
@@ -91,6 +118,7 @@ pub async fn run(portable: bool, output: Sender<Message>) {
         cache,
         embedding_parts,
         background_indexing_enabled,
+        resource_signals,
         output,
     )
     .await
@@ -105,6 +133,7 @@ pub(crate) async fn run_with_context(
     cache: ProfileCache,
     embedding_parts: Option<EmbeddingWorkerParts>,
     background_indexing_enabled: bool,
+    mut resource_signals: Receiver<ResourceObservation>,
     mut output: Sender<Message>,
 ) {
     let mut scheduler = Scheduler::with_defaults();
@@ -141,8 +170,35 @@ pub(crate) async fn run_with_context(
     let embed = embedding_parts.map(|parts| {
         EmbeddingWorker::with_model(&catalog, cache_service, parts.model, parts.model_id)
     });
+    // RFC-057 §4.2: when this was last set, `USER_IDLE_TIMEOUT` since then
+    // with no further `UserActive` observation means the user has stopped,
+    // and the loop tells the scheduler so on its own -- producers report
+    // only that activity happened, not when it ends.
+    let mut last_user_activity: Option<Instant> = None;
 
     loop {
+        // RFC-057 §4.1: drain every observation queued since the last
+        // iteration before deciding what to dispatch, so `resource_mode`
+        // reflects reality before `tick()` reads it below. `try_recv`
+        // never blocks: `Err(Empty)`/`Err(Closed)` both mean "nothing more
+        // right now," either way the loop moves on.
+        while let Ok(observation) = resource_signals.try_recv() {
+            match observation {
+                ResourceObservation::UserActive => {
+                    // `notify_user_active` already refuses to override
+                    // `Paused` (RFC-057 §3.2/HANDOFF §3.2) -- a signal
+                    // through this new path must not silently resume
+                    // work the user turned off via `background_indexing`.
+                    scheduler.notify_user_active();
+                    last_user_activity = Some(Instant::now());
+                }
+            }
+        }
+        if last_user_activity.is_some_and(|last| last.elapsed() >= USER_IDLE_TIMEOUT) {
+            scheduler.notify_user_idle();
+            last_user_activity = None;
+        }
+
         // `rehydrate` is a full `queued`-rows scan (RFC-036's queues have
         // no cheap "anything new?" signal) -- calling it every iteration
         // turns this into an O(n^2) crawl over a few hundred files (traced
@@ -351,25 +407,61 @@ fn job_kind_for(job_type: JobType) -> JobKind {
     }
 }
 
+/// Identity for `Subscription::run_with` (RFC-057 §4.1): bundles `portable`
+/// with the receiving half of the resource-observation channel. Iced
+/// requires a plain `fn(&D) -> S` here, not a capturing closure (see
+/// `run_stream` below), so this is how the receiver -- constructed once in
+/// `main.rs`, since `main.rs`'s `update` closure needs the matching sender
+/// -- reaches the task despite that constraint.
+///
+/// `Hash` considers only `portable`: `main.rs`'s `.subscription(..)`
+/// closure runs on every re-render and clones this `Arc` fresh each time,
+/// but the identity `Subscription::run_with` dedups on must stay exactly
+/// what it was pre-RFC-057 (`portable` alone, which never changes after
+/// startup) -- otherwise the task would look "new" every frame and never
+/// actually run.
+#[derive(Clone)]
+pub struct SchedulerSubscriptionData {
+    pub portable: bool,
+    pub resource_signals: std::sync::Arc<std::sync::Mutex<Option<Receiver<ResourceObservation>>>>,
+}
+
+impl std::hash::Hash for SchedulerSubscriptionData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.portable.hash(state);
+    }
+}
+
 /// The app-wide subscription that hosts the scheduler for the process's
-/// lifetime. `Subscription::run_with` deduplicates by `(portable, builder)`
+/// lifetime. `Subscription::run_with` deduplicates by `data`'s `Hash`
 /// identity (`portable` never changes after startup), so `main.rs` calling
 /// this on every `.subscription()` re-evaluation still spawns [`run`]
 /// exactly once, the same long-lived pattern the iced websocket example
 /// uses for a perpetual connection -- unlike `download.rs`'s
 /// `Task::stream`, which drives a one-shot action to completion.
-pub fn subscription(portable: bool) -> iced::Subscription<Message> {
-    iced::Subscription::run_with(portable, run_stream)
+pub fn subscription(data: SchedulerSubscriptionData) -> iced::Subscription<Message> {
+    iced::Subscription::run_with(data, run_stream)
 }
 
 // `+ use<>` (edition 2024 precise capturing): the returned stream must not
-// depend on `portable`'s elided lifetime, only on the `bool` value copied
-// out of it immediately below -- `Subscription::run_with` requires a plain
-// `fn(&D) -> S`, not one whose `S` is tied to the borrow's lifetime.
-fn run_stream(portable: &bool) -> impl futures::Stream<Item = Message> + use<> {
-    let portable = *portable;
+// depend on `data`'s elided lifetime -- `Subscription::run_with` requires a
+// plain `fn(&D) -> S`, not one whose `S` is tied to the borrow's lifetime.
+fn run_stream(data: &SchedulerSubscriptionData) -> impl futures::Stream<Item = Message> + use<> {
+    let portable = data.portable;
+    // `.take()`: `run_stream` itself only ever runs once per process (the
+    // `Hash` identity above guarantees `Subscription::run_with` never
+    // rebuilds it), so the receiver is moved out exactly once here and the
+    // `Arc<Mutex<..>>` wrapper has done its only job -- getting a
+    // non-`Clone` `Receiver` through a `fn` pointer that cannot capture it
+    // directly.
+    let resource_signals = data
+        .resource_signals
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+        .expect("scheduler subscription must only be built once");
     iced::stream::channel(64, async move |output| {
-        run(portable, output).await;
+        run(portable, resource_signals, output).await;
     })
 }
 
