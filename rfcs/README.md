@@ -71,19 +71,20 @@ may start" a checked state rather than an implicit convention.
 | 054 | [Runtime Data Override Profile Scope](done/054-runtime-data-override-profile-scope.md) | main at `6bcedd9`; release pending |
 | 055 | [Fail-Closed Settings Path Resolution](done/055-settings-path-fail-closed.md) | main at `9da7a4c`; release pending |
 | 052 | [UI Localization and Design-Gate Compliance](done/052-ui-localization-and-design-gate-compliance.md) | main at `2204caa`; release pending |
+| 056 | [Hosting the Indexing Scheduler in the Application](done/056-hosting-the-indexing-scheduler.md) | main at `190a5a7`; release pending |
 
 ## Accepted
 
 | ID | Title | Status |
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
-| 056 | [Hosting the Indexing Scheduler in the Application](accepted/056-hosting-the-indexing-scheduler.md) | Accepted 2026-08-11 — implementation not started |
 
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
+| 057 | [Live Resource Signals for the Indexing Scheduler](proposed/057-live-resource-signals.md) | Proposed 2026-08-13 — awaiting owner decision |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in

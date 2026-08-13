@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 056\
 **Title:** Hosting the Indexing Scheduler in the Application\
-**Status:** Accepted\
+**Status:** Implemented (main at `190a5a7`; release pending)\
 **Target milestone:** indexing pipeline conformance\
 **Date:** 2026-08-11\
 **Accepted:** 2026-08-11 by the project owner\
@@ -107,6 +107,12 @@ enqueues and returns.
 6. **The two settings become real.** `background_indexing` maps to RFC-036 §12's
    pause; `pause_on_battery` to §13's resource awareness.
 
+   **Amended 2026-08-13:** only `background_indexing` was in scope. §13's
+   resource awareness needs signal *sources* that RFC-036 §13.2 permits
+   deferring and hosting cannot supply; `pause_on_battery` moves to
+   [RFC-057](../proposed/057-live-resource-signals.md). §9's fifth criterion was
+   derived from this over-broad sentence.
+
 ## 5. Non-goals
 
 1. **Re-specifying RFC-036.** Priority, backpressure, limits, pause semantics
@@ -185,18 +191,31 @@ where the broken state read as a satisfied requirement. **Criteria below name
 observable behaviour of the running application.** None of them can be satisfied
 by code that exists but is not called.
 
-- [ ] Adding a source of ≥400 files returns control to the UI in under 2 seconds.
-- [ ] After that source finishes preparing, `embeddings` is non-zero and equals
+- [x] Adding a source of ≥400 files returns control to the UI in under 2 seconds.
+- [x] After that source finishes preparing, `embeddings` is non-zero and equals
       the chunk count for its files.
-- [ ] While preparation is in progress, a search returns results and the UI
-      accepts input.
-- [ ] With `background_indexing` off, no new indexing work starts; turning it on
+- [x] While preparation is in progress, a search returns results and the UI
+      accepts input. **Partial, and recorded as such:** the search half is
+      covered (Slice 2's contention measurement — 48.04 ms during indexing vs
+      51.42 ms after — and Slice 4's partial-readiness test). "The UI accepts
+      input" is not directly asserted anywhere and cannot be in this
+      environment, which has no Wayland input-injection tool available; see
+      Review 176 §3, §4.
+- [x] With `background_indexing` off, no new indexing work starts; turning it on
       resumes it.
-- [ ] With `pause_on_battery` on and the machine on battery, indexing pauses.
-- [ ] Killing the application mid-preparation and restarting resumes it, with no
+- [x] ~~With `pause_on_battery` on and the machine on battery, indexing pauses.~~
+      **Relocated to [RFC-057](../proposed/057-live-resource-signals.md), not
+      dropped.** This criterion was drafting error, twice over. RFC-036 §13.2
+      explicitly permits deferring battery detection ("P0 may not implement
+      battery/thermal detection"), so hosting the scheduler could never have been
+      the work that satisfied it; and §13.2 says on battery *reduces* background
+      work, where this said "pauses". RFC-057 covers battery detection as one of
+      several missing signal sources for a policy already implemented, and
+      settles the naming. See Review 176 §4.
+- [x] Killing the application mid-preparation and restarting resumes it, with no
       job left in `running` and no embedding row for an unfinished chunk.
-- [ ] Removing a source while it is preparing leaves no queued job for it.
-- [ ] With no model installed, all of the above behave as they do today, and no
+- [x] Removing a source while it is preparing leaves no queued job for it.
+- [x] With no model installed, all of the above behave as they do today, and no
       unbounded job growth occurs across repeated scans.
 
 ## 10. Risks

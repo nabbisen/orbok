@@ -4,7 +4,7 @@
 **RFC:** 056\
 **Lifecycle stage:** Accepted 2026-08-11; implementation not started\
 **Primary owner:** `crates/app` runtime hosting; `orbok-workers` scheduler integration\
-**RFC:** [`../accepted/056-hosting-the-indexing-scheduler.md`](../accepted/056-hosting-the-indexing-scheduler.md)
+**RFC:** [`../done/056-hosting-the-indexing-scheduler.md`](../done/056-hosting-the-indexing-scheduler.md)
 
 > **Scope rule:** This wires RFC-036's scheduler into the application. It does
 > **not** change RFC-036's policy — priority, backpressure, limits, pause
