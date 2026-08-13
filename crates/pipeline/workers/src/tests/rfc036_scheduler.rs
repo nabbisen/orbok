@@ -466,17 +466,21 @@ fn resume_fixes_up_paused_rows_even_on_a_scheduler_that_was_never_paused_itself(
     );
 }
 
-// RFC-057 §3.2 / HANDOFF-057 §3.2: `notify_user_active` must not override
-// `Paused`, isolated from every other protection -- `pause()` itself
-// never touches the in-memory queue, only `resource_mode` and the
-// catalog, so a job already sitting in memory when `pause()` runs is
-// exactly what a broken guard would silently resume. (An app-level test
-// through `scheduler_host` covering this same interaction cannot isolate
-// this specific guard: nothing ever reaches the in-memory queue before
-// `background_indexing = false`'s startup `pause()` runs, so that test
-// would pass even with this guard removed, for the unrelated reason that
-// `rehydrate` never discovers `paused` catalog rows either -- confirmed
-// while writing this test, see the review request.)
+// RFC-057 §3.2 / HANDOFF-057 §3.2 / Review 177 §3: `notify_user_active`
+// must not override `Paused`, isolated at the `Scheduler` level from
+// every other protection -- `pause()` itself never touches the in-memory
+// queue, only `resource_mode` and the catalog, so a job already sitting
+// in memory when `pause()` runs is exactly what a broken guard would
+// silently resume. Two complementary tests in
+// `crates/app/src/scheduler_host/tests.rs` cover the same interaction
+// through the real application path:
+// `user_active_signal_does_not_override_paused` guards the startup-pause
+// path (a real regression guard, but cannot isolate this guard
+// specifically -- `rehydrate` never discovers `paused` catalog rows
+// either, which would mask a broken guard the same way), and
+// `user_active_does_not_resume_paused_with_work_enqueued_after_pause`
+// isolates it end to end, by enqueuing fresh (`queued`, not `paused`)
+// work only after the pause has settled.
 #[test]
 fn notify_user_active_does_not_override_paused_with_a_job_already_queued() {
     let (catalog, source_id) = catalog_with_source();

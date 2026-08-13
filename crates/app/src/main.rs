@@ -63,9 +63,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
             // RFC-057 §4.2: search input/submission are RFC-036 §13.1's
             // user-activity signals. Best effort -- `try_send` never
-            // blocks `update`, and a full channel silently drops one
-            // observation; typing produces many in quick succession, so
-            // losing one changes nothing observable.
+            // blocks `update`. Each `clone()` gives this call its own
+            // guaranteed slot beyond the channel's buffer (futures' bounded
+            // mpsc), so this essentially never fails; the buffer can
+            // transiently hold more than 16 as a result. Harmless either
+            // way -- the loop drains it fully every iteration -- and
+            // typing produces many observations in quick succession, so
+            // even a dropped one would change nothing observable.
             if matches!(message, Message::QueryChanged(_) | Message::SubmitSearch) {
                 let _ = resource_signal_tx
                     .clone()

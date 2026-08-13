@@ -617,12 +617,19 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
 /// discover `paused` catalog rows would produce the same passing result
 /// even with `notify_user_active`'s `Paused` guard removed (confirmed:
 /// breaking the guard here did not fail this test). This is a real,
-/// valid end-to-end regression guard for the observable outcome, but it
-/// is not proof of the guard specifically -- see
+/// valid end-to-end regression guard for the startup-pause path, but it
+/// is not proof of the guard specifically. Two complementary tests cover
+/// what this one cannot (Review 177 §3):
 /// `notify_user_active_does_not_override_paused_with_a_job_already_queued`
-/// in `rfc036_scheduler.rs` for a test that isolates the guard alone (a
-/// job already sitting in memory when `pause()` runs, which the guard is
-/// the only thing standing between it and dispatch).
+/// in `rfc036_scheduler.rs` isolates the guard alone at the `Scheduler`
+/// level (a job already sitting in memory when `pause()` runs, which the
+/// guard is the only thing standing between it and dispatch), and
+/// `user_active_does_not_resume_paused_with_work_enqueued_after_pause`
+/// below isolates it through the real application path -- work enqueued
+/// *after* the pause is written `queued`, not `paused`, so `rehydrate`
+/// can find it the moment a broken guard lets the mode leave `Paused`,
+/// which is exactly the scenario a user actually reaches (turn indexing
+/// off, keep using the app, add a folder).
 #[tokio::test]
 async fn user_active_signal_does_not_override_paused() {
     let temp = tempfile::tempdir().unwrap();
@@ -659,6 +666,60 @@ async fn user_active_signal_does_not_override_paused() {
         "a UserActive signal must not un-pause a scheduler the user paused (background_indexing=false)"
     );
 
+    handle.abort();
+}
+
+/// RFC-057 §3.2 / Review 177 §3: the scenario a user actually reaches --
+/// turn `background_indexing` off, keep using the app, add a folder --
+/// isolated through the real application path. `user_active_signal_does_not_override_paused`
+/// (above) cannot catch a broken guard here: `pause()` runs before
+/// anything exists to enqueue, so every catalog row it touches is already
+/// `paused`, and `rehydrate` never discovers `paused` rows regardless of
+/// mode. Enqueuing *after* the pause is settled writes fresh rows as
+/// `queued`, giving a broken guard something real to dispatch: if a
+/// `UserActive` signal wrongly leaves `Paused`, `rehydrate` finds these
+/// rows and they run.
+#[tokio::test]
+async fn user_active_does_not_resume_paused_with_work_enqueued_after_pause() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        false, // paused at startup
+        signal_rx,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    // Let the loop reach its paused steady state first.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // NOW enqueue fresh work: these rows are written `queued`, not
+    // `paused`, so `rehydrate` can find them the moment the mode leaves
+    // `Paused` for any reason.
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    for _ in 0..10 {
+        let _ = signal_tx.try_send(ResourceObservation::UserActive);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert_eq!(
+        indexed_count(&ui_catalog),
+        0,
+        "user activity must not resume a paused scheduler, even for work enqueued after the pause"
+    );
     handle.abort();
 }
 

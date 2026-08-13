@@ -216,12 +216,24 @@ next release tag.
   confirmed by reverting `queue.rs:222`'s skip and watching the test fail.
   `notify_user_active`'s existing `Paused` guard (nothing may silently
   resume a scheduler `background_indexing = false` paused) is proven in
-  isolation with a job already sitting in the in-memory queue — the
-  end-to-end scenario alone cannot isolate it, since nothing ever reaches
-  the in-memory queue before a startup `pause()` in the only case Slice 1
-  can construct, so that test would pass even with the guard removed for
-  an unrelated reason (`rehydrate` never discovering `paused` rows
-  either). Search latency during background indexing is unchanged
+  isolation with a job already sitting in the in-memory queue at the
+  `Scheduler` level. The first end-to-end test covering the same
+  interaction (work enqueued at startup, before the pause) could not
+  isolate the guard the same way: nothing ever reaches the in-memory queue
+  before a startup `pause()`, so that test would pass even with the guard
+  removed for an unrelated reason (`rehydrate` never discovering `paused`
+  rows either). Review 177 §3 (required) found the fix is a different
+  scenario, not a different assertion: enqueuing work *after* the pause
+  has already settled writes fresh `queued` rows `pause()` never touched,
+  so a broken guard has something real for `rehydrate` to find and
+  dispatch — confirmed by reverting the guard and watching this new test
+  fail (`left: 3, right: 0`, three files indexed while the user had
+  indexing turned off) before restoring it. All three tests are kept: the
+  original guards the startup-pause path as a general regression check,
+  the `Scheduler`-level test isolates the guard type-theoretically, and
+  the new one covers the scenario a real user actually reaches — turn
+  indexing off, keep using the app, add a folder. Search latency during
+  background indexing is unchanged
   (~48.9ms avg during / ~52.2ms after, matching Slice 2 of RFC-056's
   48.0/51.4ms baseline within noise). Battery/thermal detection
   (RFC-036 §13.2) is RFC-057 Slice 2, not this one.
