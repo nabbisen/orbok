@@ -78,13 +78,13 @@ may start" a checked state rather than an implicit convention.
 | ID | Title | Status |
 |---|---|---|
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
+| 057 | [Live Resource Signals for the Indexing Scheduler](accepted/057-live-resource-signals.md) | Accepted 2026-08-13 — implementation not started |
 
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 057 | [Live Resource Signals for the Indexing Scheduler](proposed/057-live-resource-signals.md) | Proposed 2026-08-13 — awaiting owner decision |
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in

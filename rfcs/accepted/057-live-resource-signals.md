@@ -3,9 +3,11 @@
 **Project:** orbok\
 **RFC:** 057\
 **Title:** Live Resource Signals for the Indexing Scheduler\
-**Status:** Proposed\
+**Status:** Accepted\
 **Target milestone:** indexing responsiveness\
 **Date:** 2026-08-13\
+**Accepted:** 2026-08-13 by the project owner\
+**Handoff:** [`HANDOFF-057-live-resource-signals.md`](../handoffs/HANDOFF-057-live-resource-signals.md)\
 **Related RFCs:** RFC-036 §13 Resource Awareness and §14.3 (this implements their signal sources; it does not re-specify their policy); RFC-056 Hosting the Indexing Scheduler (this depends on it and inherits one of its acceptance criteria); RFC-039 Privacy Modes
 
 ---
