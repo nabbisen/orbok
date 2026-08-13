@@ -162,6 +162,7 @@ pub async fn run(
         pause_embedding_on_battery_enabled,
         resource_signals,
         output,
+        None,
     )
     .await
 }
@@ -170,6 +171,11 @@ pub async fn run(
 /// `Scheduler::tick()`, executes them through the existing extract/chunk
 /// workers, and reports progress. Owns its `Catalog`/`ProfileCache` --
 /// both are `Send + 'static` sealed handles (§4.2) -- and never returns.
+// Eight parameters, one over clippy's default: `event_count_probe` is
+// test-only observability (Task 020), not a behavioral option like the
+// other seven -- folding it into a config struct with the rest would
+// blur that distinction rather than clarify it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_with_context(
     catalog: Catalog,
     cache: ProfileCache,
@@ -178,6 +184,15 @@ pub(crate) async fn run_with_context(
     pause_embedding_on_battery_enabled: bool,
     mut resource_signals: Receiver<ResourceObservation>,
     mut output: Sender<Message>,
+    // Task 020: test-only observation seam. Production always passes
+    // `None` (zero-cost: one branch on a `None`). `Scheduler` lives
+    // entirely inside this function's stack frame with no external
+    // handle, so a boundedness test needs something to read from outside
+    // the running loop -- `fetch_max` records the worst retained count
+    // seen across the whole run, which is what "does not scale with the
+    // work done" actually asserts, not just the value at one arbitrary
+    // instant.
+    event_count_probe: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
 ) {
     let mut scheduler = Scheduler::with_defaults();
     if background_indexing_enabled {
@@ -256,6 +271,27 @@ pub(crate) async fn run_with_context(
         // the same guarantee `notify_user_active` gave the single-source
         // Slice 1 path.
         scheduler.apply_resource_observation(user_active, effective_on_battery);
+
+        // Task 020 / Review 179 §4: `Scheduler::drain_events()` had zero
+        // production callers, so `SchedulerEvent`s accumulated in
+        // `self.events` for the process's entire lifetime -- ~4
+        // events/job, unbounded on a large source (measured: 1,000 jobs
+        // -> 4,000 events). Nothing needs them: every UI-facing need
+        // RFC-036 §14 describes is already served from the catalog
+        // (`Message::HealthUpdated`/`IndexHealth` below,
+        // `index_jobs.last_error_kind`), not this stream, and forwarding
+        // it would trade a memory problem for a responsiveness one
+        // (~4 events/job into iced's update loop on a 5,000-file source).
+        // Draining and discarding once per iteration here bounds the
+        // buffer to at most one iteration's worth -- see `drain_events`'s
+        // own doc comment before adding a real consumer.
+        if let Some(probe) = &event_count_probe {
+            probe.fetch_max(
+                scheduler.pending_event_count(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        let _ = scheduler.drain_events();
 
         // `rehydrate` is a full `queued`-rows scan (RFC-036's queues have
         // no cheap "anything new?" signal) -- calling it every iteration

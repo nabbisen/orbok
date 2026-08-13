@@ -395,9 +395,25 @@ impl Scheduler {
     // ── Events ────────────────────────────────────────────────────────────
 
     /// Take all accumulated events since the last call.
-    /// The UI layer calls this on each frame to update progress copy.
+    ///
+    /// Task 020 / Review 179 §4: nothing consumes the returned events in
+    /// production -- `scheduler_host`'s host loop calls this once per
+    /// iteration and discards the result, purely to bound `self.events`'
+    /// growth. RFC-036 §14's UI needs are already served from the catalog
+    /// (`Message::HealthUpdated`/`IndexHealth`, `index_jobs.last_error_kind`),
+    /// not this stream; forwarding it would trade a memory problem for a
+    /// responsiveness one (~4 events/job into iced's update loop). See
+    /// that call site's own comment before adding a real consumer here.
     pub fn drain_events(&mut self) -> Vec<SchedulerEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// How many events are currently retained, without draining them.
+    /// Test-only in practice (Task 020): proves the host loop's periodic
+    /// drain keeps this bounded, rather than merely that a drain call
+    /// exists somewhere.
+    pub fn pending_event_count(&self) -> usize {
+        self.events.len()
     }
 
     fn emit(&mut self, event: SchedulerEvent) {

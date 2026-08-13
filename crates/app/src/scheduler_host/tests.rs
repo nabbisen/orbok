@@ -211,6 +211,7 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -233,6 +234,69 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
         )
         .unwrap();
     assert_eq!(non_embedding_failures, 0);
+    handle.abort();
+}
+
+/// Task 020 / Review 179 §4: `Scheduler::drain_events()` had zero
+/// production callers, so `SchedulerEvent`s accumulated in `self.events`
+/// for the process's entire lifetime -- measured at ~4 events/job, so a
+/// large source grows the buffer without bound. `run_with_context` now
+/// discards them once per iteration; this asserts the *retained* count
+/// stays small across a real run, not merely that a drain call exists
+/// somewhere in the source (a test asserting `drain_events()` returns
+/// empty would pass against a buffer drained once just as readily as one
+/// that discards every iteration -- it proves nothing about growth).
+///
+/// `event_count_probe` (test-only, `None` in production) records the
+/// worst retained count `run_with_context` ever observed via
+/// `fetch_max`, sampled at the same point the real drain happens --
+/// the peak across the whole run, not an arbitrary single reading.
+#[tokio::test]
+async fn event_buffer_stays_bounded_regardless_of_work_done() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let file_count = 40;
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, file_count);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let event_count_probe = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        None,
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        Some(event_count_probe.clone()),
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    wait_until(Duration::from_secs(20), "all 40 files indexed", || {
+        indexed_count(&ui_catalog) == file_count as u64
+    })
+    .await;
+
+    // 40 files -> extract+chunk+keyword+embedding per file, ~4 events per
+    // job dispatched (RFC-036 §9-§11's Queued/Started/Completed-or-Failed
+    // plus one more) -- several hundred events total if never drained.
+    // Bounded per-iteration draining should never retain more than a
+    // small multiple of one iteration's worth.
+    let peak = event_count_probe.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        peak < 50,
+        "retained event count must not scale with total work done -- \
+         observed a peak of {peak} events retained while processing \
+         {file_count} files"
+    );
+
     handle.abort();
 }
 
@@ -333,6 +397,7 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -408,6 +473,7 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -472,6 +538,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
             true,
             no_resource_signals(),
             tx,
+            None,
         ));
         drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -505,6 +572,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -569,6 +637,7 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
         true,
         signal_rx,
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -654,6 +723,7 @@ async fn low_impact_survives_a_user_activity_interleaving_through_the_app() {
         true,
         signal_rx,
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -754,6 +824,7 @@ async fn on_battery_does_not_defer_embedding_when_the_setting_is_disabled() {
         false, // pause_embedding_on_battery_enabled: disabled
         signal_rx,
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -826,6 +897,7 @@ async fn user_active_signal_does_not_override_paused() {
         true,
         signal_rx,
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -871,6 +943,7 @@ async fn user_active_does_not_resume_paused_with_work_enqueued_after_pause() {
         true,
         signal_rx,
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -932,6 +1005,7 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -1000,6 +1074,7 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -1098,6 +1173,7 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -1332,6 +1408,7 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 
@@ -1400,6 +1477,7 @@ async fn index_via_background_loop(
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
     wait_until(
@@ -1484,6 +1562,7 @@ async fn search_latency_while_background_indexing_is_running() {
         true,
         no_resource_signals(),
         tx,
+        None,
     ));
     drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
 

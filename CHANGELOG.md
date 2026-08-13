@@ -300,6 +300,27 @@ next release tag.
   (`power supply: no`) — so RFC-057 §7's manual-verification criterion is
   left unticked rather than inferred, and is called out explicitly in the
   review request.
+- **Task 020 — the scheduler's event buffer no longer grows without
+  bound:** `Scheduler::drain_events()` had zero production callers since
+  RFC-056 Slice 1 first ran the scheduler in a long-lived task —
+  `SchedulerEvent`s accumulated in `self.events` for the process's entire
+  lifetime, measured at ~4 events/job (1,000 jobs → 4,000 events), so a
+  large source grows the buffer without bound and nothing ever shrinks it
+  (found by Review 179 §4 while reviewing RFC-057 Slice 2, not caused by
+  it). The obvious-looking fix — forward events to the UI so they have a
+  consumer — would have replaced a memory problem with a responsiveness
+  one (~80,000 `Message`s into iced's update loop on a 5,000-file source)
+  and was rejected: RFC-036 §14's UI needs are already served entirely
+  from the catalog (`Message::HealthUpdated`/`IndexHealth`,
+  `index_jobs.last_error_kind`), not the event stream. `scheduler_host`'s
+  loop now drains and discards once per iteration instead, bounding the
+  buffer to at most one iteration's worth. Verified against the retained
+  count, not merely that a drain call exists: driving 40 files (several
+  hundred events' worth if never drained) through the real host loop
+  peaks at 3 retained events; removing the drain call reproduces the
+  defect directly (peak 323) before restoring it. Search latency is
+  unchanged (48.02ms avg during indexing / 51.03ms after, matching every
+  prior measurement in this programme).
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest
