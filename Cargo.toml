@@ -89,7 +89,13 @@ app-json-settings           = { version = "2.7.0" }
 # deps are the expected per-platform OS bindings (windows-sys, objc2-*,
 # libc, nix) plus uom/num-traits/cfg-if; nothing unexpected. `rust-version
 # = "1.89"` is under this workspace's own 1.91 floor, so no toolchain
-# conflict.
+# conflict. Load-bearing beyond version/licence/platform: it filters to
+# `Scope::System` batteries (`platform/linux/device.rs`), so a wireless
+# mouse or other peripheral battery reporting through the same OS APIs is
+# not mistaken for "the machine is on battery" -- confirmed against a real
+# HID++ mouse battery during Review 179. A future swap that loses this
+# filtering would be a silent regression on most desktop machines, not a
+# theoretical one.
 starship-battery             = "0.11.1"
 
 # shared utilities
