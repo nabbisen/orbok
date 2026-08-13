@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 057\
-**Lifecycle stage:** Accepted 2026-08-13; implementation not started\
+**Lifecycle stage:** Accepted 2026-08-13; **Slice 1 complete** (`7a7b728`, Reviews 177–178). Slice 2 open, rewritten by RFC-057 Amendment 1\
 **Primary owner:** `crates/app` scheduler host and UI wiring; `orbok-workers` scheduler transitions\
 **RFC:** [`../accepted/057-live-resource-signals.md`](../accepted/057-live-resource-signals.md)
 
@@ -49,10 +49,33 @@ Drain the channel each loop iteration. Waking early on a signal is an
 optimisation this slice does not need; if you do it, do it after the plain
 version is green, and say so.
 
-### Slice 2 — battery detection
+### Slice 2 — battery: policy, derivation, then detection
 
-Add the source behind an injection seam (§4.3, §6.1), and the §4.4 rename with
-old-name-accepted-on-read.
+**Rewritten 2026-08-13 by RFC-057 Amendment 1. Read §4.3a–§4.3c before starting;
+this slice is a different shape than it was, and smaller.**
+
+The original text said "add the source" — as if `LowImpact` already did
+something. It does not: it is a bare enum variant with no policy anywhere
+(RFC-057 §2.6). Three parts, in this order:
+
+**1. Give `LowImpact` a policy** (§4.3a). One line at `queue.rs:222` — skip the
+embedding queue under `LowImpact` as well as `UserActive`. Not a concurrency
+reduction: `SchedulerLimits::default()` is already `1` everywhere and 1 cannot be
+reduced. Skipping embedding *is* the ~99.9% reduction, per RFC-048's
+143.9 ms/document against ~1.3 ms for everything else.
+
+Extract, chunk and keyword **must keep running** — files stay discoverable by
+keyword on battery, they just do not gain vectors. A change that stops all
+indexing is the wrong one, and §6.2 item 7 exists to catch it.
+
+**2. Derive the mode instead of mutating it** (§4.3c). This is the real work of
+the slice. The loop holds observation state and computes the mode each
+iteration; `Paused` stays outside the derivation as a persisted user command.
+
+Do this **before** wiring detection. It is testable with the injected source
+alone, and it is what the slice can get wrong.
+
+**3. Then detection**, behind an injection seam (§6.1).
 
 **The dependency choice is yours to make and mine to review.** Record in the
 review request: crate, version, maintenance status, platform coverage, licence,
@@ -60,8 +83,12 @@ and what it pulls in transitively. RFC-055 §2.3 is the precedent for recording
 *why* a floor exists. Do not name a crate in the RFC — name it in the request,
 where I can check it against the lockfile.
 
-Thermal is out of scope, explicitly (§4.3). Do not add a `thermal` variant "for
-later."
+Plus the §4.4 rename with old-name-accepted-on-read, tested against a literal
+legacy `settings.json` file.
+
+**Out, explicitly:** thermal (§4.3) and low-battery-as-a-distinct-state (§4.3b —
+it would be behaviourally identical to `LowImpact`, so it could not be given an
+observable criterion). Do not add variants "for later."
 
 ## 3. The two things most likely to go wrong
 
