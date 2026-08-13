@@ -171,6 +171,29 @@ next release tag.
   concurrent writes) measured **~52ms average**, at or above the
   during-indexing figure — the cost is catalog size, not concurrent-write
   contention.
+- **RFC-056 Slice 4 — the UI half, RFC-036 §14 conformance:** background
+  indexing progress is now surfaced with the RFC's literal copy, sourced
+  entirely from the `Message::HealthUpdated` events the host already
+  emits (no new plumbing). The Indexing view's status line reads
+  `Preparing "X" for search` while queued work exists — the folder named
+  only when it is the sole source, since `SourceCard`'s per-source counts
+  are never updated after creation and cannot honestly identify which of
+  several sources is still preparing — and `N files ready. You can search
+  now.` once queued work reaches zero. The Search view gained a reminder,
+  shown only while something is queued (uncluttered once complete, the
+  same precedent `result_trust_badge`'s RFC-038 §6.1 doc comment already
+  set): `Some files are still being prepared. Results will improve as
+  preparation finishes.` This replaces `SearchPreparingFolder`/
+  `SearchPartialReadiness`, two RFC-041 `MessageKey`s that had sat unused
+  since introduction with literal, non-interpolating `{folder}`/`{ready}`
+  placeholder text baked into the string — a real defect, not dead code
+  worth merely leaving alone, closed by real interpolating functions
+  (`preparing_folder_for_search`, `files_ready_for_search`) on the
+  `model_exact_size` pattern instead. `Message::ScanCompleted` is removed:
+  it was handled identically to `Message::HealthUpdated` at every call
+  site, and its own payload was stale-at-zero by construction (the health
+  snapshot at scan-enqueue time, not completion) — both call sites now
+  send `HealthUpdated` directly.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

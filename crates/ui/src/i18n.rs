@@ -301,8 +301,13 @@ message_keys! {
     SearchShowNearby,
     SearchShowSimilar,
     SearchResultsUpdating,
-    SearchPreparingFolder,
-    SearchPartialReadiness,
+    // RFC-036 §14.2 (RFC-056 Slice 4): partial-readiness reminder while
+    // background preparation continues. The interpolated §14.1 "preparing"/
+    // "ready" lines are `preparing_folder_for_search`/`files_ready_for_search`
+    // below, not `MessageKey` variants -- both need a runtime value baked in,
+    // which a `&'static str` match arm cannot carry.
+    SearchFilesStillPreparing,
+    SearchResultsWillImprove,
     // RFC-041 filter labels
     FilterKind,
     FilterChanged,
@@ -545,6 +550,29 @@ pub fn wizard_file_size_mb(locale: Locale, mb: f64) -> String {
     }
 }
 
+/// RFC-036 §14.1 (RFC-056 Slice 4): background preparation is running for a
+/// specific folder. Named only when the caller can honestly attribute the
+/// work to one folder -- `search_view` only calls this when exactly one
+/// source exists, since `SourceCard.indexed`/`stale`/`failed` are never
+/// updated after creation and cannot identify *which* of several sources is
+/// still preparing.
+pub fn preparing_folder_for_search(locale: Locale, folder: &str) -> String {
+    match locale {
+        Locale::En => format!("Preparing \"{folder}\" for search"),
+        Locale::Ja => format!("「{folder}」の検索準備中"),
+    }
+}
+
+/// RFC-036 §14.1 (RFC-056 Slice 4): background preparation has caught up --
+/// `ready` is the current indexed count, sourced from the same aggregate
+/// `IndexHealth` `Message::HealthUpdated` already carries.
+pub fn files_ready_for_search(locale: Locale, ready: u64) -> String {
+    match locale {
+        Locale::En => format!("{ready} files ready. You can search now."),
+        Locale::Ja => format!("{ready} 件のファイルが準備完了。今すぐ検索できます。"),
+    }
+}
+
 /// Parameterized exact model size shown before RFC-050 download consent.
 pub fn model_exact_size(locale: Locale, bytes: u64) -> String {
     let decimal_mb = bytes as f64 / 1_000_000.0;
@@ -591,14 +619,6 @@ fn model_bytes(locale: Locale, bytes: u64) -> String {
             Locale::En => format!("{bytes} B"),
             Locale::Ja => format!("{bytes} バイト"),
         }
-    }
-}
-
-/// Parameterized: "812 files indexed".
-pub fn files_indexed(locale: Locale, count: u64) -> String {
-    match locale {
-        Locale::En => format!("{count} files indexed"),
-        Locale::Ja => format!("{count} 件のファイルをインデックス済み"),
     }
 }
 

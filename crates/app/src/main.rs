@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let source_id = card.source_id.clone();
                                     app.update(Message::SourceAdded(card));
                                     match bootstrap::scan_and_index_source(&catalog, &source_id) {
-                                        Ok(health) => app.update(Message::ScanCompleted(health)),
+                                        Ok(health) => app.update(Message::HealthUpdated(health)),
                                         Err(e) => {
                                             tracing::error!("scan failed: {e}");
                                             app.update(Message::ShowNotice(
@@ -297,7 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Begin background preparation and immediately search
                         // whatever is already indexed (RFC-045 §14, §8.1).
                         match bootstrap::scan_and_index_source(&catalog, source_id.as_str()) {
-                            Ok(health) => app.update(Message::ScanCompleted(health)),
+                            Ok(health) => app.update(Message::HealthUpdated(health)),
                             Err(e) => tracing::warn!("initial scan failed: {e}"),
                         }
 

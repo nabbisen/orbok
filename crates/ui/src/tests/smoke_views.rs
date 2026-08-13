@@ -90,6 +90,63 @@ fn sources_view_renders_both_states() {
     );
 }
 
+// RFC-036 §14.1 (RFC-056 Slice 4): the indexing view's status line uses
+// the literal spec'd copy, naming the folder only when it is the sole
+// source.
+#[test]
+fn indexing_view_shows_rfc036_preparing_and_ready_copy() {
+    let _guard = iced_test_guard();
+
+    let mut preparing = AppState::default();
+    preparing.sources.push(SourceCard {
+        display_name: "Docs".into(),
+        display_path: "/home/user/Docs".into(),
+        indexed: 0,
+        stale: 0,
+        failed: 0,
+        active: true,
+        source_id: "src-1".into(),
+    });
+    preparing.health.queued = 5;
+    let mut ui = simulator(views::indexing_view(&preparing));
+    assert!(
+        ui.find("Preparing \"Docs\" for search").is_ok(),
+        "the sole source's name must be interpolated while it is preparing"
+    );
+
+    let mut ready = AppState::default();
+    ready.health.indexed = 124;
+    let mut ui = simulator(views::indexing_view(&ready));
+    assert!(
+        ui.find("124 files ready. You can search now.").is_ok(),
+        "the exact RFC-036 §14.1 ready copy must appear once queued is empty"
+    );
+}
+
+// RFC-036 §14.2 (RFC-056 Slice 4): the reminder only appears while
+// background work is actually queued, keeping a fully-prepared search
+// view uncluttered (matching `result_trust_badge`'s RFC-038 §6.1
+// precedent).
+#[test]
+fn search_view_shows_partial_readiness_banner_only_while_queued() {
+    let _guard = iced_test_guard();
+
+    let mut preparing = AppState::default();
+    preparing.health.queued = 3;
+    let mut ui = simulator(views::search_view(&preparing));
+    assert!(
+        ui.find("Some files are still being prepared.").is_ok(),
+        "search view must show the partial-readiness reminder while queued > 0"
+    );
+
+    let ready = AppState::default();
+    let mut ui = simulator(views::search_view(&ready));
+    assert!(
+        ui.find("Some files are still being prepared.").is_err(),
+        "search view must not show the reminder once nothing is queued"
+    );
+}
+
 #[test]
 fn model_consent_renders_every_required_fact_and_action_in_both_locales() {
     let _guard = iced_test_guard();

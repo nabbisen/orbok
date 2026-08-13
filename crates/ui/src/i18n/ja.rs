@@ -215,8 +215,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchShowNearby => "近くのファイルを表示",
         SearchShowSimilar => "類似ファイルを表示",
         SearchResultsUpdating => "結果を更新中...",
-        SearchPreparingFolder => "「{folder}」の検索準備中",
-        SearchPartialReadiness => "{ready} 件のファイルが準備完了。今すぐ検索できます。",
+        SearchFilesStillPreparing => "一部のファイルはまだ準備中です。",
+        SearchResultsWillImprove => "準備が完了すると検索結果は改善されます。",
         // RFC-041 filter labels
         FilterKind => "種類",
         FilterChanged => "変更日",

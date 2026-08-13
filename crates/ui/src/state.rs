@@ -471,7 +471,6 @@ pub enum Message {
     RequestAddSource,
     SourceAdded(SourceCard),
     SourceRemoved(String), // source_id
-    ScanCompleted(IndexHealth),
     // Download
     DownloadModel,
     ConfirmModelDownload,
@@ -722,9 +721,8 @@ impl AppState {
                 self.notice = Some(UserNotice::FolderAdded);
             }
             Message::SourceRemoved(id) => self.sources.retain(|s| s.source_id != *id),
-            Message::ScanCompleted(health) | Message::HealthUpdated(health) => {
+            Message::HealthUpdated(health) => {
                 self.health = *health;
-                // Update per-source counts from the fresh health data.
             }
             Message::SourcesLoaded(cards) => self.sources = cards.clone(),
             // RFC-043: model readiness

@@ -205,8 +205,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchShowNearby => "Show nearby files",
         SearchShowSimilar => "Show similar files",
         SearchResultsUpdating => "Updating results...",
-        SearchPreparingFolder => "Preparing \"{folder}\" for search",
-        SearchPartialReadiness => "{ready} files ready. You can search now.",
+        SearchFilesStillPreparing => "Some files are still being prepared.",
+        SearchResultsWillImprove => "Results will improve as preparation finishes.",
         // RFC-041 filter labels
         FilterKind => "Kind",
         FilterChanged => "Changed",

@@ -1,8 +1,9 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
 use crate::i18n::{
-    ALL_KEYS, Locale, files_indexed, fmt_label_value, model_exact_size, model_file_position,
-    model_transfer_progress, source_summary, tr, wizard_file_size_mb,
+    ALL_KEYS, Locale, files_ready_for_search, fmt_label_value, model_exact_size,
+    model_file_position, model_transfer_progress, preparing_folder_for_search, source_summary, tr,
+    wizard_file_size_mb,
 };
 
 // RFC-031 §9: every key resolves to a non-empty string in every locale.
@@ -64,9 +65,19 @@ fn locales_differ_for_translatable_keys() {
 // RFC-031 §5.3: parameterized messages format correctly.
 #[test]
 fn parameterized_messages_localize() {
-    // files_indexed
-    assert!(!files_indexed(Locale::En, 1).is_empty());
-    assert!(!files_indexed(Locale::Ja, 100).is_empty());
+    // RFC-036 §14.1 (RFC-056 Slice 4): the folder name is interpolated
+    // into the string, not left as literal placeholder text (the defect
+    // `SearchPreparingFolder`/`SearchPartialReadiness` had before removal).
+    assert_eq!(
+        preparing_folder_for_search(Locale::En, "Documents"),
+        "Preparing \"Documents\" for search"
+    );
+    assert!(preparing_folder_for_search(Locale::Ja, "Documents").contains("Documents"));
+    assert_eq!(
+        files_ready_for_search(Locale::En, 124),
+        "124 files ready. You can search now."
+    );
+    assert!(files_ready_for_search(Locale::Ja, 124).contains("124"));
 
     // source_summary
     let s = source_summary(Locale::En, 10, 2, 1);

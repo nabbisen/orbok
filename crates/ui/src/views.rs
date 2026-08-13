@@ -12,8 +12,9 @@ pub use wizard::wizard_view;
 
 use crate::components::{self, health_cell, job_progress, result_card, source_card};
 use crate::i18n::{
-    Locale, MessageKey, files_indexed, fmt_gib, fmt_label_value, fmt_mib_bucket, fmt_query,
-    fmt_storage_row, search_location_chip, search_result_count, source_summary, tr,
+    Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
+    fmt_query, fmt_storage_row, preparing_folder_for_search, search_location_chip,
+    search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, Message, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -289,6 +290,24 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(friendly_notice(tokens, locale, notice));
     }
 
+    // RFC-036 §14.2 (RFC-056 Slice 4): a reminder that search already
+    // works on prepared files while background work continues. Shown
+    // only while something is actually queued, so a fully-prepared
+    // profile's search view stays uncluttered -- the same "skip
+    // rendering once Ready" precedent `result_trust_badge` (RFC-038
+    // §6.1) already established.
+    if state.health.queued > 0 {
+        content = content.push(
+            column![
+                text(tr(locale, MessageKey::SearchFilesStillPreparing))
+                    .size(theme::meta_s(tokens, sc)),
+                text(tr(locale, MessageKey::SearchResultsWillImprove))
+                    .size(theme::meta_s(tokens, sc)),
+            ]
+            .spacing(tokens.spacing.xs),
+        );
+    }
+
     if state.show_advanced {
         content = content.push(
             row![
@@ -477,15 +496,26 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
         ));
     }
 
+    // RFC-036 §14.1 (RFC-056 Slice 4): the literal "preparing"/"ready"
+    // copy, not RFC-041's abandoned `SearchPreparingFolder`/
+    // `SearchPartialReadiness` (removed -- see `i18n.rs`). Named to a
+    // specific folder only when exactly one source exists: `SourceCard`'s
+    // per-source counts are never updated after creation, so with more
+    // than one source there is no honest way to say *which* is still
+    // preparing.
+    let status = if h.queued == 0 {
+        files_ready_for_search(locale, h.indexed)
+    } else {
+        match state.sources.as_slice() {
+            [only] => preparing_folder_for_search(locale, &only.display_name),
+            _ => tr(locale, MessageKey::IndexingRunning).to_string(),
+        }
+    };
+
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::IndexingTitle)),
         cells,
-        text(if h.queued == 0 {
-            tr(locale, MessageKey::IndexingIdle).to_string()
-        } else {
-            files_indexed(locale, h.indexed)
-        })
-        .size(theme::body_s(tokens, sc)),
+        text(status).size(theme::body_s(tokens, sc)),
     ];
 
     if h.queued > 0 {
