@@ -174,7 +174,11 @@ pub async fn run(
 // Eight parameters, one over clippy's default: `event_count_probe` is
 // test-only observability (Task 020), not a behavioral option like the
 // other seven -- folding it into a config struct with the rest would
-// blur that distinction rather than clarify it.
+// blur that distinction rather than clarify it. This `Option<Arc<..>>`
+// shape is acceptable as *the* observation seam; it is not acceptable as
+// the first of several (Review 180 §3) -- if a second probe is ever
+// wanted, that is the signal to introduce a proper observation type, not
+// to add a ninth and tenth parameter.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_with_context(
     catalog: Catalog,
