@@ -203,12 +203,18 @@ impl QueueSet {
     /// Pop the next job to run, respecting resource mode (RFC-036 §8, §13).
     ///
     /// In `UserActive` mode, embedding is skipped so search is never
-    /// delayed (RFC-036 §9.2 embedding rule).
+    /// delayed (RFC-036 §9.2 embedding rule). In `LowImpact` mode, embedding
+    /// is skipped for the same reason the concurrency limits can't be lowered
+    /// (`SchedulerLimits::default()` is already `1` everywhere): per RFC-048,
+    /// embedding is ~99.9% of indexing cost, so skipping it alone *is* RFC-036
+    /// §13.2's "reduce background work" (RFC-057 §4.3a) -- extract, chunk and
+    /// keyword keep running, so files stay keyword-searchable on battery.
     pub fn pop_next(&mut self, resource_mode: super::job::ResourceMode) -> Option<IndexJob> {
         use super::job::ResourceMode;
 
         // Priority order: scan → extract → chunk → keyword → embedding →
-        // maintenance. Embedding is skipped entirely in UserActive mode.
+        // maintenance. Embedding is skipped entirely in UserActive and
+        // LowImpact modes.
         let queues: &mut [&mut BoundedQueue] = &mut [
             &mut self.scan,
             &mut self.extract,
@@ -219,8 +225,15 @@ impl QueueSet {
         ];
 
         for q in queues.iter_mut() {
-            if q.kind() == QueueKind::Embedding && resource_mode == ResourceMode::UserActive {
-                continue; // RFC-036 §9.2: yield embedding to active search.
+            if q.kind() == QueueKind::Embedding
+                && matches!(
+                    resource_mode,
+                    ResourceMode::UserActive | ResourceMode::LowImpact
+                )
+            {
+                // RFC-036 §9.2/§13.2: yield embedding to active search or
+                // battery-reduced background work (RFC-057 §4.3a).
+                continue;
             }
             if let Some(job) = q.pop() {
                 return Some(job);

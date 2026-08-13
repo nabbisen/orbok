@@ -70,3 +70,44 @@ fn standard_settings_dir_resolves_through_the_production_call_site() {
          configuration directory new() would use for a process named \"orbok\""
     );
 }
+
+/// RFC-057 §4.4 / §6.2 item 5, HANDOFF-057 §5: `pause_on_battery` renamed
+/// to `pause_embedding_on_battery` -- a profile's existing `settings.json`
+/// must keep honoring its saved preference. Written as literal JSON text
+/// naming the *old* field, not a constructed `OrbokSettings` round-tripped
+/// through serde: a struct that already knows about `#[serde(alias)]`
+/// only proves serde understands its own attribute, not that a file an
+/// old orbok version actually wrote still parses under the new field.
+#[test]
+fn legacy_pause_on_battery_field_name_still_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(
+        &path,
+        r#"{
+            "embedding_model_dir": null,
+            "reranker_model_dir": null,
+            "index_mode": "balanced",
+            "locale": "en",
+            "theme": "system",
+            "text_scale": "default",
+            "reduced_motion": false,
+            "rerank_enabled": false,
+            "background_indexing": true,
+            "pause_on_battery": false,
+            "privacy_mode": "standard",
+            "remember_recent_searches": true,
+            "persist_snippets": true,
+            "clear_temporary_previews_on_exit": false
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = load_settings(&path);
+    assert!(
+        !loaded.pause_embedding_on_battery,
+        "a legacy settings.json's `pause_on_battery` value must still be \
+         honored under the new field name -- a broken alias would silently \
+         fall back to OrbokSettings::default() (true), not this file's `false`"
+    );
+}

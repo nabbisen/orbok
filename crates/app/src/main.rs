@@ -57,6 +57,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (resource_signal_tx, resource_signal_rx) =
         futures::channel::mpsc::channel::<scheduler_host::ResourceObservation>(16);
     let resource_signals = std::sync::Arc::new(std::sync::Mutex::new(Some(resource_signal_rx)));
+    // A second clone for the `.subscription(..)` closure below (RFC-057
+    // §4.3d): `update`'s own `move` closure takes ownership of the
+    // original, so the battery poller -- handed to `run` via
+    // `SchedulerSubscriptionData` -- needs its own.
+    let battery_resource_signal_tx = resource_signal_tx.clone();
 
     iced::application(
         move || OrbokApp::with_state(state.clone()),
@@ -430,6 +435,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scheduler_host::subscription(scheduler_host::SchedulerSubscriptionData {
                 portable,
                 resource_signals: resource_signals.clone(),
+                resource_signal_tx: battery_resource_signal_tx.clone(),
             }),
             iced::keyboard::listen()
                 .with(focused)

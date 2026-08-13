@@ -145,6 +145,51 @@ fn extract_runs_in_user_active_mode() {
     assert_eq!(got.unwrap().kind, JobKind::ExtractFile);
 }
 
+// RFC-057 §4.3a / §6.2 item 7: LowImpact skips embedding just like
+// UserActive does -- the same policy, a different trigger.
+#[test]
+fn embedding_skipped_when_low_impact() {
+    let cap = QueueCapacity::default();
+    let mut qs = QueueSet::new(&cap);
+    qs.embedding.push(job(JobKind::GenerateEmbedding));
+
+    let got = qs.pop_next(ResourceMode::LowImpact);
+    assert!(got.is_none(), "LowImpact mode: embedding must be skipped");
+}
+
+// RFC-057 §4.3a / §6.2 item 7 (the half a test asserting only "embedding
+// stopped" would miss): LowImpact is a reduction, not a pause -- extract,
+// chunk and keyword must keep running so files stay keyword-searchable
+// while only vectors wait.
+#[test]
+fn extract_chunk_keyword_run_in_low_impact_mode() {
+    let cap = QueueCapacity::default();
+    let mut qs = QueueSet::new(&cap);
+    qs.extract.push(job(JobKind::ExtractFile));
+    let got = qs.pop_next(ResourceMode::LowImpact);
+    assert_eq!(
+        got.map(|j| j.kind),
+        Some(JobKind::ExtractFile),
+        "extract must run in LowImpact mode"
+    );
+
+    qs.chunk.push(job(JobKind::ChunkFile));
+    let got = qs.pop_next(ResourceMode::LowImpact);
+    assert_eq!(
+        got.map(|j| j.kind),
+        Some(JobKind::ChunkFile),
+        "chunk must run in LowImpact mode"
+    );
+
+    qs.keyword.push(job(JobKind::UpdateKeywordIndex));
+    let got = qs.pop_next(ResourceMode::LowImpact);
+    assert_eq!(
+        got.map(|j| j.kind),
+        Some(JobKind::UpdateKeywordIndex),
+        "keyword indexing must run in LowImpact mode"
+    );
+}
+
 // ── §17.1 Pause/Resume ────────────────────────────────────────────────────
 
 // RFC-036 §12.1: tick returns None when paused.
@@ -228,6 +273,106 @@ fn repeated_user_active_does_not_spam_events() {
     assert_eq!(
         activity_count, 1,
         "only one UserActivityDetected per transition"
+    );
+}
+
+// RFC-057 §4.3c: `apply_resource_observation` derives the mode from
+// (user_active, on_battery) each call rather than mutating it per source.
+#[test]
+fn apply_resource_observation_derives_mode_from_current_state() {
+    let mut sched = Scheduler::with_defaults();
+    assert_eq!(sched.resource_mode(), ResourceMode::Normal);
+
+    sched.apply_resource_observation(false, true);
+    assert_eq!(sched.resource_mode(), ResourceMode::LowImpact);
+
+    // UserActive wins the tie when both hold (§4.3c precedence).
+    sched.apply_resource_observation(true, true);
+    assert_eq!(sched.resource_mode(), ResourceMode::UserActive);
+
+    sched.apply_resource_observation(false, false);
+    assert_eq!(sched.resource_mode(), ResourceMode::Normal);
+}
+
+// RFC-057 §4.3c / §6.2 item 6: the exact interleaving that motivated
+// deriving the mode instead of mutating it. A per-source-mutation design
+// (the pre-Amendment-1 shape: each observation calls a transition like
+// `notify_user_active`/`notify_user_idle`) passes right up to the last
+// step and fails there -- `notify_user_idle` returns unconditionally to
+// `Normal`, dropping the still-true battery observation and letting
+// embedding resume while genuinely still on battery. Asserted on the
+// scheduling consequence (`tick()`), not the mode field alone -- a test
+// that only checked `resource_mode()` would not catch a policy that
+// derived the right label but still let embedding through.
+#[test]
+fn low_impact_survives_a_user_activity_interleaving() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::GenerateEmbedding), &catalog)
+        .unwrap();
+
+    // On battery: LowImpact, embedding blocked.
+    sched.apply_resource_observation(false, true);
+    assert_eq!(sched.resource_mode(), ResourceMode::LowImpact);
+    assert!(
+        sched.tick().is_none(),
+        "embedding must not dispatch on battery"
+    );
+
+    // User starts typing: UserActive (battery observation still held, but
+    // UserActive wins the tie). Embedding stays blocked either way.
+    sched.apply_resource_observation(true, true);
+    assert_eq!(sched.resource_mode(), ResourceMode::UserActive);
+    assert!(
+        sched.tick().is_none(),
+        "embedding must not dispatch while the user is active"
+    );
+
+    // User stops typing; the battery observation is unchanged. Derivation
+    // must return to LowImpact, not Normal.
+    sched.apply_resource_observation(false, true);
+    assert_eq!(
+        sched.resource_mode(),
+        ResourceMode::LowImpact,
+        "mode must return to LowImpact, not Normal, while still on battery"
+    );
+    assert!(
+        sched.tick().is_none(),
+        "embedding must still not dispatch -- the battery observation was not lost"
+    );
+
+    // Off battery: only now does embedding run.
+    sched.apply_resource_observation(false, false);
+    assert_eq!(sched.resource_mode(), ResourceMode::Normal);
+    assert!(
+        sched.tick().is_some(),
+        "embedding must resume once off battery and idle"
+    );
+}
+
+// RFC-057 §4.3c: `apply_resource_observation` must not override `Paused`,
+// the same guarantee `notify_user_active` already gives (§3.2), proven
+// the same way -- a job already sitting in memory when `pause()` runs.
+#[test]
+fn apply_resource_observation_does_not_override_paused() {
+    let (catalog, source_id) = catalog_with_source();
+    let mut sched = Scheduler::with_defaults();
+    sched
+        .enqueue(job_for(source_id, JobKind::ExtractFile), &catalog)
+        .unwrap();
+    sched.pause(&catalog).unwrap();
+
+    sched.apply_resource_observation(true, true);
+
+    assert_eq!(
+        sched.resource_mode(),
+        ResourceMode::Paused,
+        "a derived observation must not override Paused"
+    );
+    assert!(
+        sched.tick().is_none(),
+        "a job already queued in memory must not dispatch while paused"
     );
 }
 

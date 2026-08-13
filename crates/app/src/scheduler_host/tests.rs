@@ -208,6 +208,7 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
         loop_cache,
         None,
         true,
+        true,
         no_resource_signals(),
         tx,
     ));
@@ -329,6 +330,7 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
         loop_cache,
         None,
         true,
+        true,
         no_resource_signals(),
         tx,
     ));
@@ -403,6 +405,7 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
         loop_cache,
         None,
         false,
+        true,
         no_resource_signals(),
         tx,
     ));
@@ -466,6 +469,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
             loop_cache,
             None,
             false,
+            true,
             no_resource_signals(),
             tx,
         ));
@@ -497,6 +501,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
         loop_catalog,
         loop_cache,
         None,
+        true,
         true,
         no_resource_signals(),
         tx,
@@ -561,6 +566,7 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
         loop_cache,
         embedding_parts,
         true,
+        true,
         signal_rx,
         tx,
     ));
@@ -598,6 +604,173 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
     wait_until(
         Duration::from_secs(20),
         "embedding resumes once the user goes idle",
+        || embedding_row_count(&ui_catalog, &model_id) > 0,
+    )
+    .await;
+
+    handle.abort();
+}
+
+/// RFC-057 §4.3c / §6.2 item 6, through the real application path: the
+/// interleaving that motivated deriving the mode instead of mutating it
+/// per source. A per-source-mutation design (Slice 1's shape, before
+/// Amendment 1) would pass right up to the point the user goes idle and
+/// fail there -- `notify_user_idle` returned unconditionally to `Normal`,
+/// dropping the still-true battery observation and letting embedding
+/// resume while genuinely still on battery. The `OnBattery(true)`
+/// observation below is sent exactly once, before the loop even spawns
+/// (same race-avoidance as the deferral test above) -- it is
+/// level-triggered state, not an edge like `UserActive`, so nothing needs
+/// to repeat it for the derivation to keep honoring it.
+#[tokio::test]
+async fn low_impact_survives_a_user_activity_interleaving_through_the_app() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "mock");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(MockEmbeddingModel),
+        model_id.clone(),
+    ));
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    signal_tx
+        .try_send(ResourceObservation::OnBattery(true))
+        .unwrap();
+
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        true,
+        true,
+        signal_rx,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    let embedding_row_count = |catalog: &Catalog, model_id: &ModelId| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1",
+                [model_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+
+    wait_until(
+        Duration::from_secs(20),
+        "the file is indexed (extract+chunk unaffected by LowImpact)",
+        || indexed_count(&ui_catalog) == 1,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        embedding_row_count(&ui_catalog, &model_id),
+        0,
+        "embedding must defer on battery (RFC-057 §4.3a, queue.rs:222)"
+    );
+
+    // User types for a while, still on battery -- embedding stays deferred
+    // either way (UserActive and LowImpact impose the identical
+    // restriction, §4.3c).
+    for _ in 0..10 {
+        let _ = signal_tx.try_send(ResourceObservation::UserActive);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(
+        embedding_row_count(&ui_catalog, &model_id),
+        0,
+        "embedding must still defer while the user is active"
+    );
+
+    // User goes idle (no further UserActive signals, and the battery
+    // observation is never repeated). Hold well past USER_IDLE_TIMEOUT: if
+    // the derivation dropped the battery state on the idle transition and
+    // fell back to Normal, embedding would run here.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(
+        embedding_row_count(&ui_catalog, &model_id),
+        0,
+        "embedding must still defer once idle -- still on battery (RFC-057 §4.3c)"
+    );
+
+    // Off battery: only now does embedding run.
+    let _ = signal_tx.try_send(ResourceObservation::OnBattery(false));
+    wait_until(
+        Duration::from_secs(20),
+        "embedding resumes once off battery and idle",
+        || embedding_row_count(&ui_catalog, &model_id) > 0,
+    )
+    .await;
+
+    handle.abort();
+}
+
+/// RFC-057 §4.4: `pause_embedding_on_battery_enabled = false` means the
+/// user opted out of the reduction -- an `OnBattery(true)` observation
+/// must not defer embedding at all, proving the gate suppresses the
+/// *effect*, not merely a differently-labeled mode that still restricts
+/// scheduling the same way.
+#[tokio::test]
+async fn on_battery_does_not_defer_embedding_when_the_setting_is_disabled() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "mock");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(MockEmbeddingModel),
+        model_id.clone(),
+    ));
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    signal_tx
+        .try_send(ResourceObservation::OnBattery(true))
+        .unwrap();
+
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        true,
+        false, // pause_embedding_on_battery_enabled: disabled
+        signal_rx,
+        tx,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    let embedding_row_count = |catalog: &Catalog, model_id: &ModelId| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1",
+                [model_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+
+    wait_until(
+        Duration::from_secs(20),
+        "embedding completes despite being on battery, since the setting is disabled",
         || embedding_row_count(&ui_catalog, &model_id) > 0,
     )
     .await;
@@ -650,6 +823,7 @@ async fn user_active_signal_does_not_override_paused() {
         loop_cache,
         None,
         false, // background_indexing off -> Paused before the loop starts
+        true,
         signal_rx,
         tx,
     ));
@@ -694,6 +868,7 @@ async fn user_active_does_not_resume_paused_with_work_enqueued_after_pause() {
         loop_cache,
         None,
         false, // paused at startup
+        true,
         signal_rx,
         tx,
     ));
@@ -753,6 +928,7 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         true,
         no_resource_signals(),
         tx,
@@ -820,6 +996,7 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         true,
         no_resource_signals(),
         tx,
@@ -917,6 +1094,7 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
         loop_catalog,
         loop_cache,
         None,
+        true,
         true,
         no_resource_signals(),
         tx,
@@ -1151,6 +1329,7 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
         loop_cache,
         None,
         true,
+        true,
         no_resource_signals(),
         tx,
     ));
@@ -1217,6 +1396,7 @@ async fn index_via_background_loop(
         loop_catalog,
         loop_cache,
         None,
+        true,
         true,
         no_resource_signals(),
         tx,
@@ -1300,6 +1480,7 @@ async fn search_latency_while_background_indexing_is_running() {
         loop_catalog,
         loop_cache,
         embedding_parts,
+        true,
         true,
         no_resource_signals(),
         tx,

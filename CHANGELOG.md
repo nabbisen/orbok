@@ -237,6 +237,69 @@ next release tag.
   (~48.9ms avg during / ~52.2ms after, matching Slice 2 of RFC-056's
   48.0/51.4ms baseline within noise). Battery/thermal detection
   (RFC-036 §13.2) is RFC-057 Slice 2, not this one.
+- **RFC-057 Slice 2 — battery-aware `LowImpact` policy, derived (not
+  mutated) resource mode, and live detection:** RFC-057 §2.1 originally
+  claimed RFC-036 §13's policy was fully implemented and only lacked
+  signal sources — true of `UserActive`, false of `LowImpact`, which was a
+  bare enum variant with no setter, no consumer, and no test anywhere in
+  the tree. Amendment 1 (Review 177 §4) corrected this and rewrote the
+  slice around it. `LowImpact` now has a policy: `queue.rs:222` skips the
+  embedding queue under `LowImpact` exactly as it already does under
+  `UserActive` — not a concurrency reduction (`SchedulerLimits::default()`
+  is already `1` everywhere), but per RFC-048's measurement embedding is
+  ~99.9% of indexing cost, so skipping it alone *is* RFC-036 §13.2's
+  "reduce background work": extract, chunk and keyword keep running, so
+  files stay keyword-searchable while only vectors wait. With a second
+  source, the Slice 1 shape of "each source mutates the mode" loses state
+  — a battery-set `LowImpact` silently overwritten by the next
+  `UserActive` signal, then never restored when activity stops, because
+  `notify_user_idle` returned unconditionally to `Normal`. `Scheduler`
+  gained `apply_resource_observation(user_active, on_battery)`, which
+  derives the whole mode fresh from held state every call rather than
+  mutating it per source (`UserActive` wins the tie when both hold, since
+  today they impose the identical restriction); `scheduler_host`'s loop
+  now holds `on_battery` alongside `last_user_activity` and calls it once
+  per iteration instead of calling `notify_user_active`/`notify_user_idle`
+  directly. Those two methods keep their original guard behaviour and stay
+  covered by their own tests — a real regression check for the single-source
+  shape, distinct from the new derivation. Verified against the exact
+  interleaving that motivated the change, both at the `Scheduler` level and
+  through the real application path: on battery → user types → user stops
+  → still on battery, asserted on whether embedding actually dispatches,
+  not the mode field — a per-source-mutation design passes until the last
+  step and fails there. Battery detection lives behind an injection seam
+  (`BatterySource` trait, the same shape RFC-049's `RuntimePathProbe`/
+  `AllowRuntimePathProbe` already establish in this codebase): a poller
+  sends an `OnBattery` observation only when the detected state changes,
+  tested with a scripted source covering both transitions, silence when
+  nothing changes, and graceful `None` handling with no real battery
+  required. Production detection is `starship-battery` 0.11.1 (ISC
+  licence, actively maintained fork of the abandoned `battery` crate,
+  checked 2026-08-13 against the lockfile — see review request for full
+  maintenance/platform/licence record); it covers Linux/macOS/Windows,
+  matching this workspace's three-leg CI matrix. `pause_on_battery` is
+  renamed to `pause_embedding_on_battery` (RFC-057 §4.4: the old name
+  promised more than it delivered even once wired — reading it, "pauses
+  indexing on battery," when only embedding ever would), with
+  `#[serde(alias = "pause_on_battery")]` so an existing profile's
+  `settings.json` keeps honoring its saved preference with no migration
+  step; tested against a literal legacy JSON file on disk, not a
+  constructed struct, so the test exercises the file format an old orbok
+  version actually wrote, not merely serde's understanding of its own
+  alias attribute. The setting gates the *effect*, not the detector: a
+  disabled setting still lets the poller run and `on_battery` track
+  reality, but `scheduler_host`'s loop folds it to `false` before deriving
+  the mode, proven by a dedicated test sending `OnBattery(true)` with the
+  setting off and confirming embedding still completes. Search latency
+  during background indexing is unchanged (48.12ms avg during / 51.20ms
+  after, matching every prior measurement in this programme within noise).
+  Thermal detection and low-battery-as-a-distinct-state remain out of
+  scope (RFC-057 §4.3b, §5); real battery detection could not be verified
+  on real hardware in this environment — the development machine has no
+  system battery, only a peripheral (mouse) battery reported by `upower`
+  (`power supply: no`) — so RFC-057 §7's manual-verification criterion is
+  left unticked rather than inferred, and is called out explicitly in the
+  review request.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

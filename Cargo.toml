@@ -80,6 +80,18 @@ rfd                         = "0.15"
 # (Task 008).
 app-json-settings           = { version = "2.7.0" }
 
+# battery detection — RFC-057 §4.3d: starship-battery, the actively
+# maintained fork of the abandoned `battery` crate (same author moved
+# maintenance there; used by the `starship` prompt). Checked 2026-08-13:
+# 0.11.1, ISC licence, last published 2026-07-05, upstream repo pushed the
+# same day this floor was set. Covers Linux/macOS/Windows plus the BSDs and
+# iOS — matches this workspace's three-leg CI matrix exactly. Transitive
+# deps are the expected per-platform OS bindings (windows-sys, objc2-*,
+# libc, nix) plus uom/num-traits/cfg-if; nothing unexpected. `rust-version
+# = "1.89"` is under this workspace's own 1.91 floor, so no toolchain
+# conflict.
+starship-battery             = "0.11.1"
+
 # shared utilities
 serde                       = { version = "1", features = ["derive"] }
 serde_json                  = "1"

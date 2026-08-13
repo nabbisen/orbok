@@ -5,9 +5,9 @@
 //!
 //! - routes jobs into typed bounded queues;
 //! - enforces backpressure when queues are full;
-//! - tracks resource mode (`Normal` / `UserActive` / `Paused`);
+//! - tracks resource mode (`Normal` / `UserActive` / `LowImpact` / `Paused`);
 //! - dispatches one job per `tick()` call, skipping embedding in
-//!   `UserActive` mode (RFC-036 §9.2);
+//!   `UserActive` and `LowImpact` modes (RFC-036 §9.2, §13.2);
 //! - emits `SchedulerEvent`s the app layer uses to update the UI;
 //! - persists job state to the catalog for crash recovery (RFC-036 §16).
 //!
@@ -90,6 +90,44 @@ impl Scheduler {
             self.resource_mode = ResourceMode::Normal;
             self.emit(SchedulerEvent::ResourceModeChanged(ResourceMode::Normal));
         }
+    }
+
+    /// Derive and apply the resource mode from currently-held observation
+    /// state (RFC-057 §4.3c), rather than mutating it per source the way
+    /// `notify_user_active`/`notify_user_idle` do. Those two remain correct
+    /// with exactly one source (RFC-057 Slice 1's `UserActive` alone) but
+    /// lose state with two: a battery source setting `LowImpact` is silently
+    /// overwritten the instant `notify_user_active` fires, and
+    /// `notify_user_idle` returns to `Normal` unconditionally rather than
+    /// back to whatever the non-activity sources still say. Recomputing the
+    /// whole mode from `(user_active, on_battery)` every call means neither
+    /// condition can be lost behind the other.
+    ///
+    /// Precedence (RFC-057 §4.3c): `UserActive` beats `LowImpact` when both
+    /// hold, since today they impose the identical restriction (§4.3a) and
+    /// the ordering only needs to be defined, not load-bearing. `Paused` is
+    /// untouched here -- it is a persisted user command (`pause`/`resume`),
+    /// not a derived observation, and must keep working exactly as Review
+    /// 175 settled it.
+    pub fn apply_resource_observation(&mut self, user_active: bool, on_battery: bool) {
+        if self.resource_mode == ResourceMode::Paused {
+            return;
+        }
+        let derived = if user_active {
+            ResourceMode::UserActive
+        } else if on_battery {
+            ResourceMode::LowImpact
+        } else {
+            ResourceMode::Normal
+        };
+        if derived == self.resource_mode {
+            return;
+        }
+        self.resource_mode = derived;
+        if derived == ResourceMode::UserActive {
+            self.emit(SchedulerEvent::UserActivityDetected);
+        }
+        self.emit(SchedulerEvent::ResourceModeChanged(derived));
     }
 
     pub fn resource_mode(&self) -> ResourceMode {

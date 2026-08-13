@@ -24,10 +24,20 @@
 //! as everything else this module hosts.
 //!
 //! **RFC-057 Slice 1:** the first live path into this task. `[ResourceObservation]`
-//! is drained each loop iteration and mapped to `Scheduler::notify_user_active`/
-//! `notify_user_idle` -- the transitions RFC-036 §13.1 already specifies but
-//! nothing had ever called. Producers report what they observed, not a
-//! `ResourceMode`; only this module decides what an observation means.
+//! is drained each loop iteration; producers report what they observed, not
+//! a `ResourceMode`, and only this module decides what an observation means.
+//!
+//! **RFC-057 Slice 2 (Amendment 1):** a second source (`OnBattery`) meant a
+//! single mutated `ResourceMode` could lose state -- a battery-driven
+//! `LowImpact` silently overwritten by the next `UserActive` signal, then
+//! never restored when activity stopped, because the old
+//! `notify_user_active`/`notify_user_idle` transitions each mutated the mode
+//! in isolation. This loop now holds the observation state itself
+//! (`last_user_activity`, `on_battery`) and calls
+//! `Scheduler::apply_resource_observation` each iteration to *derive* the
+//! whole mode fresh, so neither observation can be lost behind the other.
+
+mod battery;
 
 use crate::bootstrap::embedding_resolution::EmbeddingWorkerParts;
 use futures::SinkExt as _;
@@ -68,15 +78,27 @@ const USER_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 pub(crate) enum ResourceObservation {
     /// The user is actively typing or searching (RFC-036 §13.1).
     UserActive,
+    /// The machine's power-source state changed (RFC-036 §13.2). Carries
+    /// the new state directly, unlike `UserActive` -- a battery source
+    /// reports level-triggered state (on battery or not right now), not an
+    /// edge, so there is no idle-timeout half to infer the way there is for
+    /// activity.
+    OnBattery(bool),
 }
 
 /// Resolve the active profile's sealed handles and run the loop forever.
 /// Wired into `main.rs`'s `Subscription::run_with`; returns only if the
 /// profile's catalog or cache cannot be opened at all -- a running profile
 /// never sees this return.
+///
+/// `resource_signal_tx` is a clone of the same sender `main.rs`'s `update`
+/// closure holds (RFC-057 §4.1's "one channel, many producers"): this
+/// function spawns the battery poller (RFC-057 §4.3d) as the second
+/// producer feeding it, alongside `main.rs`'s own `UserActive` producer.
 pub async fn run(
     portable: bool,
     resource_signals: Receiver<ResourceObservation>,
+    resource_signal_tx: Sender<ResourceObservation>,
     output: Sender<Message>,
 ) {
     let Ok(runtime) = crate::bootstrap::resolve_runtime_context(portable) else {
@@ -111,13 +133,33 @@ pub async fn run(
     // once here rather than reactively. There is no live control surface
     // yet that could change this setting mid-session.
     let background_indexing_enabled = settings
+        .as_ref()
         .map(|settings| settings.background_indexing)
         .unwrap_or(true);
+    // RFC-057 §4.4: whether an `OnBattery` observation is allowed to
+    // affect scheduling at all -- the detector always runs and always
+    // reports (below), same as `background_indexing`'s own
+    // resolve-once-at-startup shape; this only gates the derivation's use
+    // of what it reports, in `run_with_context`.
+    let pause_embedding_on_battery_enabled = settings
+        .as_ref()
+        .map(|settings| settings.pause_embedding_on_battery)
+        .unwrap_or(true);
+    // RFC-057 §4.3d: the battery poller runs for the process's whole
+    // lifetime, the same as the scheduler loop itself -- there is no
+    // narrower scope to bound it to, and nothing here ever joins it
+    // (it is dropped, not aborted, when the process exits).
+    tokio::spawn(battery::watch_battery(
+        battery::SystemBatterySource::new(),
+        battery::BATTERY_POLL_INTERVAL,
+        resource_signal_tx,
+    ));
     run_with_context(
         catalog,
         cache,
         embedding_parts,
         background_indexing_enabled,
+        pause_embedding_on_battery_enabled,
         resource_signals,
         output,
     )
@@ -133,6 +175,7 @@ pub(crate) async fn run_with_context(
     cache: ProfileCache,
     embedding_parts: Option<EmbeddingWorkerParts>,
     background_indexing_enabled: bool,
+    pause_embedding_on_battery_enabled: bool,
     mut resource_signals: Receiver<ResourceObservation>,
     mut output: Sender<Message>,
 ) {
@@ -171,10 +214,14 @@ pub(crate) async fn run_with_context(
         EmbeddingWorker::with_model(&catalog, cache_service, parts.model, parts.model_id)
     });
     // RFC-057 §4.2: when this was last set, `USER_IDLE_TIMEOUT` since then
-    // with no further `UserActive` observation means the user has stopped,
-    // and the loop tells the scheduler so on its own -- producers report
-    // only that activity happened, not when it ends.
+    // with no further `UserActive` observation means the user has stopped
+    // -- producers report only that activity happened, not when it ends,
+    // so the loop infers the end itself each iteration below.
     let mut last_user_activity: Option<Instant> = None;
+    // RFC-057 §4.3d: level-triggered, unlike `last_user_activity` -- the
+    // battery source reports current state directly, so this is simply the
+    // most recent `OnBattery` observation with no timeout half needed.
+    let mut on_battery = false;
 
     loop {
         // RFC-057 §4.1: drain every observation queued since the last
@@ -185,19 +232,30 @@ pub(crate) async fn run_with_context(
         while let Ok(observation) = resource_signals.try_recv() {
             match observation {
                 ResourceObservation::UserActive => {
-                    // `notify_user_active` already refuses to override
-                    // `Paused` (RFC-057 §3.2/HANDOFF §3.2) -- a signal
-                    // through this new path must not silently resume
-                    // work the user turned off via `background_indexing`.
-                    scheduler.notify_user_active();
                     last_user_activity = Some(Instant::now());
+                }
+                ResourceObservation::OnBattery(state) => {
+                    on_battery = state;
                 }
             }
         }
-        if last_user_activity.is_some_and(|last| last.elapsed() >= USER_IDLE_TIMEOUT) {
-            scheduler.notify_user_idle();
+        let user_active = last_user_activity.is_some_and(|last| last.elapsed() < USER_IDLE_TIMEOUT);
+        if last_user_activity.is_some() && !user_active {
             last_user_activity = None;
         }
+        // RFC-057 §4.4: `pause_embedding_on_battery_enabled = false` means
+        // the user opted out of the reduction -- the detector still runs
+        // and `on_battery` still tracks reality, but the derivation below
+        // must never see it as `true`, the same "gate the effect, not the
+        // signal" shape `background_indexing` itself doesn't need (it has
+        // no live source to gate; this does).
+        let effective_on_battery = on_battery && pause_embedding_on_battery_enabled;
+        // RFC-057 §4.3c: derive the mode from held observation state every
+        // iteration rather than mutating it per source -- `apply_resource_observation`
+        // already refuses to override `Paused` (RFC-057 §3.2/HANDOFF §3.2),
+        // the same guarantee `notify_user_active` gave the single-source
+        // Slice 1 path.
+        scheduler.apply_resource_observation(user_active, effective_on_battery);
 
         // `rehydrate` is a full `queued`-rows scan (RFC-036's queues have
         // no cheap "anything new?" signal) -- calling it every iteration
@@ -408,22 +466,26 @@ fn job_kind_for(job_type: JobType) -> JobKind {
 }
 
 /// Identity for `Subscription::run_with` (RFC-057 §4.1): bundles `portable`
-/// with the receiving half of the resource-observation channel. Iced
-/// requires a plain `fn(&D) -> S` here, not a capturing closure (see
-/// `run_stream` below), so this is how the receiver -- constructed once in
-/// `main.rs`, since `main.rs`'s `update` closure needs the matching sender
-/// -- reaches the task despite that constraint.
+/// with the receiving half of the resource-observation channel, plus a
+/// clone of the sending half (RFC-057 §4.3d) for [`run`] to hand to the
+/// battery poller -- `Sender` is `Clone`, unlike `Receiver`, so this half
+/// needs none of `resource_signals`' `Arc<Mutex<Option<..>>>` machinery.
+/// Iced requires a plain `fn(&D) -> S` here, not a capturing closure (see
+/// `run_stream` below), so this is how both halves -- constructed once in
+/// `main.rs`, since `main.rs`'s `update` closure needs its own clone of the
+/// sender -- reach the task despite that constraint.
 ///
 /// `Hash` considers only `portable`: `main.rs`'s `.subscription(..)`
-/// closure runs on every re-render and clones this `Arc` fresh each time,
-/// but the identity `Subscription::run_with` dedups on must stay exactly
-/// what it was pre-RFC-057 (`portable` alone, which never changes after
+/// closure runs on every re-render and clones this fresh each time, but
+/// the identity `Subscription::run_with` dedups on must stay exactly what
+/// it was pre-RFC-057 (`portable` alone, which never changes after
 /// startup) -- otherwise the task would look "new" every frame and never
 /// actually run.
 #[derive(Clone)]
 pub struct SchedulerSubscriptionData {
     pub portable: bool,
     pub resource_signals: std::sync::Arc<std::sync::Mutex<Option<Receiver<ResourceObservation>>>>,
+    pub resource_signal_tx: Sender<ResourceObservation>,
 }
 
 impl std::hash::Hash for SchedulerSubscriptionData {
@@ -460,8 +522,9 @@ fn run_stream(data: &SchedulerSubscriptionData) -> impl futures::Stream<Item = M
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take()
         .expect("scheduler subscription must only be built once");
+    let resource_signal_tx = data.resource_signal_tx.clone();
     iced::stream::channel(64, async move |output| {
-        run(portable, resource_signals, output).await;
+        run(portable, resource_signals, resource_signal_tx, output).await;
     })
 }
 

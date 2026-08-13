@@ -64,17 +64,18 @@ pub struct OrbokSettings {
     /// Whether background indexing is allowed (RFC-019).
     pub background_indexing: bool,
 
-    /// Pause background indexing when on battery power.
-    ///
-    /// Read nowhere yet: RFC-036 §13.2 explicitly allows P0 to skip
-    /// battery/thermal detection ("scheduler should allow future policy"),
-    /// and no battery-state signal source exists anywhere in this
-    /// codebase to read from -- unlike `background_indexing`, wiring this
-    /// setting to `Scheduler::pause` (RFC-056 Slice 3) would mean
-    /// choosing and integrating a cross-platform battery API, a new
-    /// capability decision, not hosting plumbing. Left for whoever adds
-    /// that capability; this field exists so the setting round-trips.
-    pub pause_on_battery: bool,
+    /// Skip the embedding queue while on battery power (RFC-036 §13.2,
+    /// RFC-057 §4.3a). Renamed from `pause_on_battery` (RFC-057 §4.4): the
+    /// old name promised more than it did even once wired -- reading it,
+    /// a user would reasonably expect indexing to stop entirely on
+    /// battery, but only embedding ever does; files keep being scanned,
+    /// extracted, chunked and made keyword-searchable, only vectors wait.
+    /// `#[serde(alias)]` keeps a profile's existing `settings.json`
+    /// honoring its saved preference across the rename with no migration
+    /// step -- old files are read under the new name and, once saved
+    /// again, are written under it too.
+    #[serde(alias = "pause_on_battery")]
+    pub pause_embedding_on_battery: bool,
 
     /// Privacy mode (RFC-039 §5). One of: "standard" | "strict" | "portable".
     pub privacy_mode: String,
@@ -109,7 +110,7 @@ impl Default for OrbokSettings {
             reduced_motion: false,
             rerank_enabled: false,
             background_indexing: true,
-            pause_on_battery: true,
+            pause_embedding_on_battery: true,
             privacy_mode: "standard".into(),
             remember_recent_searches: true,
             persist_snippets: true,
