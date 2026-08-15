@@ -469,6 +469,32 @@ next release tag.
   0.25.2 baseline, and this workspace was on 0.25.1 — the 0.25.1 → 0.25.2
   hop appears in none of them. Not chased (a patch release, almost
   certainly irrelevant), but not claimed as verified either.
+- **Task 023 — snora 0.30.0 → 0.33.0, Phase 1 only, again:** the same
+  version-bump-only scope as Task 022; Phases 2–4 stay queued behind
+  Owner Task 003 Part B. Unlike Task 022, a package was genuinely added —
+  `cargo update -p snora` moved five packages (`snora`, `snora-core`,
+  `snora-design`, `snora-widgets` 0.30.0 → 0.33.0, plus `snora-style`
+  0.33.0 newly added, the crate 0.32.0 moved the style bridge into) with
+  150 dependencies otherwise unchanged. 0.33.0 removes
+  `snora_widgets::design::{style, theme}` outright rather than
+  deprecating them (`#[deprecated]` on a `pub use` emits no warning in
+  Rust) — orbok never imported those paths directly: zero occurrences of
+  `snora_widgets::`/`snora_design::`/`snora_core::` anywhere in this
+  tree, confirmed by grep before touching the manifest, not assumed from
+  the removal notice. Every call site goes through the `snora::design::*`
+  facade, which points at the new `snora-style` crate transparently.
+  `cargo test -p orbok-ui --lib`: 96/96; no UI call site needed touching.
+  **No visual check was performed**, same as Task 022. Two things noted
+  for whoever picks up the later phases, not acted on here:
+  `snora::responsive_render` renders through the engine path
+  unconditionally and would silently drop the styled dialog card and
+  token-derived modal dim for a `design`-path application like orbok —
+  `snora::design::responsive_render` is the correct function if this is
+  ever wanted; and Phase 4's chrome geometry reads `tokens.spacing`
+  directly with no `tokens.density` branch, so a tighter `Spacing` in a
+  supplied `Tokens` would flow straight through if the chrome ever reads
+  too loose. The 0.25.1 → 0.25.2 gap Task 022 left open is now closed:
+  a single commit correcting an example's version string, nothing else.
 
 ### Fixed
 

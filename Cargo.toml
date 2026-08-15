@@ -60,7 +60,7 @@ localcache                  = { version = "0.21", features = ["compression", "tr
 
 # GUI — RFC-027 decision: iced 0.14 via snora 0.18
 iced                        = { version = "0.14", features = ["tokio"] }
-snora                       = { version = "0.30", features = ["design"] }
+snora                       = { version = "0.33", features = ["design"] }
 rfd                         = "0.15"
 # app-json-settings — RFC-055: the 2.7.0 floor is deliberate, not "latest
 # 2.x". 2.0.3's ConfigManager::new() silently substitutes on two failures
