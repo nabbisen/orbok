@@ -161,14 +161,35 @@ Before each release, run through the following steps on at least one platform:
 2. Press `Ctrl/Cmd+K` from any page: confirm the Search view comes to focus.
 3. Press `Ctrl/Cmd+,` from any page: confirm Settings opens.
 
-### Screen reader spot check
+### Screen reader spot check — BLOCKED, do not attempt
 
-On macOS (VoiceOver) or Linux (Orca):
+**Verified 2026-08-15:** `accesskit` appears nowhere in iced 0.14's source, and
+iced 0.14 declares no accessibility feature to enable. It is absent from orbok's
+dependency graph as a result. **orbok exposes no platform accessibility tree on
+any platform**, so no screen reader can announce its cards, buttons or badges.
+
+The steps this section previously listed — confirming that source cards announce
+their content, that the danger button announces "Reset Catalog", that status
+badges announce their labels — could never have passed. They are preserved here
+as the specification of what to run *once the block clears*, not as work to do
+now:
 
 1. Navigate to the Sources view; confirm source cards announce their content.
 2. Navigate to the Storage view; confirm the danger button announces "Reset
    Catalog" (or locale equivalent).
 3. Confirm status badges announce their label text.
+
+**This does not widen the conformance gap already recorded.** §4.1.2 above is
+marked *Partially met* and the "Known renderer limitations" table names limited
+AccessKit integration with i18n labels as the mitigation. What changes here is
+only that the QA procedure now matches that position instead of asking for an
+outcome the architecture cannot produce.
+
+**Reinstatement trigger:** iced exposing an accessibility tree. The labels are
+already in place and are the authoritative accessible names (§4.1.2), so
+reinstating this is a QA change rather than a development one. Run it on Linux
+with Orca; on Windows use NVDA in preference to Narrator, as it is what blind
+Windows users predominantly run.
 
 ### High-contrast visual pass
 

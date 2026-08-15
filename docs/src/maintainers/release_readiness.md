@@ -169,15 +169,50 @@ The residual macOS gap is honest and narrow: **no human visual or interaction
 pass.** State it that way in release notes rather than as "tested on three
 platforms."
 
+### How often each block runs
+
+| Block | Frequency |
+|---|---|
+| Accessibility (RFC-034) | **Once, on one platform.** Linux. |
+| First launch, Search, Storage, Models, Settings, Privacy | **Once per platform** — Linux and Windows. |
+
+The accessibility block is a property of the build, not of the platform: the
+themes, labels, badge icons and shortcut map are the same code everywhere, and
+`accessibility.md` has always scoped its steps to "at least one platform". Doing
+it twice checks nothing the first pass did not. **Linux specifically**, because
+it is the platform with a usable screen reader if §Screen reader below is ever
+unblocked.
+
 ### Accessibility (RFC-034)
 
 Run the full QA steps from [`docs/src/maintainers/accessibility.md`](accessibility.md)
-before signing off, including:
+before signing off:
 
 - [ ] Keyboard-only walkthrough (all shortcuts, result navigation, Escape for overlays)
 - [ ] High-contrast visual pass (all four theme presets)
 - [ ] Grayscale status-distinguishability pass (badges distinguishable by icon + label)
-- [ ] Screen reader spot check (VoiceOver / Orca)
+- [ ] ~~Screen reader spot check~~ — **cannot be run; see below. Do not attempt it.**
+
+#### Screen reader: blocked on iced, not on us
+
+**iced 0.14 exposes no platform accessibility tree.** `accesskit` appears nowhere
+in its source and it offers no accessibility feature flag, so it is absent from
+orbok's dependency graph entirely. No screen reader — Orca, NVDA, Narrator,
+VoiceOver — can announce orbok's cards, buttons or badges, on any platform.
+
+This step was therefore **never passable** as previously written, which asked for
+confirmation that "source cards announce their content". Attempting it wastes an
+hour and produces a failure nobody can act on.
+
+RFC-034 already holds the honest position: §4.1.2 is recorded as **Partially
+met**, and its "Known renderer limitations" table lists limited AccessKit
+integration with i18n labels as the mitigation. The conformance record was right;
+this checklist was the part that overreached.
+
+**Reinstate this step when iced exposes an accessibility tree.** At that point
+the labels already exist — RFC-034 §4.1.2 states they are the authoritative
+accessible names and will flow through — so reinstating is a QA change, not a
+development one.
 
 ### First launch
 
