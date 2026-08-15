@@ -326,18 +326,24 @@ next release tag.
   macOS CI leg twice in one session, on two unrelated commits, and
   cleared on rerun both times, with the failing assertion's own log
   unrecoverable afterward — GitHub serves the current attempt's log for a
-  superseded job id. Not a fix (the cause is unknown and the evidence for
-  it is gone): the test's six assertions now share a diagnostic snapshot
-  captured once after the scan — the full `ScanSummary`, a recursive
-  listing of the temp root with each entry's type, and the
-  `files.canonical_path` the scan actually wrote to the catalog alongside
-  the path the test computed via `fs::canonicalize` — so the next
-  occurrence identifies its own cause (an extra filesystem entry, or a
-  macOS `$TMPDIR`/`/private/var/folders` canonicalization mismatch, or
-  neither) without a second run. Verified by forcing both failure shapes
-  locally — an unexpected extra file, and a `get_by_path` lookup miss —
-  and confirming each failure message actually carries the summary, the
-  listing, and both path forms, then reverting.
+  superseded job id. **Not a fix** — the cause is unknown and the
+  evidence for it is gone, and closing this task means the next
+  occurrence can identify its own cause, not that the flake is explained
+  or gone. The test's six assertions now share one diagnostic snapshot
+  captured once after the scan: the full `ScanSummary`; a recursive
+  listing of the temp root with each entry's type, size and mtime; the
+  `files` row the scan actually wrote per entry — `canonical_path`
+  (alongside the path the test computed via `fs::canonicalize`, to catch
+  a macOS `$TMPDIR`/`/private/var/folders` mismatch), `file_status`, and
+  whether `content_hash` is present; and the `index_jobs` rows for the
+  source (job type, status). The first cut (Review 181) covered only two
+  of the six assertions — size/mtime and the `files`/`index_jobs` columns
+  were added as a required item once the reviewer worked through which
+  assertion each snapshot field actually explained and found four with no
+  coverage at all. Verified by forcing failures locally, across both
+  passes — an unexpected extra file, a `get_by_path` lookup miss, and a
+  job-count mismatch — confirming each failure message carries the full
+  snapshot including the newly added fields, then reverting every time.
 
 - **RFC-055 — Settings path resolution fails closed instead of silently
   substituting:** `app-json-settings` moves `2.0.3 → 2.6.0`, with a manifest

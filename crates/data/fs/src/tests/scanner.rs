@@ -24,19 +24,29 @@ fn status_count(counts: &[(FileStatus, u64)], status: FileStatus) -> u64 {
 /// macOS CI, cleared both times on rerun, with the failing assertion's
 /// own log unrecoverable afterward (GitHub serves the latest attempt's
 /// log under the superseded attempt's job id). This renders everything
-/// needed to distinguish the task's hypotheses from a single failure, no
-/// second run required:
+/// needed to explain **whichever of the test's six assertions trips** --
+/// the log is gone, so which one failed is itself unknown -- from a
+/// single failure, no second run required:
 ///
 /// - The full `ScanSummary`, not just whichever count the failing
 ///   assertion happened to check.
-/// - A recursive listing of the temp root with each entry's type --
-///   catches an unexpected extra/missing filesystem entry directly.
-/// - The `files.canonical_path` this scan actually wrote to the catalog,
-///   alongside the path the test itself computed via
-///   `fs::canonicalize` -- catches a canonicalization mismatch (macOS's
-///   `$TMPDIR` is a symlink into `/private/var/folders/...`, so the
-///   scanner and the test disagreeing on which form to store is a live
-///   hypothesis, not a hypothetical one).
+/// - A recursive listing of the temp root with each entry's type, size
+///   and mtime -- catches an unexpected extra/missing filesystem entry
+///   directly (Review 181 §2: size/mtime are not decoration, since
+///   `policy.rs`'s `max_file_size_bytes` skip and this suite's own
+///   staleness detection both turn on them; an entry that is present but
+///   has an unexpected size or timestamp is a live explanation for a
+///   wrong `new_files` that a type-only listing would render invisible).
+/// - The `files` row this scan actually wrote for each entry --
+///   `canonical_path` (alongside the path the test itself computed via
+///   `fs::canonicalize`, to catch a canonicalization mismatch: macOS's
+///   `$TMPDIR` is a symlink into `/private/var/folders/...`), plus
+///   `file_status` and whether `content_hash` is present (Review 181 §2:
+///   without these the snapshot explained only the `new_files` and
+///   directory-listing assertions -- two of six).
+/// - The `index_jobs` rows for this source: job type and status per row
+///   (Review 181 §2: covers the two job-count assertions, which the
+///   original snapshot said nothing about at all).
 fn diagnostic_context(
     catalog: &Catalog,
     source_id: &SourceId,
@@ -72,10 +82,47 @@ fn diagnostic_context(
 
     let _ = writeln!(
         ctx,
-        "catalog `files` rows for this source (canonical_path as the scanner wrote it, display_path):"
+        "catalog `files` rows for this source (canonical_path as the scanner wrote it, display_path, file_status, has_content_hash):"
     );
     let conn = catalog.lock();
-    match conn.prepare("SELECT canonical_path, display_path FROM files WHERE source_id = ?1") {
+    match conn.prepare(
+        "SELECT canonical_path, display_path, file_status, content_hash IS NOT NULL \
+         FROM files WHERE source_id = ?1",
+    ) {
+        Ok(mut stmt) => {
+            let rows = stmt.query_map([source_id.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, bool>(3)?,
+                ))
+            });
+            match rows {
+                Ok(rows) => {
+                    for row in rows.flatten() {
+                        let _ = writeln!(
+                            ctx,
+                            "  canonical_path={} display_path={} file_status={} has_content_hash={}",
+                            row.0, row.1, row.2, row.3
+                        );
+                    }
+                }
+                Err(error) => {
+                    let _ = writeln!(ctx, "  <query_map failed: {error}>");
+                }
+            }
+        }
+        Err(error) => {
+            let _ = writeln!(ctx, "  <prepare failed: {error}>");
+        }
+    }
+
+    let _ = writeln!(
+        ctx,
+        "catalog `index_jobs` rows for this source (job_type, status):"
+    );
+    match conn.prepare("SELECT job_type, status FROM index_jobs WHERE source_id = ?1") {
         Ok(mut stmt) => {
             let rows = stmt.query_map([source_id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -83,7 +130,7 @@ fn diagnostic_context(
             match rows {
                 Ok(rows) => {
                     for row in rows.flatten() {
-                        let _ = writeln!(ctx, "  canonical_path={} display_path={}", row.0, row.1);
+                        let _ = writeln!(ctx, "  job_type={} status={}", row.0, row.1);
                     }
                 }
                 Err(error) => {
@@ -115,7 +162,23 @@ fn list_dir_into(dir: &Path, depth: usize, ctx: &mut String) {
         } else {
             "other"
         };
-        let _ = writeln!(ctx, "{}{} [{kind}]", "  ".repeat(depth), path.display());
+        let metadata = fs::symlink_metadata(&path).ok();
+        let size = metadata
+            .as_ref()
+            .map(|m| m.len().to_string())
+            .unwrap_or_else(|| "?".to_string());
+        let mtime = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| format!("{}s", d.as_secs()))
+            .unwrap_or_else(|| "?".to_string());
+        let _ = writeln!(
+            ctx,
+            "{}{} [{kind}, size={size}, mtime={mtime}]",
+            "  ".repeat(depth),
+            path.display()
+        );
         if path.is_dir() && !path.is_symlink() {
             list_dir_into(&path, depth + 1, ctx);
         }
