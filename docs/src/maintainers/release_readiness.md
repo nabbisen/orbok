@@ -133,6 +133,42 @@ At minimum, the open decisions are:
 
 ## Manual QA Checklist (required: RC → Release)
 
+### Platform scope
+
+**macOS is a supported platform** (owner decision, 2026-08-15), on the same
+footing as Linux and Windows: Rust and iced both support it, and RFC-019 §7's
+matrix already requires Release Smoke there.
+
+The checklist below is run **by hand on Linux and Windows**. On macOS it is
+covered by the GitHub Actions `cross` job, excluding the steps that require a
+person at the machine. Concretely, macOS gets:
+
+- the `orbok` binary built, `--version`, and `--check` headless;
+- `orbok-ui`'s full library suite, including the `iced_test::Simulator` headless
+  view-rendering tests;
+- `orbok`'s `--bin` and `--lib` suites, the RFC-049 isolation harness, and the
+  RFC-050 lifecycle and abrupt-exit matrices.
+
+What macOS does **not** get is a human looking at the screen: the high-contrast
+and grayscale visual passes, and the keyboard walkthrough as *operated* rather
+than as asserted.
+
+Two things bound how much that costs, and both are worth stating so the scope is
+not read as larger than it is:
+
+1. **The rules RFC-034 §6 sets are code properties**, not rendering outcomes —
+   token-paired foreground/background, a text label on every status, keyboard
+   operability, focus trapping, no icon-only controls. Those are exercised by the
+   UI suite, which now runs on all three platforms.
+2. **Screen-reader coverage is limited on every platform, not specially on
+   macOS.** RFC-034 §4 lists platform accessibility-tree integration (AccessKit)
+   as a non-goal, gated on iced/snora. A VoiceOver pass would therefore not be
+   testing something Orca already confirms.
+
+The residual macOS gap is honest and narrow: **no human visual or interaction
+pass.** State it that way in release notes rather than as "tested on three
+platforms."
+
 ### Accessibility (RFC-034)
 
 Run the full QA steps from [`docs/src/maintainers/accessibility.md`](accessibility.md)
