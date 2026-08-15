@@ -5028,9 +5028,9 @@ dependencies = [
 
 [[package]]
 name = "snora"
-version = "0.25.1"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce4f3482d328cf6fd784d15cc74f1a511fec219dd01e9f8800bd1a865637b862"
+checksum = "4ac32d7813ef69e98822b0ac1a58db55c9d27c2a2ecd2fba2e508d9de9d8df4b"
 dependencies = [
  "iced",
  "lucide-icons",
@@ -5041,24 +5041,24 @@ dependencies = [
 
 [[package]]
 name = "snora-core"
-version = "0.25.1"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b646faeeea88ad27e995fb34d7620ea4186a4b423c93d26a03aaae29311b5fe"
+checksum = "779fea798970f2070b05de61ad5175f0a04b02c6cfaedba6ea978c7eb549383a"
 dependencies = [
  "lucide-icons",
 ]
 
 [[package]]
 name = "snora-design"
-version = "0.25.1"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e0b777bca6033eab199c755b3a76140dde85bda41babe2558b8e750bc08516e"
+checksum = "ab3297cc09971761003cc73012089832a59a5b739ec8cf28d7dc9ab045badad5"
 
 [[package]]
 name = "snora-widgets"
-version = "0.25.1"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc43fccb31912cc13c40f7abd266030f16864311dfdb5aa9b0fd66f72930744b"
+checksum = "0929f19fce15cd879137dc15db0a6d447b07b18e796461c98958791d2a6e289d"
 dependencies = [
  "iced",
  "lucide-icons",

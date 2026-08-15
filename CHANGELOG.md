@@ -445,6 +445,31 @@ next release tag.
   never remade) — both spellings coexist in history, and the old name is
   what was actually published for those releases.
 
+### Changed
+
+- **Task 022 — snora 0.25.1 → 0.30.0, Phase 1 of snora's upgrade plan
+  only:** the version-bump hop of a four-phase migration; Phases 2–4
+  (theme emission via `snora::design::theme()`, dialog card/modal dim,
+  and chrome geometry — the last of which deliberately moves the sidebar
+  item gap 16 → 12) are visual changes queued behind Owner Task 003 Part
+  B's manual QA pass and were not touched. Additive per snora's own
+  per-version guides ("no breaking changes to any public API") and
+  0.30.0's README (157 public items at both 0.29.0 and 0.30.0, none
+  removed or renamed) — confirmed against orbok's own code rather than
+  taken on snora's word: zero `snora::Id` usage anywhere in this tree, so
+  0.29.0's rendered-surface identifier rename (which only affects code
+  asserting on identifier strings) is inert here for a different reason
+  than snora's other consumers hit. `cargo update -p snora` moved exactly
+  four crates (`snora`, `snora-core`, `snora-design`, `snora-widgets`)
+  with 149 dependencies unchanged — no transitive churn. `cargo test -p
+  orbok-ui --lib`: 96/96. **No visual check was performed**; Phase 1's own
+  guarantee is that nothing should look different, and if it does, that's
+  a snora bug per their upgrade plan §7, not an orbok regression to chase
+  here. One documented gap: snora's handoff bundles are written from a
+  0.25.2 baseline, and this workspace was on 0.25.1 — the 0.25.1 → 0.25.2
+  hop appears in none of them. Not chased (a patch release, almost
+  certainly irrelevant), but not claimed as verified either.
+
 ### Fixed
 
 - **RFC-049/RFC-039 — settings writes are now atomic and owner-only
