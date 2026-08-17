@@ -59,13 +59,36 @@ at the ≥ 3.0:1 threshold.
 
 ### 2.1.1 Keyboard
 
-**Status: Met.**
+**Status: NOT MET.** Corrected 2026-08-16 after the first keyboard-only
+walkthrough was attempted (Owner Task 003 Part B). This entry previously read
+"Met — every action is keyboard-operable… No action is mouse-only." That was
+false, and had been since this document was written.
 
-Every action is keyboard-operable. The shortcut map is implemented in
-`key_to_message` (`crates/ui/src/shell.rs`) and wired via
-`iced::keyboard::listen()` in the `orbok` app crate. No action is mouse-only.
+**What is actually operable by keyboard** is exactly the six shortcuts below,
+and nothing else. There are **37 `button(` call sites** in `crates/ui/src` and
+none of them can be reached or activated without a mouse.
 
-Shortcut map:
+Three facts, each verifiable:
+
+1. **iced 0.14 performs no Tab traversal of its own.** `Named::Tab` appears
+   nowhere in `iced-0.14.0` or `iced_runtime-0.14.0`. Focus movement requires
+   the application to call `focus_next()`/`focus_previous()`
+   (`iced_runtime::widget::operation`).
+2. **orbok never calls them.** `key_to_message` returns `None` for `Tab`
+   (`crates/ui/src/shell.rs`), with a comment stating that iced handles it. It
+   does not.
+3. **Only `text_input` and `text_editor` implement `Focusable`** in
+   `iced_widget-0.14.2`. `button` does not. So even once Tab is wired, it will
+   reach orbok's 4 text inputs and none of its 37 buttons.
+
+**Why the tests did not catch it:** `crates/ui/src/tests/a11y.rs` asserts that
+`key_to_message` maps each shortcut to the right `Message`. It does. The claim
+that failed was the inference from "the map is implemented" to "every action is
+operable", and no test of the map can reach it. The test that *would* have
+caught it is writable today — `iced_test::Simulator` has `tap_key` and `find` —
+and is required by the remediation task.
+
+Shortcut map, as actually implemented:
 
 | Shortcut | Action |
 |---|---|
@@ -75,22 +98,38 @@ Shortcut map:
 | `Enter` (search focused) | Submit search |
 | `Arrow Down` (not typing) | Select next result |
 | `Arrow Up` (not typing) | Select previous result |
-| `Tab` / `Shift+Tab` | Navigate controls (iced built-in) |
+
+> The row previously reading "`Tab` / `Shift+Tab` — Navigate controls (iced
+> built-in)" has been removed. It described behaviour that does not exist.
+
+**Remediation:** dev-team Task 024. Note that 2.1.1 does **not** require Tab
+traversal — it requires that all functionality be operable through a keyboard
+interface. An expanded binding map plus the existing selection-model pattern
+satisfies it without waiting on iced to make buttons focusable.
 
 ### 2.1.2 No Keyboard Trap
 
-**Status: Met.**
+**Status: Met, but vacuously — corrected 2026-08-16.**
 
-The confirmation dialog (`confirm_reset`) renders only its own interactive
-controls while active, so Tab cycling is naturally contained. `Escape` always
-dismisses via `DismissOverlay`. No permanent keyboard trap exists.
+The claim is true and means less than it appears: there is no keyboard trap
+because there is no Tab cycling to be trapped in (see 2.1.1). `Escape` does
+dismiss the confirmation dialog via `DismissOverlay`, which is real and worth
+keeping.
+
+Re-assess this criterion once Task 024 lands. A trap becomes *possible* only
+once focus traversal exists.
 
 ### 2.4.3 Focus Order
 
-**Status: Met (iced built-in).**
+**Status: NOT MET — corrected 2026-08-16.**
 
-iced 0.14 manages Tab order by widget tree order, which matches the visual
-reading order in orbok's column-based layouts.
+This previously read "Met (iced built-in) — iced 0.14 manages Tab order by
+widget tree order." **iced 0.14 manages no Tab order.** There is no traversal to
+have an order (see 2.1.1's three facts).
+
+The underlying reasoning was sound in shape — orbok's column-based layouts *do*
+match visual reading order, so once traversal exists the order should be
+correct. But an order that nothing traverses is not a met criterion.
 
 ### 2.4.7 Focus Visible
 

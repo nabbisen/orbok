@@ -196,6 +196,23 @@ manual QA checklist with an accessibility section gated at M13.
 2. Every status carries a text label; tone/color is supplementary, never sole.
 3. Every action is keyboard-operable; the §5.3 shortcut map is implemented and
    does not break text entry.
+
+   > **Amended 2026-08-16 — this rule is not satisfied, and its wording is why
+   > that went unnoticed.** The semicolon joins two claims as though the second
+   > established the first. The shortcut map *is* implemented and *does* avoid
+   > breaking text entry. "Every action is keyboard-operable" is separately
+   > false: iced 0.14 performs no Tab traversal, orbok never calls
+   > `focus_next()`, and only `text_input`/`text_editor` implement `Focusable`
+   > — so all 37 button call sites in `crates/ui/src` are mouse-only.
+   >
+   > Found when the keyboard-only walkthrough was attempted for the first time
+   > (Owner Task 003 Part B, 2026-08-16); nothing in it worked. Full evidence
+   > and the corrected per-criterion status are in
+   > `docs/src/maintainers/accessibility.md` §2.1.1, §2.1.2, §2.4.3.
+   > Remediation is dev-team Task 024.
+   >
+   > **The rule stays as written** — it is the right requirement. What was wrong
+   > was recording it as satisfied.
 4. Dialogs trap focus and restore it to the trigger on close.
 5. No control is operable as icon-only; icon controls carry an i18n label
    (visible in wide layouts, tooltip otherwise).
@@ -261,3 +278,15 @@ Snora Design token contrast guarantee (RFC-032), the accessible primitives
 labels for all icon controls, and a 44px target rule — with the iced-0.14
 focus-ring limitation documented and tracked rather than hidden. Conformance is
 recorded in a maintainer doc and gated in M13 QA.
+
+> **Status correction, 2026-08-16.** The target stands; the *claim of having met
+> it* did not survive first contact. Two criteria are now recorded as NOT MET
+> (2.1.1 Keyboard, 2.4.3 Focus Order) and one as vacuously met (2.1.2). See §6
+> rule 3's amendment.
+>
+> Worth recording why this RFC could be marked Implemented while a headline
+> criterion was unmet: the M13 QA gate it relies on had **never been run**. The
+> conformance record was written from the implementation, not from exercising
+> it. Every claim it makes about code properties — token pairing, i18n labels,
+> target size — held up. Every claim about *operating* the application did not,
+> and those were exactly the ones the ungated QA step existed to check.
