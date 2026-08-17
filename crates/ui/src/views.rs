@@ -67,8 +67,14 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
                 .collect::<Vec<_>>()
                 .join(" · ");
 
-            let mut entry_col = column![text(&entry.search_text).size(theme::body_s(tokens, sc))]
-                .spacing(tokens.spacing.xs);
+            // The user's own past query, unbounded length -- wraps like any
+            // other prose (Task 028 §2).
+            let mut entry_col = column![
+                text(&entry.search_text)
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens))
+            ]
+            .spacing(tokens.spacing.xs);
 
             if !filter_summary.is_empty() {
                 entry_col = entry_col.push(
@@ -122,6 +128,7 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
                 .size(theme::body_s(tokens, sc)),
             text(tr(locale, MessageKey::ClearRecentSearchesConfirmBody))
                 .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens))
                 .color(to_iced_color(tokens.palette.text_secondary)),
             row![
                 button(text(tr(locale, MessageKey::Cancel)).size(theme::meta_s(tokens, sc)))
@@ -300,9 +307,11 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(
             column![
                 text(tr(locale, MessageKey::SearchFilesStillPreparing))
-                    .size(theme::meta_s(tokens, sc)),
+                    .size(theme::meta_s(tokens, sc))
+                    .line_height(theme::meta_lh(tokens)),
                 text(tr(locale, MessageKey::SearchResultsWillImprove))
-                    .size(theme::meta_s(tokens, sc)),
+                    .size(theme::meta_s(tokens, sc))
+                    .line_height(theme::meta_lh(tokens)),
             ]
             .spacing(tokens.spacing.xs),
         );
@@ -334,7 +343,9 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(
             column![
                 text(tr(locale, MessageKey::SearchNoSourcesTitle)).size(theme::title_s(tokens, sc)),
-                text(tr(locale, MessageKey::SearchNoSourcesBody)).size(theme::body_s(tokens, sc)),
+                text(tr(locale, MessageKey::SearchNoSourcesBody))
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens)),
                 components::primary(
                     tokens,
                     tr(locale, MessageKey::SearchAddSource),
@@ -347,7 +358,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         if state.capability == SearchCapability::KeywordOnly {
             content = content.push(
                 text(tr(locale, MessageKey::SearchKeywordOnlyNotice))
-                    .size(theme::meta_s(tokens, sc)),
+                    .size(theme::meta_s(tokens, sc))
+                    .line_height(theme::meta_lh(tokens)),
             );
         }
         if state.search_running {
@@ -359,7 +371,11 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     column![
                         text(tr(locale, MessageKey::SearchNoResults))
                             .size(theme::body_s(tokens, sc)),
-                        text(fmt_query(locale, last)).size(theme::meta_s(tokens, sc)),
+                        // Echoes the user's own query text back -- unbounded
+                        // length, same reasoning as recent-search entries.
+                        text(fmt_query(locale, last))
+                            .size(theme::meta_s(tokens, sc))
+                            .line_height(theme::meta_lh(tokens)),
                     ]
                     .spacing(tokens.spacing.xs),
                 );
@@ -425,7 +441,9 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::SourcesTitle)),
         row![add_btn, container(add_input).width(Length::Fill)].spacing(tokens.spacing.sm),
-        text(tr(locale, MessageKey::SourcesRecursiveHint)).size(theme::meta_s(tokens, sc)),
+        text(tr(locale, MessageKey::SourcesRecursiveHint))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
     ];
 
     if let Some(notice) = &state.notice {
@@ -435,7 +453,9 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(
             column![
                 text(tr(locale, MessageKey::SourcesEmptyTitle)).size(theme::title_s(tokens, sc)),
-                text(tr(locale, MessageKey::SourcesEmptyBody)).size(theme::body_s(tokens, sc)),
+                text(tr(locale, MessageKey::SourcesEmptyBody))
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens)),
             ]
             .spacing(tokens.spacing.sm),
         );
@@ -540,7 +560,9 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     if state.confirm_reset {
         let content = column![
             text(tr(locale, MessageKey::StorageResetCatalog)).size(theme::title_s(tokens, sc)),
-            text(tr(locale, MessageKey::StorageResetWarning)).size(theme::body_s(tokens, sc)),
+            text(tr(locale, MessageKey::StorageResetWarning))
+                .size(theme::body_s(tokens, sc))
+                .line_height(theme::body_lh(tokens)),
             row![
                 components::ghost(
                     tokens,
@@ -564,7 +586,9 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
 
     let mut breakdown = column![
         text(tr(locale, MessageKey::StorageTitle)).size(theme::heading_s(tokens, sc)),
-        text(tr(locale, MessageKey::StorageIntro)).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::StorageIntro))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
         text(fmt_gib(locale, gib)).size(theme::title_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.xs);
@@ -633,7 +657,9 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             tr(locale, MessageKey::StorageResetCatalog),
             Some(Message::AskResetCatalog)
         ),
-        text(tr(locale, MessageKey::StorageResetWarning)).size(theme::meta_s(tokens, sc)),
+        text(tr(locale, MessageKey::StorageResetWarning))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
     ];
     page(tokens, content)
 }
@@ -668,7 +694,9 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
     ];
     if state.capability == SearchCapability::KeywordOnly {
         content = content.push(
-            text(tr(locale, MessageKey::ModelsKeywordOnlyHint)).size(theme::meta_s(tokens, sc)),
+            text(tr(locale, MessageKey::ModelsKeywordOnlyHint))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
         );
     }
     if let Some(provenance) = state.active_model_provenance {
@@ -758,14 +786,20 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         // Accessibility
         row![
             motion_btn,
-            text(tr(locale, MessageKey::SettingsReduceMotionHint)).size(theme::meta_s(tokens, sc)),
+            text(tr(locale, MessageKey::SettingsReduceMotionHint))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
         ]
         .spacing(tokens.spacing.sm),
         // CVD note (always-on — informational, not a toggle)
-        text(tr(locale, MessageKey::SettingsCvdNote)).size(theme::meta_s(tokens, sc)),
+        text(tr(locale, MessageKey::SettingsCvdNote))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
         // Privacy
         text(tr(locale, MessageKey::SettingsPrivacyHeading)).size(theme::body_s(tokens, sc)),
-        text(tr(locale, MessageKey::SettingsPrivacyLocalOnly)).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::SettingsPrivacyLocalOnly))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
         // RFC-042: Remember recent searches toggle + note.
         row![
             button(
@@ -782,7 +816,9 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
             text(tr(locale, MessageKey::RememberRecentSearches)).size(theme::body_s(tokens, sc)),
         ]
         .spacing(tokens.spacing.sm),
-        text(tr(locale, MessageKey::RecentSearchesPrivacyNote)).size(theme::meta_s(tokens, sc)),
+        text(tr(locale, MessageKey::RecentSearchesPrivacyNote))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
         recent_searches_clear_control(state),
         // Advanced
         text(tr(locale, MessageKey::SettingsAdvancedHeading)).size(theme::body_s(tokens, sc)),
@@ -796,7 +832,9 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
                 .size(theme::body_s(tokens, sc)),
             )
             .on_press(Message::ToggleAdvanced),
-            text(tr(locale, MessageKey::SettingsAdvancedHint)).size(theme::meta_s(tokens, sc)),
+            text(tr(locale, MessageKey::SettingsAdvancedHint))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
         ]
         .spacing(tokens.spacing.sm),
     ];

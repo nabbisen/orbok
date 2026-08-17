@@ -495,6 +495,41 @@ next release tag.
   supplied `Tokens` would flow straight through if the chrome ever reads
   too loose. The 0.25.1 → 0.25.2 gap Task 022 left open is now closed:
   a single commit correcting an example's version string, nothing else.
+- **Task 028 — line-height for wrapping prose (RFC-032, snora's
+  `Typography` scale).** orbok used five of snora's six text roles for
+  *size* but never read `TextRole.line_height` — `grep -rn 'line_height'
+  crates/` returned nothing before this task. Scope is deliberately
+  narrow: only `body` (1.4×, snora's default) and `body_small` (1.35×)
+  get new `theme::body_lh`/`theme::meta_lh` helpers, since every other
+  role is either identical to iced's own `Relative(1.3)` default
+  (`title`) or *tighter* (`heading`, `label`, `display`) — adopting the
+  full scale "for consistency" would have made those tighter, the
+  opposite of the request. And only sites where the text can actually
+  wrap to a second line: a per-site judgement across the 125
+  `body`/`body_small` call sites (scaled and unscaled) in `views.rs`,
+  `views/wizard.rs`, and `components.rs`, not a mechanical sweep — 27
+  sites (descriptions, hint and privacy-note text, confirm-dialog
+  bodies, error explanations, a result card's title and excerpt
+  snippet, and free-form user-typed text echoed back in search
+  history/queries) gained line-height; the remaining 98 (status lines,
+  button/toggle/chip captions, data rows, paths, and short single-value
+  fields) did not, since looser spacing on text that never wraps only
+  adds unused vertical space. `body_lh`/
+  `meta_lh` read `Tokens.typography.body{,_small}.line_height` live —
+  never a hardcoded 1.4/1.35 — confirmed by a test that mutates a
+  `Tokens` copy and asserts the helpers follow it, not a preset default;
+  reverting to a hardcoded constant was confirmed to fail that test,
+  then restored. No `TextScale` interaction needed:
+  `LineHeight::Relative` is a multiplier of the (already-scaled) font
+  size. **Visual change with no automated visual verification** —
+  `iced_test::Simulator` finds text, it does not measure line boxes —
+  same disclosure Tasks 022/023 gave their unchecked snora bumps; spot-
+  checked live instead by narrowing the running window to force actual
+  wrapping (600px) and confirming comfortable, non-colliding spacing
+  across Settings, Sources, and the wizard's Setup page, at both default
+  and full width. `cargo update -p snora --dry-run` shows 0.33.0 → 0.33.1
+  available (documentation-only per its release notes); not applied, per
+  scope — reported here as instructed, not acted on.
 
 ### Fixed
 

@@ -740,6 +740,45 @@ fn text_scale_helpers_produce_correct_sizes() {
     }
 }
 
+// ── RFC-032 (Task 028): line-height for wrapping prose ───────────────────
+
+// The guard against hardcoding (Task 028 §4): `body_lh`/`meta_lh` must
+// read `Tokens.typography` live, not return a baked-in 1.4/1.35 constant.
+// Mutating the token values and re-asserting is what actually
+// distinguishes "reads the token" from "happens to match the default
+// preset's value" -- the first assertion alone would pass either way.
+#[test]
+fn line_height_helpers_track_tokens_not_constants() {
+    use crate::theme;
+    use iced::widget::text::LineHeight;
+
+    let tokens = Tokens::light();
+    assert_eq!(
+        theme::body_lh(&tokens),
+        LineHeight::Relative(tokens.typography.body.line_height),
+        "body_lh must read Tokens.typography.body.line_height"
+    );
+    assert_eq!(
+        theme::meta_lh(&tokens),
+        LineHeight::Relative(tokens.typography.body_small.line_height),
+        "meta_lh must read Tokens.typography.body_small.line_height"
+    );
+
+    let mut mutated = tokens;
+    mutated.typography.body.line_height = 2.5;
+    mutated.typography.body_small.line_height = 1.05;
+    assert_eq!(
+        theme::body_lh(&mutated),
+        LineHeight::Relative(2.5),
+        "body_lh must follow a mutated Tokens value, not a hardcoded 1.4"
+    );
+    assert_eq!(
+        theme::meta_lh(&mutated),
+        LineHeight::Relative(1.05),
+        "meta_lh must follow a mutated Tokens value, not a hardcoded 1.35"
+    );
+}
+
 // ── RFC-035: locale-aware formatting ─────────────────────────────────────
 
 #[test]

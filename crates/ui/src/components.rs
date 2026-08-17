@@ -139,14 +139,22 @@ pub fn result_card<'a>(
     };
 
     let body = column![
-        text(title).size(theme::body(tokens)),
+        // A result's title -- often a document heading, not guaranteed
+        // to fit one line at the card's bounded width (Task 028 §2).
+        text(title)
+            .size(theme::body(tokens))
+            .line_height(theme::body_lh(tokens)),
         text(display_path).size(theme::meta(tokens)),
         if !heading_str.is_empty() {
             text(heading_str).size(theme::meta(tokens))
         } else {
             text("").size(theme::meta(tokens))
         },
-        text(snippet.chars().take(120).collect::<String>()).size(theme::meta(tokens)),
+        // A genuine excerpt, meant to give context across more than one
+        // line -- the wrapping-prose case this task exists for.
+        text(snippet.chars().take(120).collect::<String>())
+            .size(theme::meta(tokens))
+            .line_height(theme::meta_lh(tokens)),
         badge_row,
     ]
     .spacing(tokens.spacing.xs);

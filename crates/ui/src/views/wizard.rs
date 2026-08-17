@@ -116,7 +116,9 @@ fn page_setup<'a>(
     let sc = state.text_scale;
     let mut col = column![
         text(tr(locale, MessageKey::WizardTitleNotConfigured)).size(theme::title_s(tokens, sc)),
-        text(tr(locale, MessageKey::WizardBodyNotConfigured)).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::WizardBodyNotConfigured))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
     ]
     .spacing(tokens.spacing.sm);
 
@@ -156,8 +158,11 @@ fn page_setup<'a>(
     );
 
     // ── Secondary action: locate existing files ───────────────────────
-    col = col
-        .push(text(tr(locale, MessageKey::WizardBodyFileMissing)).size(theme::meta_s(tokens, sc)));
+    col = col.push(
+        text(tr(locale, MessageKey::WizardBodyFileMissing))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
+    );
 
     // Show previous path hint when files were missing.
     if let Some((prev_dir, checks)) = missing {
@@ -226,8 +231,12 @@ fn page_download_consent<'a>(
     let col = column![
         text(tr(locale, MessageKey::ModelConsentTitle)).size(theme::title_s(tokens, sc)),
         text(presentation.model_name).size(theme::body_s(tokens, sc)),
-        text(tr(locale, MessageKey::ModelConsentBody)).size(theme::body_s(tokens, sc)),
-        text(tr(locale, MessageKey::ModelConsentPrivacy)).size(theme::body_s(tokens, sc)),
+        text(tr(locale, MessageKey::ModelConsentBody))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
+        text(tr(locale, MessageKey::ModelConsentPrivacy))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
         text(fmt_label_value(
             locale,
             tr(locale, MessageKey::ModelConsentProvider),
@@ -379,7 +388,9 @@ fn page_download_failed(
     };
     let col = column![
         text(tr(locale, MessageKey::ModelDownloadFailed)).size(theme::title_s(tokens, sc)),
-        text(detail).size(theme::body_s(tokens, sc)),
+        text(detail)
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
         button(text(tr(locale, MessageKey::ModelDownloadRetry)).size(theme::body_s(tokens, sc)),)
             .on_press(Message::RetryModelDownload),
         button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)),)
@@ -439,7 +450,9 @@ fn page_checked<'a>(
         );
     } else {
         col = col.push(
-            text(tr(locale, MessageKey::WizardBodyFileMissing)).size(theme::meta_s(tokens, sc)),
+            text(tr(locale, MessageKey::WizardBodyFileMissing))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
         );
         let path_input = text_input(
             tr(locale, MessageKey::WizardPathPlaceholder),
@@ -531,7 +544,8 @@ fn page_ready<'a>(
             col = col
                 .push(
                     text(tr(locale, MessageKey::ModelPersistenceFailed))
-                        .size(theme::body_s(tokens, sc)),
+                        .size(theme::body_s(tokens, sc))
+                        .line_height(theme::body_lh(tokens)),
                 )
                 .push(
                     button(
