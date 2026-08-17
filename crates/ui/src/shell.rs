@@ -103,6 +103,17 @@ pub fn key_to_message(
         // `Task` (see that call site's own comment).
         Key::Named(Named::Tab) if modifiers.shift() => Some(Message::FocusPrevious),
         Key::Named(Named::Tab) => Some(Message::FocusNext),
+        // Escape on the Downloading page  →  request cancellation (Task
+        // 027 §3.1, Task 025's Cancel button). Must come before the
+        // general Escape arm below: `DismissOverlay` is handled entirely
+        // by `AppState::update`, which is pure UI state and cannot issue
+        // the backend effect this needs (setting the cancellation flag);
+        // binding the `Message` directly here reaches `model_flow::reduce`
+        // instead, exactly as the mouse-driven Cancel button already does
+        // (see `main.rs:97`'s unconditional `model_flow::reduce` call).
+        Key::Named(Named::Escape) if ctx.wizard_kind == Some(WizardKind::Downloading) => {
+            Some(Message::CancelDownloadInProgress)
+        }
         // Escape  →  close any open overlay / dialog; restore focus to
         // trigger. `AppState::update`'s `DismissOverlay` handler decides
         // what "close" means from the state it already holds (confirm
@@ -169,27 +180,44 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     }
     if let Some(kind) = ctx.wizard_kind {
         return match kind {
-            // Setup and CheckedNotOk each also render a `text_input` with
-            // its own `on_submit(WizardValidate)`, which fires through
-            // iced's normal widget event handling whenever that input
-            // genuinely has focus -- independent of `ctx.text_input_focused`,
-            // which only ever approximates the *search* input's focus (see
-            // `KeyboardContext`'s own doc comment) and so cannot be used to
-            // detect this. Binding Enter here too would not be redundant
-            // with that -- it would be *wrong* for Setup, whose primary
-            // action is `DownloadModel`, a different action a Tab-then-type-
-            // then-Enter path down the text input must not also trigger.
-            // Left unbound rather than risk it: the text input's own Enter
-            // handling already gives `WizardValidate` a keyboard path on
-            // both pages; `DownloadModel` does not have an equivalent and
-            // is reported as a finding rather than given a conflicting one.
-            WizardKind::Setup | WizardKind::CheckedNotOk => None,
+            // Setup's primary action, DownloadModel (Task 027 §3.2/§3.3
+            // in the review request -- corrects Review 185 §4's reasoning,
+            // verified live before relying on it). Setup and CheckedNotOk
+            // each also render a `text_input` with its own
+            // `on_submit(WizardValidate)`; the concern when Task 024 first
+            // shipped this map was that a global Enter binding here could
+            // fire *alongside* that native submit and double-dispatch.
+            // That concern does not hold: iced's `text_input` calls
+            // `shell.capture_event()` on every Enter it receives while it
+            // genuinely has focus (`iced_widget::text_input`, the
+            // `Key::Named(Named::Enter)` arm inside its `is_focused` guard
+            // -- unconditional on modifiers), and `iced::keyboard::listen()`
+            // -- the subscription `key_to_message` runs through -- only
+            // ever receives events the widget tree left
+            // `Status::Ignored` (`iced_futures::keyboard::listen`'s own
+            // filter). A captured Enter never reaches this function at
+            // all. Verified against the real running app, not just read
+            // from source: with the path input Tab-focused and text
+            // typed, Enter reached only `WizardValidate` (the Checked
+            // page rendered, not DownloadConsent); with nothing focused,
+            // the same Enter reached only this arm (DownloadConsent
+            // rendered). No path produced both. `CheckedNotOk`'s own
+            // primary action is `WizardValidate` itself -- already
+            // reachable through the text input's native submit whenever
+            // it has focus -- so it stays unbound here rather than bind a
+            // second, redundant path to the same message; not reconsidered
+            // further since it was outside this task's scope.
+            WizardKind::Setup => Some(Message::DownloadModel),
+            WizardKind::CheckedNotOk => None,
             WizardKind::DownloadConsent => Some(Message::ConfirmModelDownload),
             WizardKind::CheckedOk | WizardKind::ReadyIdle | WizardKind::ReadyFailed => {
                 Some(Message::WizardAccept)
             }
             WizardKind::DownloadFailed => Some(Message::RetryModelDownload),
-            // Downloading has no button at all today (Task 025's); Ready
+            // Downloading's only action is Cancel (Task 025), reachable
+            // via Escape above -- not Enter, since Escape is already the
+            // convention this map uses for "stop/back out" actions
+            // (DownloadConsent's own Cancel mirrors the same key). Ready
             // while a save is in flight has nothing to confirm either.
             WizardKind::Downloading | WizardKind::ReadyInFlight => None,
         };

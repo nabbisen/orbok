@@ -182,23 +182,31 @@ pub enum WizardState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WizardKind {
     /// `NotConfigured` or `FileMissing`. Its `DownloadModel` primary action
-    /// is deliberately *not* bound to the global `Enter` -- this page also
-    /// renders a `text_input` with its own `on_submit(WizardValidate)`,
-    /// and `ctx.text_input_focused` cannot tell whether that input
-    /// genuinely has focus (it only ever approximates the search input's).
-    /// A conflicting binding would be worse than none: see
+    /// is bound to the global `Enter` (Task 027). This page also renders a
+    /// `text_input` with its own `on_submit(WizardValidate)`; Task 024
+    /// left this unbound believing the two could double-fire from one
+    /// keypress, but iced's `text_input` captures Enter whenever it
+    /// genuinely has focus (`shell.capture_event()`, unconditional on
+    /// modifiers) and `key_to_message` only ever runs through
+    /// `iced::keyboard::listen()`, which only receives events the widget
+    /// tree left uncaptured -- so a captured Enter never reaches this
+    /// binding at all. Verified live, not just reasoned from source: see
     /// `shell::confirm_message`'s own comment.
     Setup,
     DownloadConsent,
-    /// No primary action to bind: this page has no button at all today
-    /// (Task 025 adds Cancel here).
+    /// Primary action is `CancelDownloadInProgress` (Task 025's Cancel
+    /// button), bound to `Escape` rather than `Enter` (Task 027 §3.1) --
+    /// see `key_to_message`'s own Escape arm.
     Downloading,
     DownloadFailed,
     /// `Checked { all_ok: true, .. }` — primary action is `WizardAccept`.
     CheckedOk,
-    /// `Checked { all_ok: false, .. }`. Same reasoning as `Setup`: this
-    /// page's own `text_input` already owns `Enter` via its
-    /// `on_submit(WizardValidate)`; left unbound here for the same reason.
+    /// `Checked { all_ok: false, .. }`. Primary action is `WizardValidate`
+    /// itself -- the same action its own `text_input`'s
+    /// `on_submit(WizardValidate)` already gives a keyboard path whenever
+    /// that input has focus. Left unbound here (unlike `Setup`) because
+    /// binding `Enter` to the same message a second time would be
+    /// redundant, not because of a conflict -- see `shell::confirm_message`.
     CheckedNotOk,
     /// `Ready { persistence: Idle, .. }` — primary action is `WizardAccept`.
     ReadyIdle,

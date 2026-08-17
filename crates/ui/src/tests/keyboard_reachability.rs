@@ -19,7 +19,7 @@
 
 use crate::i18n::{MessageKey, tr};
 use crate::shell::{KeyboardContext, OrbokApp, key_to_message};
-use crate::state::{AppState, SourceCard, ViewId, WizardState};
+use crate::state::{AppState, ModelDownloadConsent, SourceCard, ViewId, WizardKind, WizardState};
 use crate::tests::iced_test_guard;
 use iced::keyboard::{Key, Modifiers, key::Named};
 use iced_test::simulator;
@@ -208,6 +208,44 @@ fn select_and_activate_a_source_by_keyboard() {
     assert_eq!(
         app.state.selected_source, None,
         "removing the selected source must not leave a stale index behind"
+    );
+}
+
+// Task 027 §3.2/§4: Setup's primary action, DownloadModel, reached by
+// Enter through the real application chain -- not just that
+// key_to_message maps it, but that AppState::update actually transitions
+// to the reviewed consent page and it renders.
+#[test]
+fn enter_on_setup_reaches_the_download_consent_page() {
+    let _guard = iced_test_guard();
+
+    let consent = ModelDownloadConsent::trusted_default("/managed/models".into());
+    let mut app = OrbokApp::with_state(AppState {
+        wizard: Some(WizardState::NotConfigured),
+        model_download_consent: Some(consent.clone()),
+        ..Default::default()
+    });
+
+    let ctx = KeyboardContext {
+        wizard_kind: Some(WizardKind::Setup),
+        ..neutral_ctx(app.state.active_view)
+    };
+    press(
+        &mut app,
+        Key::Named(Named::Enter),
+        Modifiers::default(),
+        &ctx,
+    );
+
+    assert!(
+        matches!(app.state.wizard, Some(WizardState::DownloadConsent { .. })),
+        "Enter on Setup must reach DownloadConsent, mirroring the mouse-only Download button"
+    );
+
+    let mut ui = simulator(app.view());
+    assert!(
+        ui.find(consent.model_name).is_ok(),
+        "the reviewed offer must actually render, not just the state transition"
     );
 }
 

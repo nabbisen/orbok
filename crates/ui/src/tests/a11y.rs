@@ -283,6 +283,7 @@ fn key_map_enter_confirms_by_context() {
     );
 
     let wizard_expectations = [
+        (WizardKind::Setup, Message::DownloadModel),
         (WizardKind::DownloadConsent, Message::ConfirmModelDownload),
         (WizardKind::CheckedOk, Message::WizardAccept),
         (WizardKind::ReadyIdle, Message::WizardAccept),
@@ -305,19 +306,18 @@ fn key_map_enter_confirms_by_context() {
         );
     }
 
-    // Downloading/ReadyInFlight: no button exists to confirm. Setup/
-    // CheckedNotOk: a button *does* exist (Download; Validate), but each
-    // page also renders its own `text_input` with a competing
-    // `on_submit`, and `ctx.text_input_focused` cannot distinguish "that
-    // input has real focus" from "nothing does" (it only ever tracks the
-    // search input's approximate focus) -- binding Enter here too would
-    // risk firing both, which for Setup means the wrong action
-    // (`DownloadModel`) alongside the right one. Left unbound rather than
-    // risk it; see `confirm_message`'s own comment.
+    // Downloading/ReadyInFlight: no *confirming* action exists (Downloading's
+    // Cancel is bound to Escape, not Enter -- see the dedicated Escape
+    // test below). CheckedNotOk: its own `text_input`'s
+    // `on_submit(WizardValidate)` already gives the page's one action a
+    // keyboard path whenever that input has focus, so binding the same
+    // message to Enter here too would be redundant, not conflicting (Setup
+    // is different: `DownloadModel` has no such equivalent, which is why
+    // it *is* bound above -- see `confirm_message`'s own comment for why
+    // that does not double-fire against the input's native submit).
     for kind in [
         WizardKind::Downloading,
         WizardKind::ReadyInFlight,
-        WizardKind::Setup,
         WizardKind::CheckedNotOk,
     ] {
         assert!(
@@ -368,6 +368,58 @@ fn key_map_enter_confirms_by_context() {
         key_to_message(&Key::Named(Named::Enter), none, &ctx(false)).is_none(),
         "Enter on a plain page with nothing to confirm must do nothing"
     );
+}
+
+// Task 027 §3.1: Escape on the Downloading page requests cancellation
+// rather than falling through to the general DismissOverlay arm -- the
+// one page where Escape's meaning isn't "close/dismiss" but "stop this".
+#[test]
+fn key_map_escape_cancels_download_in_progress() {
+    let none = Modifiers::default();
+
+    assert!(
+        matches!(
+            key_to_message(
+                &Key::Named(Named::Escape),
+                none,
+                &KeyboardContext {
+                    wizard_kind: Some(WizardKind::Downloading),
+                    ..ctx(false)
+                }
+            ),
+            Some(Message::CancelDownloadInProgress)
+        ),
+        "Escape on Downloading → CancelDownloadInProgress, not DismissOverlay"
+    );
+
+    // Every other wizard kind must still fall through to the general
+    // DismissOverlay arm -- this binding is Downloading-specific, not a
+    // blanket override of Escape's meaning inside the wizard.
+    for kind in [
+        WizardKind::Setup,
+        WizardKind::DownloadConsent,
+        WizardKind::CheckedOk,
+        WizardKind::CheckedNotOk,
+        WizardKind::DownloadFailed,
+        WizardKind::ReadyIdle,
+        WizardKind::ReadyFailed,
+        WizardKind::ReadyInFlight,
+    ] {
+        assert!(
+            matches!(
+                key_to_message(
+                    &Key::Named(Named::Escape),
+                    none,
+                    &KeyboardContext {
+                        wizard_kind: Some(kind),
+                        ..ctx(false)
+                    }
+                ),
+                Some(Message::DismissOverlay)
+            ),
+            "Escape on {kind:?} must still fall through to DismissOverlay"
+        );
+    }
 }
 
 // Printable keys and Enter while typing must not be intercepted.

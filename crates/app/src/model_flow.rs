@@ -453,6 +453,61 @@ mod tests {
         );
     }
 
+    // Task 027 §3.1/§4: Escape's actual consequence on the Downloading
+    // page, through the real chain -- `key_to_message` then
+    // `model_flow::reduce`, exactly what `crates/app/src/main.rs`'s
+    // subscription and update closure do for every real key press.
+    // `orbok_ui`'s own `keyboard_reachability.rs` can only drive
+    // `key_to_message` → `AppState::update`, since it has no access to
+    // this crate's `model_flow::reduce` -- and `AppState::update` alone
+    // does *not* handle `CancelDownloadInProgress` (it is a no-op there
+    // by design; see `state.rs`'s own comment on that arm), so proving
+    // this message's actual consequence has to live here, where the
+    // reducer that owns it does.
+    #[test]
+    fn escape_on_downloading_requests_cancellation_through_the_real_chain() {
+        let mut state = consent_state();
+        reduce(&mut state, &Message::ConfirmModelDownload);
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::Downloading {
+                cancelling: false,
+                ..
+            })
+        ));
+
+        let ctx = orbok_ui::KeyboardContext {
+            text_input_focused: false,
+            active_view: orbok_ui::state::ViewId::Search,
+            confirm_reset: false,
+            confirm_clear_history: false,
+            wizard_kind: state.wizard.as_ref().map(WizardState::kind),
+            selected_source_id: None,
+        };
+        let message = orbok_ui::key_to_message(
+            &iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+            iced::keyboard::Modifiers::default(),
+            &ctx,
+        )
+        .expect("Escape on the Downloading page must map to a Message");
+
+        assert_eq!(
+            reduce(&mut state, &message),
+            Some(ModelFlowEffect::CancelManagedDownload),
+            "Escape's Message must reach the same effect the Cancel button does"
+        );
+        assert!(
+            matches!(
+                state.wizard,
+                Some(WizardState::Downloading {
+                    cancelling: true,
+                    ..
+                })
+            ),
+            "cancellation must actually be recorded, not just the right effect returned"
+        );
+    }
+
     #[test]
     fn cancel_in_progress_outside_downloading_is_defensive() {
         let mut state = consent_state();

@@ -101,16 +101,33 @@ navigation/list/dialog surface:
 | `Ctrl/Cmd + ,` | Open Settings |
 | `Ctrl/Cmd + 1`..`6` | Jump directly to each of the six views |
 | `Tab` / `Shift+Tab` | Move focus among the 4 text inputs |
-| `Escape` | Close overlay / dismiss notice / **skip or back out of the wizard** / cancel a confirm dialog / clear a list selection (priority order, first match wins) |
+| `Escape` | Close overlay / dismiss notice / **skip or back out of the wizard** / **cancel an in-progress model download** / cancel a confirm dialog / clear a list selection (priority order, first match wins) |
 | `Enter` (search input focused) | Submit search |
-| `Enter` (not typing) | Confirm whichever dialog/wizard page/list selection is active, if any (§ below) |
+| `Enter` (not typing) | Confirm whichever dialog/wizard page/list selection is active, if any (§ below) — on the Setup page this downloads the reviewed model |
 | `Arrow Down`/`Up` (Search view, not typing) | Select next/previous result |
 | `Arrow Down`/`Up` (Sources view, not typing) | Select next/previous source |
 
 **The wizard — the walkthrough's actual blocker — is fixed.** `Escape` on
 the Setup/Checked/DownloadFailed pages performs the same zero-confirmation
 fallback the mouse-only Skip button does; on DownloadConsent it mirrors
-Cancel. A keyboard-only user reaching first launch is no longer stuck.
+Cancel; on Downloading it requests cancellation (Task 027), mirroring
+Task 025's Cancel button. A keyboard-only user reaching first launch is no
+longer stuck.
+
+**Setup's primary action, `DownloadModel`, is bound to `Enter` (Task 027).**
+Task 024 left it unbound, reasoning that a global `Enter` binding could
+fire alongside the page's own `text_input`'s `on_submit(WizardValidate)`
+and double-dispatch. That reasoning does not hold: iced's `text_input`
+captures every `Enter` it receives while it genuinely has focus
+(`shell.capture_event()`, unconditional on modifiers), and
+`iced::keyboard::listen()` — the subscription `key_to_message` runs
+through — only ever receives events the widget tree left uncaptured. A
+captured `Enter` never reaches `key_to_message` at all, so there is no
+double-fire to guard against: with the path input focused, only its own
+`WizardValidate` fires; with nothing focused, only `DownloadModel` fires.
+Verified against the running application, not just reasoned from source
+(see Review 185 §4's original claim and its correction in the Task 027
+review request).
 
 **What remains genuinely unbound** — not upstream-blocked, just not built
 in this task, and enumerated rather than left silent (per Task 024 §3.4):
@@ -120,22 +137,17 @@ open); the recent-searches panel's open/close/per-entry/clear-entry
 controls (same partial shape as Storage: the confirm dialog works, the
 trigger doesn't); the search-location chip's remove and scope-toggle
 buttons; recent-folder chips; Search's advanced-mode buttons; Sources'
-"Add folder" button; the wizard's own `WizardBack` and Setup/Checked's
-`DownloadModel`/manual-path `Validate` actions specifically (deliberately
-*not* bound to the global `Enter` — those two pages each render a
-`text_input` with its own competing `on_submit`, and orbok has no way to
-tell whether that input genuinely has keyboard focus; see
-`shell::confirm_message`'s own comment); and, as of Task 025, the
-Downloading page's Cancel button (`Message::CancelDownloadInProgress`) —
-added to stop an in-progress model download, mouse-only for the same
-reason as the rest of this list: no shortcut was invented for it rather
-than reopening this already-reviewed keyboard map mid-task. Two actions
+"Add folder" button; and the wizard's own `WizardBack` and CheckedNotOk's
+manual-path `Validate` action specifically (already reachable through
+that page's own `text_input` submit whenever it has focus; not bound to
+the global `Enter` too since that would only be redundant, not
+conflicting — see `shell::confirm_message`'s own comment). Two actions
 have an equivalent path despite no direct binding: `SubmitSearch` (the
 search input's own `on_submit` already covers it) and Search's empty-state
 "Add source" CTA (`Ctrl/Cmd+2` reaches the same view).
 
 **Remediation for the remainder:** not scheduled. A per-button shortcut
-scheme covering ~20 more disparate actions is a real design question
+scheme covering ~19 more disparate actions is a real design question
 (what keys, how they're discoverable, whether some deserve a different
 mechanism entirely), not a mechanical extension of Task 024's map —
 recorded here so the next person does not have to rediscover the count.
@@ -332,9 +344,12 @@ its icon and label alone.
 | `dismiss_overlay_skips_wizard_on_setup` | `tests/a11y.rs` | Escape performs the wizard's zero-confirmation Skip fallback (Task 024) |
 | `dismiss_overlay_cancels_download_consent` | `tests/a11y.rs` | Escape on DownloadConsent mirrors its own Cancel button (Task 024) |
 | `dismiss_overlay_clears_list_selection` | `tests/a11y.rs` | Escape clears the active view's list selection (Task 024) |
+| `key_map_escape_cancels_download_in_progress` | `tests/a11y.rs` | Escape on Downloading → `CancelDownloadInProgress`, not `DismissOverlay`; every other wizard kind still falls through (Task 027) |
 | `result_navigation_bounds` | `tests/a11y.rs` | Arrow keys move result selection, clamp at bounds |
 | `source_navigation_bounds` | `tests/a11y.rs` | Arrow keys move source selection, clamp at bounds (Task 024) |
 | `primary_action_target_size` | `tests/a11y.rs` | Primary buttons ≥ 44 px at default tokens |
 | `ctrl_digit_reaches_each_view_by_keyboard` | `tests/keyboard_reachability.rs` | `Ctrl/Cmd+1..6` reaches each view *through the rendered app*, not just the Message map (Task 024) |
 | `escape_dismisses_wizard_and_reveals_the_view_behind_it` | `tests/keyboard_reachability.rs` | The walkthrough-blocking fix, end to end (Task 024) |
 | `select_and_activate_a_source_by_keyboard` | `tests/keyboard_reachability.rs` | Arrow-select + Enter-remove a source, through the rendered app (Task 024) |
+| `enter_on_setup_reaches_the_download_consent_page` | `tests/keyboard_reachability.rs` | `Enter` on Setup reaches and renders `DownloadConsent`, through the rendered app (Task 027) |
+| `escape_on_downloading_requests_cancellation_through_the_real_chain` | `crates/app/src/model_flow.rs` | `Escape`'s Message reaches `model_flow::reduce` and actually sets `cancelling` — the chain `keyboard_reachability.rs` cannot cover, since `CancelDownloadInProgress` is model_flow-owned, not `AppState`-owned (Task 027) |

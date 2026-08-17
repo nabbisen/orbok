@@ -714,6 +714,29 @@ next release tag.
   it needs routing a backend effect through `DismissOverlay`, which would
   reopen Task 024's already-reviewed keyboard dispatch mid-task rather
   than extend it — left as a known, reported gap, not a silent one).
+- **Two more wizard actions are keyboard-reachable: Setup's Download and
+  Downloading's Cancel (Task 027).** `Escape` on the Downloading page now
+  requests cancellation, bound directly to `Message::CancelDownloadInProgress`
+  rather than routed through `DismissOverlay` — that handler is pure UI
+  state and cannot issue the backend effect cancellation needs, but
+  `model_flow::reduce` already runs on every message before `DismissOverlay`
+  is ever reached, so binding the message directly reaches it with no new
+  plumbing. `Enter` on the Setup page now downloads the reviewed model
+  (`Message::DownloadModel`). This corrects Review 185 §4's own reasoning
+  for leaving it unbound: that review believed a global `Enter` binding
+  could fire alongside the page's `text_input`'s own
+  `on_submit(WizardValidate)` and double-dispatch. Verified against the
+  running application that this is not so — iced's `text_input` calls
+  `shell.capture_event()` on every `Enter` it receives while it genuinely
+  has focus, unconditional on modifiers, and `iced::keyboard::listen()`
+  (the subscription `key_to_message` runs through) only ever receives
+  events the widget tree left uncaptured. A captured `Enter` never reaches
+  `key_to_message` at all: with the path input focused, only its own
+  `WizardValidate` fired; with nothing focused, only `DownloadModel` fired.
+  No path produced both, in either direction, across repeated live trials.
+  `docs/src/maintainers/accessibility.md` §2.1.1's shortcut table and
+  remainder count are updated accordingly (19 controls remain unbound, down
+  from 21).
 
 ### Tests
 
@@ -789,6 +812,24 @@ next release tag.
   to ~51s–~12 minutes across the source sizes Task 013 §4's blocking-time
   table names — the gate fails, so nothing wires this into the shipped
   application yet.
+- **Task 026:** closed a spawn-ordering race in
+  `user_active_signal_defers_embedding_and_idle_resumes_it`
+  (`crates/app/src/scheduler_host/tests.rs`), the cause of an intermittent
+  Windows CI failure on `fa6ddf0` (a docs-only commit). `tokio::spawn`
+  schedules a task, it does not run it — the signaller's first `try_send`
+  was never guaranteed to land before `run_with_context`'s first poll, so
+  on a contended runner the loop could drain an empty channel and dispatch
+  embedding before any `UserActive` observation arrived. Fixed by queuing
+  one observation synchronously, on the test thread, before either task
+  is spawned. Verified deterministically, not by re-running: reproduced
+  the race on purpose (loop spawned first, no synchronous send — 15/15
+  failures), confirmed the fix holds under that same adversarial ordering
+  (15/15 passes), then restored the natural ordering (10/10 passes) —
+  correct because the fix is order-independent, not because it failed
+  less often. `low_impact_survives_a_user_activity_interleaving_through_the_app`
+  already sent its one observation synchronously before spawning the loop
+  rather than through a spawned signaller task, so it was never subject
+  to this race.
 
 ### Docs
 
