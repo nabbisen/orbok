@@ -613,14 +613,15 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
     ));
     let (mut signal_tx, signal_rx) = resource_signal_channel();
 
+    // `tokio::spawn` only schedules: the signaller may not be polled
+    // before the loop's first iteration. Queue one observation
+    // synchronously, on this thread, so the channel is non-empty before
+    // the loop can possibly drain it -- spawn order alone does not
+    // guarantee this (Task 026; Review 185 §5).
+    signal_tx.try_send(ResourceObservation::UserActive).unwrap();
+
     // Keep the scheduler continuously "user active" -- well inside
-    // `USER_IDLE_TIMEOUT` -- starting *before* the loop is even spawned,
-    // so the channel already has a signal queued the instant the loop's
-    // first iteration drains it. Extract/chunk for one small file can
-    // otherwise finish in well under a millisecond -- faster than a
-    // signal sent only after spawning could land -- letting embedding
-    // dispatch once before the first observation ever arrived (caught
-    // while writing this test: the first cut raced and failed this way).
+    // `USER_IDLE_TIMEOUT` -- for the rest of the sustained window below.
     let keep_active = tokio::spawn(async move {
         loop {
             let _ = signal_tx.try_send(ResourceObservation::UserActive);
