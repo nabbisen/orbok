@@ -151,6 +151,16 @@ pub enum WizardState {
         total: u64,
         files_done: u32,
         files_total: u32,
+        /// Set once by `Message::CancelDownloadInProgress` (Task 025). While
+        /// true, the page shows a cancelling state instead of the Cancel
+        /// action, and the eventual terminal message from the worker
+        /// (however it resolves) is routed back to `DownloadConsent`
+        /// rather than `DownloadFailed` -- an error page would misreport a
+        /// cancellation the user asked for. Staying in `Downloading` until
+        /// that message arrives, rather than reverting immediately, is
+        /// deliberate: it is the only thing preventing a second download
+        /// from starting while the first has not yet actually stopped.
+        cancelling: bool,
     },
     /// A safe, recoverable delivery failure that retains the reviewed offer.
     DownloadFailed {
@@ -274,6 +284,13 @@ pub enum ModelDeliveryFailure {
     Verification,
     LocalStorage,
     InternalState,
+    /// Never rendered as a failure in practice -- `Downloading.cancelling`
+    /// intercepts the terminal message before it reaches this page (see
+    /// `model_flow::reduce`'s `DownloadFailed` handling). Kept as a real
+    /// variant so `map_delivery_error` and `page_download_failed` stay
+    /// exhaustive without a wildcard that would silently swallow a future
+    /// new failure kind.
+    Cancelled,
 }
 
 /// Result of a correlated preference write.
@@ -558,6 +575,9 @@ pub enum Message {
     ConfirmModelDownload,
     CancelModelDownload,
     RetryModelDownload,
+    /// Task 025: stop an in-progress download, as opposed to
+    /// `CancelModelDownload`, which withdraws consent before one starts.
+    CancelDownloadInProgress,
     DownloadFileProgress {
         artifact: ModelArtifact,
         bytes: u64,
@@ -773,10 +793,18 @@ impl AppState {
                             }
                         }
                         Some(WizardKind::Downloading | WizardKind::ReadyInFlight) => {
-                            // Neither page offers a mouse-reachable way
-                            // out either (Downloading is Task 025's;
-                            // Ready-while-saving has none) -- Escape must
-                            // not invent one.
+                            // Downloading now has a mouse-reachable way out
+                            // (Task 025's Cancel button), but Escape does
+                            // not reach it: `Message::CancelDownloadInProgress`
+                            // needs a backend effect (the cancellation
+                            // flag) that this pure-state `update` cannot
+                            // issue, and `DismissOverlay` was deliberately
+                            // left unrouted through `model_flow.rs` rather
+                            // than reopen Task 024's already-reviewed
+                            // keyboard dispatch mid-task -- a known,
+                            // reported gap (Task 025 review), not a silent
+                            // one. Ready-while-saving still has no way out
+                            // at all either way.
                         }
                         Some(WizardKind::ReadyIdle | WizardKind::ReadyFailed) => {
                             // Ready has no Skip/Cancel via mouse either;
@@ -866,7 +894,8 @@ impl AppState {
             }
             Message::DownloadFileProgress { .. }
             | Message::DownloadAllComplete { .. }
-            | Message::DownloadFailed(_) => {}
+            | Message::DownloadFailed(_)
+            | Message::CancelDownloadInProgress => {} // handled in model_flow.rs
             Message::SourcePathChanged(p) => self.source_path_input = p.clone(),
             Message::RequestAddSource => {} // handled in orbok
             Message::SourceAdded(card) => {

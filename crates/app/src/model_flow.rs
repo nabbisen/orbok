@@ -11,6 +11,11 @@ use orbok_workers::VerifyOutcome;
 pub(crate) enum ModelFlowEffect {
     None,
     StartManagedDownload,
+    /// Task 025 §4.1: signal the cooperative cancellation flag for the
+    /// in-flight download. Does not itself change any UI state --
+    /// `Message::CancelDownloadInProgress`'s own reducer arm already set
+    /// `cancelling`.
+    CancelManagedDownload,
     PersistReady {
         ready_id: ReadyId,
         persistence_attempt_id: PersistenceAttemptId,
@@ -51,8 +56,25 @@ pub(crate) fn reduce(state: &mut AppState, message: &Message) -> Option<ModelFlo
                 total: 0,
                 files_done: 0,
                 files_total: 0,
+                cancelling: false,
             });
             Some(ModelFlowEffect::StartManagedDownload)
+        }
+        // Task 025 §4.1: ask the worker to stop, but stay in `Downloading`
+        // (marked `cancelling`) until its terminal message actually
+        // arrives -- see the field's own doc comment for why. A repeat
+        // press while already cancelling is a no-op rather than a second
+        // effect, since the flag is idempotent and there's nothing new to
+        // signal.
+        Message::CancelDownloadInProgress => {
+            let Some(WizardState::Downloading { cancelling, .. }) = state.wizard.as_mut() else {
+                return Some(ModelFlowEffect::None);
+            };
+            if *cancelling {
+                return Some(ModelFlowEffect::None);
+            }
+            *cancelling = true;
+            Some(ModelFlowEffect::CancelManagedDownload)
         }
         Message::WizardChecked {
             model_dir,
@@ -146,6 +168,20 @@ pub(crate) fn reduce(state: &mut AppState, message: &Message) -> Option<ModelFlo
         Message::DownloadFailed(failure) => {
             let prior = state.wizard.take();
             state.wizard = match prior {
+                // A cancellation was requested: whatever the worker's
+                // actual terminal error was (Cancelled, or a genuine
+                // failure that happened to land in the same window),
+                // honor the user's request rather than show a "download
+                // failed" page for something they asked to stop.
+                Some(WizardState::Downloading {
+                    presentation,
+                    return_to,
+                    cancelling: true,
+                    ..
+                }) => Some(WizardState::DownloadConsent {
+                    presentation,
+                    return_to,
+                }),
                 Some(WizardState::Downloading {
                     presentation,
                     return_to,
@@ -388,6 +424,69 @@ mod tests {
         assert_eq!(
             reduce(&mut state, &Message::ConfirmModelDownload),
             Some(ModelFlowEffect::None)
+        );
+    }
+
+    // Task 025 §4.1/§4.5: cancelling marks the state without leaving
+    // `Downloading` yet (see `WizardState::Downloading::cancelling`'s doc
+    // comment for why staying put matters), and asks for the real effect
+    // exactly once even under a repeat press.
+    #[test]
+    fn cancelling_a_download_marks_it_and_signals_the_flag_once() {
+        let mut state = consent_state();
+        reduce(&mut state, &Message::ConfirmModelDownload);
+        assert_eq!(
+            reduce(&mut state, &Message::CancelDownloadInProgress),
+            Some(ModelFlowEffect::CancelManagedDownload)
+        );
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::Downloading {
+                cancelling: true,
+                ..
+            })
+        ));
+        assert_eq!(
+            reduce(&mut state, &Message::CancelDownloadInProgress),
+            Some(ModelFlowEffect::None),
+            "a repeat press while already cancelling must not signal again"
+        );
+    }
+
+    #[test]
+    fn cancel_in_progress_outside_downloading_is_defensive() {
+        let mut state = consent_state();
+        assert_eq!(
+            reduce(&mut state, &Message::CancelDownloadInProgress),
+            Some(ModelFlowEffect::None)
+        );
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::DownloadConsent { .. })
+        ));
+    }
+
+    // Task 025 §4.5: the eventual terminal message for a cancelled
+    // download must land back on `DownloadConsent` (actionable -- the
+    // reviewed offer is still there to retry), never on `DownloadFailed`
+    // (which would misreport a cancellation the user asked for as an
+    // error), regardless of which `ModelDeliveryFailure` the worker
+    // actually produced.
+    #[test]
+    fn cancelled_downloads_terminal_message_returns_to_consent_not_failed() {
+        let mut state = consent_state();
+        reduce(&mut state, &Message::ConfirmModelDownload);
+        reduce(&mut state, &Message::CancelDownloadInProgress);
+
+        reduce(
+            &mut state,
+            &Message::DownloadFailed(ModelDeliveryFailure::Connection),
+        );
+
+        assert!(
+            matches!(state.wizard, Some(WizardState::DownloadConsent { .. })),
+            "a failure arriving after cancellation was requested must still \
+             land on DownloadConsent, not DownloadFailed"
         );
     }
 

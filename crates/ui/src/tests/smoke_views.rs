@@ -8,8 +8,8 @@
 
 use crate::i18n::{Locale, MessageKey, model_exact_size, tr};
 use crate::state::{
-    AppState, Message, ModelConsentReturn, ModelDeliveryFailure, ModelDownloadConsent,
-    ModelPersistenceState, ModelProvenance, SourceCard, ViewId, WizardState,
+    AppState, Message, ModelArtifact, ModelConsentReturn, ModelDeliveryFailure,
+    ModelDownloadConsent, ModelPersistenceState, ModelProvenance, SourceCard, ViewId, WizardState,
 };
 use crate::tests::iced_test_guard;
 use crate::views;
@@ -322,4 +322,69 @@ fn model_failure_and_persistence_retry_are_visible_in_both_locales() {
                 .any(|message| matches!(message, Message::WizardAccept))
         );
     }
+}
+
+// Task 025 §4.4: the Downloading page offers Cancel while a transfer is
+// running, and a distinct non-interactive "cancelling" state once pressed
+// -- never both, and never neither.
+#[test]
+fn downloading_page_offers_cancel_then_shows_cancelling_once_pressed() {
+    let _guard = iced_test_guard();
+
+    fn downloading_state(cancelling: bool) -> AppState {
+        let mut state = AppState::default();
+        let reserved_ready_id = state.model_flow_ids.allocate_ready().unwrap();
+        state.wizard = Some(WizardState::Downloading {
+            reserved_ready_id,
+            dest_dir: "/managed/generation".into(),
+            presentation: ModelDownloadConsent::trusted_default("/managed/models".into()),
+            return_to: ModelConsentReturn::NotConfigured,
+            current_artifact: Some(ModelArtifact::Tokenizer),
+            bytes: 5,
+            total: 10,
+            files_done: 0,
+            files_total: 2,
+            cancelling,
+        });
+        state
+    }
+
+    let active = downloading_state(false);
+    let mut active_ui = simulator(views::wizard_view(&active));
+    assert!(
+        active_ui
+            .find(tr(active.locale, MessageKey::WizardActionCancelDownload))
+            .is_ok(),
+        "an in-progress download must offer a way to cancel it"
+    );
+    assert!(
+        active_ui
+            .find(tr(active.locale, MessageKey::WizardCancellingDownload))
+            .is_err(),
+        "the cancelling label must not show before Cancel is pressed"
+    );
+    let _ = active_ui.click(tr(active.locale, MessageKey::WizardActionCancelDownload));
+    assert!(
+        active_ui
+            .into_messages()
+            .any(|message| matches!(message, Message::CancelDownloadInProgress))
+    );
+
+    let cancelling = downloading_state(true);
+    let mut cancelling_ui = simulator(views::wizard_view(&cancelling));
+    assert!(
+        cancelling_ui
+            .find(tr(cancelling.locale, MessageKey::WizardCancellingDownload))
+            .is_ok(),
+        "once cancelling, the page must say so"
+    );
+    assert!(
+        cancelling_ui
+            .find(tr(
+                cancelling.locale,
+                MessageKey::WizardActionCancelDownload
+            ))
+            .is_err(),
+        "the Cancel action must not still be offered once cancelling"
+    );
 }

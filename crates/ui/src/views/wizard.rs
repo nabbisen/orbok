@@ -74,6 +74,7 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             total,
             files_done,
             files_total,
+            cancelling,
             ..
         } => page_downloading(
             tokens,
@@ -85,6 +86,7 @@ pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
             *total,
             *files_done,
             *files_total,
+            *cancelling,
         ),
         WizardState::Checked {
             model_dir,
@@ -298,6 +300,7 @@ fn page_downloading<'a>(
     total: u64,
     files_done: u32,
     files_total: u32,
+    cancelling: bool,
 ) -> Element<'a, Message> {
     let overall_label = model_file_position(locale, files_done, files_total);
 
@@ -314,7 +317,7 @@ fn page_downloading<'a>(
     };
     let transfer_label = model_transfer_progress(locale, bytes, total);
 
-    let col = column![
+    let mut col = column![
         row![
             icon_text(char::from(lucide::Download), 16.0),
             text(tr(locale, MessageKey::WizardDownloadProgress)).size(theme::title_s(tokens, sc)),
@@ -331,6 +334,26 @@ fn page_downloading<'a>(
         text(transfer_label).size(theme::meta_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.md);
+
+    // Task 025 §4.4: Cancel stops this transfer and returns to the consent
+    // page, where the reviewed offer is still available to retry -- not
+    // Skip, which abandons model setup entirely and degrades to
+    // keyword-only search. A user mid-download most often wants "stop
+    // this", not "give up on semantic search"; the latter is still one
+    // more action away, unchanged, on the page Cancel returns to.
+    col = col.push(if cancelling {
+        Element::from(
+            text(tr(locale, MessageKey::WizardCancellingDownload)).size(theme::meta_s(tokens, sc)),
+        )
+    } else {
+        Element::from(
+            button(
+                text(tr(locale, MessageKey::WizardActionCancelDownload))
+                    .size(theme::meta_s(tokens, sc)),
+            )
+            .on_press(Message::CancelDownloadInProgress),
+        )
+    });
 
     wizard_page(tokens, col)
 }
@@ -349,6 +372,10 @@ fn page_download_failed(
         ModelDeliveryFailure::Verification => tr(locale, MessageKey::ModelDeliveryVerification),
         ModelDeliveryFailure::LocalStorage => tr(locale, MessageKey::ModelDeliveryLocalStorage),
         ModelDeliveryFailure::InternalState => tr(locale, MessageKey::ModelDeliveryInternalState),
+        // Never reached in practice -- see `ModelDeliveryFailure::Cancelled`'s
+        // own doc comment. Real copy anyway, not a placeholder, in case
+        // that invariant is ever wrong.
+        ModelDeliveryFailure::Cancelled => tr(locale, MessageKey::ModelDeliveryCancelled),
     };
     let col = column![
         text(tr(locale, MessageKey::ModelDownloadFailed)).size(theme::title_s(tokens, sc)),

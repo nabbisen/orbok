@@ -120,15 +120,19 @@ open); the recent-searches panel's open/close/per-entry/clear-entry
 controls (same partial shape as Storage: the confirm dialog works, the
 trigger doesn't); the search-location chip's remove and scope-toggle
 buttons; recent-folder chips; Search's advanced-mode buttons; Sources'
-"Add folder" button; and the wizard's own `WizardBack` and Setup/Checked's
+"Add folder" button; the wizard's own `WizardBack` and Setup/Checked's
 `DownloadModel`/manual-path `Validate` actions specifically (deliberately
 *not* bound to the global `Enter` — those two pages each render a
 `text_input` with its own competing `on_submit`, and orbok has no way to
 tell whether that input genuinely has keyboard focus; see
-`shell::confirm_message`'s own comment). Two actions have an equivalent
-path despite no direct binding: `SubmitSearch` (the search input's own
-`on_submit` already covers it) and Search's empty-state "Add source" CTA
-(`Ctrl/Cmd+2` reaches the same view).
+`shell::confirm_message`'s own comment); and, as of Task 025, the
+Downloading page's Cancel button (`Message::CancelDownloadInProgress`) —
+added to stop an in-progress model download, mouse-only for the same
+reason as the rest of this list: no shortcut was invented for it rather
+than reopening this already-reviewed keyboard map mid-task. Two actions
+have an equivalent path despite no direct binding: `SubmitSearch` (the
+search input's own `on_submit` already covers it) and Search's empty-state
+"Add source" CTA (`Ctrl/Cmd+2` reaches the same view).
 
 **Remediation for the remainder:** not scheduled. A per-button shortcut
 scheme covering ~20 more disparate actions is a real design question

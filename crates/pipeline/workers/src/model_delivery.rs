@@ -12,6 +12,8 @@ use orbok_models::{
 };
 use sha2::Digest as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -62,6 +64,8 @@ pub enum ModelDeliveryError {
     Catalog,
     #[error("the active model generation could not be confirmed")]
     FinalCheck,
+    #[error("the download was cancelled")]
+    Cancelled,
 }
 
 /// Install or repair the reviewed default model as one immutable generation.
@@ -73,6 +77,7 @@ pub async fn install_default_model(
     catalog: &Catalog,
     store: &ManagedModelStore,
     events: futures::channel::mpsc::Sender<ModelDeliveryEvent>,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<ModelDeliveryOutcome, ModelDeliveryError> {
     DEFAULT_TRUSTED_MODEL
         .validate()
@@ -117,6 +122,7 @@ pub async fn install_default_model(
         &DEFAULT_TRUSTED_MODEL,
         &client,
         events,
+        cancel,
         |_| {},
         |_| {},
     )
@@ -151,6 +157,7 @@ async fn execute_generation<B, A>(
     manifest: &'static TrustedModelManifest,
     client: &reqwest::Client,
     events: futures::channel::mpsc::Sender<ModelDeliveryEvent>,
+    cancel: &Arc<AtomicBool>,
     before_promotion: B,
     after_activation: A,
 ) -> Result<ModelDeliveryOutcome, ModelDeliveryError>
@@ -190,12 +197,19 @@ where
         plan,
         client,
         events,
+        cancel,
     )
     .await;
     if let Err(error) = result {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
+    // No cancellation check from here on: RFC-050's atomicity guarantee
+    // covers verification through promotion and catalog activation, and a
+    // cooperative check partway through it would only add a place for a
+    // cancelled-but-already-valid generation to be discarded after the
+    // network cost of downloading it was already paid. The flag is only
+    // ever consulted by the staging work above.
     verify_payload_files(&staging, plan).await?;
     #[cfg(unix)]
     sync_staged_tree(&staging, plan)?;
@@ -283,12 +297,16 @@ async fn stage_files(
     plan: &DownloadPlan,
     client: &reqwest::Client,
     events: futures::channel::mpsc::Sender<ModelDeliveryEvent>,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<(), ModelDeliveryError> {
     for file in plan
         .files
         .iter()
         .filter(|file| file.action == DownloadAction::Skip)
     {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(ModelDeliveryError::Cancelled);
+        }
         let destination = file.final_path(staging);
         create_parent(&destination)?;
         let part = file.temp_path(staging);
@@ -334,6 +352,7 @@ async fn stage_files(
         let staging = staging.clone();
         let managed_root = managed_root.clone();
         let client = client.clone();
+        let cancel = Arc::clone(cancel);
         async move {
             let destination = file.final_path(&staging);
             create_parent(&destination)?;
@@ -345,6 +364,7 @@ async fn stage_files(
                 index as u32,
                 files_total,
                 &mut tx,
+                &cancel,
             )
             .await
         }
@@ -358,10 +378,13 @@ async fn stage_files(
     let mut first_error = None;
     while let Some(result) = in_flight.next().await {
         match result {
-            Ok(()) if first_error.is_none() => {
+            Ok(()) if first_error.is_none() && !cancel.load(Ordering::Relaxed) => {
                 if let Some(download) = downloads.next() {
                     in_flight.push(download);
                 }
+            }
+            Ok(()) if first_error.is_none() => {
+                first_error.get_or_insert(ModelDeliveryError::Cancelled);
             }
             Ok(()) => {}
             Err(error) => {
@@ -375,6 +398,7 @@ async fn stage_files(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_file(
     client: &reqwest::Client,
     file: &orbok_models::ModelFilePlan,
@@ -383,6 +407,7 @@ async fn download_file(
     files_done: u32,
     files_total: u32,
     events: &mut futures::channel::mpsc::Sender<ModelDeliveryEvent>,
+    cancel: &Arc<AtomicBool>,
 ) -> Result<(), ModelDeliveryError> {
     let response = client
         .get(file.remote_url)
@@ -407,6 +432,9 @@ async fn download_file(
     let mut downloaded = 0_u64;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(ModelDeliveryError::Cancelled);
+        }
         let chunk = chunk.map_err(|_| ModelDeliveryError::Network)?;
         downloaded = downloaded
             .checked_add(chunk.len() as u64)
@@ -707,6 +735,11 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::oneshot;
 
+    /// A cancel flag for tests that aren't exercising cancellation itself.
+    fn never_cancelled() -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(false))
+    }
+
     #[tokio::test]
     async fn synced_tokio_file_is_closed_before_durable_rename() {
         let temp = tempfile::tempdir().unwrap();
@@ -760,6 +793,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |_| {},
         )
@@ -860,6 +894,77 @@ mod tests {
         assert!(snapshot.profile.previous_generation_id.is_none());
     }
 
+    // Task 025 §4.3/§5: a cancelled download must leave no artifact that
+    // looks installed *and* no orphaned staging directory behind -- assert
+    // both, end to end through the real entry point, not just that
+    // `download_file` returns `Cancelled` in isolation.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelling_mid_install_leaves_no_generation_and_no_staging_directory() {
+        let tokenizer = b"trusted-tokenizer".to_vec();
+        let model = b"trusted-onnx-model".to_vec();
+        let server = MockServer::start_delayed([
+            ("/tokenizer", tokenizer.clone(), Duration::from_millis(300)),
+            ("/model", model.clone(), Duration::from_millis(300)),
+        ])
+        .await;
+        let fixture = fixture(&server.base_url, tokenizer, model, None);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("model-store");
+        std::fs::create_dir(&root).unwrap();
+        let store = ManagedModelStore::default_embedding(&root);
+        let catalog = Catalog::open_in_memory().unwrap();
+        let guard = store.acquire_exclusive(Duration::from_secs(1)).unwrap();
+        let repository = ManagedGenerationRepository::new(&catalog);
+        let (events, _receiver) = futures::channel::mpsc::channel(16);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let setter = Arc::clone(&cancel);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            setter.store(true, Ordering::Relaxed);
+        });
+
+        let result = execute_generation(
+            &store,
+            &guard,
+            &repository,
+            &root,
+            &fixture.plan,
+            fixture.manifest,
+            &base_client_builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap(),
+            events,
+            &cancel,
+            |_| {},
+            |_| {},
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::Cancelled)));
+        assert!(
+            std::fs::read_dir(root.join(STAGING_DIR))
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(true),
+            "no staging directory may survive a cancelled install"
+        );
+        assert!(
+            std::fs::read_dir(root.join(GENERATIONS_DIR))
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(true),
+            "a cancelled install must never promote a generation"
+        );
+        assert_eq!(
+            repository
+                .load_exclusive(&guard)
+                .unwrap()
+                .profile
+                .current_generation_id,
+            None
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn checksum_failure_never_promotes_or_activates() {
         let tokenizer = b"trusted-tokenizer".to_vec();
@@ -912,6 +1017,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |_| {},
         )
@@ -963,6 +1069,7 @@ mod tests {
             &fixture.plan,
             &base_client_builder().build().unwrap(),
             events,
+            &never_cancelled(),
         )
         .await;
 
@@ -1024,6 +1131,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |promoted| {
                 std::fs::create_dir(promoted).unwrap();
                 std::fs::write(promoted.join("collision"), b"occupied").unwrap();
@@ -1069,6 +1177,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |_| {},
         )
@@ -1195,6 +1304,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |promoted| std::fs::remove_file(promoted.join(COMPLETE_FILE)).unwrap(),
         )
@@ -1262,6 +1372,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |promoted| std::fs::remove_file(promoted.join(COMPLETE_FILE)).unwrap(),
         )
@@ -1314,6 +1425,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |promoted| {
                 std::fs::write(promoted.join(TRUSTED_MANIFEST_FILE), b"{}").unwrap();
@@ -1357,6 +1469,7 @@ mod tests {
             0,
             1,
             &mut events,
+            &never_cancelled(),
         )
         .await;
         server.finish().await;
@@ -1383,12 +1496,67 @@ mod tests {
             0,
             1,
             &mut events,
+            &never_cancelled(),
         )
         .await
         .unwrap();
         server.finish().await;
 
         assert_eq!(std::fs::read(file.final_path(temp.path())).unwrap(), body);
+    }
+
+    // Task 025 §4.2/§5: the flag is checked *between* chunks, not just
+    // between files -- assert the transfer actually stopped (the second
+    // chunk's bytes are never written), not merely that an error came
+    // back. The first chunk arrives immediately and is written; the second
+    // is held back long enough for the cancel flag to be set first, so the
+    // loop's next iteration must see it before touching disk again.
+    #[tokio::test]
+    async fn cancelling_mid_transfer_stops_before_the_next_chunk_is_written() {
+        let body = b"trusted-bytes-that-arrive-in-two-separate-chunks";
+        let split = body.len() / 2;
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let mut first = header.into_bytes();
+        first.extend_from_slice(&body[..split]);
+        let second = body[split..].to_vec();
+        let (url, server) = RawServer::start(vec![
+            (Duration::ZERO, first),
+            (Duration::from_millis(150), second),
+        ])
+        .await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = test_file_plan(&url, body, body.len() as u64);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let setter = Arc::clone(&cancel);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            setter.store(true, Ordering::Relaxed);
+        });
+
+        let result = download_file(
+            &base_client_builder().build().unwrap(),
+            &file,
+            temp.path(),
+            temp.path(),
+            0,
+            1,
+            &mut events,
+            &cancel,
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::Cancelled)));
+        let partial = std::fs::read(file.temp_path(temp.path())).unwrap();
+        assert_eq!(
+            partial,
+            &body[..split],
+            "only the chunk written before cancellation was seen may be on disk"
+        );
     }
 
     #[tokio::test]
@@ -1409,6 +1577,7 @@ mod tests {
             0,
             1,
             &mut events,
+            &never_cancelled(),
         )
         .await;
         server.finish().await;
@@ -1440,6 +1609,7 @@ mod tests {
             0,
             1,
             &mut events,
+            &never_cancelled(),
         )
         .await;
         timeout_server.finish().await;
@@ -1462,6 +1632,7 @@ mod tests {
             0,
             1,
             &mut events,
+            &never_cancelled(),
         )
         .await;
         disconnect_server.finish().await;
@@ -1710,6 +1881,7 @@ mod tests {
                 .build()
                 .unwrap(),
             events,
+            &never_cancelled(),
             |_| {},
             |_| {},
         )

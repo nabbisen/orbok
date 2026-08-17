@@ -7,6 +7,8 @@ use orbok_ui::state::{Message, ModelArtifact, ModelDeliveryFailure};
 use orbok_workers::{ModelDeliveryError, ModelDeliveryEvent, ModelDeliveryOutcome};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 type InstallerFuture<'a> =
     Pin<Box<dyn Future<Output = Result<ModelDeliveryOutcome, ModelDeliveryError>> + Send + 'a>>;
@@ -15,9 +17,17 @@ type InstallerFuture<'a> =
 /// binding to `store.install_default_model` is deliberately direct and
 /// reviewable; `store` is sealed to the profile it was authorized for, so
 /// this function cannot be handed a path belonging to another profile.
-pub async fn run(store: ProfileModelStore, catalog: orbok_db::Catalog, tx: Sender<Message>) {
+/// `cancel` is checked cooperatively by the worker between files and
+/// between chunks (Task 025 §4.1-4.2); setting it does not abort this task,
+/// it asks the worker to stop at its next safe point.
+pub async fn run(
+    store: ProfileModelStore,
+    catalog: orbok_db::Catalog,
+    tx: Sender<Message>,
+    cancel: Arc<AtomicBool>,
+) {
     let _ = run_with_installer(tx, |events| {
-        Box::pin(store.install_default_model(&catalog, events))
+        Box::pin(store.install_default_model(&catalog, events, &cancel))
     })
     .await;
 }
@@ -57,6 +67,10 @@ pub(crate) async fn run_with_installer<'a>(
         Ok(outcome) => Message::DownloadAllComplete {
             dest_dir: outcome.generation_dir.to_string_lossy().into_owned(),
         },
+        Err(ModelDeliveryError::Cancelled) => {
+            tracing::info!("trusted model delivery cancelled");
+            Message::DownloadFailed(ModelDeliveryFailure::Cancelled)
+        }
         Err(error) => {
             tracing::warn!(category = %error, "trusted model delivery failed");
             Message::DownloadFailed(map_delivery_error(&error))
@@ -121,6 +135,12 @@ fn map_delivery_error(error: &ModelDeliveryError) -> ModelDeliveryFailure {
         ModelDeliveryError::Filesystem | ModelDeliveryError::Catalog => {
             ModelDeliveryFailure::LocalStorage
         }
+        // Never reached in production: `run_with_installer` intercepts
+        // `Cancelled` before calling this function (it needs the
+        // cancellation-specific tracing level, not a `warn!`). Mapped here
+        // anyway so this match stays exhaustive without a wildcard arm that
+        // would silently swallow a future new `ModelDeliveryError` variant.
+        ModelDeliveryError::Cancelled => ModelDeliveryFailure::Cancelled,
     }
 }
 
@@ -321,6 +341,10 @@ mod tests {
                 ModelDeliveryError::FinalCheck,
                 ModelDeliveryFailure::Verification,
             ),
+            (
+                ModelDeliveryError::Cancelled,
+                ModelDeliveryFailure::Cancelled,
+            ),
         ];
         for (error, expected) in cases {
             assert_eq!(map_delivery_error(&error), expected);
@@ -328,5 +352,25 @@ mod tests {
         assert_eq!(map_artifact("tokenizer"), Some(ModelArtifact::Tokenizer));
         assert_eq!(map_artifact("onnx-model"), Some(ModelArtifact::OnnxModel));
         assert_eq!(map_artifact("/secret/path"), None);
+    }
+
+    // Task 025 §5: the cancellation path is routed to its own tracing level
+    // and its own `ModelDeliveryFailure` before `map_delivery_error` is ever
+    // consulted -- confirm that end-to-end through `run_with_installer`,
+    // not just that the mapping table has an entry for it.
+    #[tokio::test]
+    async fn cancelled_installer_result_produces_the_cancelled_failure() {
+        let (ui_tx, mut ui_rx) = futures::channel::mpsc::channel(2);
+        let terminal = run_with_installer(ui_tx, |_events| {
+            Box::pin(async { Err(ModelDeliveryError::Cancelled) })
+        })
+        .await;
+        assert!(matches!(
+            terminal,
+            Message::DownloadFailed(ModelDeliveryFailure::Cancelled)
+        ));
+        ui_rx.close();
+        let messages: Vec<_> = ui_rx.collect().await;
+        assert_eq!(messages.len(), 1);
     }
 }

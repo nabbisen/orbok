@@ -63,6 +63,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `SchedulerSubscriptionData` -- needs its own.
     let battery_resource_signal_tx = resource_signal_tx.clone();
 
+    // Task 025 §4.1: the cooperative cancellation flag for whichever
+    // download is currently in flight, if any. Held here (mirroring
+    // `resource_signals` above) rather than in `AppState`, since it is a
+    // cross-task handle, not UI state; `AppState::update`/`model_flow.rs`
+    // only ever see the `cancelling` bool they already own.
+    // `StartManagedDownload` replaces the contents; `CancelManagedDownload`
+    // reads them. A new download can only start once the wizard has left
+    // `Downloading` for the prior attempt (`cancelling` gates that -- see
+    // `WizardState::Downloading::cancelling`'s doc comment), so this is
+    // never overwritten while still in use.
+    let active_download_cancel: std::sync::Arc<
+        std::sync::Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    > = std::sync::Arc::new(std::sync::Mutex::new(None));
+
     iced::application(
         move || OrbokApp::with_state(state.clone()),
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
@@ -91,8 +105,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(_) => return iced::Task::none(),
                         };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
-                        tokio::spawn(download::run(model_store, catalog, tx));
+                        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        *active_download_cancel.lock().unwrap() = Some(cancel.clone());
+                        tokio::spawn(download::run(model_store, catalog, tx, cancel));
                         iced::Task::stream(rx)
+                    }
+                    model_flow::ModelFlowEffect::CancelManagedDownload => {
+                        if let Some(flag) = active_download_cancel.lock().unwrap().as_ref() {
+                            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        iced::Task::none()
                     }
                     effect @ model_flow::ModelFlowEffect::PersistReady { .. } => {
                         let persistence_runtime = runtime.clone();

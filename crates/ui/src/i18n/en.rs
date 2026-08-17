@@ -107,6 +107,8 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardDownloadAction => "Download from HuggingFace",
         WizardDownloadProgress => "Downloading model…",
         WizardActionSkip => "Skip — use keyword search only",
+        WizardActionCancelDownload => "Cancel download",
+        WizardCancellingDownload => "Cancelling…",
         WizardOr => "or",
         WizardMissingMarker => "missing",
         WizardBack => "Back",
@@ -144,6 +146,7 @@ pub fn message(key: MessageKey) -> &'static str {
             "The model could not be saved safely. Check local storage and try again."
         }
         ModelDeliveryInternalState => "orbok could not continue the model setup safely. Try again.",
+        ModelDeliveryCancelled => "The download was cancelled.",
         ModelPersistenceSaving => "Saving this model choice…",
         ModelPersistenceFailed => "The model is ready, but this choice could not be saved.",
         ModelPersistenceRetry => "Try saving again",

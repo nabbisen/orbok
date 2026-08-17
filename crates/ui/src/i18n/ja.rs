@@ -114,6 +114,8 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardDownloadAction => "HuggingFaceからダウンロード",
         WizardDownloadProgress => "モデルをダウンロード中…",
         WizardActionSkip => "スキップ — キーワード検索のみ使用",
+        WizardActionCancelDownload => "ダウンロードをキャンセル",
+        WizardCancellingDownload => "キャンセル中…",
         WizardOr => "または",
         WizardMissingMarker => "不足",
         WizardBack => "戻る",
@@ -157,6 +159,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDeliveryInternalState => {
             "モデルの設定を安全に続行できませんでした。もう一度お試しください。"
         }
+        ModelDeliveryCancelled => "ダウンロードはキャンセルされました。",
         ModelPersistenceSaving => "このモデル設定を保存中…",
         ModelPersistenceFailed => "モデルは準備できましたが、この設定を保存できませんでした。",
         ModelPersistenceRetry => "保存をもう一度試す",

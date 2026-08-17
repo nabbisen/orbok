@@ -34,6 +34,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 /// `<data_dir>/models/<default embedding model id>` — the one default
 /// managed-model root derived from a resolved profile data directory.
@@ -393,8 +395,9 @@ impl ProfileModelStore {
         &self,
         catalog: &Catalog,
         events: futures::channel::mpsc::Sender<ModelDeliveryEvent>,
+        cancel: &Arc<AtomicBool>,
     ) -> Result<ModelDeliveryOutcome, ModelDeliveryError> {
-        orbok_workers::install_default_model(catalog, &self.store, events).await
+        orbok_workers::install_default_model(catalog, &self.store, events, cancel).await
     }
 }
 

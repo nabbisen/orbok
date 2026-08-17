@@ -661,6 +661,59 @@ next release tag.
   enumerated in place rather than claimed closed; §2.1.2 and §2.4.3 move
   to Met now that real (if narrow) focus traversal exists; §2.4.7's own
   stale claim that traversal already existed is corrected.
+- **A model download can now be cancelled once it starts** (Owner Task 003
+  Part B §D). Previously there was a Cancel *before* the download started
+  (`DownloadConsent`'s own button) and none *after* — the Downloading page
+  rendered zero buttons at all (not "only Skip", as first assumed; checked
+  the code before acting on the premise), and the download itself ran as a
+  detached `tokio::spawn` with its `JoinHandle` dropped at the call site,
+  so nothing could have stopped it even if a button had existed. Fixed
+  with a cooperative `Arc<AtomicBool>` flag, not an abort: RFC-050's
+  atomicity guarantee exists specifically to survive a mid-write
+  interruption, so a cooperative check that lets the worker stop at a safe
+  point is the smaller risk than tearing down the task mid-transfer.
+  Checked in `crates/pipeline/workers/src/model_delivery.rs`'s
+  `download_file` between chunks and in `stage_files`'s dispatch loop
+  between files — cancelling a large transfer stops before the *next*
+  chunk is written, not just at the next file boundary. No cooperative
+  check runs past `stage_files` returning: once staging is verified and
+  promotion begins, RFC-050's own atomicity covers it, and adding a check
+  there would only risk discarding an already-valid, already-paid-for
+  download partway through activation — this is also the line the task's
+  own stop condition drew around restructuring the security-relevant
+  delivery path, which this change does not touch. A cancelled transfer
+  leaves no orphaned files: `execute_generation`'s existing
+  `remove_dir_all(&staging)` on any error already covers the cancellation
+  path too, confirmed by a new test that asserts both the staging
+  directory and the generations directory are empty afterward, not just
+  that the call returned an error. The UI adds one Cancel action to the
+  Downloading page (there was nothing to reuse or repurpose — the page
+  had no buttons), deliberately not a second Skip: Cancel stops this
+  transfer and returns to `DownloadConsent`, where the reviewed offer is
+  still there to retry; Skip (elsewhere in the wizard) abandons model
+  setup entirely and degrades to keyword-only search — different enough
+  intents that conflating them into one button would have been the wrong
+  simplification. Pressing Cancel does not immediately reopen
+  `DownloadConsent`: the wizard stays on a "Cancelling…" state until the
+  worker's terminal message actually arrives, which is what prevents a
+  second download from starting (and racing the first, abandoned one's
+  still-in-flight completion message) rather than an artificial cooldown.
+  Whatever the worker's terminal message turns out to be once cancelled
+  (`Cancelled`, or a genuine failure that happened to land in the same
+  window) is routed to `DownloadConsent`, never to the `DownloadFailed`
+  page — showing "download failed" for a cancellation the user asked for
+  would misreport it as an error. Tested against
+  `model_delivery.rs`'s existing mock server, not just that a message was
+  emitted: one test cancels mid-transfer and asserts the second of two
+  timed chunks is never written to disk; a second cancels a full
+  `execute_generation` run and asserts no staging directory, no
+  generation, and no catalog activation survive it. Both were confirmed
+  to fail with the corresponding check removed, then restored. Not done:
+  no keyboard binding for the new Cancel button (Task 024's `Downloading`
+  case stayed intentionally unbound pending exactly this button; wiring
+  it needs routing a backend effect through `DismissOverlay`, which would
+  reopen Task 024's already-reviewed keyboard dispatch mid-task rather
+  than extend it — left as a known, reported gap, not a silent one).
 
 ### Tests
 
