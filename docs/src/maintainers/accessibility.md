@@ -50,6 +50,31 @@ normal, ≥ 3.0:1 large/UI) for every pair orbok renders. `text_muted` is
 intentionally exempt (non-essential decorative text only — never used for
 essential content).
 
+### 1.4.4 Resize Text
+
+**Status: NOT ASSESSED.** Added 2026-08-17 — this criterion was absent from the
+checklist entirely, and adding it should not be read as adding a pass.
+
+WCAG 2.1 AA requires text to be resizable **to 200%** without loss of content or
+functionality. orbok's in-app control (`TextScale`, `crates/ui/src/theme.rs`)
+offers **1.0× / 1.15× / 1.3× — a 130% maximum.** On the in-app control alone the
+criterion is not met.
+
+That is not the end of the question. 1.4.4 says *"without assistive technology"*,
+and for a desktop application OS-level display scaling is a legitimate mechanism;
+an iced application does respond to it. So whether orbok meets 1.4.4 depends on
+whether it **reflows correctly at 200% OS scaling without losing content or
+functionality** — text clipped, controls pushed off-screen, or dialogs unable to
+show their buttons would all fail it.
+
+**That is a manual check and has never been run.** It is a rendering outcome, not
+a code property, so it cannot be settled from the source. Added as a row to Owner
+Task 003 Part B's manual QA form.
+
+Recorded as unassessed rather than guessed in either direction: the in-app
+control's 130% ceiling makes a bare "Met" wrong, and the OS-scaling path makes a
+bare "Not met" premature.
+
 ### 1.4.11 Non-text Contrast
 
 **Status: Met.**
