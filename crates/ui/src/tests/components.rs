@@ -92,6 +92,7 @@ fn component_smoke_source_card() {
         "/home/user/Documents".to_string(),
         "812 indexed · 0 stale".to_string(),
         "Active",
+        false,
         Message::SourceRemoved("src-1".to_string()),
     );
 }

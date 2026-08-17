@@ -59,77 +59,111 @@ at the ≥ 3.0:1 threshold.
 
 ### 2.1.1 Keyboard
 
-**Status: NOT MET.** Corrected 2026-08-16 after the first keyboard-only
-walkthrough was attempted (Owner Task 003 Part B). This entry previously read
-"Met — every action is keyboard-operable… No action is mouse-only." That was
-false, and had been since this document was written.
+**Status: Partially met.** Updated 2026-08-16/17 (Task 024) after the first
+keyboard-only walkthrough (Owner Task 003 Part B: *"nothing worked at
+all"*) found this entry's prior "Met" claim false. Task 024 closed the
+walkthrough-blocking defect and a defined set of others; a real remainder
+is recorded below rather than folded into "Met."
 
-**What is actually operable by keyboard** is exactly the six shortcuts below,
-and nothing else. There are **37 `button(` call sites** in `crates/ui/src` and
-none of them can be reached or activated without a mouse.
+**The three facts that caused this remain true** and explain why the fix
+is a binding map, not a framework change:
 
-Three facts, each verifiable:
-
-1. **iced 0.14 performs no Tab traversal of its own.** `Named::Tab` appears
-   nowhere in `iced-0.14.0` or `iced_runtime-0.14.0`. Focus movement requires
-   the application to call `focus_next()`/`focus_previous()`
-   (`iced_runtime::widget::operation`).
-2. **orbok never calls them.** `key_to_message` returns `None` for `Tab`
-   (`crates/ui/src/shell.rs`), with a comment stating that iced handles it. It
-   does not.
+1. **iced 0.14 performs no Tab traversal of its own.** `Named::Tab`
+   appears nowhere in `iced-0.14.0` or `iced_runtime-0.14.0`; focus
+   movement requires the application to call
+   `focus_next()`/`focus_previous()` (`iced_runtime::widget::operation`).
+2. **orbok now calls them.** `Tab`/`Shift+Tab` map to
+   `Message::FocusNext`/`FocusPrevious` (`crates/ui/src/shell.rs`), turned
+   into that `Task` in `crates/app/src/main.rs`. The stale comment
+   claiming iced handles Tab itself is gone.
 3. **Only `text_input` and `text_editor` implement `Focusable`** in
-   `iced_widget-0.14.2`. `button` does not. So even once Tab is wired, it will
-   reach orbok's 4 text inputs and none of its 37 buttons.
+   `iced_widget-0.14.2`. `button` does not, so Tab still reaches only
+   orbok's 4 text inputs — 2.1.1 does not require Tab traversal, and the
+   criterion is met for everything below through direct-access shortcuts
+   and the selection-model pattern instead, not by waiting on iced to make
+   buttons focusable (a non-goal, confirmed correct in Task 024's review).
 
-**Why the tests did not catch it:** `crates/ui/src/tests/a11y.rs` asserts that
-`key_to_message` maps each shortcut to the right `Message`. It does. The claim
-that failed was the inference from "the map is implemented" to "every action is
-operable", and no test of the map can reach it. The test that *would* have
-caught it is writable today — `iced_test::Simulator` has `tap_key` and `find` —
-and is required by the remediation task.
+**Why the original tests did not catch the defect:**
+`crates/ui/src/tests/a11y.rs` asserted that `key_to_message` maps each
+shortcut to the right `Message` — true, and irrelevant to whether the
+resulting action is *reachable*. `crates/ui/src/tests/keyboard_reachability.rs`
+now drives the real chain (`key_to_message` → `AppState::update` →
+re-render) and asserts on the rendered result via `iced_test::Simulator`'s
+`find()`, with each test's binding broken and confirmed to fail before
+being restored.
 
-Shortcut map, as actually implemented:
+**What is bound**, covering the walkthrough-blocking case and the fixed
+navigation/list/dialog surface:
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl/Cmd + K` | Focus Search view |
 | `Ctrl/Cmd + ,` | Open Settings |
-| `Escape` | Close overlay / dismiss notice |
-| `Enter` (search focused) | Submit search |
-| `Arrow Down` (not typing) | Select next result |
-| `Arrow Up` (not typing) | Select previous result |
+| `Ctrl/Cmd + 1`..`6` | Jump directly to each of the six views |
+| `Tab` / `Shift+Tab` | Move focus among the 4 text inputs |
+| `Escape` | Close overlay / dismiss notice / **skip or back out of the wizard** / cancel a confirm dialog / clear a list selection (priority order, first match wins) |
+| `Enter` (search input focused) | Submit search |
+| `Enter` (not typing) | Confirm whichever dialog/wizard page/list selection is active, if any (§ below) |
+| `Arrow Down`/`Up` (Search view, not typing) | Select next/previous result |
+| `Arrow Down`/`Up` (Sources view, not typing) | Select next/previous source |
 
-> The row previously reading "`Tab` / `Shift+Tab` — Navigate controls (iced
-> built-in)" has been removed. It described behaviour that does not exist.
+**The wizard — the walkthrough's actual blocker — is fixed.** `Escape` on
+the Setup/Checked/DownloadFailed pages performs the same zero-confirmation
+fallback the mouse-only Skip button does; on DownloadConsent it mirrors
+Cancel. A keyboard-only user reaching first launch is no longer stuck.
 
-**Remediation:** dev-team Task 024. Note that 2.1.1 does **not** require Tab
-traversal — it requires that all functionality be operable through a keyboard
-interface. An expanded binding map plus the existing selection-model pattern
-satisfies it without waiting on iced to make buttons focusable.
+**What remains genuinely unbound** — not upstream-blocked, just not built
+in this task, and enumerated rather than left silent (per Task 024 §3.4):
+Settings' locale/theme/text-scale pickers and its two toggles; Storage's
+three entry-point buttons (its confirm/cancel dialog *is* reachable once
+open); the recent-searches panel's open/close/per-entry/clear-entry
+controls (same partial shape as Storage: the confirm dialog works, the
+trigger doesn't); the search-location chip's remove and scope-toggle
+buttons; recent-folder chips; Search's advanced-mode buttons; Sources'
+"Add folder" button; and the wizard's own `WizardBack` and Setup/Checked's
+`DownloadModel`/manual-path `Validate` actions specifically (deliberately
+*not* bound to the global `Enter` — those two pages each render a
+`text_input` with its own competing `on_submit`, and orbok has no way to
+tell whether that input genuinely has keyboard focus; see
+`shell::confirm_message`'s own comment). Two actions have an equivalent
+path despite no direct binding: `SubmitSearch` (the search input's own
+`on_submit` already covers it) and Search's empty-state "Add source" CTA
+(`Ctrl/Cmd+2` reaches the same view).
+
+**Remediation for the remainder:** not scheduled. A per-button shortcut
+scheme covering ~20 more disparate actions is a real design question
+(what keys, how they're discoverable, whether some deserve a different
+mechanism entirely), not a mechanical extension of Task 024's map —
+recorded here so the next person does not have to rediscover the count.
 
 ### 2.1.2 No Keyboard Trap
 
-**Status: Met, but vacuously — corrected 2026-08-16.**
+**Status: Met — re-assessed 2026-08-17 (Task 024).**
 
-The claim is true and means less than it appears: there is no keyboard trap
-because there is no Tab cycling to be trapped in (see 2.1.1). `Escape` does
-dismiss the confirmation dialog via `DismissOverlay`, which is real and worth
-keeping.
-
-Re-assess this criterion once Task 024 lands. A trap becomes *possible* only
-once focus traversal exists.
+Tab traversal is now real (2.1.1), so this criterion moved from "vacuously
+true" to actually checkable. `focus_next()`/`focus_previous()` cycle among
+orbok's 4 text inputs (`iced_runtime::widget::operation`'s own contract —
+these operations wrap, they do not dead-end), and nothing in the map
+consumes `Tab` for any other purpose that could strand focus inside a
+widget. `Escape` remains a keyboard-only way out of every dialog and the
+wizard, independent of the Tab cycle. No trap.
 
 ### 2.4.3 Focus Order
 
-**Status: NOT MET — corrected 2026-08-16.**
+**Status: Met, for what Tab actually reaches — corrected 2026-08-16,
+confirmed 2026-08-17 (Task 024).**
 
 This previously read "Met (iced built-in) — iced 0.14 manages Tab order by
-widget tree order." **iced 0.14 manages no Tab order.** There is no traversal to
-have an order (see 2.1.1's three facts).
-
-The underlying reasoning was sound in shape — orbok's column-based layouts *do*
-match visual reading order, so once traversal exists the order should be
-correct. But an order that nothing traverses is not a met criterion.
+widget tree order," which was false (iced 0.14 manages no Tab order at
+all) and was corrected to NOT MET. Task 024 wired real traversal
+(`focus_next()`/`focus_previous()`), so the criterion is checkable again:
+orbok's column-based layouts match visual reading order, and at most one
+of the 4 text inputs is ever on screen at once (the search query input,
+the wizard's path input, and the Sources "type a path manually" input
+never coexist), so there is no multi-input ordering to get wrong. **This
+is Met for the traversal that exists, not for the whole interface** —
+buttons sit outside any order because they are outside Tab's reach
+entirely, which is 2.1.1's remaining gap, not this criterion's.
 
 ### 2.4.7 Focus Visible
 
@@ -141,9 +175,19 @@ ring on standard widgets cannot be delivered through the snora style bridge in
 this iced version.
 
 What we provide:
-- iced's own built-in keyboard focus traversal (operability — 2.1.1 — is met).
-- The selected result card uses `card::selected` (accent border) as a visible
-  selection indicator.
+- Corrected 2026-08-17 (Task 024): the line here previously claimed "iced's
+  own built-in keyboard focus traversal (operability — 2.1.1 — is met)" —
+  false on both halves even before this task (iced 0.14 has no built-in
+  traversal; orbok never called `focus_next`/`focus_previous` before Task
+  024 wired it) and irrelevant to *this* criterion regardless, since 2.4.7
+  is about focus being *visible*, not present.
+- `focus_next()`/`focus_previous()` move real iced focus among the 4 text
+  inputs (2.1.1), and iced's text inputs render their own cursor/caret as
+  visible focus feedback for those — the gap is buttons and cards, which
+  have no `Focused` status to render at all.
+- Both selection-model list views use `card::selected` (accent border) as
+  a visible selection indicator: the search results list, and, since Task
+  024, the Sources view.
 - High-contrast themes maximise the visibility of affordances we can render.
 
 Tracked upstream: snora-team issue for focus-ring support when iced exposes
@@ -179,7 +223,7 @@ These are owned, tracked decisions — not silent gaps.
 |---|---|---|---|
 | No `Focused` widget status → no CSS-style focus ring on buttons/cards | 2.4.7 | High-contrast themes; card::selected accent border | snora-team issue; revisit when iced exposes focus state |
 | AccessKit integration limited | 4.1.2 | i18n labels as authoritative names; tooltip strings on icon controls | iced roadmap item |
-| No programmatic `text_input::focus()` Task in iced 0.14 | 2.4.3 (operability) | `FocusSearch` switches to Search view; user's next keypress reaches input | revisit when iced exposes focus Task |
+| `FocusSearch` targets a view switch, not the input directly | 2.4.3 (operability) | Switches to Search view; user's next keypress reaches input | Task 024 found `iced_runtime::widget::operation::focus::<T>(id)` genuinely exists in iced 0.14 (used for `focus_next`/`focus_previous` there) — this row's original claim that no such Task exists at all was wrong. Retargeting `FocusSearch` at it directly is a small, separate follow-up (needs an `Id` assigned to the search input), not done here. |
 
 ---
 
@@ -189,16 +233,37 @@ Before each release, run through the following steps on at least one platform:
 
 ### Keyboard-only walkthrough
 
-1. Launch orbok. Using only `Tab`, `Shift+Tab`, `Enter`, `Escape`, and arrow
-   keys, verify you can:
-   - Navigate the sidebar to every group.
-   - Open each tab within the Search and AI groups.
-   - Enter a search query and submit it.
-   - Move through results with arrow keys.
-   - Open and dismiss the reset confirmation dialog with `Escape`.
-   - Reach and change the theme in Settings.
-2. Press `Ctrl/Cmd+K` from any page: confirm the Search view comes to focus.
-3. Press `Ctrl/Cmd+,` from any page: confirm Settings opens.
+**Rewritten 2026-08-17 (Task 024)** after the version above turned out to
+describe capabilities that did not exist — step 1 asked for sidebar
+navigation and a theme change via `Tab`, both still unreachable today (see
+2.1.1's remainder list). This version only asks for what is actually
+bound; do not extend it to cover 2.1.1's known-open items until they are.
+
+1. **First launch, with no model configured:** confirm the setup wizard
+   appears and blocks the rest of the app. Press `Escape`. Confirm the
+   wizard closes and the Search view renders behind it — this is the
+   walkthrough that originally found *"nothing worked at all."*
+2. From the Search view, press `Ctrl/Cmd+1` through `Ctrl/Cmd+6` in turn:
+   confirm each lands on Search, Sources, Indexing, Storage, Models,
+   Settings respectively.
+3. On the Search view, `Tab` into the query input, type a query, press
+   `Enter`: confirm it submits. With results showing, use `Arrow Down`/
+   `Arrow Up` (not while typing) to move the selection; confirm the
+   selected card shows an accent border.
+4. On the Sources view with at least one folder added, use `Arrow Down`/
+   `Arrow Up` to select a source (confirm the accent border), then press
+   `Enter`: confirm it is removed. Press `Escape` after selecting one:
+   confirm the selection clears without removing it.
+5. Trigger the Storage reset confirmation (mouse is fine to reach it —
+   its own trigger button is not yet keyboard-bound, tracked in 2.1.1):
+   confirm `Escape` cancels and `Enter` confirms.
+6. Press `Ctrl/Cmd+K` from any page: confirm the Search view comes to
+   focus. Press `Ctrl/Cmd+,` from any page: confirm Settings opens.
+
+**Do not** attempt to reach the sidebar/tab-bar directly, the theme/
+locale/text-scale pickers, or any of the other items 2.1.1 lists as
+remaining — they are mouse-only by design record, not a walkthrough
+failure to report again.
 
 ### Screen reader spot check — BLOCKED, do not attempt
 
@@ -252,8 +317,20 @@ its icon and label alone.
 | `contrast_usage_guard_all_presets` | `tests.rs` | All `a11y::RENDERED_PAIRS` meet AA across 4 presets |
 | `status_badge_label_and_icon_invariant` | `tests.rs` | Every tone maps to a non-null icon; badges build without panic |
 | `badge_tone_mapping` | `tests.rs` | Stable label → Tone mapping |
-| `key_map_shortcuts` | `tests.rs` | Shortcut keys → correct Messages |
-| `key_map_no_text_swallow` | `tests.rs` | Printable keys not intercepted while typing |
-| `dismiss_overlay_closes_reset` | `tests.rs` | Escape closes confirm_reset dialog |
-| `result_navigation_wraps` | `tests.rs` | Arrow keys move selection, clamp at bounds |
-| `primary_action_target_size` | `tests.rs` | Primary buttons ≥ 44 px at default tokens |
+| `key_map_shortcuts` | `tests/a11y.rs` | Shortcut keys → correct Messages |
+| `key_map_view_shortcuts` | `tests/a11y.rs` | `Ctrl/Cmd+1..6` → correct view (Task 024) |
+| `key_map_tab_focus` | `tests/a11y.rs` | `Tab`/`Shift+Tab` → `FocusNext`/`FocusPrevious` (Task 024) |
+| `key_map_source_arrows_scoped_to_sources_view` | `tests/a11y.rs` | Arrow keys route to Sources' own selection, not Search's (Task 024) |
+| `key_map_enter_confirms_by_context` | `tests/a11y.rs` | `Enter` (not typing) dispatches the right concrete Message per dialog/wizard/list context (Task 024) |
+| `key_map_no_text_swallow` | `tests/a11y.rs` | Printable keys not intercepted while typing |
+| `dismiss_overlay_closes_reset` | `tests/a11y.rs` | Escape closes confirm_reset dialog |
+| `dismiss_overlay_closes_clear_history_confirm` | `tests/a11y.rs` | Escape closes confirm_clear_history dialog (Task 024) |
+| `dismiss_overlay_skips_wizard_on_setup` | `tests/a11y.rs` | Escape performs the wizard's zero-confirmation Skip fallback (Task 024) |
+| `dismiss_overlay_cancels_download_consent` | `tests/a11y.rs` | Escape on DownloadConsent mirrors its own Cancel button (Task 024) |
+| `dismiss_overlay_clears_list_selection` | `tests/a11y.rs` | Escape clears the active view's list selection (Task 024) |
+| `result_navigation_bounds` | `tests/a11y.rs` | Arrow keys move result selection, clamp at bounds |
+| `source_navigation_bounds` | `tests/a11y.rs` | Arrow keys move source selection, clamp at bounds (Task 024) |
+| `primary_action_target_size` | `tests/a11y.rs` | Primary buttons ≥ 44 px at default tokens |
+| `ctrl_digit_reaches_each_view_by_keyboard` | `tests/keyboard_reachability.rs` | `Ctrl/Cmd+1..6` reaches each view *through the rendered app*, not just the Message map (Task 024) |
+| `escape_dismisses_wizard_and_reveals_the_view_behind_it` | `tests/keyboard_reachability.rs` | The walkthrough-blocking fix, end to end (Task 024) |
+| `select_and_activate_a_source_by_keyboard` | `tests/keyboard_reachability.rs` | Arrow-select + Enter-remove a source, through the rendered app (Task 024) |

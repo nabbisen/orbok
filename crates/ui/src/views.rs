@@ -440,7 +440,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
             .spacing(tokens.spacing.sm),
         );
     } else {
-        for card in &state.sources {
+        for (i, card) in state.sources.iter().enumerate() {
             let status_label = if card.active {
                 tr(locale, MessageKey::SourcesStatusActive)
             } else {
@@ -453,6 +453,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 card.display_path.clone(),
                 summary,
                 status_label,
+                state.selected_source == Some(i),
                 Message::SourceRemoved(card.source_id.clone()),
             ));
         }

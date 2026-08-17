@@ -164,12 +164,19 @@ pub fn result_card<'a>(
 }
 
 /// A source card: name, path, summary stats, status, and a remove action.
+///
+/// `is_selected` uses `card::selected` (accent border) exactly like
+/// `result_card` -- RFC-034 (Task 024)'s keyboard selection for the
+/// Sources view reuses the same visible-selection mitigation for 2.4.7's
+/// absence, not a second convention.
+#[allow(clippy::too_many_arguments)]
 pub fn source_card<'a>(
     tokens: &'a Tokens,
     display_name: String,
     display_path: String,
     summary: String,
     status_label: &'a str,
+    is_selected: bool,
     on_remove: Message,
 ) -> Element<'a, Message> {
     let body = column![
@@ -183,7 +190,11 @@ pub fn source_card<'a>(
         .spacing(tokens.spacing.sm),
     ]
     .spacing(tokens.spacing.xs);
-    card::surface(tokens, body)
+    if is_selected {
+        card::selected(tokens, body)
+    } else {
+        card::surface(tokens, body)
+    }
 }
 
 /// An indexing health stat cell: label above a large number.

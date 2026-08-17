@@ -19,8 +19,8 @@ mod scheduler_host;
 mod settings;
 
 use orbok_ui::i18n::{dialog_title_add_source, dialog_title_choose_search_folder};
-use orbok_ui::state::WizardFileCheck;
-use orbok_ui::{Message, OrbokApp, key_to_message};
+use orbok_ui::state::{WizardFileCheck, WizardState};
+use orbok_ui::{KeyboardContext, Message, OrbokApp, key_to_message};
 use orbok_workers::model_verifier::REQUIRED_MODEL_FILES;
 use orbok_workers::{VerifyOutcome, verify_embedding_model};
 
@@ -209,6 +209,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // iced exposes it (see docs/src/maintainers/accessibility.md).
                     app.update(Message::Switch(orbok_ui::state::ViewId::Search));
                     return iced::Task::none();
+                }
+                // RFC-034 §2.1.1 / Task 024 §3.1: `key_to_message` returns
+                // the *intent*; the actual focus movement is an iced Task,
+                // issued here -- the same split `FocusSearch` above uses,
+                // except `focus_next`/`focus_previous` genuinely exist in
+                // iced 0.14 (`iced_runtime::widget::operation`), unlike the
+                // standalone `text_input::focus()` `FocusSearch` wanted.
+                Message::FocusNext => {
+                    app.update(message);
+                    return iced::widget::operation::focus_next();
+                }
+                Message::FocusPrevious => {
+                    app.update(message);
+                    return iced::widget::operation::focus_previous();
                 }
                 Message::PersistLocale(locale) => {
                     if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
@@ -430,7 +444,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .theme(|app: &OrbokApp| app.iced_theme())
     .font(orbok_ui::LUCIDE_FONT_BYTES)
     .subscription(move |app: &OrbokApp| {
-        let focused = app.search_focused;
+        // RFC-034 §2.1.1 / Task 024: rebuilt fresh every time iced asks
+        // for the current subscription set (the same cadence `focused`
+        // was already recomputed at), so this always reflects the latest
+        // state despite `key_to_message`'s only path in is a `Hash`ed
+        // `Subscription::with` payload -- see `KeyboardContext`'s own doc
+        // comment for why it carries only these small pieces rather than
+        // `&AppState` itself.
+        let ctx = KeyboardContext {
+            text_input_focused: app.search_focused,
+            active_view: app.state.active_view,
+            confirm_reset: app.state.confirm_reset,
+            confirm_clear_history: app.state.confirm_clear_history,
+            wizard_kind: app.state.wizard.as_ref().map(WizardState::kind),
+            selected_source_id: app
+                .state
+                .selected_source
+                .and_then(|i| app.state.sources.get(i))
+                .map(|card| card.source_id.clone()),
+        };
         iced::Subscription::batch([
             scheduler_host::subscription(scheduler_host::SchedulerSubscriptionData {
                 portable,
@@ -438,12 +470,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 resource_signal_tx: battery_resource_signal_tx.clone(),
             }),
             iced::keyboard::listen()
-                .with(focused)
-                .filter_map(|(focused, event)| {
+                .with(ctx)
+                .filter_map(|(ctx, event)| {
                     use iced::keyboard::Event;
                     match event {
                         Event::KeyPressed { key, modifiers, .. } => {
-                            key_to_message(&key, modifiers, focused)
+                            key_to_message(&key, modifiers, &ctx)
                         }
                         _ => None,
                     }

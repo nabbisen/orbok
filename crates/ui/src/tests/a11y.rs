@@ -2,11 +2,25 @@
 
 use crate::a11y;
 use crate::components::tone_icon;
-use crate::shell::key_to_message;
-use crate::state::{AppState, Message, SearchResultDisplay, ViewId};
+use crate::shell::{KeyboardContext, key_to_message};
+use crate::state::{AppState, Message, SearchResultDisplay, SourceCard, ViewId, WizardKind};
 use crate::theme::TextScale;
 use iced::keyboard::{Key, Modifiers, key::Named};
 use snora::design::{Tokens, Tone};
+
+/// A [`KeyboardContext`] with everything neutral: not typing, Search view
+/// active, no dialog open, no wizard, no source selected. Individual
+/// fields are overridden per test via struct-update syntax.
+fn ctx(text_input_focused: bool) -> KeyboardContext {
+    KeyboardContext {
+        text_input_focused,
+        active_view: ViewId::Search,
+        confirm_reset: false,
+        confirm_clear_history: false,
+        wizard_kind: None,
+        selected_source_id: None,
+    }
+}
 
 // ── RFC-034: contrast guard ───────────────────────────────────────────────
 
@@ -53,7 +67,7 @@ fn key_map_shortcuts() {
 
     assert!(
         matches!(
-            key_to_message(&Key::Character("k".into()), primary, false),
+            key_to_message(&Key::Character("k".into()), primary, &ctx(false)),
             Some(Message::FocusSearch)
         ),
         "Cmd/Ctrl+K → FocusSearch"
@@ -61,7 +75,7 @@ fn key_map_shortcuts() {
 
     assert!(
         matches!(
-            key_to_message(&Key::Character(",".into()), primary, false),
+            key_to_message(&Key::Character(",".into()), primary, &ctx(false)),
             Some(Message::Switch(ViewId::Settings))
         ),
         "Cmd/Ctrl+, → Settings"
@@ -73,14 +87,14 @@ fn key_map_shortcuts() {
     // which stays true either way and costs nothing to leave unconditional
     // rather than `#[cfg]`-gating a second copy of it.
     assert_eq!(
-        key_to_message(&Key::Character("k".into()), Modifiers::CTRL, false).is_some(),
+        key_to_message(&Key::Character("k".into()), Modifiers::CTRL, &ctx(false)).is_some(),
         cfg!(not(target_os = "macos")),
         "bare Ctrl+K must fire only on platforms where Ctrl is the primary modifier"
     );
 
     assert!(
         matches!(
-            key_to_message(&Key::Named(Named::Escape), none, false),
+            key_to_message(&Key::Named(Named::Escape), none, &ctx(false)),
             Some(Message::DismissOverlay)
         ),
         "Escape → DismissOverlay (not typing)"
@@ -88,7 +102,7 @@ fn key_map_shortcuts() {
 
     assert!(
         matches!(
-            key_to_message(&Key::Named(Named::Escape), none, true),
+            key_to_message(&Key::Named(Named::Escape), none, &ctx(true)),
             Some(Message::DismissOverlay)
         ),
         "Escape → DismissOverlay (while typing)"
@@ -96,7 +110,7 @@ fn key_map_shortcuts() {
 
     assert!(
         matches!(
-            key_to_message(&Key::Named(Named::Enter), none, true),
+            key_to_message(&Key::Named(Named::Enter), none, &ctx(true)),
             Some(Message::SubmitSearch)
         ),
         "Enter while focused → SubmitSearch"
@@ -104,18 +118,255 @@ fn key_map_shortcuts() {
 
     assert!(
         matches!(
-            key_to_message(&Key::Named(Named::ArrowDown), none, false),
+            key_to_message(&Key::Named(Named::ArrowDown), none, &ctx(false)),
             Some(Message::SelectNextResult)
         ),
-        "ArrowDown → SelectNextResult"
+        "ArrowDown on Search view → SelectNextResult"
     );
 
     assert!(
         matches!(
-            key_to_message(&Key::Named(Named::ArrowUp), none, false),
+            key_to_message(&Key::Named(Named::ArrowUp), none, &ctx(false)),
             Some(Message::SelectPrevResult)
         ),
-        "ArrowUp → SelectPrevResult"
+        "ArrowUp on Search view → SelectPrevResult"
+    );
+}
+
+// RFC-034 §2.1.1 / Task 024 §3.2: Ctrl/Cmd+1..6 reach the six fixed views
+// directly, using the same primary-modifier convention as Ctrl+K/Ctrl+,.
+#[test]
+fn key_map_view_shortcuts() {
+    let primary = Modifiers::COMMAND;
+    let expected = [
+        ("1", ViewId::Search),
+        ("2", ViewId::Sources),
+        ("3", ViewId::Indexing),
+        ("4", ViewId::Storage),
+        ("5", ViewId::Models),
+        ("6", ViewId::Settings),
+    ];
+    for (digit, view) in expected {
+        assert!(
+            matches!(
+                key_to_message(&Key::Character(digit.into()), primary, &ctx(false)),
+                Some(Message::Switch(v)) if v == view
+            ),
+            "Cmd/Ctrl+{digit} → Switch({view:?})"
+        );
+    }
+}
+
+// RFC-034 §2.1.1 / Task 024 §3.1: Tab/Shift+Tab issue the focus-movement
+// intent regardless of typing state -- moving focus while inside a text
+// input is exactly what Tab is for. The doc comment that used to claim
+// iced handles Tab itself is gone; this is why: it did not.
+#[test]
+fn key_map_tab_focus() {
+    let none = Modifiers::default();
+    let shift = Modifiers::SHIFT;
+
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::Tab), none, &ctx(false)),
+            Some(Message::FocusNext)
+        ),
+        "Tab → FocusNext"
+    );
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::Tab), shift, &ctx(false)),
+            Some(Message::FocusPrevious)
+        ),
+        "Shift+Tab → FocusPrevious"
+    );
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::Tab), none, &ctx(true)),
+            Some(Message::FocusNext)
+        ),
+        "Tab while typing must still move focus, not be swallowed"
+    );
+}
+
+// RFC-034 §2.1.1 / Task 024 §3.3: arrow keys route to Sources' own
+// selection when the Sources view is active, not Search's -- mirrors
+// key_map_shortcuts' Search-view assertions with the view switched.
+#[test]
+fn key_map_source_arrows_scoped_to_sources_view() {
+    let none = Modifiers::default();
+    let sources_ctx = KeyboardContext {
+        active_view: ViewId::Sources,
+        ..ctx(false)
+    };
+
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::ArrowDown), none, &sources_ctx),
+            Some(Message::SelectNextSource)
+        ),
+        "ArrowDown on Sources view → SelectNextSource, not SelectNextResult"
+    );
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::ArrowUp), none, &sources_ctx),
+            Some(Message::SelectPrevSource)
+        ),
+        "ArrowUp on Sources view → SelectPrevSource, not SelectPrevResult"
+    );
+    // On every other view, arrows currently do nothing -- neither list is
+    // showing, so there is nothing to move.
+    let settings_ctx = KeyboardContext {
+        active_view: ViewId::Settings,
+        ..ctx(false)
+    };
+    assert!(
+        key_to_message(&Key::Named(Named::ArrowDown), none, &settings_ctx).is_none(),
+        "ArrowDown on a view with no list must not move Search's or Sources' selection"
+    );
+}
+
+// RFC-034 §2.1.1 / Task 024 §3.4: Enter while not typing dispatches
+// whichever concrete Message the visible page's primary/confirm button
+// already uses -- one per context, checked in priority order.
+#[test]
+fn key_map_enter_confirms_by_context() {
+    let none = Modifiers::default();
+
+    assert!(
+        matches!(
+            key_to_message(
+                &Key::Named(Named::Enter),
+                none,
+                &KeyboardContext {
+                    confirm_reset: true,
+                    ..ctx(false)
+                }
+            ),
+            Some(Message::ConfirmResetCatalog)
+        ),
+        "Enter with the reset dialog open → ConfirmResetCatalog"
+    );
+
+    assert!(
+        matches!(
+            key_to_message(
+                &Key::Named(Named::Enter),
+                none,
+                &KeyboardContext {
+                    confirm_clear_history: true,
+                    ..ctx(false)
+                }
+            ),
+            Some(Message::ConfirmClearRecentSearches)
+        ),
+        "Enter with the clear-history dialog open → ConfirmClearRecentSearches"
+    );
+
+    // Confirm dialogs win over the wizard if somehow both were set --
+    // exercised directly since the two are otherwise never simultaneous
+    // in practice, but the priority itself is real function behavior.
+    assert!(
+        matches!(
+            key_to_message(
+                &Key::Named(Named::Enter),
+                none,
+                &KeyboardContext {
+                    confirm_reset: true,
+                    wizard_kind: Some(WizardKind::Setup),
+                    ..ctx(false)
+                }
+            ),
+            Some(Message::ConfirmResetCatalog)
+        ),
+        "a confirm dialog takes priority over the wizard"
+    );
+
+    let wizard_expectations = [
+        (WizardKind::DownloadConsent, Message::ConfirmModelDownload),
+        (WizardKind::CheckedOk, Message::WizardAccept),
+        (WizardKind::ReadyIdle, Message::WizardAccept),
+        (WizardKind::ReadyFailed, Message::WizardAccept),
+        (WizardKind::DownloadFailed, Message::RetryModelDownload),
+    ];
+    for (kind, expected) in wizard_expectations {
+        let got = key_to_message(
+            &Key::Named(Named::Enter),
+            none,
+            &KeyboardContext {
+                wizard_kind: Some(kind),
+                ..ctx(false)
+            },
+        );
+        assert_eq!(
+            std::mem::discriminant(got.as_ref().expect("wizard kind must confirm to something")),
+            std::mem::discriminant(&expected),
+            "wizard kind {kind:?} must confirm to {expected:?}, got {got:?}"
+        );
+    }
+
+    // Downloading/ReadyInFlight: no button exists to confirm. Setup/
+    // CheckedNotOk: a button *does* exist (Download; Validate), but each
+    // page also renders its own `text_input` with a competing
+    // `on_submit`, and `ctx.text_input_focused` cannot distinguish "that
+    // input has real focus" from "nothing does" (it only ever tracks the
+    // search input's approximate focus) -- binding Enter here too would
+    // risk firing both, which for Setup means the wrong action
+    // (`DownloadModel`) alongside the right one. Left unbound rather than
+    // risk it; see `confirm_message`'s own comment.
+    for kind in [
+        WizardKind::Downloading,
+        WizardKind::ReadyInFlight,
+        WizardKind::Setup,
+        WizardKind::CheckedNotOk,
+    ] {
+        assert!(
+            key_to_message(
+                &Key::Named(Named::Enter),
+                none,
+                &KeyboardContext {
+                    wizard_kind: Some(kind),
+                    ..ctx(false)
+                }
+            )
+            .is_none(),
+            "{kind:?} must not bind a global Enter action"
+        );
+    }
+
+    assert!(
+        matches!(
+            key_to_message(
+                &Key::Named(Named::Enter),
+                none,
+                &KeyboardContext {
+                    active_view: ViewId::Sources,
+                    selected_source_id: Some("src-1".to_string()),
+                    ..ctx(false)
+                }
+            ),
+            Some(Message::SourceRemoved(id)) if id == "src-1"
+        ),
+        "Enter with a source selected → SourceRemoved(that source)"
+    );
+
+    assert!(
+        key_to_message(
+            &Key::Named(Named::Enter),
+            none,
+            &KeyboardContext {
+                active_view: ViewId::Sources,
+                selected_source_id: None,
+                ..ctx(false)
+            }
+        )
+        .is_none(),
+        "Enter on Sources with nothing selected must not fire"
+    );
+
+    assert!(
+        key_to_message(&Key::Named(Named::Enter), none, &ctx(false)).is_none(),
+        "Enter on a plain page with nothing to confirm must do nothing"
     );
 }
 
@@ -125,23 +376,23 @@ fn key_map_no_text_swallow() {
     let none = Modifiers::default();
 
     assert!(
-        key_to_message(&Key::Character("a".into()), none, true).is_none(),
+        key_to_message(&Key::Character("a".into()), none, &ctx(true)).is_none(),
         "printable char while typing must not be intercepted"
     );
     assert!(
-        key_to_message(&Key::Character("k".into()), none, true).is_none(),
+        key_to_message(&Key::Character("k".into()), none, &ctx(true)).is_none(),
         "bare 'k' (no modifier) must not trigger FocusSearch"
     );
     assert!(
-        key_to_message(&Key::Named(Named::Enter), none, false).is_none(),
-        "Enter while not focused must not submit search"
+        key_to_message(&Key::Named(Named::Enter), none, &ctx(false)).is_none(),
+        "Enter while not focused, with nothing to confirm, must not submit search"
     );
     assert!(
-        key_to_message(&Key::Named(Named::ArrowDown), none, true).is_none(),
+        key_to_message(&Key::Named(Named::ArrowDown), none, &ctx(true)).is_none(),
         "ArrowDown while typing must not move selection"
     );
     assert!(
-        key_to_message(&Key::Named(Named::ArrowUp), none, true).is_none(),
+        key_to_message(&Key::Named(Named::ArrowUp), none, &ctx(true)).is_none(),
         "ArrowUp while typing must not move selection"
     );
 }
@@ -154,6 +405,78 @@ fn dismiss_overlay_closes_reset() {
     assert!(state.confirm_reset);
     state.update(&Message::DismissOverlay);
     assert!(!state.confirm_reset);
+}
+
+// RFC-034 §2.1.1 / Task 024: Escape also closes the clear-history confirm
+// dialog -- a gap in DismissOverlay's original priority chain (it only
+// ever checked confirm_reset and notice), found while extending it for
+// the wizard.
+#[test]
+fn dismiss_overlay_closes_clear_history_confirm() {
+    let mut state = AppState::default();
+    state.update(&Message::AskClearRecentSearches);
+    assert!(state.confirm_clear_history);
+    state.update(&Message::DismissOverlay);
+    assert!(!state.confirm_clear_history);
+}
+
+// RFC-034 §2.1.1 / Task 024: Escape on the wizard's Setup/Checked/
+// DownloadFailed pages performs the same zero-confirmation fallback the
+// mouse-only Skip button already does -- this is the fix for "nothing
+// worked at all" (Owner Task 003 Part B): a keyboard-only user landing on
+// the first-launch wizard now has a way out.
+#[test]
+fn dismiss_overlay_skips_wizard_on_setup() {
+    let mut state = AppState::default();
+    state.wizard = Some(crate::state::WizardState::NotConfigured);
+    state.update(&Message::DismissOverlay);
+    assert!(state.wizard.is_none(), "Escape must dismiss the wizard");
+    assert_eq!(
+        state.capability,
+        orbok_models::SearchCapability::KeywordOnly,
+        "must fall back exactly like the Skip button does"
+    );
+}
+
+// RFC-034 §2.1.1 / Task 024: on the DownloadConsent page, Escape mirrors
+// the page's own Cancel button (revert to `return_to`) rather than the
+// broader wizard-skip fallback -- the page already frames this choice as
+// Confirm/Cancel, so Escape should mean exactly what Cancel means.
+#[test]
+fn dismiss_overlay_cancels_download_consent() {
+    let mut state = AppState::default();
+    let consent =
+        crate::state::ModelDownloadConsent::trusted_default("/models/multilingual-e5-small".into());
+    state.wizard = Some(crate::state::WizardState::DownloadConsent {
+        presentation: consent,
+        return_to: crate::state::ModelConsentReturn::NotConfigured,
+    });
+    state.update(&Message::DismissOverlay);
+    assert!(
+        matches!(state.wizard, Some(crate::state::WizardState::NotConfigured)),
+        "Escape on DownloadConsent must revert to return_to, same as CancelModelDownload"
+    );
+}
+
+// RFC-034 §2.1.1 / Task 024: Escape clears whichever list selection the
+// active view owns, once nothing else is open to close first.
+#[test]
+fn dismiss_overlay_clears_list_selection() {
+    let mut state = AppState {
+        active_view: ViewId::Search,
+        selected_result: Some(0),
+        ..Default::default()
+    };
+    state.update(&Message::DismissOverlay);
+    assert_eq!(state.selected_result, None);
+
+    let mut state = AppState {
+        active_view: ViewId::Sources,
+        selected_source: Some(0),
+        ..Default::default()
+    };
+    state.update(&Message::DismissOverlay);
+    assert_eq!(state.selected_source, None);
 }
 
 // Arrow key result navigation clamps at bounds.
@@ -191,6 +514,69 @@ fn result_navigation_bounds() {
     assert_eq!(state.selected_result, Some(0));
     state.update(&Message::SelectPrevResult);
     assert_eq!(state.selected_result, Some(0), "clamp at first");
+}
+
+// RFC-034 §2.1.1 / Task 024: arrow key source navigation clamps at bounds
+// -- mirrors `result_navigation_bounds` exactly for the Sources view's
+// own selection.
+#[test]
+fn source_navigation_bounds() {
+    let mut state = AppState::default();
+
+    // No sources: no-ops.
+    state.update(&Message::SelectNextSource);
+    assert_eq!(state.selected_source, None);
+    state.update(&Message::SelectPrevSource);
+    assert_eq!(state.selected_source, None);
+
+    let make = |id: &str| SourceCard {
+        display_name: id.into(),
+        display_path: format!("/home/user/{id}"),
+        indexed: 0,
+        stale: 0,
+        failed: 0,
+        active: true,
+        source_id: id.into(),
+    };
+    state.update(&Message::SourcesLoaded(vec![make("a"), make("b")]));
+
+    state.update(&Message::SelectNextSource);
+    assert_eq!(state.selected_source, Some(0));
+    state.update(&Message::SelectNextSource);
+    assert_eq!(state.selected_source, Some(1));
+    state.update(&Message::SelectNextSource);
+    assert_eq!(state.selected_source, Some(1), "clamp at last");
+    state.update(&Message::SelectPrevSource);
+    assert_eq!(state.selected_source, Some(0));
+    state.update(&Message::SelectPrevSource);
+    assert_eq!(state.selected_source, Some(0), "clamp at first");
+}
+
+// RFC-034 §2.1.1 / Task 024: Enter on a selected source removes it --
+// proven through `AppState::update` directly (the concrete message
+// `key_to_message`'s `confirm_message` would emit), since the id-lookup
+// itself lives in the keyboard-context builder, not in `AppState`.
+#[test]
+fn selected_source_removed_by_source_removed_message() {
+    let mut state = AppState::default();
+    state.update(&Message::SourcesLoaded(vec![SourceCard {
+        display_name: "Docs".into(),
+        display_path: "/home/user/Docs".into(),
+        indexed: 0,
+        stale: 0,
+        failed: 0,
+        active: true,
+        source_id: "src-1".into(),
+    }]));
+    state.update(&Message::SelectNextSource);
+    assert_eq!(state.selected_source, Some(0));
+
+    state.update(&Message::SourceRemoved("src-1".into()));
+    assert!(state.sources.is_empty());
+    assert_eq!(
+        state.selected_source, None,
+        "removing the selected source must not leave a stale index"
+    );
 }
 
 // Primary action padding meets the 44 px house minimum at default tokens.

@@ -28,7 +28,7 @@ pub enum NavGroup {
 }
 
 /// Top-level pages (GUI external design §3.1 order).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ViewId {
     Search,
     Sources,
@@ -158,6 +158,71 @@ pub enum WizardState {
         return_to: ModelConsentReturn,
         failure: ModelDeliveryFailure,
     },
+}
+
+/// RFC-034 (Task 024): the shape of a [`WizardState`] that matters for
+/// keyboard-driven `Enter`/`Escape` dispatch, with the heavy per-state
+/// payload stripped out. Kept separate from `WizardState` itself (rather
+/// than matching on borrowed `WizardState` directly at the call site)
+/// because it needs to travel through `iced::Subscription::with`, which
+/// requires its payload to be `Hash` -- `WizardState` itself cannot be
+/// (it carries `String`s and `Vec`s nested arbitrarily), and cloning the
+/// whole state into every keyboard-subscription rebuild would be wasteful
+/// besides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WizardKind {
+    /// `NotConfigured` or `FileMissing`. Its `DownloadModel` primary action
+    /// is deliberately *not* bound to the global `Enter` -- this page also
+    /// renders a `text_input` with its own `on_submit(WizardValidate)`,
+    /// and `ctx.text_input_focused` cannot tell whether that input
+    /// genuinely has focus (it only ever approximates the search input's).
+    /// A conflicting binding would be worse than none: see
+    /// `shell::confirm_message`'s own comment.
+    Setup,
+    DownloadConsent,
+    /// No primary action to bind: this page has no button at all today
+    /// (Task 025 adds Cancel here).
+    Downloading,
+    DownloadFailed,
+    /// `Checked { all_ok: true, .. }` — primary action is `WizardAccept`.
+    CheckedOk,
+    /// `Checked { all_ok: false, .. }`. Same reasoning as `Setup`: this
+    /// page's own `text_input` already owns `Enter` via its
+    /// `on_submit(WizardValidate)`; left unbound here for the same reason.
+    CheckedNotOk,
+    /// `Ready { persistence: Idle, .. }` — primary action is `WizardAccept`.
+    ReadyIdle,
+    /// `Ready { persistence: Failed, .. }` — primary action is
+    /// `WizardAccept` (labeled "Retry" on this page).
+    ReadyFailed,
+    /// `Ready { persistence: InFlight(_), .. }` — nothing to confirm while
+    /// a save is already running.
+    ReadyInFlight,
+}
+
+impl WizardState {
+    pub fn kind(&self) -> WizardKind {
+        match self {
+            WizardState::NotConfigured | WizardState::FileMissing { .. } => WizardKind::Setup,
+            WizardState::DownloadConsent { .. } => WizardKind::DownloadConsent,
+            WizardState::Downloading { .. } => WizardKind::Downloading,
+            WizardState::DownloadFailed { .. } => WizardKind::DownloadFailed,
+            WizardState::Checked { all_ok: true, .. } => WizardKind::CheckedOk,
+            WizardState::Checked { all_ok: false, .. } => WizardKind::CheckedNotOk,
+            WizardState::Ready {
+                persistence: ModelPersistenceState::Idle,
+                ..
+            } => WizardKind::ReadyIdle,
+            WizardState::Ready {
+                persistence: ModelPersistenceState::Failed,
+                ..
+            } => WizardKind::ReadyFailed,
+            WizardState::Ready {
+                persistence: ModelPersistenceState::InFlight(_),
+                ..
+            } => WizardKind::ReadyInFlight,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -317,6 +382,10 @@ pub struct AppState {
     pub storage_rows: Vec<(String, u64, u64)>,
     pub health: IndexHealth,
     pub sources: Vec<SourceCard>,
+    /// RFC-034 (Task 024): keyboard-driven selection into `sources`,
+    /// mirroring `selected_result` for the Sources view -- arrow keys move
+    /// it, `Enter` removes the selected source, `Escape` clears it.
+    pub selected_source: Option<usize>,
     pub capability: SearchCapability,
     /// Provenance of the active embedding model, independent of capability.
     pub active_model_provenance: Option<ModelProvenance>,
@@ -373,6 +442,7 @@ impl Default for AppState {
             storage_rows: Vec::new(),
             health: IndexHealth::default(),
             sources: Vec::new(),
+            selected_source: None,
             capability: SearchCapability::KeywordOnly,
             active_model_provenance: None,
             storage_total_bytes: 0,
@@ -444,10 +514,22 @@ pub enum Message {
     FocusSearch,
     /// Close any active overlay/dialog and restore focus to trigger (Escape).
     DismissOverlay,
-    /// Move result selection down (Arrow Down, when not typing).
+    /// Move result selection down (Arrow Down, when not typing, Search view).
     SelectNextResult,
-    /// Move result selection up (Arrow Up, when not typing).
+    /// Move result selection up (Arrow Up, when not typing, Search view).
     SelectPrevResult,
+    /// Move source selection down (Arrow Down, when not typing, Sources
+    /// view) -- RFC-034 (Task 024), mirrors `SelectNextResult`.
+    SelectNextSource,
+    /// Move source selection up (Arrow Up, when not typing, Sources view).
+    SelectPrevSource,
+    /// Move keyboard focus to the next focusable widget (`Tab`) -- RFC-034
+    /// §2.1.1 (Task 024). Reaches text inputs only: `button` does not
+    /// implement `Focusable` in iced 0.14, so this cannot reach the 37
+    /// button sites this task otherwise binds directly.
+    FocusNext,
+    /// Move keyboard focus to the previous focusable widget (`Shift+Tab`).
+    FocusPrevious,
     StorageDataReady(Vec<(String, u64, u64)>),
     // Startup wizard
     WizardPathChanged(String),
@@ -652,10 +734,65 @@ impl AppState {
             Message::FocusSearch => {} // focus task issued by orbok
             Message::DismissOverlay => {
                 // Close whichever overlay is open, in priority order.
+                // RFC-034 (Task 024): extended with the wizard's own
+                // zero-confirmation "give up" fallback and, failing that,
+                // whichever list selection the active view owns -- the
+                // same "innermost open thing closes first" shape this
+                // arm already had, just with more things now able to be
+                // open.
                 if self.confirm_reset {
                     self.confirm_reset = false;
+                } else if self.confirm_clear_history {
+                    self.confirm_clear_history = false;
                 } else if self.notice.is_some() {
                     self.notice = None;
+                } else {
+                    match self.wizard.as_ref().map(WizardState::kind) {
+                        Some(
+                            WizardKind::Setup
+                            | WizardKind::CheckedOk
+                            | WizardKind::CheckedNotOk
+                            | WizardKind::DownloadFailed,
+                        ) => {
+                            // Same zero-confirmation fallback the
+                            // mouse-only Skip button already performs on
+                            // these pages -- Escape gives keyboard users
+                            // the identical way out (Task 024, origin:
+                            // Owner Task 003 Part B, "nothing worked at
+                            // all").
+                            self.skip_wizard();
+                        }
+                        Some(WizardKind::DownloadConsent) => {
+                            // Mirrors the page's own Cancel button
+                            // exactly -- same code `CancelModelDownload`
+                            // already runs.
+                            if let Some(WizardState::DownloadConsent { return_to, .. }) =
+                                self.wizard.take()
+                            {
+                                self.wizard = Some(return_to.into_wizard());
+                            }
+                        }
+                        Some(WizardKind::Downloading | WizardKind::ReadyInFlight) => {
+                            // Neither page offers a mouse-reachable way
+                            // out either (Downloading is Task 025's;
+                            // Ready-while-saving has none) -- Escape must
+                            // not invent one.
+                        }
+                        Some(WizardKind::ReadyIdle | WizardKind::ReadyFailed) => {
+                            // Ready has no Skip/Cancel via mouse either;
+                            // same reasoning as above.
+                        }
+                        None => {
+                            if self.active_view == ViewId::Search && self.selected_result.is_some()
+                            {
+                                self.selected_result = None;
+                            } else if self.active_view == ViewId::Sources
+                                && self.selected_source.is_some()
+                            {
+                                self.selected_source = None;
+                            }
+                        }
+                    }
                 }
             }
             Message::SelectNextResult => {
@@ -674,6 +811,28 @@ impl AppState {
                     });
                 }
             }
+            // RFC-034 (Task 024): mirrors SelectNextResult/SelectPrevResult
+            // exactly, for the Sources view's own list.
+            Message::SelectNextSource => {
+                if !self.sources.is_empty() {
+                    self.selected_source = Some(match self.selected_source {
+                        None => 0,
+                        Some(i) => (i + 1).min(self.sources.len() - 1),
+                    });
+                }
+            }
+            Message::SelectPrevSource => {
+                if !self.sources.is_empty() {
+                    self.selected_source = Some(match self.selected_source {
+                        None | Some(0) => 0,
+                        Some(i) => i - 1,
+                    });
+                }
+            }
+            // RFC-034 (Task 024): the actual focus movement is an iced
+            // Task, issued by `orbok` (see `FocusSearch`'s own comment
+            // for why this split exists); nothing in `AppState` changes.
+            Message::FocusNext | Message::FocusPrevious => {}
             Message::StorageDataReady(rows) => self.storage_rows = rows.clone(),
             Message::WizardPathChanged(p) => self.wizard_path_input = p.clone(),
             Message::WizardValidate => {} // handled in orbok update
@@ -684,12 +843,7 @@ impl AppState {
             }
             | Message::WizardAccept
             | Message::ModelPersistenceCompleted { .. } => {}
-            Message::WizardSkip => {
-                self.capability = SearchCapability::KeywordOnly;
-                self.active_model_provenance = None;
-                self.wizard = None;
-                self.wizard_path_input = String::new();
-            }
+            Message::WizardSkip => self.skip_wizard(),
             Message::DownloadModel => {
                 let return_to = self
                     .wizard
@@ -719,12 +873,22 @@ impl AppState {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();
                 self.notice = Some(UserNotice::FolderAdded);
+                // RFC-034 (Task 024): the list changed shape; matches
+                // `SearchResultsReady`'s own reset of `selected_result`
+                // rather than risk a stale/misleading index.
+                self.selected_source = None;
             }
-            Message::SourceRemoved(id) => self.sources.retain(|s| s.source_id != *id),
+            Message::SourceRemoved(id) => {
+                self.sources.retain(|s| s.source_id != *id);
+                self.selected_source = None;
+            }
             Message::HealthUpdated(health) => {
                 self.health = *health;
             }
-            Message::SourcesLoaded(cards) => self.sources = cards.clone(),
+            Message::SourcesLoaded(cards) => {
+                self.sources = cards.clone();
+                self.selected_source = None;
+            }
             // RFC-043: model readiness
             Message::ModelReadinessChecked { .. } => {} // handled by orbok
             // RFC-039: privacy
@@ -841,5 +1005,16 @@ impl AppState {
                 }
             }
         }
+    }
+
+    /// Abandon the model-setup wizard, falling back to keyword-only
+    /// search. Shared by `Message::WizardSkip` (the mouse-only button)
+    /// and `Message::DismissOverlay` (RFC-034 §2.1.1 / Task 024's
+    /// keyboard equivalent) so the two can never drift apart.
+    fn skip_wizard(&mut self) {
+        self.capability = SearchCapability::KeywordOnly;
+        self.active_model_provenance = None;
+        self.wizard = None;
+        self.wizard_path_input = String::new();
     }
 }

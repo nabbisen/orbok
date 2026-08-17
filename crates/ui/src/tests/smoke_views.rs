@@ -11,18 +11,10 @@ use crate::state::{
     AppState, Message, ModelConsentReturn, ModelDeliveryFailure, ModelDownloadConsent,
     ModelPersistenceState, ModelProvenance, SourceCard, ViewId, WizardState,
 };
+use crate::tests::iced_test_guard;
 use crate::views;
 use iced_test::{Simulator, simulator};
 use orbok_models::SearchCapability;
-use std::sync::{Mutex, MutexGuard};
-
-static ICED_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-fn iced_test_guard() -> MutexGuard<'static, ()> {
-    ICED_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 // A fresh app with no sources shows the "add a source" call to action.
 #[test]

@@ -598,6 +598,69 @@ next release tag.
   (141.27 ms, unaffected by this change) is now 91.5% of search p99,
   confirming RFC-048 §5's prediction that it becomes the next bottleneck;
   it is out of scope here and gets its own task.
+- **RFC-034 §2.1.1 — orbok is now largely keyboard-operable (Task 024):**
+  the first keyboard-only walkthrough ever attempted (Owner Task 003 Part
+  B) found *"nothing worked at all."* It was right: orbok's entire
+  keyboard surface was six shortcuts, `button` does not implement
+  `Focusable` in iced 0.14 so none of the 37 `button(` call sites in
+  `crates/ui/src` could be reached without a mouse, and on a fresh
+  profile the model-setup wizard — the first screen — offered no keyboard
+  path off it at all. A keyboard-only user could not reach the
+  application. `Tab`/`Shift+Tab` now move focus among the 4 text inputs
+  (`iced_runtime::widget::operation::focus_next`/`focus_previous`, wired
+  as an `iced::Task` in `crates/app/src/main.rs`; the stale comment
+  claiming iced already handled `Tab` is gone). `Ctrl/Cmd+1`..`6` jump
+  directly to each of the six fixed views. The Sources view gained the
+  same arrow-key-selection-plus-`Enter`-activation pattern the search
+  results list already had (`SelectNextSource`/`SelectPrevSource`,
+  `card::selected`'s accent border as the visible indicator), with
+  `Escape` clearing the selection. Most consequentially: `Escape` on the
+  wizard's Setup/Checked/DownloadFailed pages now performs the same
+  zero-confirmation fallback the mouse-only Skip button already does, and
+  mirrors Cancel exactly on the DownloadConsent page — a keyboard-only
+  user reaching first launch is no longer stuck. `Enter` (while not
+  typing) confirms whichever dialog/wizard-page/list-selection is active,
+  dispatching the *identical* `Message` the corresponding button already
+  uses, computed once by `shell::confirm_message` from a new
+  `KeyboardContext` snapshotted per subscription rebuild — never a
+  separate keyboard-only code path to drift out of sync with the mouse
+  one. Two wizard pages (Setup, Checked-not-ok) deliberately keep `Enter`
+  unbound to their primary/retry action: both also render a `text_input`
+  with its own competing `on_submit`, and orbok has no way to tell
+  whether that input genuinely holds keyboard focus (`text_input_focused`
+  only ever approximates the *search* input's), so a global binding there
+  would risk firing the wrong action alongside the right one — found
+  while implementing, not assumed safe. Tested through the real
+  application, not the keyboard map alone: `crates/ui/src/tests/a11y.rs`'s
+  existing `key_map_*` tests are exactly the instrument that missed the
+  original defect (they proved the map was implemented, which was never
+  in question), so a new `crates/ui/src/tests/keyboard_reachability.rs`
+  drives `key_to_message` → `AppState::update` → re-render — the same
+  chain a real key press takes — and asserts on the rendered result via
+  `iced_test::Simulator`'s `find()`; every new binding was also broken
+  and confirmed to fail before being restored, and confirmed live against
+  the running application (wizard `Escape`, `Tab`-to-text-input,
+  `Ctrl+2`, Sources arrow-select-and-remove) via real keyboard input
+  under Wayland. Found and fixed along the way, unrelated to the
+  keyboard work itself: `iced_test::Simulator`-using tests across
+  `orbok-ui` previously serialized only *within* each test file (each had
+  its own private mutex) — adding a second file's worth of Simulator
+  tests made a cross-file race reproducible as an intermittent `SIGSEGV`
+  under the default parallel test runner; one shared lock
+  (`crate::tests::iced_test_guard`) fixes it, confirmed with five clean
+  parallel runs after. **What remains genuinely unbound** (not
+  upstream-blocked, just not built in this task, and enumerated rather
+  than left silent): Settings' locale/theme/text-scale pickers and its
+  two toggles; Storage's three entry-point buttons; the recent-searches
+  panel's open/close/per-entry/clear-entry controls; the search-location
+  chip's remove and scope-toggle buttons; recent-folder chips; Search's
+  advanced-mode buttons; Sources' "Add folder" button; and the wizard's
+  `WizardBack`/`DownloadModel` actions specifically, per the
+  `text_input`-conflict reasoning above. `docs/src/maintainers/accessibility.md`
+  §2.1.1 moves from NOT MET to **Partially met**, with the remainder
+  enumerated in place rather than claimed closed; §2.1.2 and §2.4.3 move
+  to Met now that real (if narrow) focus traversal exists; §2.4.7's own
+  stale claim that traversal already existed is corrected.
 
 ### Tests
 

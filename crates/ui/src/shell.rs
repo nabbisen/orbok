@@ -7,7 +7,7 @@
 //! it here (in `orbok-ui`) means it is unit-testable without the iced runtime.
 
 use crate::i18n::{MessageKey, tr};
-use crate::state::{AppState, Message, NavGroup, ViewId};
+use crate::state::{AppState, Message, NavGroup, ViewId, WizardKind};
 use crate::views;
 use iced::Element;
 use snora::lucide;
@@ -16,19 +16,48 @@ use snora::{
     widget::{app_side_bar, app_tab_bar},
 };
 
+/// Everything [`key_to_message`] needs beyond the raw key event, snapshotted
+/// once per frame by `orbok`'s keyboard subscription (RFC-034 §2.1.1 / Task
+/// 024).
+///
+/// Deliberately not `&AppState`: this travels through
+/// `iced::Subscription::with`, which requires its payload to be `Hash` (and,
+/// separately, cloning the whole app state into every subscription rebuild
+/// would be wasteful). Each field is the smallest piece of state that
+/// changes *which* keyboard shortcut applies, not the data behind it --
+/// `selected_source_id` carries the one string `Enter` would need to build
+/// `Message::SourceRemoved`, not the source list itself.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyboardContext {
+    /// Approximates real widget focus (iced 0.14 cannot query it directly);
+    /// see [`Message::FocusSearch`]'s own doc comment for why this is an
+    /// approximation, not a certainty.
+    pub text_input_focused: bool,
+    pub active_view: ViewId,
+    pub confirm_reset: bool,
+    pub confirm_clear_history: bool,
+    /// `None` when the startup wizard is not active.
+    pub wizard_kind: Option<WizardKind>,
+    /// The source `Enter` would remove, if the Sources view has one
+    /// selected. `None` either because nothing is selected or because the
+    /// Sources view is not active.
+    pub selected_source_id: Option<String>,
+}
+
 /// Map a key event to a [`Message`], or `None` to let iced handle it normally.
 ///
-/// **Text-input safety:** when `text_input_focused` is `true`, only global
-/// shortcuts that do *not* intercept printable characters are fired (Ctrl/Cmd
-/// combos and Escape). Arrow keys and Enter are suppressed while text input
-/// has focus so typing is never hijacked.
+/// **Text-input safety:** when `ctx.text_input_focused` is `true`, only
+/// global shortcuts that do *not* intercept printable characters are fired
+/// (Ctrl/Cmd combos, Escape, and `Tab`, which text inputs also expect to
+/// move focus rather than insert). Arrow keys and Enter are suppressed
+/// while text input has focus so typing is never hijacked.
 ///
 /// This function is pure and contains no iced runtime state, so it can be
 /// called from tests without a display server.
 pub fn key_to_message(
     key: &iced::keyboard::Key,
     modifiers: iced::keyboard::Modifiers,
-    text_input_focused: bool,
+    ctx: &KeyboardContext,
 ) -> Option<Message> {
     use iced::keyboard::Key;
     use iced::keyboard::key::Named;
@@ -40,16 +69,135 @@ pub fn key_to_message(
         Key::Character(c) if c.as_str() == "," && modifiers.command() => {
             Some(Message::Switch(ViewId::Settings))
         }
-        // Escape  →  close any open overlay / dialog; restore focus to trigger.
+        // Ctrl/Cmd + 1..6  →  jump directly to a view (RFC-034 §2.1.1 /
+        // Task 024 §3.2). The same primary-modifier convention as the two
+        // shortcuts above, applied to the fixed six-view navigation
+        // surface `ViewId::ALL` already enumerates -- not a literal
+        // bare-Ctrl binding, for the same cross-platform reason Ctrl+K
+        // uses `command()` rather than `Modifiers::CTRL`.
+        Key::Character(c) if modifiers.command() && c.as_str() == "1" => {
+            Some(Message::Switch(ViewId::Search))
+        }
+        Key::Character(c) if modifiers.command() && c.as_str() == "2" => {
+            Some(Message::Switch(ViewId::Sources))
+        }
+        Key::Character(c) if modifiers.command() && c.as_str() == "3" => {
+            Some(Message::Switch(ViewId::Indexing))
+        }
+        Key::Character(c) if modifiers.command() && c.as_str() == "4" => {
+            Some(Message::Switch(ViewId::Storage))
+        }
+        Key::Character(c) if modifiers.command() && c.as_str() == "5" => {
+            Some(Message::Switch(ViewId::Models))
+        }
+        Key::Character(c) if modifiers.command() && c.as_str() == "6" => {
+            Some(Message::Switch(ViewId::Settings))
+        }
+        // Tab / Shift+Tab  →  move focus among the widgets iced 0.14 can
+        // focus at all: `text_input`/`text_editor` only (RFC-034 §2.1.1 /
+        // Task 024 §3.1). Not gated on `text_input_focused` -- moving
+        // focus while inside a text input is exactly what Tab is for.
+        // Unlike the rest of this map, the actual focus movement is not
+        // this function's job: it returns the *intent*, and `orbok` turns
+        // it into an `iced::widget::operation::focus_next`/`focus_previous`
+        // `Task` (see that call site's own comment).
+        Key::Named(Named::Tab) if modifiers.shift() => Some(Message::FocusPrevious),
+        Key::Named(Named::Tab) => Some(Message::FocusNext),
+        // Escape  →  close any open overlay / dialog; restore focus to
+        // trigger. `AppState::update`'s `DismissOverlay` handler decides
+        // what "close" means from the state it already holds (confirm
+        // dialogs, the wizard, list selections) -- see that handler's own
+        // comment for why the decision lives there and not here.
         Key::Named(Named::Escape) => Some(Message::DismissOverlay),
-        // Enter  →  submit search, but only when search input is focused.
-        Key::Named(Named::Enter) if text_input_focused => Some(Message::SubmitSearch),
-        // Arrow keys  →  move result selection, only when NOT typing.
-        Key::Named(Named::ArrowDown) if !text_input_focused => Some(Message::SelectNextResult),
-        Key::Named(Named::ArrowUp) if !text_input_focused => Some(Message::SelectPrevResult),
-        // Everything else: let iced handle it (printable keys, Tab, etc.).
+        // Enter while a text input is (approximately) focused  →  submit
+        // search. Unchanged from before Task 024.
+        Key::Named(Named::Enter) if ctx.text_input_focused => Some(Message::SubmitSearch),
+        // Enter while NOT typing  →  whatever this screen's primary/
+        // confirming action is, if any (RFC-034 §2.1.1 / Task 024 §3.4):
+        // a confirm dialog's Confirm, the active wizard page's forward
+        // action, or removing a selected source. `confirm_message` is the
+        // one place that decision is made, so `Enter` and a mouse click
+        // on the matching button always dispatch the identical `Message`
+        // -- there is no separate "keyboard version" of any of these
+        // actions to drift out of sync.
+        Key::Named(Named::Enter) => confirm_message(ctx),
+        // Arrow keys  →  move the selection the active view owns, only
+        // when NOT typing. Search and Sources each have their own list
+        // and their own pair of messages (RFC-034 §2.1.1 / Task 024 §3.3)
+        // -- gating on `active_view` is what stops, say, Sources' arrows
+        // from silently moving Search's selection underneath it.
+        Key::Named(Named::ArrowDown)
+            if !ctx.text_input_focused && ctx.active_view == ViewId::Search =>
+        {
+            Some(Message::SelectNextResult)
+        }
+        Key::Named(Named::ArrowUp)
+            if !ctx.text_input_focused && ctx.active_view == ViewId::Search =>
+        {
+            Some(Message::SelectPrevResult)
+        }
+        Key::Named(Named::ArrowDown)
+            if !ctx.text_input_focused && ctx.active_view == ViewId::Sources =>
+        {
+            Some(Message::SelectNextSource)
+        }
+        Key::Named(Named::ArrowUp)
+            if !ctx.text_input_focused && ctx.active_view == ViewId::Sources =>
+        {
+            Some(Message::SelectPrevSource)
+        }
+        // Everything else: let iced handle it (printable keys, etc.).
         _ => None,
     }
+}
+
+/// What `Enter` (while not typing) confirms, if anything -- the single
+/// place that decision is made for [`key_to_message`]. Each arm returns
+/// the *exact* `Message` the corresponding button's `on_press` already
+/// uses, so this never introduces a second, keyboard-only code path for
+/// any of these actions; `model_flow::reduce` and the handlers in
+/// `crates/app/src/main.rs` that give some of them real backend effects
+/// (starting a download, resetting the catalog, clearing history) run
+/// identically regardless of whether the message originated from a click
+/// or from here.
+fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
+    if ctx.confirm_reset {
+        return Some(Message::ConfirmResetCatalog);
+    }
+    if ctx.confirm_clear_history {
+        return Some(Message::ConfirmClearRecentSearches);
+    }
+    if let Some(kind) = ctx.wizard_kind {
+        return match kind {
+            // Setup and CheckedNotOk each also render a `text_input` with
+            // its own `on_submit(WizardValidate)`, which fires through
+            // iced's normal widget event handling whenever that input
+            // genuinely has focus -- independent of `ctx.text_input_focused`,
+            // which only ever approximates the *search* input's focus (see
+            // `KeyboardContext`'s own doc comment) and so cannot be used to
+            // detect this. Binding Enter here too would not be redundant
+            // with that -- it would be *wrong* for Setup, whose primary
+            // action is `DownloadModel`, a different action a Tab-then-type-
+            // then-Enter path down the text input must not also trigger.
+            // Left unbound rather than risk it: the text input's own Enter
+            // handling already gives `WizardValidate` a keyboard path on
+            // both pages; `DownloadModel` does not have an equivalent and
+            // is reported as a finding rather than given a conflicting one.
+            WizardKind::Setup | WizardKind::CheckedNotOk => None,
+            WizardKind::DownloadConsent => Some(Message::ConfirmModelDownload),
+            WizardKind::CheckedOk | WizardKind::ReadyIdle | WizardKind::ReadyFailed => {
+                Some(Message::WizardAccept)
+            }
+            WizardKind::DownloadFailed => Some(Message::RetryModelDownload),
+            // Downloading has no button at all today (Task 025's); Ready
+            // while a save is in flight has nothing to confirm either.
+            WizardKind::Downloading | WizardKind::ReadyInFlight => None,
+        };
+    }
+    if ctx.active_view == ViewId::Sources {
+        return ctx.selected_source_id.clone().map(Message::SourceRemoved);
+    }
+    None
 }
 
 fn tab_action_to_msg(action: snora::TabAction<ViewId>) -> Message {

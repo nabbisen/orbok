@@ -28,13 +28,13 @@ pub mod views;
 mod tests;
 
 pub use orbok_core::{SearchHistoryEntry, SearchHistoryId};
-pub use shell::{OrbokApp, key_to_message};
+pub use shell::{KeyboardContext, OrbokApp, key_to_message};
 pub use state::{
     AppState, IndexHealth, Message, ModelArtifact, ModelConsentReturn, ModelDeliveryFailure,
     ModelDownloadConsent, ModelFlowIdentitySequence, ModelPersistenceResult, ModelPersistenceState,
     ModelProvenance, ModelTrustPresentation, NavGroup, PersistenceAttemptId, ReadyId,
     ResultTrustDisplay, ResultsStatus, SearchFolderScope, SearchLocation, SearchLocationState,
     SearchLocationSummary, SearchResultDisplay, SearchUiState, SourceCard, ViewId, WizardFileCheck,
-    WizardState,
+    WizardKind, WizardState,
 };
 pub use theme::{TextScale, Theme};
