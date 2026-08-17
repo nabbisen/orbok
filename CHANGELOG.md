@@ -507,14 +507,17 @@ next release tag.
   opposite of the request. And only sites where the text can actually
   wrap to a second line: a per-site judgement across the 125
   `body`/`body_small` call sites (scaled and unscaled) in `views.rs`,
-  `views/wizard.rs`, and `components.rs`, not a mechanical sweep — 27
+  `views/wizard.rs`, and `components.rs`, not a mechanical sweep — 28
   sites (descriptions, hint and privacy-note text, confirm-dialog
   bodies, error explanations, a result card's title and excerpt
-  snippet, and free-form user-typed text echoed back in search
-  history/queries) gained line-height; the remaining 98 (status lines,
-  button/toggle/chip captions, data rows, paths, and short single-value
-  fields) did not, since looser spacing on text that never wraps only
-  adds unused vertical space. `body_lh`/
+  snippet, free-form user-typed text echoed back in search
+  history/queries, and the Indexing view's status line, which embeds an
+  unbounded user-supplied folder name on one of its three branches —
+  Review 189 §2's correction, the same reasoning already applied to the
+  search-history/query sites) gained line-height; the remaining 97
+  (status lines, button/toggle/chip captions, data rows, paths, and
+  short single-value fields) did not, since looser spacing on text that
+  never wraps only adds unused vertical space. `body_lh`/
   `meta_lh` read `Tokens.typography.body{,_small}.line_height` live —
   never a hardcoded 1.4/1.35 — confirmed by a test that mutates a
   `Tokens` copy and asserts the helpers follow it, not a preset default;

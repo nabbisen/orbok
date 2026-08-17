@@ -536,7 +536,14 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::IndexingTitle)),
         cells,
-        text(status).size(theme::body_s(tokens, sc)),
+        // Review 189 §2: two of the three possible contents can wrap --
+        // the "ready" branch is two sentences, and the "preparing"
+        // branch embeds a user-supplied, unbounded folder name, the same
+        // reasoning already applied to recent-search entries and
+        // fmt_query above. Harmless on the short "Indexing…" branch.
+        text(status)
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
     ];
 
     if h.queued > 0 {
