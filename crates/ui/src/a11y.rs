@@ -46,6 +46,12 @@
 //! would make the border load-bearing and require a pair here. orbok renders
 //! `snora::render` and a bespoke confirm dialog today, so it does not.
 //! Re-checked 2026-08-18 against snora 0.34.0's border repair.
+//!
+//! **If that day comes, the pair would pass.** Measured on snora 0.37.1
+//! (independently, twice), `border` against every surface: `light` 3.12–3.38,
+//! `dark` 3.17–3.81, both high-contrast presets 19.80–21.00 — all clear SC
+//! 1.4.11's 3:1. So adding the pair is bookkeeping, not a blocked change
+//! waiting on an upstream value.
 
 use snora::design::contrast::contrast_ratio;
 use snora::design::{Color, Tokens};
