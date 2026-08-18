@@ -533,6 +533,47 @@ next release tag.
   and full width. `cargo update -p snora --dry-run` shows 0.33.0 → 0.33.1
   available (documentation-only per its release notes); not applied, per
   scope — reported here as instructed, not acted on.
+- **Task 029 — snora 0.33.0 → 0.37.1, Phase 1, and this one is not
+  invisible:** the same version-bump-only scope as Tasks 022/023;
+  Phases 2–4 stay queued behind Owner Task 003 Part B. `cargo update -p
+  snora` moved exactly five packages (`snora`, `snora-core`,
+  `snora-design`, `snora-style`, `snora-widgets`) 0.33.0 → 0.37.1 — no
+  package added or removed this time, 151 dependencies otherwise
+  unchanged. `cargo build -p orbok-ui -p orbok` clean, no call site
+  touched (matching snora's no-broken-API claim for both releases);
+  `cargo test -p orbok-ui --lib`: 115/115. **Unlike Tasks 022/023, this
+  one has a real visual change**: 0.34.0 repaired snora's `border` role
+  (previously under WCAG 1.4.11's 3:1 threshold — 1.28:1 light, 1.19:1
+  dark, by snora's own prior figures), and orbok renders it through
+  `card::surface`/`card::selected`. **Borders will be visibly more
+  present in the `light` and `dark` presets.** Independently
+  re-measured (not taken from the task's own table) via
+  `snora::design::contrast::contrast_ratio` against all three surfaces
+  (`surface`, `surface_raised`, `background`) across all four presets —
+  worst case per preset: light 3.12, dark 3.17, high-contrast light
+  21.00, high-contrast dark 19.80 — all four clear 3:1; high-contrast
+  presets unchanged. One-way repair, not ours to decline or investigate
+  as a regression. orbok's own `contrast_usage_guard_all_presets` gate
+  is correctly unaffected: `RENDERED_PAIRS` has never audited
+  `palette.border`, since orbok's cards are fill-defined
+  (`card::surface`), making the border supplementary decoration rather
+  than the sole boundary signal WCAG 1.4.11 would require a pair for —
+  confirmed still passing before and after. Worth recording for later:
+  with 0.37.1's repaired values, a border pair *would* now pass on all
+  four presets if `snora::design::render`'s border-defined dialog card
+  (Phase 3) is ever adopted, which would make the border load-bearing.
+  Out of scope, all verified rather than assumed: `snora::design::widget::chip`
+  (RFC-061's dismiss-target resize) is never imported (orbok's chips are
+  plain buttons whose label contains "✕"); `DIM_ALPHA` (RFC-063) is
+  never referenced (orbok replaces the page for confirmations rather
+  than overlaying a dim); `snora_core::focus`/zone navigation (0.35.0) is
+  a genuine feature-adoption question for RFC-034 §2.1.1's unreachable
+  sidebar, not a version-bump concern — left as a separate task, F6 not
+  wired here. **No visual check was performed** beyond the independent
+  contrast re-measurement above — the actual rendered appearance change
+  (borders more present in light/dark) joins Owner Task 003 Part B's
+  manual QA queue, same disclosure discipline as Tasks 022/023's
+  unchecked bumps.
 
 ### Fixed
 
