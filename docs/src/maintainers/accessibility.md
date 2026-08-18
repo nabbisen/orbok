@@ -312,13 +312,39 @@ inputs that already show a caret), not all of it. Do not restate it as a blanket
 
 ### 2.5.8 Target Size (Minimum)
 
-**Status: Met.**
+**Status: Met — evidence corrected 2026-08-18.**
 
-Primary action buttons use `Padding::from([tokens.spacing.md, tokens.spacing.lg])`
-= `[12, 16]` at the default (Comfortable) density, producing targets well above
-the WCAG 2.5.8 AA minimum of 24 × 24 px. orbok's house rule is 44 px for
-primary actions (WCAG 2.5.5 AAA guideline), verified by the
-`primary_action_target_size` test.
+Prompted by snora RFC-061, which found its own `chip` dismiss control at
+**15.0 px** against the 24 × 24 minimum. Asking the same question here exposed
+two problems with this entry, though not with the targets themselves.
+
+**1. The cited test does not verify the claim.** `primary_action_target_size`
+asserts three inequalities on *token values* — `spacing.md >= 10`,
+`spacing.lg >= 14`, `2 × spacing.md >= 24`. It never measures a widget. It
+verifies the tokens *permit* an adequate target, not that any control is one.
+
+**2. The claim was scoped to primary actions; the criterion is not.** WCAG 2.5.8
+applies to every target. orbok's smallest controls are not primary actions — they
+are chips and toggles built with bare `button(...)`, which take iced's
+`DEFAULT_PADDING` (5 px vertical, 10 px horizontal), not the
+`[spacing.md, spacing.lg]` = `[12, 16]` this entry described.
+
+**The smallest target, computed:** a chip renders `meta_s` text — `body_small`,
+14.0 px at the default scale — at iced's default `LineHeight::Relative(1.3)`,
+inside 5 px vertical padding each side. Height ≈ **14 × 1.3 + 10 ≈ 28 px**,
+comfortably above 24. `TextScale` only increases from there (1.0 / 1.15 / 1.3),
+so 28 px is the floor. Width is label-driven and far larger.
+
+So the status holds. **What was wrong was the evidence, not the outcome** — and
+had a control been undersized, nothing in the suite would have caught it.
+
+orbok's house rule of 44 px for primary actions (WCAG 2.5.5 AAA guideline) is
+separate and unaffected.
+
+**Not applicable:** snora's RFC-061 chip repair does not reach orbok. We do not
+use `snora::design::widget::chip`; our chips are single `button`s whose label
+*contains* the `✕` (`views.rs:196`), so the dismiss target is the whole chip
+rather than a glyph-sized control.
 
 ### 4.1.2 Name, Role, Value
 
