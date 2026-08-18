@@ -255,10 +255,39 @@ entirely, which is 2.1.1's remaining gap, not this criterion's.
 
 **Status: Partially met — known renderer limitation (see below).**
 
-iced 0.14's `button`/`container` `Status` enum exposes `Active | Hovered |
-Pressed | Disabled` only; there is no `Focused` variant. A token-driven focus
-ring on standard widgets cannot be delivered through the snora style bridge in
-this iced version.
+**The blocking claim here was over-scoped. Re-assessed 2026-08-18** after snora
+0.34.0 corrected the same over-statement in its own documentation at five sites.
+
+It read: *"A token-driven focus ring on standard widgets cannot be delivered
+through the snora style bridge in this iced version."* The accurate constraint is
+narrower:
+
+> iced cannot tell a style closure that a widget **iced** owns is focused.
+
+A `container` style closure is an arbitrary `Fn(&Theme) -> Style`, so anything
+**the application** already knows is available inside it — including a focused or
+selected boolean driving border colour *and* width. **orbok already does this**:
+`result_card` and `source_card` choose `card::selected` over `card::surface` from
+orbok's own `is_selected`, which is precisely the mechanism the old text said
+could not be delivered.
+
+So the criterion splits, and only one half is blocked:
+
+| Focus owned by | Ring renderable? | Status |
+|---|---|---|
+| **orbok** — list selection (`selected_result_idx`, `selected_source`) | **Yes, today** | rendered via `card::selected` |
+| **iced** — the 4 text inputs reached by `Tab` | No — `Status` has no `Focused` variant | genuinely blocked |
+
+For iced-owned focus the text inputs render their own cursor/caret, which is
+visible feedback for the only widgets `Tab` can reach (see 2.1.1). So the
+practical gap is narrower than "no focus ring anywhere".
+
+**Available and not yet adopted:** `snora::design::FocusTokens` (`ring_width`,
+`ring_offset`, `ring_color`) exists and is reachable under the `design` feature.
+orbok's selection indicator is currently an accent border chosen ad hoc rather
+than driven by those tokens. Moving to `FocusTokens` would make ring width and
+offset token-driven like every other visual value, and is the obvious next step
+for this criterion — not a blocked one.
 
 What we provide:
 - Corrected 2026-08-17 (Task 024): the line here previously claimed "iced's
@@ -276,8 +305,10 @@ What we provide:
   024, the Sources view.
 - High-contrast themes maximise the visibility of affordances we can render.
 
-Tracked upstream: snora-team issue for focus-ring support when iced exposes
-focus state. Until then this criterion is "met where renderer allows."
+Tracked upstream: iced exposing focus state for widgets it owns. That remains a
+real dependency — but it now bounds a **quarter** of this criterion (4 text
+inputs that already show a caret), not all of it. Do not restate it as a blanket
+"cannot render a focus ring".
 
 ### 2.5.8 Target Size (Minimum)
 
