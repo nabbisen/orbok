@@ -27,6 +27,12 @@
 //! `text_muted` is ever rendered here, add it to [`RENDERED_PAIRS`] like any
 //! other text role rather than reinstating the exemption.
 //!
+//! **Scope of this list, settled by snora 2026-08-18.** It covers the roles and
+//! surfaces *orbok* renders, not snora's palette as a whole. snora runs its own
+//! derived-pair enforcement (their RFC-063) over all 35 of its pairs, and its
+//! token surface is contractually frozen — so a role we do not render is not
+//! ours to audit. Do not widen this list to mirror snora's.
+//!
 //! `palette.border` is also excluded: snora's border role is a visual
 //! separator between surfaces, not a foreground element rendered over text.
 //! WCAG 1.4.11 (non-text contrast) applies to UI component *boundaries*, but
