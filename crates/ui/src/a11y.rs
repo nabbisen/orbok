@@ -17,9 +17,15 @@
 //! - Normal text (< 18 pt / < 14 pt bold): contrast ratio ≥ 4.5 : 1
 //! - Large text (≥ 18 pt / ≥ 14 pt bold) and UI components: ≥ 3.0 : 1
 //!
-//! `text_muted` is intentionally exempt — snora documents it as below-body
-//! contrast for non-essential decorative text. It must never be used for
-//! essential content (see rule in `components.rs` and `views.rs`).
+//! `text_muted` is **not rendered by orbok at all** — this comment is its only
+//! occurrence in the tree. It is therefore absent from the pairs below because
+//! there is nothing to audit, not because it is exempt.
+//!
+//! This previously claimed an exemption on the grounds that snora documented
+//! the role as below-body contrast for decorative text. snora **withdrew** that
+//! in 0.34.0 ("was ours, invented"); WCAG grants no role-level exemption. If
+//! `text_muted` is ever rendered here, add it to [`RENDERED_PAIRS`] like any
+//! other text role rather than reinstating the exemption.
 //!
 //! `palette.border` is also excluded: snora's border role is a visual
 //! separator between surfaces, not a foreground element rendered over text.
@@ -28,6 +34,12 @@
 //! bounding box. orbok's cards use `card::surface` (background fill) to
 //! define their extent, so the border is supplementary decoration and does not
 //! need to meet the 3:1 threshold independently.
+//!
+//! **This holds only while orbok's surfaces stay fill-defined.** snora's own
+//! dialog card is border-defined (RFC-039), so adopting `snora::design::render`
+//! would make the border load-bearing and require a pair here. orbok renders
+//! `snora::render` and a bespoke confirm dialog today, so it does not.
+//! Re-checked 2026-08-18 against snora 0.34.0's border repair.
 
 use snora::design::contrast::contrast_ratio;
 use snora::design::{Color, Tokens};

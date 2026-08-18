@@ -45,10 +45,25 @@ tone colour. No status depends on colour alone. Verified by the
 All body and label text renders on token-paired foreground/background roles
 whose contrast is verified at the snora palette level and additionally guarded
 by `crates/ui/src/a11y.rs`. The `contrast_usage_guard_all_presets` test runs
-`a11y::audit` across all four theme presets and asserts AA ratios (≥ 4.5:1
-normal, ≥ 3.0:1 large/UI) for every pair orbok renders. `text_muted` is
-intentionally exempt (non-essential decorative text only — never used for
-essential content).
+`a11y::audit` across all four theme presets and asserts AA ratios for every pair
+orbok renders. All nine pairs are asserted at 4.5:1; no pair currently uses the
+3.0:1 large-text/UI threshold.
+
+**`text_muted`, corrected 2026-08-18.** This entry claimed the role was
+"intentionally exempt". Two things were wrong with that:
+
+- The exemption was justified by snora documenting `text_muted` as below-body
+  contrast for decorative text. **snora withdrew that in 0.34.0**, stating the
+  exemption "was ours, invented" — WCAG's exemptions are incidental, decorative,
+  invisible text, logotypes and large text, and a role-level exemption is not
+  among them. `text_muted` is now asserted against all three surfaces upstream.
+- More simply: **orbok never renders `text_muted`.** Its only occurrence in the
+  tree is the comment in `a11y.rs` that claimed the exemption.
+
+So there is nothing to exempt. The correct statement is that the role is unused,
+which is stronger than an exemption and needs no WCAG argument. **If it is ever
+rendered, it must be added to `RENDERED_PAIRS` like any other text role** — do
+not reinstate the exemption.
 
 ### 1.4.4 Resize Text
 
@@ -77,10 +92,40 @@ bare "Not met" premature.
 
 ### 1.4.11 Non-text Contrast
 
-**Status: Met.**
+**Status: Met — but this entry described a mechanism that does not exist.**
+Corrected 2026-08-18, prompted by snora 0.34.0's own border-contrast repair.
 
-UI component boundaries (borders on surface) are included in `a11y::RENDERED_PAIRS`
-at the ≥ 3.0:1 threshold.
+It previously read: *"UI component boundaries (borders on surface) are included
+in `a11y::RENDERED_PAIRS` at the ≥ 3.0:1 threshold."* **They are not.**
+`RENDERED_PAIRS` holds nine pairs, every one of them text-on-background at
+`min_ratio: 4.5`. No pair reads `palette.border`, and no pair uses a 3.0
+threshold at all.
+
+`crates/ui/src/a11y.rs` excludes `palette.border` **deliberately and with a
+stated reason**, which is why the status is still Met: 1.4.11 applies to a
+boundary only when the border is the sole means of conveying the component's
+extent, and orbok's cards are defined by their `card::surface` fill.
+
+That argument holds only while two things remain true, and both were re-checked
+on 2026-08-18:
+
+1. **orbok's cards are fill-defined.** Only `card::surface` and `card::selected`
+   are used — both fill styles.
+2. **orbok does not render snora's dialog card.** orbok's confirmation dialog is
+   bespoke (`components.rs`: *"no snora primitive yet"*), and orbok calls
+   `snora::render`, not `snora::design::render`. This matters because RFC-039
+   made snora's dialog card **border-defined rather than shadow-defined** — for
+   that surface the border *is* the boundary, and the exclusion would not apply.
+
+**If either changes — adopting `snora::design::render` (upgrade-plan Phase 3), or
+a border-defined surface of our own — this criterion must be re-assessed and a
+border pair added to `RENDERED_PAIRS`.**
+
+For the record: the border value orbok was rendering measured **1.28:1 (light)**
+and **1.19:1 (dark)** until snora repaired it to ~3.1:1 in 0.34.0. Under the
+exclusion above that was not an orbok conformance failure — but it is a
+demonstration of why an untested role is worth naming as untested rather than
+describing as covered.
 
 ### 2.1.1 Keyboard
 
