@@ -147,7 +147,10 @@ fn rendered_pairs(t: &Tokens) -> Vec<(&'static str, Color, Color, f32 /*min*/)> 
         ("success_text on success",   p.success_text,   p.success,       4.5),
         ("info_text on info",         p.info_text,      p.info,          4.5),
         ("border on surface (UI)",    p.border,         p.surface,       3.0),
-        // NOTE: text_muted is intentionally excluded — never used for essential text.
+        // NOTE: text_muted is excluded because orbok never renders it.
+        // (This line once read "intentionally excluded — never used for
+        // essential text", citing a snora exemption withdrawn in 0.34.0 as
+        // "ours, invented". Corrected 2026-08-19; see RFC-034 §5.1.)
     ]
 }
 

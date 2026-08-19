@@ -364,7 +364,7 @@ These are owned, tracked decisions — not silent gaps.
 
 | Limitation | Criterion | Mitigation | Upstream |
 |---|---|---|---|
-| No `Focused` widget status → no CSS-style focus ring on buttons/cards | 2.4.7 | High-contrast themes; card::selected accent border | snora-team issue; revisit when iced exposes focus state |
+| No `Focused` widget status → iced cannot tell a style closure that a widget **iced owns** is focused | 2.4.7 | Application-owned selection *does* render a ring today (`card::selected`); high-contrast themes | iced exposing focus state for its own widgets. **Narrowed 2026-08-18** — this row read "no CSS-style focus ring on buttons/cards", which over-stated it; see §2.4.7 |
 | AccessKit integration limited | 4.1.2 | i18n labels as authoritative names; tooltip strings on icon controls | iced roadmap item |
 | `FocusSearch` targets a view switch, not the input directly | 2.4.3 (operability) | Switches to Search view; user's next keypress reaches input | Task 024 found `iced_runtime::widget::operation::focus::<T>(id)` genuinely exists in iced 0.14 (used for `focus_next`/`focus_previous` there) — this row's original claim that no such Task exists at all was wrong. Retargeting `FocusSearch` at it directly is a small, separate follow-up (needs an `Id` assigned to the search input), not done here. |
 

@@ -106,9 +106,29 @@ built-in presets are AA-tested for body text on primary surfaces. orbok adds one
 **usage guard test**: enumerate the foreground/background pairs orbok actually
 renders and assert each meets the AA ratio using `snora_design::contrast`'s
 `contrast_ratio` (4.5:1 normal text, 3:1 large text and
-UI components). `text_muted` is exempt (snora documents it as below-body and for
-non-essential text only) and must therefore never be used for essential text — a
-rule we encode in the component layer.
+UI components).
+
+> **Amended 2026-08-19 — the `text_muted` exemption is withdrawn.** This
+> paragraph read: *"`text_muted` is exempt (snora documents it as below-body and
+> for non-essential text only) and must therefore never be used for essential
+> text."*
+>
+> snora withdrew that documentation in 0.34.0 as *"ours, invented"* — WCAG grants
+> no role-level exemption — and asserts the role at 4.5:1 against all three
+> surfaces. So the authority this exemption rested on no longer exists.
+>
+> **orbok's position needs no exemption: the role is never rendered here at all.**
+> Its only occurrences are the comments that claimed the exemption.
+>
+> Found by the sweep snora's RFC-067 asked consumers to run. This was orbok's
+> **third** instance of the claim — `docs/src/maintainers/accessibility.md`
+> §1.4.3 and `crates/ui/src/a11y.rs` were corrected on 2026-08-18; this one and
+> `HANDOFF-034`'s code comment were missed then. Four consumers made the same
+> error from the same source; the corrections travel no faster than the claim did.
+>
+> §6 rule 1 below still says `text_muted` is never used for essential text. That
+> rule is harmless and now vacuous — nothing renders it — so it stays as written
+> rather than being deleted and rediscovered.
 
 ### 5.2. Non-color status
 
