@@ -58,7 +58,10 @@ rusqlite                    = { version = "0.39", features = ["bundled"] }
 # RFC-002 §16).
 localcache                  = { version = "0.21", features = ["compression", "tracing"] }
 
-# GUI — RFC-027 decision: iced 0.14 via snora 0.18
+# GUI — RFC-027 decision: iced 0.14, via snora. The snora pin below moves with
+# upgrade-plan Phase 1 bumps (Tasks 022/023/029) and is deliberately not restated
+# here: this comment named 0.18 while the pin read 0.37, which is the same
+# stale-version-in-a-comment class snora found in their own lib.rs at 0.38.3.
 iced                        = { version = "0.14", features = ["tokio"] }
 snora                       = { version = "0.37", features = ["design"] }
 rfd                         = "0.15"

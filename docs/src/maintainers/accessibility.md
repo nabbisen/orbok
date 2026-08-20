@@ -112,10 +112,21 @@ on 2026-08-18:
 1. **orbok's cards are fill-defined.** Only `card::surface` and `card::selected`
    are used — both fill styles.
 2. **orbok does not render snora's dialog card.** orbok's confirmation dialog is
-   bespoke (`components.rs`: *"no snora primitive yet"*), and orbok calls
-   `snora::render`, not `snora::design::render`. This matters because RFC-039
-   made snora's dialog card **border-defined rather than shadow-defined** — for
-   that surface the border *is* the boundary, and the exclusion would not apply.
+   bespoke (`components.rs`: *"no snora primitive yet"*), orbok calls
+   `snora::render` rather than `snora::design::render`, and orbok renders no
+   modal dim at all — its confirmations replace the page rather than overlay it.
+
+   > **Rationale corrected 2026-08-20.** This read: *"RFC-039 made snora's dialog
+   > card border-defined rather than shadow-defined — for that surface the border
+   > *is* the boundary."* snora withdrew that in 0.39.0 after **arama** measured
+   > it: `border ǀ dim` reaches **1.00:1 in every preset**, so the border is not
+   > what separates the card from the dim; the dim-to-fill step carries it at
+   > 3.16:1 or better. The border works at the card's *inner* edge.
+   >
+   > **The conclusion is unchanged and the reason is now different.** Adopting
+   > `snora::design::render` would introduce a dimmed modal surface whose
+   > separation we do not currently render or audit — so it still forces a
+   > re-assessment, just not the one this text described.
 
 **If either changes — adopting `snora::design::render` (upgrade-plan Phase 3), or
 a border-defined surface of our own — this criterion must be re-assessed and a
