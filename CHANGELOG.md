@@ -623,6 +623,44 @@ next release tag.
 
 ### Fixed
 
+- **RFC-034 §2.4.7 — the selection ring didn't get stronger on
+  high-contrast presets, exactly where it mattered most (Task 031):**
+  `result_card` and `source_card`'s selected-state border came from
+  `snora::design::widget::card::selected`, a fixed style function that
+  hardcodes `width(2.0)` and reads only `tokens.palette.accent` for
+  color — it takes no caller-supplied border, so it cannot vary by
+  preset. Probed at the current snora pin: light/dark ship
+  `FocusTokens { ring_width: 2.0, ring_offset: 2.0 }`; high-contrast
+  light/dark ship `ring_width: 3.0`, each preset with its own
+  `ring_color`. Because `card::selected` reads none of that,
+  high-contrast users were getting the exact same selection affordance
+  as light/dark — the light/dark ring, in the one case a visibly
+  stronger one was designed for them. `card::selected` cannot be
+  extended (no border parameter on the upstream function), so a
+  parallel, token-driven style function replaces it at both call
+  sites: `components::selection_ring`/`selection_ring_style` build an
+  `iced::Border` from `tokens.focus.ring_width`/`ring_color` and
+  `tokens.radius.lg`, never a literal value (RFC-032). `ring_offset`
+  has no `iced::Border` equivalent (a ring drawn outside a control's
+  edge isn't expressible as a border alone, per `FocusTokens`'s own
+  doc comment) and is `2.0` in all four built-in presets today, so
+  nothing currently varies on that dimension — accepted as a
+  deliberate inset ring rather than restructuring card padding to
+  express an offset with no live signal behind it yet. Tested at the
+  style level, the same way Task 028 worked around `iced_test`'s
+  Simulator not inspecting rendered container geometry: a hardcoding
+  guard (mutate a cloned `Tokens.focus`, confirm the style follows it)
+  plus a check that `high_contrast_light`/`high_contrast_dark` render
+  strictly wider than `light`/`dark` across the real built-in presets —
+  the actual defect this closes, not just a synthetic mutation.
+  Verified live too: screenshots of the seeded selection ring in light
+  vs. high-contrast-light, sampled pixel-for-pixel, show the border
+  going from 2px `#1D4ED8` to 3px `#0030B0` — matching the token-level
+  assertions exactly. This does not move RFC-034 §2.4.7 to "Met" —
+  application-owned selection (now correct per preset) and iced-owned
+  text-input focus (still unreachable — iced 0.14's `button`/
+  `container::Status` has no `Focused` variant) remain a deliberate
+  split; only the already-working half got better.
 - **RFC-049/RFC-039 — settings writes are now atomic and owner-only
   (Task 016):** `settings.json` previously went through a plain
   truncate-then-write at the process umask — a crash or power loss

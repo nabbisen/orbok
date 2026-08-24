@@ -95,6 +95,17 @@ fn component_smoke_source_card() {
         false,
         Message::SourceRemoved("src-1".to_string()),
     );
+    // Selected, exercising the same selection_ring path as result_card's
+    // selected case above -- "both cards, not one" (Task 031 §2).
+    let _ = crate::components::source_card(
+        &tokens,
+        "Documents".to_string(),
+        "/home/user/Documents".to_string(),
+        "812 indexed · 0 stale".to_string(),
+        "Active",
+        true,
+        Message::SourceRemoved("src-1".to_string()),
+    );
 }
 
 #[test]
@@ -120,4 +131,58 @@ fn component_smoke_progress() {
     let tokens = Tokens::light();
     let _ = crate::components::job_progress(&tokens, "Indexing...", Some(0.42));
     let _ = crate::components::job_progress(&tokens, "Queued", None);
+}
+
+// Task 031 §4: the guard against hardcoding, the same shape as Task 028's
+// line_height_helpers_track_tokens_not_constants -- mutate a Tokens copy's
+// `focus` and confirm the rendered style follows it, not a preset default.
+#[test]
+fn selection_ring_style_tracks_focus_tokens_not_constants() {
+    use crate::components::selection_ring_style;
+    use snora::design::{Color, FocusTokens};
+
+    let tokens = Tokens::light();
+    let style = selection_ring_style(&tokens);
+    assert_eq!(
+        style.border.width, tokens.focus.ring_width,
+        "border width must read tokens.focus.ring_width"
+    );
+
+    // `Tokens` is `#[non_exhaustive]`: struct-literal update syntax does
+    // not compile outside its own crate. Mutate a clone's field instead,
+    // matching the pattern `Tokens`'s own doc comment shows.
+    let mut mutated = tokens.clone();
+    mutated.focus = FocusTokens::new(9.0, 2.0, Color::rgb(1.0, 0.0, 0.0));
+    let mutated_style = selection_ring_style(&mutated);
+    assert_eq!(
+        mutated_style.border.width, 9.0,
+        "border width must follow a mutated Tokens.focus, not a hardcoded 2.0"
+    );
+}
+
+// Task 031 §4: the check worth adding beyond the hardcoding guard -- the
+// actual defect this task exists to fix. high_contrast_light/dark must
+// render a *wider* ring than light/dark, across the real built-in
+// presets, not a synthetic mutation.
+#[test]
+fn selection_ring_is_wider_on_high_contrast_presets() {
+    use crate::components::selection_ring_style;
+
+    let light_width = selection_ring_style(&Tokens::light()).border.width;
+    let dark_width = selection_ring_style(&Tokens::dark()).border.width;
+    let hc_light_width = selection_ring_style(&Tokens::high_contrast_light())
+        .border
+        .width;
+    let hc_dark_width = selection_ring_style(&Tokens::high_contrast_dark())
+        .border
+        .width;
+
+    assert!(
+        hc_light_width > light_width,
+        "high_contrast_light's ring ({hc_light_width}) must be wider than light's ({light_width})"
+    );
+    assert!(
+        hc_dark_width > dark_width,
+        "high_contrast_dark's ring ({hc_dark_width}) must be wider than dark's ({dark_width})"
+    );
 }

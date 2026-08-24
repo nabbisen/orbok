@@ -109,8 +109,10 @@ extent, and orbok's cards are defined by their `card::surface` fill.
 That argument holds only while two things remain true, and both were re-checked
 on 2026-08-18:
 
-1. **orbok's cards are fill-defined.** Only `card::surface` and `card::selected`
-   are used — both fill styles.
+1. **orbok's cards are fill-defined.** `card::surface` and, since Task 031,
+   the bespoke `components::selection_ring` (which sets `background` exactly
+   as `card::selected` did, only the border source changed) — both fill
+   styles. `card::selected` itself is no longer called anywhere in this tree.
 2. **orbok does not render snora's dialog card.** orbok's confirmation dialog is
    bespoke (`components.rs`: *"no snora primitive yet"*), orbok calls
    `snora::render` rather than `snora::design::render`, and orbok renders no
@@ -278,7 +280,7 @@ narrower:
 A `container` style closure is an arbitrary `Fn(&Theme) -> Style`, so anything
 **the application** already knows is available inside it — including a focused or
 selected boolean driving border colour *and* width. **orbok already does this**:
-`result_card` and `source_card` choose `card::selected` over `card::surface` from
+`result_card` and `source_card` choose a selection ring over `card::surface` from
 orbok's own `is_selected`, which is precisely the mechanism the old text said
 could not be delivered.
 
@@ -286,19 +288,30 @@ So the criterion splits, and only one half is blocked:
 
 | Focus owned by | Ring renderable? | Status |
 |---|---|---|
-| **orbok** — list selection (`selected_result_idx`, `selected_source`) | **Yes, today** | rendered via `card::selected` |
+| **orbok** — list selection (`selected_result_idx`, `selected_source`) | **Yes, today** | rendered via `components::selection_ring`, token-driven (Task 031) |
 | **iced** — the 4 text inputs reached by `Tab` | No — `Status` has no `Focused` variant | genuinely blocked |
 
 For iced-owned focus the text inputs render their own cursor/caret, which is
 visible feedback for the only widgets `Tab` can reach (see 2.1.1). So the
 practical gap is narrower than "no focus ring anywhere".
 
-**Available and not yet adopted:** `snora::design::FocusTokens` (`ring_width`,
-`ring_offset`, `ring_color`) exists and is reachable under the `design` feature.
-orbok's selection indicator is currently an accent border chosen ad hoc rather
-than driven by those tokens. Moving to `FocusTokens` would make ring width and
-offset token-driven like every other visual value, and is the obvious next step
-for this criterion — not a blocked one.
+**Adopted 2026-08-24 (Task 031).** `snora::design::FocusTokens` (`ring_width`,
+`ring_offset`, `ring_color`) drives `result_card`/`source_card`'s selected-state
+border, replacing snora's fixed `card::selected` (a hardcoded `accent`/`2.0`
+border with no way to pass a caller-supplied one). This was not a tidiness
+change: probed across all four presets, `ring_width` is `2.0` in `light`/`dark`
+but `3.0` in both high-contrast presets, with a different `ring_color` too —
+`card::selected`'s fixed border expressed neither, so a high-contrast user was
+getting the light/dark selection affordance in exactly the case a stronger one
+was designed for them. `ring_offset` (`2.0` in all four presets, so no
+per-preset signal exists on it today) is deliberately **not** expressed — an
+inset ring, since `iced::Border` has no offset field and honouring it would need
+padding or a nested container `selection_ring`'s doc comment names but does not
+build, for a dimension nothing currently varies. Tested at the style level
+(`selection_ring_style`, since `iced_test::Simulator` inspects rendered text,
+not a container's border): a hardcoding guard mirroring Task 028's, and an
+assertion that both high-contrast presets render strictly wider than their
+light/dark counterparts — the actual defect this closes.
 
 What we provide:
 - Corrected 2026-08-17 (Task 024): the line here previously claimed "iced's
@@ -311,10 +324,12 @@ What we provide:
   inputs (2.1.1), and iced's text inputs render their own cursor/caret as
   visible focus feedback for those — the gap is buttons and cards, which
   have no `Focused` status to render at all.
-- Both selection-model list views use `card::selected` (accent border) as
-  a visible selection indicator: the search results list, and, since Task
-  024, the Sources view.
-- High-contrast themes maximise the visibility of affordances we can render.
+- Both selection-model list views use `components::selection_ring`
+  (`tokens.focus`-driven, Task 031) as a visible selection indicator: the
+  search results list, and, since Task 024, the Sources view.
+- High-contrast themes maximise the visibility of affordances we can render,
+  and since Task 031 that includes a wider, differently-coloured selection
+  ring specifically, not just the presets' general contrast.
 
 Tracked upstream: iced exposing focus state for widgets it owns. That remains a
 real dependency — but it now bounds a **quarter** of this criterion (4 text
@@ -375,7 +390,7 @@ These are owned, tracked decisions — not silent gaps.
 
 | Limitation | Criterion | Mitigation | Upstream |
 |---|---|---|---|
-| No `Focused` widget status → iced cannot tell a style closure that a widget **iced owns** is focused | 2.4.7 | Application-owned selection *does* render a ring today (`card::selected`); high-contrast themes | iced exposing focus state for its own widgets. **Narrowed 2026-08-18** — this row read "no CSS-style focus ring on buttons/cards", which over-stated it; see §2.4.7 |
+| No `Focused` widget status → iced cannot tell a style closure that a widget **iced owns** is focused | 2.4.7 | Application-owned selection *does* render a ring today, `tokens.focus`-driven and correct per preset since Task 031 (`components::selection_ring`); high-contrast themes | iced exposing focus state for its own widgets. **Narrowed 2026-08-18** — this row read "no CSS-style focus ring on buttons/cards", which over-stated it; see §2.4.7 |
 | AccessKit integration limited | 4.1.2 | i18n labels as authoritative names; tooltip strings on icon controls | iced roadmap item |
 | `FocusSearch` targets a view switch, not the input directly | 2.4.3 (operability) | Switches to Search view; user's next keypress reaches input | Task 024 found `iced_runtime::widget::operation::focus::<T>(id)` genuinely exists in iced 0.14 (used for `focus_next`/`focus_previous` there) — this row's original claim that no such Task exists at all was wrong. Retargeting `FocusSearch` at it directly is a small, separate follow-up (needs an `Id` assigned to the search input), not done here. |
 

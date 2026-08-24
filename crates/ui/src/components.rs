@@ -10,8 +10,8 @@
 //!
 //! | orbok element               | snora 0.25 primitive                  |
 //! |-----------------------------|---------------------------------------|
-//! | result card                 | `card::surface` / `card::selected`    |
-//! | source card                 | `card::surface`                       |
+//! | result card                 | `card::surface` / bespoke `selection_ring` (Task 031, `tokens.focus`) |
+//! | source card                 | `card::surface` / bespoke `selection_ring` (Task 031, `tokens.focus`) |
 //! | indexing health cell        | `card::surface`                       |
 //! | status badge                | tone-styled chip (text + icon + tone) |
 //! | primary action              | `button::primary_maybe`               |
@@ -27,10 +27,11 @@
 use crate::i18n::{Locale, MessageKey, tr};
 use crate::state::Message;
 use crate::theme;
-use iced::widget::{button, column, row, text};
-use iced::{Element, Padding};
+use iced::widget::{button, column, container, row, text};
+use iced::{Border, Element, Padding, Shadow};
 use orbok_search::MatchBadge;
 use snora::design::style::button as btn_style;
+use snora::design::style::color::to_iced_color;
 use snora::design::{Tokens, Tone, card, progress};
 use snora::lucide;
 
@@ -99,11 +100,64 @@ pub fn status_badge<'a>(tokens: &Tokens, label: &str, tone: Tone) -> Element<'a,
 
 // ── Cards ─────────────────────────────────────────────────────────────────
 
+/// A card with the selected-state ring driven by `tokens.focus`
+/// (RFC-034 §2.4.7, Task 031) rather than snora's own fixed
+/// `card::selected` accent border. `card::selected` takes only `&Tokens`
+/// — no parameter for a caller-supplied border — so this mirrors its
+/// exact non-border styling
+/// (`snora-style::container::card_selected`: `surface` background,
+/// `radius.lg`, default shadow, primary text colour, `md` padding) and
+/// substitutes only the border, reading `ring_color`/`ring_width` from
+/// `tokens.focus` instead of a hardcoded `accent`/`2.0`. This is why the
+/// high-contrast presets now render correctly: they widen the ring
+/// `2.0 -> 3.0` and change its colour, a distinction `card::selected`'s
+/// fixed border cannot express.
+///
+/// **Inset ring; `ring_offset` is not expressed.** `iced::Border` has no
+/// offset field, so a ring drawn *outside* the card's edge isn't
+/// expressible as a container border alone
+/// (`FocusTokens::ring_offset`'s own doc comment names padding or a
+/// nested container as the way to honour it). `ring_offset` is `2.0` in
+/// all four built-in presets today — no accessibility signal varies by
+/// preset on that field — so the ring stays inset, matching orbok's
+/// prior visual behaviour exactly apart from colour/width. Accepting the
+/// inset deliberately rather than restructuring card layout for a
+/// dimension that doesn't yet vary.
+fn selection_ring<'a, Message: 'a>(
+    tokens: &Tokens,
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    let style = selection_ring_style(tokens);
+    container(content)
+        .padding(tokens.spacing.md)
+        .style(move |_theme| style)
+        .into()
+}
+
+/// The style computation [`selection_ring`] applies, pulled out as a pure
+/// function of `Tokens` so it is directly testable (Task 031 §4) --
+/// `iced_test::Simulator` finds text, it does not inspect a rendered
+/// container's border, the same limit `line_height_helpers_track_tokens_not_constants`
+/// (Task 028) worked around the same way.
+pub(crate) fn selection_ring_style(tokens: &Tokens) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        text_color: Some(to_iced_color(tokens.palette.text_primary)),
+        background: Some(to_iced_color(tokens.palette.surface).into()),
+        border: Border::default()
+            .rounded(tokens.radius.lg)
+            .color(to_iced_color(tokens.focus.ring_color))
+            .width(tokens.focus.ring_width),
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
 /// A search result card.
 ///
-/// Uses `card::selected` (accent border) when this result is the active
-/// selection, `card::surface` otherwise. Wrapped in an invisible button so the
-/// whole card surface is clickable and keyboard-reachable.
+/// Uses [`selection_ring`] (focus-token-driven border) when this result is
+/// the active selection, `card::surface` otherwise. Wrapped in an
+/// invisible button so the whole card surface is clickable and
+/// keyboard-reachable.
 #[allow(clippy::too_many_arguments)]
 pub fn result_card<'a>(
     tokens: &'a Tokens,
@@ -160,7 +214,7 @@ pub fn result_card<'a>(
     .spacing(tokens.spacing.xs);
 
     let inner = if is_selected {
-        card::selected(tokens, body)
+        selection_ring(tokens, body)
     } else {
         card::surface(tokens, body)
     };
@@ -173,10 +227,10 @@ pub fn result_card<'a>(
 
 /// A source card: name, path, summary stats, status, and a remove action.
 ///
-/// `is_selected` uses `card::selected` (accent border) exactly like
-/// `result_card` -- RFC-034 (Task 024)'s keyboard selection for the
-/// Sources view reuses the same visible-selection mitigation for 2.4.7's
-/// absence, not a second convention.
+/// `is_selected` uses [`selection_ring`] exactly like `result_card` --
+/// RFC-034 (Task 024)'s keyboard selection for the Sources view reuses
+/// the same visible-selection mitigation for 2.4.7's absence, not a
+/// second convention.
 #[allow(clippy::too_many_arguments)]
 pub fn source_card<'a>(
     tokens: &'a Tokens,
@@ -199,7 +253,7 @@ pub fn source_card<'a>(
     ]
     .spacing(tokens.spacing.xs);
     if is_selected {
-        card::selected(tokens, body)
+        selection_ring(tokens, body)
     } else {
         card::surface(tokens, body)
     }
