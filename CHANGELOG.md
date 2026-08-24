@@ -574,6 +574,52 @@ next release tag.
   (borders more present in light/dark) joins Owner Task 003 Part B's
   manual QA queue, same disclosure discipline as Tasks 022/023's
   unchecked bumps.
+- **Task 030 — snora 0.37.1 → 0.39.3, Phase 1, and this one genuinely is
+  invisible.** Same version-bump-only scope as Tasks 022/023/029.
+  `cargo update -p snora` moved the same five packages as Task 029
+  (`snora`, `snora-core`, `snora-design`, `snora-style`, `snora-widgets`)
+  0.37.1 → **0.39.3**, not 0.39.1 as the task's own reproduction table
+  expected — two newer patches (0.39.2, 0.39.3) had shipped upstream in
+  the interim. Checked before proceeding, not assumed safe: both are
+  confirmed test-only/documentation-only against the live upstream
+  CHANGELOG (`gh api repos/nabbisen/snora/contents/CHANGELOG.md`, since
+  patches aren't in the docs bundle Task 030 was written against) — each
+  states outright that shipped code is byte-identical across the release
+  ("git diff on shipped code across this release is empty"). `cargo
+  build -p orbok-ui -p orbok`: clean, no call site touched. `cargo test
+  -p orbok-ui --lib`: 115/115. Border contrast re-measured against all
+  three surfaces across all four presets: identical to 0.37.1 and to
+  0.39.1 in all twelve figures (light 3.12/3.38/3.38, dark 3.50/3.17/3.81,
+  both high-contrast presets 21.00/21.00 ǀ 21.00/19.80) — genuinely no
+  visual change this time, unlike Task 029. Took the optional follow-on
+  (§4): `theme::body_lh`/`meta_lh` (Task 028) now delegate to snora's own
+  `body_line_height`/`body_small_line_height` (RFC-068, available as of
+  this bump) instead of reading `t.typography.{body,body_small}.line_height`
+  and constructing `LineHeight::Relative` by hand — same module/shape as
+  every other helper in `theme.rs`, same values, one fewer place
+  duplicating what snora now maintains. `line_height_helpers_track_tokens_not_constants`
+  needed no edit to keep passing, confirming the delegation is behaviorally
+  equivalent rather than merely similar. **Found and fixed along the way,
+  unrelated to snora:** `cargo clippy --workspace` failed on a clean,
+  unmodified `main` before this bump touched anything — Rust's `stable`
+  toolchain (which CI also tracks via `dtolnay/rust-toolchain@stable`)
+  had advanced to 1.98.0 and introduced a new lint,
+  `chunks_exact_to_as_chunks`, that `crates/search/models/src/lib.rs`'s
+  `blob_to_vec` violated. Confirmed live on `main`'s own most recent CI
+  run before attributing it to this bump. Fixed with the lint's own
+  suggested rewrite (`as_chunks::<4>()` in place of `chunks_exact(4)`),
+  not a suppression — `as_chunks` stabilized in Rust 1.88.0
+  (`#[stable(feature = "slice_as_chunks", since = "1.88.0")]`, checked
+  against the installed `rust-src`), comfortably inside this workspace's
+  own `rust-version = "1.91"` floor. Behaviorally identical (same chunks,
+  same byte order); the existing `blob_to_vec`/`vec_to_blob` roundtrip
+  test and the rest of `orbok-models`' 51 tests pass unchanged. Committed
+  separately from the bump itself, since it has nothing to do with snora.
+  Out of scope, per the task: zone navigation (§2.B of Review 191, still
+  pending the owner's four-zone-vs-two-level-chrome decision) and
+  `FocusTokens` adoption (Task 031, independent of this bump). No visual
+  check was performed beyond the contrast re-measurement above, though
+  this time there is nothing to check — no rendered output changed.
 
 ### Fixed
 

@@ -210,9 +210,13 @@ pub fn body_s(t: &Tokens, s: TextScale) -> Pixels {
 /// -- so unlike the `_s` size helpers, this needs no separate scaled
 /// variant (RFC-032, Task 028 §3). Only for text that actually wraps to a
 /// second line; a single-line site gains only unused vertical space from
-/// this (Task 028 §2).
+/// this (Task 028 §2). Delegates to snora's own helper (RFC-068, snora
+/// 0.38.0) rather than reading `t.typography.body.line_height` and
+/// constructing `LineHeight::Relative` by hand, as this did before Task
+/// 030 -- same module/shape as every other helper in this file, same
+/// values, one fewer place duplicating what snora now maintains.
 pub fn body_lh(t: &Tokens) -> iced::widget::text::LineHeight {
-    iced::widget::text::LineHeight::Relative(t.typography.body.line_height)
+    snora::design::style::text::body_line_height(t)
 }
 
 /// Secondary metadata / compact help size (unscaled).
@@ -226,9 +230,11 @@ pub fn meta_s(t: &Tokens, s: TextScale) -> Pixels {
 
 /// Line-height multiplier for wrapping secondary text (snora `body_small`,
 /// 1.35 by default). See [`body_lh`]'s own comment for why there is no
-/// scaled variant and why this is not for single-line sites.
+/// scaled variant, why this is not for single-line sites, and why this
+/// delegates to snora's own helper rather than reading the token field
+/// directly.
 pub fn meta_lh(t: &Tokens) -> iced::widget::text::LineHeight {
-    iced::widget::text::LineHeight::Relative(t.typography.body_small.line_height)
+    snora::design::style::text::body_small_line_height(t)
 }
 
 /// Button / chip / control label size (unscaled).
