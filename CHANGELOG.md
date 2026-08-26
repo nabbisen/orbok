@@ -623,6 +623,39 @@ next release tag.
 
 ### Fixed
 
+- **RFC-019 §7 — no `.gitattributes`, so Windows checkout could silently
+  CRLF any text file (Task 033):** Task 032's cross-platform test
+  expansion surfaced a real failure: `orbok-models`'s
+  `typed_manifest_exactly_matches_appendix_b_json` `include_str!`s an
+  RFC appendix and splits on the LF-terminated literal `` "```json\n"
+  ``, which panics when the file is checked out with CRLF — exactly
+  what Git for Windows does by default with no `.gitattributes` to
+  override it. Confirmed test-only (`DEFAULT_TRUSTED_MODEL` is a
+  hardcoded `pub const`, never parsed from the appendix at runtime) and
+  isolated the exposed class before choosing a fix: `include_str!` of a
+  *non-Rust text file*, seven sites total (six SQL migrations under
+  `crates/data/db/migrations/`, plus the one appendix that happened to
+  fail — SQL is whitespace-tolerant, so those six were silently exposed
+  rather than broken). Added `.gitattributes` with `* text=auto
+  eol=lf`, repo-wide rather than scoped to the seven — a narrower
+  pattern's failure mode is silence (a CRLF file that still happens to
+  parse), and correctness would depend on remembering to extend the
+  pattern for every future `include_str!` of a text file. No binary
+  files are tracked in this repository, so `text=auto`'s heuristic has
+  nothing to misclassify; confirmed via `git add --renormalize .`
+  producing zero content diff (every tracked blob was already LF) —
+  the stop condition (a diff appearing anywhere unexpected) never
+  triggered.
+  **`trust.rs`'s test was deliberately left exactly as it was, not made
+  line-ending-tolerant** — a strict, LF-assuming test is the canary
+  that would notice if `.gitattributes` were ever removed or narrowed;
+  making it tolerant would delete that signal. Reconfirmed the failure
+  stays reproducible against a byte-for-byte CRLF copy of the appendix
+  after this change, so the canary still fires if the fix regresses.
+  Verified via the mechanism (`git check-attr text eol --` on both the
+  appendix and a migration), not by trusting a green CI run alone — a
+  green Windows leg proves the checkout is LF now, not that it stays
+  that way.
 - **RFC-034 §2.4.7 — the selection ring didn't get stronger on
   high-contrast presets, exactly where it mattered most (Task 031):**
   `result_card` and `source_card`'s selected-state border came from

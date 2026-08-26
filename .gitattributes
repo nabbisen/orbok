@@ -1,0 +1,14 @@
+# Task 033 (RFC-019 §7, Review 194): line-ending checkout is otherwise left
+# to each Git client's own `core.autocrlf` default -- `true` on Git for
+# Windows, the tool `windows-latest` CI runners use. With no override here,
+# text files checked out on Windows arrive with CRLF, which broke a strict,
+# LF-anchored `include_str!` split in orbok-models (Task 032's finding).
+#
+# Repo-wide, not scoped to the seven files that happen to be exposed today
+# (six SQL migrations, one RFC appendix): the failure mode of a narrower
+# pattern is *silence* -- a CRLF file that still happens to parse -- and
+# scoping it correctly requires remembering to extend the pattern every time
+# a new `include_str!` of a text file is added. No binary files are tracked
+# in this repository (confirmed at the time this was written), so `text=auto`
+# has nothing to misclassify.
+* text=auto eol=lf
