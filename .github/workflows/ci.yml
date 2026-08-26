@@ -242,16 +242,56 @@ jobs:
       - name: orbok library tests (runtime_context, cross-platform)
         run: cargo test -p orbok --lib --locked
 
+      # Task 032: orbok-cache joins this step (was previously untested off
+      # Linux) rather than getting its own -- same shape as orbok-core/db/fs,
+      # a small foundational crate with no GUI/bin surface of its own.
       - name: test core crates
         env:
           ORBOK_DATA_DIR: /tmp/orbok-cross
-        run: cargo test -p orbok-core -p orbok-db -p orbok-fs
+        run: cargo test -p orbok-core -p orbok-db -p orbok-fs -p orbok-cache
 
-      - name: RFC-050 lifecycle matrix
-        run: cargo test -p orbok-workers model_lifecycle --lib
+      # Task 032 (RFC-019 §7): document extraction was the most likely of the
+      # 289-test gap to hide a real platform difference -- encodings, line
+      # endings, PDF backend behaviour -- and the least likely to be caught
+      # any other way. lopdf/zip are pure Rust, no system library dependency,
+      # so nothing here was structurally excluded.
+      - name: orbok-extract tests (cross-platform)
+        run: cargo test -p orbok-extract --lib --locked
 
-      - name: RFC-050 abrupt-exit recovery matrix
-        run: cargo test -p orbok-workers abrupt_process_exit_at_each_durability_boundary_recovers_coherently --lib
+      # Task 032: model file I/O, path resolution, tokenizer loading -- the
+      # part of path handling `orbok --lib`'s runtime_context suite (above)
+      # does not already cover.
+      - name: orbok-models tests (cross-platform)
+        run: cargo test -p orbok-models --lib --locked
+
+      # Task 032: SQLite FTS5 with unicode61, previously untested off Linux
+      # for no structural reason -- rusqlite's `bundled` feature compiles its
+      # own SQLite, so nothing here depends on a system library. Running this
+      # here retires B2.1/B2.2 from the Windows manual pass permanently
+      # (`.git-exclude/evidence/owner-task-003-partb/`, §B).
+      - name: orbok-search tests (cross-platform)
+        run: cargo test -p orbok-search --lib --locked
+
+      # Task 032: default-features only. The `tract` feature (~150 MB extra
+      # compile) is already build-checked -- not test-run -- ubuntu-only in
+      # the release gate's "feature matrix (tract)" step above; running its
+      # tests on all three legs here was judged out of proportion to what
+      # this task asked for and is deliberately not done, not silently
+      # skipped.
+      - name: orbok-embed tests (cross-platform, default features)
+        run: cargo test -p orbok-embed --lib --locked
+
+      # Task 032 (RFC-019 §7): supersedes the two narrower filters this
+      # replaced (`model_lifecycle`, `abrupt_process_exit_at_each_
+      # durability_boundary_recovers_coherently`), which existed here first
+      # because durability was judged the highest-value subset to check
+      # early -- not because the rest of the crate's 172 tests were
+      # deliberately excluded. They were simply never added. This single run
+      # now covers all of them, including the scheduler logic
+      # (`rfc036_scheduler`) and the filesystem-touching pipeline tests that
+      # had never executed off Linux.
+      - name: orbok-workers tests (cross-platform)
+        run: cargo test -p orbok-workers --lib --locked
 
       # RFC-019 §7's platform matrix (Task 014): Release Smoke's minimum is
       # "Yes" for Windows and macOS, not just Linux, but the `release` job

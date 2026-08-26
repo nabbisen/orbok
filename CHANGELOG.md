@@ -903,6 +903,38 @@ next release tag.
 
 ### Tests
 
+- **289 tests now run cross-platform that had only ever run on Linux
+  (Task 032):** narrowing the Windows manual QA pass (Owner Task 003
+  Part B) required knowing what CI already covered there, and counting
+  found the `cross` job tested five targets while `orbok-search` (37),
+  `orbok-models` (51), `orbok-extract` (30), `orbok-cache` (6),
+  `orbok-embed` (6), and all but 13 of `orbok-workers`'s 172 tests had
+  never executed off Linux — the same class of gap Task 014 closed, and
+  larger than both of its cases combined. Added six new `cross` job
+  steps: `orbok-cache` folded into the existing "test core crates" step
+  (same shape as `orbok-core`/`orbok-db`/`orbok-fs`); `orbok-extract`,
+  `orbok-models`, and `orbok-search` each get their own step, all `--lib
+  --locked`; `orbok-embed` runs default-features only (the `tract`
+  feature stays build-checked, not test-run, ubuntu-only in the release
+  gate — a deliberate scope decision, not a silent skip); the two
+  narrow `orbok-workers` filters (`model_lifecycle`,
+  `abrupt_process_exit_at_each_durability_boundary_recovers_coherently`)
+  are replaced by one full `--lib` run covering all 172, since running
+  the narrow filters afterward would just re-execute a 13-test subset
+  of what the full run already exercises. None of the six crates
+  carried a structural cross-platform barrier: `lopdf`/`zip`
+  (`orbok-extract`) and `rusqlite`'s `bundled` feature (`orbok-search`)
+  are pure Rust or self-contained, with no system-library dependency to
+  check. All 289 passed on first run on both Windows and macOS —
+  reported plainly as a clean result, not evidence nothing needed
+  checking; nothing was tuned to make it happen. `cross` job wall-clock
+  impact measured and reported separately (review request 194 §5), since
+  it can only be read from the run this change itself produces. Unblocks
+  Owner Task 003 Part B: `orbok-search` running on Windows in CI lets
+  B2.1/B2.2 drop from the Windows manual pass permanently — moved to
+  the Linux-only list in
+  `.git-exclude/evidence/owner-task-003-partb/MANUAL-QA-RESULT-TEMPLATE.md`
+  §B (10 of 21 rows needing a manual Windows check drops to 8).
 - **RFC-049 isolation suite now runs in CI:** the app binary's own test
   suite (`cargo test -p orbok --bin orbok --locked`) — previously exercised
   by no CI job at all — now runs natively on Linux, macOS, and Windows in
