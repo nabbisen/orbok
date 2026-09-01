@@ -623,6 +623,34 @@ next release tag.
 
 ### Fixed
 
+- **Three `load_snippet` robustness defects, and an interim guard against
+  showing binary as document text (Task 034 §5, external audit F-03/S-18):**
+  `crates/search/engine/src/snippet.rs`.
+  (1) `BufRead::lines()` allocated one `String` per line with no cap of its
+  own — a file with no newline byte materialized entirely in memory to
+  produce this function's single, short snippet. Confirmed: a 200 MB
+  no-newline file took ~40-56ms to snippet pre-fix; now reads through
+  `Read::take(64 * 1024)` first, consistently under the 20ms deadline the
+  regression test asserts. (2) `let take = (end - start + 1).min(max_lines)`
+  underflowed in `usize` arithmetic whenever a stored `line_end <
+  line_start` (a corrupted or malformed location) — a debug-build panic,
+  confirmed reproducing it before landing
+  `end.saturating_sub(start).saturating_add(1)`. (3) **Interim guard for
+  the wrong-bytes defect (F-03):** PDF/DOCX/HTML chunks store
+  `Approximate` location quality — their `line_start`/`line_end` are
+  paragraph or page ordinals, not literal text-file line numbers — so
+  `load_snippet` was reading "that line range" from the source file and
+  returning the wrong bytes entirely, presented as if they were document
+  text. Now returns `None` unless `location_quality == "exact"`; a
+  missing snippet is honest, a binary excerpt is not. Checked before
+  landing this: zero existing tests anywhere in the workspace assert on a
+  loaded snippet's content for a PDF/DOCX/HTML chunk (grepped every
+  `.snippet`/pdf/docx/html co-occurrence), so nothing was silently
+  passing while showing binary, and the guard broke no test. Real
+  correctness — locating actual text for these formats — is RFC-060's;
+  this only stops the visible damage until that lands. All three
+  mutation-tested independently: reverted each fix in turn, confirmed its
+  own test (and only its own test) goes red, restored.
 - **`PathGuard`'s file-size gate admitted a path when `metadata()` errored,
   the one check in `validate()` that failed open (Task 034 §4, external
   audit S-09):** `crates/data/fs/src/path_guard.rs`'s size check was

@@ -8,21 +8,41 @@ use orbok_core::{OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::ChunkRecord;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+
+/// Read cap applied before line-splitting (Task 034 §5, audit S-18):
+/// `BufRead::lines()` allocates one `String` per line with no cap of its
+/// own, so a file with no newline byte would otherwise materialize
+/// entirely in memory to produce this function's single, short snippet.
+const MAX_SNIPPET_READ_BYTES: u64 = 64 * 1024;
 
 /// Load a text snippet for one chunk from its source file, using the
 /// stored line range. Returns `None` when the source file is missing
 /// or unreadable (UI should show "source unavailable").
 pub fn load_snippet(record: &ChunkRecord, source_path: &str) -> Option<String> {
+    // Task 034 §5 (audit F-03): PDF/DOCX/HTML chunks store `Approximate`
+    // location quality -- their `line_start`/`line_end` are paragraph or
+    // page ordinals, not literal text-file line numbers, so reading "that
+    // line range" from the source file returns the wrong bytes entirely. A
+    // missing snippet is honest; a binary excerpt presented as document
+    // text is not. Interim guard only -- RFC-060 owns the real fix
+    // (locating actual text for these formats).
+    if record.location_quality != "exact" {
+        return None;
+    }
+
     let path = Path::new(source_path);
     let file = std::fs::File::open(path).ok()?;
-    let reader = BufReader::new(file);
+    let reader = BufReader::new(file.take(MAX_SNIPPET_READ_BYTES));
 
     let start = record.line_start.max(1) as usize;
     let end = record.line_end as usize;
     let max_lines = 8usize;
-    let take = (end - start + 1).min(max_lines);
+    // `end.saturating_sub(start)` rather than `end - start`: a stored
+    // `line_end < line_start` (a corrupted or malformed location) must not
+    // panic on `usize` underflow.
+    let take = end.saturating_sub(start).saturating_add(1).min(max_lines);
 
     let lines: Vec<String> = reader
         .lines()
