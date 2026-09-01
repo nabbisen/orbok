@@ -623,6 +623,28 @@ next release tag.
 
 ### Fixed
 
+- **The DOCX decompression-bomb limit was gated on an attacker-controlled
+  field, not on bytes actually read (Task 034 §3, external audit S-01):**
+  `crates/pipeline/extract/src/docx.rs`'s per-entry XML cap checked
+  `entry.size()` — the uncompressed size *declared in the ZIP header*,
+  written by the file's author — before deciding whether to bound the
+  read. A `.docx` that declares a small size takes the unconditional
+  `read_to_string` branch, unbounded regardless of what decompression
+  actually produces. Confirmed against a genuine malicious archive, not
+  a mock: built a real ZIP via `zip::ZipWriter`, then patched the true
+  "uncompressed size" field (both the local file header and the central
+  directory header — a strict parser could catch a mismatch between the
+  two, so both had to lie) down to 10 bytes while the entry's actual
+  content stayed ~200 KB. Against the unfixed code, this read the full
+  199,999-character payload with no warning. Now bounds by
+  `(&mut entry).take(limit + 1).read_to_end(&mut buf)` — one byte past
+  the cap so "hit the cap" is distinguishable from "the entry was
+  exactly the cap" — never by the declared field. This also fixes a
+  second, latent defect in the old over-limit branch: a single
+  `entry.read()` call may return far fewer bytes than requested, so an
+  over-limit DOCX could be silently truncated to an arbitrary prefix
+  while reporting only a generic `SizeLimitReached`; `read_to_end`
+  loops to the real boundary instead of trusting one `read()` call.
 - **Japanese keyword search returned results worst-first, and the
   merge with the trigram index was comparing incomparable numbers
   (Task 034 §1/§2, external audit F-02/F-02b/F-10):**

@@ -68,32 +68,39 @@ impl DocumentExtractor for DocxExtractor {
             message: format!("docx zip: {e}"),
         })?;
 
-        // RFC-044 §9.5: enforce per-entry XML size limit.
+        // RFC-044 §9.5: enforce per-entry XML size limit by bytes actually
+        // read from decompression, never by `entry.size()` -- that field is
+        // the uncompressed size *declared in the ZIP header*, which the
+        // file's author writes. A small declared value used to take the
+        // unconditional `read_to_string` branch below, unbounded regardless
+        // of what decompression actually produced (Task 034 §3, audit
+        // S-01). `take(limit + 1)` reads one byte past the cap so "hit the
+        // cap" is distinguishable from "the entry was exactly the cap" --
+        // `read` returning `limit` either means EOF is next or is truncated
+        // right at the boundary; `limit + 1` bytes read only happens when
+        // there really was more. `read_to_end` also fixes a second, latent
+        // defect the old over-limit branch carried: a single `entry.read()`
+        // call may return far fewer bytes than requested, silently
+        // truncating to an arbitrary prefix shorter than the cap.
         let xml = match zip.by_name("word/document.xml") {
             Ok(mut entry) => {
-                if entry.size() > limits.max_docx_xml_bytes {
-                    warnings.push(ExtractWarning::SizeLimitReached {
-                        limit_name: "max_docx_xml_bytes".into(),
-                    });
-                    // Read only up to limit.
-                    let mut buf = vec![0u8; limits.max_docx_xml_bytes as usize];
-                    let n = entry.read(&mut buf).map_err(|e| OrbokError::Extraction {
+                let limit = limits.max_docx_xml_bytes;
+                let mut buf = Vec::new();
+                let read = (&mut entry)
+                    .take(limit + 1)
+                    .read_to_end(&mut buf)
+                    .map_err(|e| OrbokError::Extraction {
                         category: ErrorCategory::ParserError,
                         message: format!("docx xml read: {e}"),
                     })?;
-                    buf.truncate(n);
-                    // Best-effort UTF-8; invalid bytes → replacement chars.
-                    String::from_utf8_lossy(&buf).into_owned()
-                } else {
-                    let mut s = String::new();
-                    entry
-                        .read_to_string(&mut s)
-                        .map_err(|e| OrbokError::Extraction {
-                            category: ErrorCategory::ParserError,
-                            message: format!("docx xml read: {e}"),
-                        })?;
-                    s
+                if read as u64 > limit {
+                    warnings.push(ExtractWarning::SizeLimitReached {
+                        limit_name: "max_docx_xml_bytes".into(),
+                    });
+                    buf.truncate(limit as usize);
                 }
+                // Best-effort UTF-8; invalid bytes → replacement chars.
+                String::from_utf8_lossy(&buf).into_owned()
             }
             Err(_) => {
                 return Err(OrbokError::Extraction {

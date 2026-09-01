@@ -346,3 +346,4 @@ fn children_point_to_parent() {
 // RFC-044 hardening tests in submodules.
 mod rfc044_isolation;
 mod rfc044_limits;
+mod task034_docx_bomb;
