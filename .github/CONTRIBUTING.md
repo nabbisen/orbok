@@ -11,3 +11,11 @@ This project is maintained as a labor of love. We welcome community participatio
 - If you have a different direction in mind, please fork freely, provided proper licensing is respected.
 
 Thanks for understanding the scope and spirit of the project.
+
+### Before opening a pull request
+
+```sh
+cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
+```
+
+See [Local Development](../docs/src/maintainers/development.md) for the full test suite and how to run the app.

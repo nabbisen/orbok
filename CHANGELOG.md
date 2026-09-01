@@ -623,6 +623,16 @@ next release tag.
 
 ### Fixed
 
+- **The security-disclosure email link was broken (Task 034 §7, external
+  audit D-01):** `.github/SECURITY.md`'s `[email 📧](nabbisen@scqr.net])`
+  had a stray trailing `]` and no `mailto:` scheme, so GitHub rendered it
+  as a relative link to a file literally named `nabbisen@scqr.net]` —
+  the sole disclosure channel for a project that explicitly asks
+  reporters not to open public issues. Now
+  `[email 📧](mailto:nabbisen@scqr.net)`. While there,
+  `.github/CONTRIBUTING.md` had no build/test instructions at all; added
+  the local gate command and a link to
+  `docs/src/maintainers/development.md`.
 - **`get_health` materialized and sorted the entire queued-job table after
   every completed job, and `report_health` sent one message per job
   regardless (Task 034 §6, external audit P-02):**
