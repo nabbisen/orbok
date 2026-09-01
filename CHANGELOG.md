@@ -623,6 +623,20 @@ next release tag.
 
 ### Fixed
 
+- **`"excel"` was a published crates.io keyword with no spreadsheet
+  support behind it (Task 034 §8, external audit F-24):** removed from
+  `Cargo.toml`'s `keywords`. `SUPPORTED_EXTENSIONS` has never included
+  a spreadsheet format. Checked the related, in-scope question rather
+  than assuming: `KindFilter::Spreadsheets` exists in
+  `crates/search/engine/src/filter.rs` with i18n labels
+  (`FilterKindSpreadsheets`, both locales), but grepping `crates/ui/`
+  found zero references to `KindFilter` or the i18n key outside test
+  files — nothing in `views.rs`/`state.rs` renders it as a selectable
+  filter, and nothing iterates `KindFilter`'s variants to build one
+  generically either. Nothing user-facing offers the spreadsheet
+  category today. Left the enum itself alone, per instruction — its
+  fate (and the broader "filters are inert" finding it's one instance
+  of, audit F-05/F-06/F-09) is RFC-060's to decide.
 - **The security-disclosure email link was broken (Task 034 §7, external
   audit D-01):** `.github/SECURITY.md`'s `[email 📧](nabbisen@scqr.net])`
   had a stray trailing `]` and no `mailto:` scheme, so GitHub rendered it

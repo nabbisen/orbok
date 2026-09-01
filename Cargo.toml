@@ -22,7 +22,7 @@ rust-version            = "1.91"
 license                 = "Apache-2.0"
 authors                 = ["nabbisen"]
 categories              = ["gui", "development-tools", "text-processing", "visualization"]
-keywords                = ["gui", "search", "text", "pdf", "excel"]
+keywords                = ["gui", "search", "text", "pdf"]
 repository              = "https://github.com/nabbisen/orbok"
 
 [workspace.dependencies]
