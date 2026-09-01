@@ -26,3 +26,5 @@
 - [RFC Index](maintainers/rfcs.md)
 - [Release Readiness](maintainers/release_readiness.md)
 - [v1.0.0 Readiness Ledger](maintainers/v1_0_readiness.md)
+- [Benchmark Report](maintainers/benchmark_report.md)
+- [Dependency Audit](maintainers/dep_audit.md)

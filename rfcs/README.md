@@ -1,6 +1,6 @@
 # orbok RFC Index
 
-Managed by RFC-000. Last updated: 2026-08-04 (main after v0.24.0).
+Managed by RFC-000. Last updated: 2026-09-01 (main at `3e26f92`).
 
 The folder an RFC lives in is the source of truth for its state
 (`done/` = Implemented, `proposed/` = under review, `accepted/` = review
@@ -85,6 +85,28 @@ may start" a checked state rather than an implicit convention.
 | ID | Title | Status |
 |---|---|---|
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
+| 058 | [Verifying the Wired Application](proposed/058-verifying-the-wired-application.md) | Proposed — review first; the control that stops the unwired-feature class recurring |
+| 059 | [Erasure Completeness and Cache Lifetime](proposed/059-erasure-completeness-and-cache-lifetime.md) | Proposed — Reset does not erase the trigram index or the extraction cache |
+| 060 | [Search Result Integrity](proposed/060-search-result-integrity.md) | Proposed — snippets, trust, filters, folder scope, source status, reranker decision |
+| 061 | [Catalog Access and the Application Boundary](proposed/061-catalog-access-and-application-boundary.md) | Proposed — one shared catalog, one model per process, failures surfaced |
+| 062 | [Migration Integrity and Schema Guards](proposed/062-migration-integrity-and-schema-guards.md) | Proposed — a released migration was edited; no downgrade guard |
+| 063 | [Evidence for the Implemented Transition](proposed/063-evidence-for-the-implemented-transition.md) | Proposed — **owner decision**; `done/` is entered by assertion, not evidence, which is why nine entries make a false claim |
+
+**2026-09-01 — external audit.** An independent architecture audit
+(76 findings: 6 Critical, 23 High) was reviewed and its load-bearing claims
+verified by execution. RFC-058 through RFC-063 are its design output. Two
+things the index itself must carry:
+
+1. **Nine RFCs in `done/` currently make a false claim about the product** —
+   RFC-023/024/025/028 (nothing shipped), RFC-010/037/038 (designed, central
+   mechanism never connected), and RFC-041/045 (shipped with a named gap).
+   RFC-063 traces this to its cause — the `Implemented` transition requires no
+   evidence and names no verifier — and puts the fix to the owner. Until it is
+   decided, **this index overstates the shipped feature set** and should be read
+   alongside RFC-063 §7.
+2. **RFC-037 already contains the full design for the audit's single blocking
+   issue** (registered folders are never re-scanned). It does not need a new RFC;
+   it needs wiring. Routed as a dev-team task, not as RFC-058–063.
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in

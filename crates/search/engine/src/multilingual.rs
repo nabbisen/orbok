@@ -34,12 +34,16 @@ pub fn contains_cjk(s: &str) -> bool {
 }
 
 /// Normalize query text before building a MATCH expression (RFC-014 §10):
-/// - NFKC Unicode normalization (full-width → half-width, etc.)
+/// - fullwidth ASCII letters and digits mapped to half-width
 /// - trim whitespace
+///
+/// This is **not** NFKC. Only the three fullwidth ranges below are mapped;
+/// half-width katakana (U+FF61-FF9F) -- the most consequential NFKC case for
+/// Japanese -- is left untouched, and no case folding is performed here (FTS5's
+/// unicode61 tokenizer case-folds on its own; the trigram index does not).
+/// The prior doc claimed NFKC and lowercasing; neither was ever implemented.
 pub fn normalize_query(query: &str) -> String {
-    // NFKC decomposition followed by re-composition approximation:
-    // convert fullwidth ASCII/digits to half-width via simple range map,
-    // then lowercase.
+    // Convert fullwidth ASCII/digits to half-width via a simple range map.
     query
         .chars()
         .map(|c| {

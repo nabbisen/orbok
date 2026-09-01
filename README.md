@@ -12,9 +12,12 @@
 ## Overview
 
 orbok searches your local files by combining exact keyword retrieval
-and dense vector (semantic) search, fused with Reciprocal Rank Fusion,
-with optional local reranking. Everything runs on your computer.
-Document contents are never sent to an external server.
+and dense vector (semantic) search, fused with Reciprocal Rank Fusion.
+Everything runs on your computer. Document contents are never sent to an
+external server.
+
+A cross-encoder reranking stage is designed (RFC-010) and not implemented;
+there is a trait seam and no production reranker.
 
 Supported document types (current): plain text, Markdown, HTML, PDF, DOCX, CSV,
 and common source-code files.
@@ -59,8 +62,13 @@ works with no models installed at all.
 ### Local-first by design
 
 orbok does not copy your source files. It stores derived indexes
-(chunk offsets, FTS5 tokens, embeddings) and metadata. Full extracted
-text is not stored permanently by default.
+(chunk offsets, FTS5 tokens, embeddings) and metadata.
+
+It also caches the **extracted text** of each indexed document in
+`orbok-cache.sqlite3`, so that changing the embedding model does not require
+re-parsing every PDF. Today that cache has no expiry and no size bound, and
+**"Reset catalog" does not clear it** — deleting the data directory does.
+RFC-059 gives the cache a finite lifetime and makes Reset erase it.
 
 Data is classified into three lifecycle layers (RFC-001):
 
@@ -68,13 +76,21 @@ Data is classified into three lifecycle layers (RFC-001):
   Never deleted by routine cleanup.
 - **Rebuildable indexes** — keyword index, embedding vectors. Deletable
   and rebuildable from source files at any time.
-- **Ephemeral cache** — recent snippets, search result cache. LRU-evicted.
+- **Ephemeral cache** — extracted text, chunk bundles, recent snippets,
+  search result cache. Rebuildable from source files. *No LRU or TTL is
+  configured today (RFC-059); the extracted-text namespace is the largest of
+  these and currently grows without bound.*
 
 ### Security boundary
 
-The Rust backend enforces a strict source allowlist (RFC-003):
-the frontend requests data through typed service calls; it never
-reads arbitrary filesystem paths.
+The Rust backend enforces a strict source allowlist (RFC-003): the frontend
+requests data through typed service calls and never reads arbitrary filesystem
+paths.
+
+One backend path is currently outside that guard: snippet loading opens the
+file recorded in the catalog directly, so a file whose source was later paused
+or removed can still be read to render an excerpt. RFC-060 routes it through
+the allowlist.
 
 ### Keyword search
 
@@ -87,8 +103,11 @@ Japanese segmentation is in the roadmap (RFC-014).
 ### Semantic search (optional)
 
 Local dense embedding via a pluggable Rust inference backend (ONNX
-Runtime via tract). Model files stay on your machine. Switching
-models marks existing embeddings stale and queues a rebuild.
+Runtime via tract). Model files stay on your machine.
+
+Switching models does **not** currently invalidate or rebuild existing
+embeddings — vectors indexed under the previous model remain and are not used
+by the new one. Re-index manually after a model change. RFC-060 tracks the fix.
 
 ### Disk use
 

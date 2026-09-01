@@ -1,10 +1,11 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-08-04)
+## Current Status (2026-09-01)
 
 Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
-**000–046 implemented** (see
-[`rfcs/README.md`](rfcs/README.md)). RFC-049 (portable runtime data
+**000–046 are indexed as implemented** (see
+[`rfcs/README.md`](rfcs/README.md)) — **but nine of those entries make a
+false claim about the product**; see the Forward Plan below and RFC-063. RFC-049 (portable runtime data
 isolation), RFC-050 (trusted atomic model delivery), RFC-051
 (reproducible reviewed-source packaging), and RFC-053 (rusqlite line and
 Rust MSRV policy) are also now implemented on `main`,
@@ -31,60 +32,135 @@ across v0.16.0–v0.24.0:
   packaging), and RFC-053 (rusqlite line and Rust MSRV policy); release
   pending.
 
-Stack: snora 0.25 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.39 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
-## Forward Plan — v1.0.0 readiness and stabilization RFCs in progress
+## Forward Plan — revised 2026-09-01 after an external architecture audit
 
-RFC-049, RFC-050, RFC-051, and RFC-053 have shipped on `main` (release
-pending). RFC-047, RFC-048, and RFC-052 remain proposed v1.0.0 readiness/
-stabilization RFCs. RFC-047 defines evidence collection and RFC-048 tracks
-real-model performance recovery. RFC-052 addresses the one remaining
-architecture-review release blocker: complete UI localization/design-gate
-enforcement. RFC-053 was a separate dependency-maintenance track (rusqlite
-line reversal and a measured, not declared, MSRV), unrelated to that
-blocker. None marks v1.0.0 ready.
+An independent architecture audit at `3e26f92` returned 76 findings (6 Critical,
+23 High). Its load-bearing claims were verified by execution, not accepted as
+written. **Its substantive conclusion is that the blockers this roadmap tracked
+were not the ones that mattered most**, and this section is rewritten
+accordingly. The full assessment — including where the audit is wrong, imprecise,
+or colliding with a project rule — is recorded outside the tree with the rest of
+the review record.
 
-The `tract` feature build finding is resolved: `cargo check -p orbok-embed
---features tract` is now a blocking release gate, and `orbok-embed` contains
-real tokenizer-backed local ONNX inference. Empirical validation with a local
-`multilingual-e5-small` artifact has identified real-model p99 and indexing
-throughput failures. RFC-048 tracks the measurement-first recovery path.
-Future work (new features, stabilization, or the v1.0.0 push) will be opened
-as new RFCs in creation order (RFC-000).
+### Why the tracked schedule was wrong
 
-### Stabilization order before RC evidence collection
+Not carelessness, and worth stating precisely because the mechanism is still
+live:
 
-1. Review and accept RFC-052 and its handoff. (RFC-049, RFC-050, RFC-051,
-   and RFC-053 are implemented; see above.)
-2. Implement and independently review the remaining stabilization
-   boundaries.
-3. Continue RFC-048 measured performance recovery until real-model thresholds
-   pass or a later accepted RFC changes policy.
-4. Resume RFC-047 evidence collection only after those blockers are closed.
+**Nine RFCs in `rfcs/done/` carry `Status: Implemented` while making a false
+claim about the product.** Four decided to defer and shipped nothing
+(RFC-023 ANN, RFC-024 quantization, RFC-025 OCR, RFC-028 plugin extractors).
+Three shipped a design whose central mechanism the application never calls
+(RFC-010 reranking, RFC-037 source refresh, RFC-038 result trust). Two shipped
+with a named gap (RFC-041 filtering, RFC-045 folder scoping).
 
-### v1.0.0 gate (unchanged — awaiting owner confirmation)
+Because the RFC index is where this roadmap reads what exists, re-scanning,
+erasure, snippets and CJK ranking were all invisible from here.
 
-1. recall@5 ≥ 0.75 with a real embedding model on a user corpus.
+**The cause is in the rules, not in the code.** RFC-000 specifies the
+`Implemented` transition in full as *"the implementer or maintainer moves the
+file from `proposed/` to `done/` and updates the Status field"*. No evidence is
+required and no verifier is named — and it is the only consequential claim in
+this project that works that way. Code has six CI jobs and an adversarial review;
+a design token has a self-tested gate; a missing translation fails the build; an
+RFC becoming Implemented has a file move. `check-rfc-lifecycle.sh` appears to
+cover this and does not: it verifies that the Status field matches the folder,
+which is internal consistency, not correspondence to the product.
+
+Two things follow. The acceptance criteria decayed into capability phrasing —
+*"X exists"*, *"X is exposed to UI"* — because nothing was ever going to run
+them; RFC-058 §5 fixes the phrasing and RFC-063 supplies the missing evidence
+step that gives it force. And the evidence that *does* exist for recently-closed
+RFCs lives outside the tree, so the claim ships in the release archive and its
+proof does not.
+
+### Blocking issues for v1.0.0, in order
+
+Replaces the previous list. Each names its instrument.
+
+| # | Blocker | Instrument |
+|---|---|---|
+| 1 | **Registered folders are never re-scanned.** After the first scan, edited files stay stale, new files are never found, deleted files are never marked missing. A search index that never updates is not a shippable search product. | **Task 035** — the design already exists in full in RFC-037 §10–§20; it needs wiring, not a new RFC |
+| 2 | **"Reset catalog" does not erase what was indexed.** The trigram index is never cleared (`DELETE FROM chunk_fts_trigram` occurs zero times in the workspace) and the extraction cache — full document text, no TTL, no LRU — survives every cleanup. | **RFC-059** |
+| 3 | **Japanese results are ranked worst-first; PDF/DOCX/HTML snippets read the wrong bytes.** Both visible in the first minute of use, on the corpora orbok targets. | Task 034 (ranking), **RFC-060** (snippets) |
+| 4 | **The benchmark cannot see the largest cost in the product.** The harness builds the search service outside its timing loop with a pre-loaded model; the application loads and graph-optimizes the ONNX model on *every search*, on the GUI thread. This fully explains green keyword-only p99 against failing real-model p99. | **RFC-058 §7**, then **RFC-061 §6** |
+| 5 | **The DOCX decompression-bomb limit is enforced against an attacker-declared header field.** Measured 880× amplification on untrusted input processed automatically in the background. | Task 034 |
+| 6 | **Result trust, filters, folder scope and source status are inert.** A filter UI that does not filter and badges that always read "Ready" are worse than shipping neither. | **RFC-060** |
+| 7 | **The README asserts capabilities that do not exist**, two of them privacy claims and one the security-boundary claim. | Task 034 (text), RFC-059/RFC-060 (restore the claims) |
+
+Structurally important and not in the list only because it is not user-visible:
+**a released migration was edited in place** (`0001_baseline.sql`, commit
+`c54e89d`), so catalogs created by orbok ≤ 0.16.0 reject `status='paused'` and
+turning off background indexing silently pauses nothing. **RFC-062.**
+
+### RFC review order
+
+Six RFCs are open for owner review. The order is not arbitrary.
+
+1. **RFC-058 — Verifying the Wired Application.** First, and its end-to-end test
+   before any wiring work. It is the control. Wiring six features without it
+   fixes six symptoms and leaves the cause.
+2. **RFC-063 — Evidence for the Implemented Transition.** Owner decision.
+   Everything this roadmap says about "what exists" depends on it, and it is the
+   cause the other five are consequences of.
+3. **RFC-061 — Catalog Access and the Application Boundary.** Before RFC-060 and
+   before any parallelism work: the FTS row leak is driven in a tight loop by a
+   dropped `SQLITE_BUSY`, and parallel indexing would make the connection defect
+   load-bearing rather than intermittent.
+4. **RFC-059 — Erasure Completeness and Cache Lifetime.**
+5. **RFC-060 — Search Result Integrity.**
+6. **RFC-062 — Migration Integrity and Schema Guards.**
+
+### Sequencing
+
+1. **Task 034 — the no-design batch.** One week, no owner decisions. Closes two
+   Criticals, three Highs, and the entire "documentation asserts something
+   false" class.
+2. **RFC-058's end-to-end test**, with each assertion observed *failing* before
+   its fix lands. Not after.
+3. **Task 035 — wire RFC-037** (blocker 1), once that test exists to assert it.
+4. **RFC-061 §5–§6**, then re-measure with the corrected harness.
+5. **RFC-059, RFC-060, RFC-062** as accepted.
+6. **RFC-048 measurement resumes only after step 4.** Commissioning more
+   measurement from the current harness would produce numbers that exclude the
+   dominant cost, as every number this project holds today does.
+7. **RFC-047 evidence collection last**, unchanged in position but now behind a
+   different and larger set of blockers.
+
+### Where RFC-047, RFC-048 and RFC-052 now stand
+
+RFC-052 is implemented. RFC-049, RFC-050, RFC-051 and RFC-053 shipped on `main`
+(release pending). RFC-048 remains accepted and in progress, but **its
+measurement instrument is now known to be measuring the wrong region** — see
+blocker 4. RFC-047 remains proposed and paused. None marks v1.0.0 ready.
+
+### v1.0.0 gate (unchanged in substance; one criterion re-qualified)
+
+1. recall@5 ≥ 0.75 with a real embedding model on a user corpus. *Last measured
+   at 100%, comfortably passing — but measured before the audit found that the
+   e5 `query:`/`passage:` prefixes the model card requires are absent from both
+   the indexing and the query path, and before the CJK ranking inversion was
+   known. Re-measure after both are fixed.*
 2. p99 ≤ 200 ms and indexing throughput ≥ 10 files/s in release mode on a
-   1,000-document corpus. Current keyword-only evidence is green; real-model
-   artifact validation is blocked on RFC-048 performance recovery.
-3. Manual QA checklist signed off on Linux, Windows, and macOS.
+   1,000-document corpus. **Re-qualified:** the existing evidence was produced by
+   a harness that excludes per-search model construction. The measurement is not
+   invalid, but it attributes the cost to the wrong stage and cannot be used to
+   direct optimization. RFC-058 §7 fixes the harness; the gate itself is
+   unchanged.
+3. Manual QA checklist signed off on Linux, Windows, and macOS. *Linux and
+   Windows passes remain outstanding; macOS is automated-coverage-only by an
+   owner decision recorded in
+   [`docs/src/maintainers/release_readiness.md`](docs/src/maintainers/release_readiness.md).*
 
 v1.0.0 is not released without explicit project-owner confirmation.
 
-### Future process hardening candidates
-
-- Reusable owner-run evidence checklist template: extract the pattern from the
-  RFC-048 timing evidence checklist so future owner-run benchmarks, manual QA,
-  and release evidence requests are recorded in project files instead of only
-  in chat. Open a dedicated RFC only if the template changes release policy or
-  adds new gates.
-
 ### Tracked technical debt — named, not scheduled
 
-Recorded 2026-08-03 from an independent architecture review. Neither item is a
-release blocker; both are named here so they are not rediscovered a third time.
-**Do not sequence either ahead of RFC-052.**
+Neither of the original two items is a release blocker; both are named so they
+are not rediscovered a third time. The 2026-09-01 audit added four more that are
+recorded here rather than given an RFC, because their design is not in question.
 
 - **RFC-050 durability guarantees are not continuously verified.** Three
   separate-process helpers (`crash_injection_child`, `proxy_client_child`,
@@ -93,17 +169,62 @@ release blocker; both are named here so they are not rediscovered a third time.
   regression in those paths would turn no gate red. Documented in
   [`docs/src/maintainers/release_readiness.md`](docs/src/maintainers/release_readiness.md)
   under "Known Gate Coverage Limitation". Closing it means running the helpers
-  in CI and provisioning the two Windows volume fixtures.
+  in CI and provisioning the two Windows volume fixtures. **The audit sharpened
+  this:** these paths contain the workspace's *only* `unsafe` — seven Win32 FFI
+  blocks, all individually sound — so the code carrying the memory-safety burden
+  is the code with the weakest continuous verification.
 
-- **File-size rule (DEC-004) is broadly unmet.** Eleven files exceed the
-  500-line hard limit. `crates/pipeline/workers/src/model_delivery.rs` (2004)
-  and `model_lifecycle.rs` (1693) have both *grown* since the debt was first
-  recorded on 2026-07-18, and are now what `bootstrap.rs` was before its split.
-  `crates/app/src/runtime_isolation_tests.rs` (907) grew during the RFC-049
-  program. The sibling-tests convention is also still unmet across the
-  workspace; the `bootstrap.rs` split addressed one file only. Split by stable
+- **File-size rule (DEC-004) is broadly unmet.** Now **20** files exceed the
+  500-line hard limit (11 production, 9 test), up from the 11 recorded on
+  2026-07-18. `model_delivery.rs` (2,176) and `model_lifecycle.rs` (1,724) have
+  both grown further; `scheduler_host/tests.rs` (1,651) is new. Split by stable
   responsibility as each subsystem stabilizes rather than as a dedicated
   campaign.
+
+- **The FTS index grows without bound and cannot be reclaimed.** Re-indexing a
+  file permanently doubles its FTS footprint, and the Storage view's
+  "free space" action reports rows deleted while reclaiming nothing and
+  orphaning the rows permanently. Root cause is that `insert_bundle` mints a
+  fresh UUID `chunk_id` on every call, so the replace-on-reindex delete keyed on
+  `chunk_id` has never matched anything. Fix lands with RFC-059 §6, which shares
+  the prerequisite.
+
+- **Storage accounting double-counts and mis-attributes.** The catalog file's
+  whole size is reported as `PersistentCatalog` and the keyword and vector
+  indexes inside it are then counted again; the keyword estimate is a flat
+  `records × 256` that understates real Japanese-corpus usage by ~1.8×; the WAL
+  is not counted. `dbstat` gives the real per-table page usage.
+
+- **No integrity or repair path over orbok's own state.** No
+  `PRAGMA integrity_check`, no FTS↔catalog consistency check, no rebuild action;
+  `JobType::Rebuild` is defined and never enqueued; and a corrupt embedding is
+  silently converted to an empty vector and filtered out, removing a document
+  from semantic search with no error, no log and no counter. RFC-018 is titled
+  *"Crash Recovery, Diagnostics, and Repair Tools"*.
+
+- **MSRV is declared and never measured.** `rust-version = "1.91"` with no
+  `rust-toolchain.toml` and every CI job on `dtolnay/rust-toolchain@stable`.
+  This is the same defect reached from the other direction by an unpinned
+  toolchain turning an unchanged commit red. One pinned `msrv` job closes both.
+  Routed as Task 036.
+
+### Considered and declined
+
+- **`#[non_exhaustive]` on public types before 1.0** (external audit E-01).
+  Declined 2026-09-01. All eleven library crates are published at 0.24.0, and
+  every reverse dependency of every one of them on crates.io is another orbok
+  crate — there are no outside consumers to protect from a variant addition. The
+  build and release workflows are settled. Revisit only if the library crates
+  are promoted as independently reusable, which the FAQ currently half-suggests
+  for `orbok-workers`.
+
+### Future process hardening candidates
+
+- Reusable owner-run evidence checklist template: extract the pattern from the
+  RFC-048 timing evidence checklist so future owner-run benchmarks, manual QA,
+  and release evidence requests are recorded in project files instead of only
+  in chat. Open a dedicated RFC only if the template changes release policy or
+  adds new gates.
 
 ---
 

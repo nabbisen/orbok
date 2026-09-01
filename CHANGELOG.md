@@ -1061,6 +1061,38 @@ next release tag.
 
 ### Docs
 
+- **Corrected five capability claims in `README.md` that the code does not
+  support**, found by an independent architecture audit on 2026-09-01 and
+  verified against the tree before correcting. Two were privacy claims. The
+  README previously stated that full extracted text is not stored permanently
+  (the extraction cache holds it with no TTL and no size bound, and *Reset
+  catalog* does not clear it), that the ephemeral cache is LRU-evicted (no LRU
+  is configured for any namespace), that reranking is available (the only
+  `CrossEncoderReranker` is a mock that scores by passage length, with no
+  production caller), that switching embedding models marks existing vectors
+  stale and queues a rebuild (neither happens), and that the backend never reads
+  arbitrary filesystem paths (snippet loading opens files without the RFC-003
+  guard). Each claim is now stated as it actually behaves, with the RFC that
+  restores it named inline. See `rfcs/proposed/059-*` and `060-*`.
+- Corrected three `docs/src/users/faq.md` entries: two described controls that
+  do not exist (deleting the vector index; triggering a rescan from the Indexing
+  view — orbok does not re-scan a registered folder after its first scan at all),
+  and one overstated Japanese normalization. Added `benchmark_report.md` and
+  `dep_audit.md` to `docs/src/SUMMARY.md`; both existed on disk and were
+  unreachable from the built book.
+- Corrected `normalize_query`'s doc comment in
+  `crates/search/engine/src/multilingual.rs`, which claimed NFKC normalization
+  and lowercasing. Neither was ever implemented: three fullwidth ranges are
+  mapped, half-width katakana is untouched, and no case folding is performed.
+- Opened RFC-058 through RFC-063 as the audit's design output, and rewrote
+  `ROADMAP.md`'s forward plan against a corrected blocker list. RFC-063 records
+  the structural finding: **nine RFCs in `rfcs/done/` carry
+  `Status: Implemented` while making a false claim about the product**, because
+  RFC-000's `Implemented` transition requires no evidence and names no verifier.
+  Of the 55 RFCs in `done/`, the 11 that had a review of their own all hold; all
+  9 false ones are among the 44 that did not. Until RFC-063 is decided,
+  `rfcs/README.md` overstates the shipped feature set.
+
 - Documented the RFC-049 `ORBOK_DATA_DIR`/`--portable` precedence rules
   (including the frozen startup anchor and the no-fallback-on-failure
   behavior) and the diagnostics/redaction wording distinction between the
