@@ -623,6 +623,23 @@ next release tag.
 
 ### Fixed
 
+- **Two comments asserting something false (Task 034 §10, external
+  audit):** `crates/data/db/migrations/0003_scheduler.sql`'s comment
+  justified accepting new `index_jobs` status values on an upgraded
+  catalog by claiming "SQLite does not re-validate CHECK constraints on
+  existing rows after migration" — true about existing *rows*, but it
+  does not support the conclusion: a *stored* CHECK is enforced on
+  every future `INSERT`/`UPDATE`, so an upgraded catalog keeps the 0001
+  baseline's `CHECK` and genuinely rejects `'paused'`/
+  `'waiting_for_dependency'`. Left the migration itself untouched (that
+  repair is RFC-062's), replaced the comment so the wrong claim can't
+  be cited again. Separately, `crates/pipeline/extract/src/registry.rs`'s
+  `// SAFETY:` comment on an `AssertUnwindSafe` closure was a misuse of
+  the convention — the closure is safe code, not `unsafe`; changed to
+  `// NOTE:`. Checked for the same misuse elsewhere: every other
+  `SAFETY:` comment in the workspace sits next to a real `unsafe` block
+  (Windows FFI in `physical_identity.rs`/`model_durability.rs`) — this
+  was the only instance.
 - **`"excel"` was a published crates.io keyword with no spreadsheet
   support behind it (Task 034 §8, external audit F-24):** removed from
   `Cargo.toml`'s `keywords`. `SUPPORTED_EXTENSIONS` has never included

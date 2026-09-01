@@ -10,9 +10,11 @@
 -- paused_at       : timestamp when the job was paused by the user.
 --
 -- New status values ('paused', 'waiting_for_dependency') are in the
--- baseline CHECK constraint for new databases. Existing databases accept
--- them because SQLite does not re-validate CHECK constraints on existing
--- rows after migration.
+-- baseline CHECK constraint for new databases. An upgraded catalog keeps
+-- the 0001 baseline's CHECK and rejects these values on INSERT/UPDATE --
+-- a stored CHECK, unlike an existing row, IS re-validated going forward.
+-- This is a real gap for upgraded catalogs; RFC-062 owns the repair. Do
+-- not cite this comment's prior claim (that it isn't a gap) again.
 ALTER TABLE index_jobs ADD COLUMN attempt_count   INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE index_jobs ADD COLUMN last_error_kind TEXT;
 ALTER TABLE index_jobs ADD COLUMN paused_at       TEXT;

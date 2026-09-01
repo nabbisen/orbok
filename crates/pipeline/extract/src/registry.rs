@@ -107,10 +107,11 @@ impl ExtractorRegistry {
         // Clone what we need to move into the closure.
         let path_clone = path.clone();
         let context_clone = context.clone();
-        // SAFETY: AssertUnwindSafe is appropriate here — extraction is
+        // NOTE: AssertUnwindSafe is appropriate here — extraction is
         // read-only on the path and context; no shared mutable state is
         // accessed inside the closure that could be left inconsistent by
-        // a panic.
+        // a panic. (Task 034 §10, external audit: `SAFETY:` is reserved
+        // for `unsafe` code; this closure is safe code.)
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             extractor.extract_with_context(&path_clone, &context_clone)
         }));
