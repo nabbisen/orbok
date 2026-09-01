@@ -623,6 +623,32 @@ next release tag.
 
 ### Fixed
 
+- **`PathGuard`'s file-size gate admitted a path when `metadata()` errored,
+  the one check in `validate()` that failed open (Task 034 §4, external
+  audit S-09):** `crates/data/fs/src/path_guard.rs`'s size check was
+  `if let Ok(metadata) = std::fs::metadata(&canonical) { ... }` — when
+  `metadata()` errors (a TOCTOU race between `canonicalize()` succeeding
+  and this call, a permissions change, a special file), the condition is
+  simply false and the whole check is skipped, admitting the path.
+  Every other check in `validate` fails closed; this one did not. First
+  reproduced the defect empirically with a genuine TOCTOU race (a
+  background thread create/delete-looping a file while the foreground
+  called `validate()` in a loop, externally rechecking existence after
+  each `Ok`) — it fired reliably against the unfixed code. That
+  black-box technique turned out to be unsound as a permanent regression
+  test, though: run against the *fixed* code, it also fired, because
+  `validate()` legitimately returning `Ok` a moment before the file is
+  deleted by someone else is not a bug, and a post-hoc external
+  `symlink_metadata` recheck cannot distinguish that from the real
+  defect. Rather than ship a test that passes for the wrong reason,
+  pulled the size-check logic into its own function,
+  `check_size_limit(canonical, metadata_result, policy)`, taking an
+  already-obtained `std::io::Result<Metadata>` directly — `Metadata`
+  itself has no public constructor, but `io::Error` does, so the exact
+  failure this task is about is now testable with a synthetic `Err`,
+  deterministically, no race required. Mutation-tested: reintroduced
+  the original `if let Ok(...)` shape, confirmed the new test fails
+  with `got Ok(())`, restored the fix, reconfirmed green.
 - **The DOCX decompression-bomb limit was gated on an attacker-controlled
   field, not on bytes actually read (Task 034 §3, external audit S-01):**
   `crates/pipeline/extract/src/docx.rs`'s per-entry XML cap checked

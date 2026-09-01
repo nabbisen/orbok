@@ -180,6 +180,71 @@ fn oversized_file_blocked() {
     assert!(matches!(err, OrbokError::PolicyBlocked("file_too_large")));
 }
 
+// Task 034 §4 (audit S-09): the size gate previously fell back to
+// silently admitting the path whenever `metadata()` errored -- a race,
+// a permissions change, a special file -- unlike every other check in
+// `validate()`, which fails closed. The real defect is a TOCTOU race
+// between `canonicalize()` succeeding and `metadata()` running inside
+// `validate()` itself; that specific window cannot be asserted on
+// soundly from outside the function -- an external post-hoc
+// `symlink_metadata` recheck cannot distinguish "the fix works, and
+// the file was deleted a moment after `validate` legitimately returned
+// Ok" from "the bug fired." (Confirmed by trying: a background-thread
+// create/delete race with an external existence recheck reliably
+// caught the defect against the unfixed code, but also fired against
+// the fixed code, because that race window exists in `validate()`
+// regardless of correctness -- proof the black-box check was unsound,
+// not evidence of a remaining bug.) `check_size_limit` is `validate`'s
+// size-check logic pulled out to take an already-obtained
+// `std::io::Result<Metadata>` directly, so the exact failure this task
+// is about -- a synthetic `Err` -- is testable deterministically.
+#[test]
+fn size_gate_fails_closed_when_metadata_errors() {
+    use crate::path_guard::check_size_limit;
+    use crate::policy::CompiledPolicy;
+
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("racy.txt");
+    let catalog = Catalog::open_in_memory().unwrap();
+    let record = register_dir_source(&catalog, root.path());
+    let policy = CompiledPolicy::from_source(&record);
+
+    let err = std::io::Error::new(std::io::ErrorKind::NotFound, "vanished mid-race");
+    let result = check_size_limit(&path, Err(err), &policy);
+
+    assert!(
+        matches!(result, Err(OrbokError::PathCanonicalization(_))),
+        "a metadata() error must fail closed as PathCanonicalization, not silently admit the path -- got {result:?}"
+    );
+}
+
+// Sanity check that the harness above is testing the real defect, not a
+// trivially-always-failing function: a genuinely oversized file, given
+// through the same seam as a successful `metadata()` result, is still
+// rejected on size, exactly as before this task.
+#[test]
+fn size_gate_still_rejects_oversized_files_through_the_same_seam() {
+    use crate::path_guard::check_size_limit;
+    use crate::policy::CompiledPolicy;
+
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("big.txt");
+    fs::write(&file, vec![b'a'; 64]).unwrap();
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let mut record = register_dir_source(&catalog, root.path());
+    record.max_file_size_bytes = Some(16);
+    let policy = CompiledPolicy::from_source(&record);
+
+    let metadata = fs::metadata(&file).unwrap();
+    let result = check_size_limit(&file, Ok(metadata), &policy);
+
+    assert!(matches!(
+        result,
+        Err(OrbokError::PolicyBlocked("file_too_large"))
+    ));
+}
+
 // RFC-003 §14 test 10: sensitive path warning triggered.
 #[test]
 fn sensitive_paths_warn() {

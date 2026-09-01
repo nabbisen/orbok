@@ -97,18 +97,42 @@ impl PathGuard {
         }
 
         // Size limit for files.
-        if let Ok(metadata) = std::fs::metadata(&canonical)
-            && metadata.is_file()
-            && !source.policy.size_allowed(metadata.len())
-        {
-            return Err(OrbokError::PolicyBlocked("file_too_large"));
-        }
+        check_size_limit(&canonical, std::fs::metadata(&canonical), &source.policy)?;
 
         Ok(ValidatedPath {
             source_id: source.source_id.clone(),
             canonical,
         })
     }
+}
+
+/// Applies the size-limit check given an already-obtained `metadata()`
+/// result (Task 034 §4, audit S-09). Pulled out of [`PathGuard::validate`]
+/// as its own function so the fail-closed behaviour is directly testable
+/// with a synthetic [`std::io::Error`] -- `std::fs::Metadata` itself has no
+/// public constructor, so the only way to exercise a real `metadata()`
+/// failure black-box is a TOCTOU race, which is exactly the scenario this
+/// exists to close and which cannot be asserted on soundly from outside:
+/// `validate()` legitimately returning `Ok` a moment before the file is
+/// deleted by someone else is not a bug, and an external post-hoc
+/// `symlink_metadata` check cannot tell that apart from the real defect
+/// (confirmed by trying -- see the commit history for Task 034 §4).
+///
+/// `metadata_result` erroring -- a race (the file vanishes between
+/// `canonicalize` and this call), a permissions change, a special file --
+/// must fail closed like every other check in `validate`, not silently
+/// admit the path by skipping the size check entirely.
+pub(crate) fn check_size_limit(
+    canonical: &Path,
+    metadata_result: std::io::Result<std::fs::Metadata>,
+    policy: &CompiledPolicy,
+) -> OrbokResult<()> {
+    let metadata = metadata_result
+        .map_err(|e| OrbokError::PathCanonicalization(format!("{}: {e}", canonical.display())))?;
+    if metadata.is_file() && !policy.size_allowed(metadata.len()) {
+        return Err(OrbokError::PolicyBlocked("file_too_large"));
+    }
+    Ok(())
 }
 
 /// True when any component strictly below `root` is hidden (dotted).
