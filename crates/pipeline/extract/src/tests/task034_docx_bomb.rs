@@ -24,12 +24,25 @@ fn validated(path: &Path) -> ValidatedPath {
 /// is not an injectable seam on `zip::read::ZipFile`, and patching the same
 /// bytes an attacker would patch is what the defect is actually about.
 fn build_docx_with_lied_size(real_xml: &[u8], declared_size: u32) -> Vec<u8> {
+    build_docx_with_lied_size_and_method(real_xml, declared_size, zip::CompressionMethod::Stored)
+}
+
+/// As [`build_docx_with_lied_size`], with the compression method as a
+/// parameter (Review 197 §2): `Stored` entries have compressed size ==
+/// uncompressed size, which reproduces the size-field bypass but cannot
+/// exercise unbounded *decompression* -- there is nothing to decompress.
+/// `Deflated` over a highly compressible payload is what lets a small
+/// on-disk archive actually contain tens of MB to inflate.
+fn build_docx_with_lied_size_and_method(
+    real_xml: &[u8],
+    declared_size: u32,
+    method: zip::CompressionMethod,
+) -> Vec<u8> {
     let mut buf = Vec::new();
     {
         let cursor = std::io::Cursor::new(&mut buf);
         let mut writer = zip::ZipWriter::new(cursor);
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
+        let options = zip::write::SimpleFileOptions::default().compression_method(method);
         writer
             .start_file("word/document.xml", options)
             .expect("start_file");
@@ -128,6 +141,72 @@ fn docx_with_lied_size_field_is_still_bounded() {
             .iter()
             .any(|w| matches!(w, crate::types::ExtractWarning::SizeLimitReached { .. })),
         "SizeLimitReached must be reported even though the ZIP header declared a small size"
+    );
+}
+
+/// Review 197 §2: `docx_with_lied_size_field_is_still_bounded` above asserts
+/// only on the *output* (`char_count`, the warning) -- both survive a
+/// mutation that removes the read bound entirely (`take(limit + 1)` ->
+/// `take(u64::MAX)`), because the fix's own truncation step still runs
+/// after an unbounded read and produces byte-identical output. That test
+/// guards the branch shape, not the bound. S-01 was unbounded memory
+/// *allocation during decompression* (1.4 MB in, 1.24 GB RSS) -- a
+/// property of work done, not of the final bytes. Asserted here by
+/// elapsed time, the same technique `no_newline_file_does_not_materialize_the_whole_file`
+/// (§5) uses: a `Deflated` entry whose real, decompressed content is ~50 MB
+/// (`"word ".repeat(10_000_000)`, trivially compressible so the on-disk
+/// archive itself stays small) with its declared size lied down to 10
+/// bytes. A bounded read stops after ~1 KB of decompressed output,
+/// regardless of what the rest of the stream contains; a read that
+/// decompresses the whole entry before truncating cannot avoid the cost of
+/// actually producing those ~50 MB.
+#[test]
+fn docx_with_lied_size_field_does_not_decompress_the_whole_bomb() {
+    use std::time::Instant;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("bomb_deflated.docx");
+
+    let real_paragraph = "word ".repeat(10_000_000); // ~50 MB decompressed
+    let real_xml = docx_xml_wrapping(&real_paragraph);
+    assert!(
+        real_xml.len() > 40_000_000,
+        "fixture must be tens of MB to make unbounded decompression measurable"
+    );
+
+    let docx_bytes = build_docx_with_lied_size_and_method(
+        real_xml.as_bytes(),
+        10,
+        zip::CompressionMethod::Deflated,
+    );
+    assert!(
+        docx_bytes.len() < 200_000,
+        "the on-disk archive must stay small -- {} bytes -- so a slow \
+         decompression time can only come from inflating the entry, not \
+         from reading the archive itself",
+        docx_bytes.len()
+    );
+    std::fs::write(&file, &docx_bytes).unwrap();
+
+    let limits = ExtractLimits {
+        max_docx_xml_bytes: 1024,
+        max_zip_entry_bytes: u64::MAX,
+        ..Default::default()
+    };
+    let ctx = ExtractContext { limits };
+
+    let start = Instant::now();
+    let output = ExtractorRegistry::default()
+        .extract_with_context(&validated(&file), &ctx)
+        .unwrap();
+    let elapsed = start.elapsed();
+
+    assert!(output.char_count <= 1024);
+    assert!(
+        elapsed.as_millis() < 50,
+        "extracting a DOCX with a lied-about small size must not fully \
+         decompress the real ~50 MB entry before truncating -- took \
+         {elapsed:?}"
     );
 }
 

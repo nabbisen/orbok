@@ -623,6 +623,24 @@ next release tag.
 
 ### Fixed
 
+- **Task 034 §3's own regression test didn't guard the property the fix
+  was for (Review 197 §2):** `docx_with_lied_size_field_is_still_bounded`
+  asserted only on `char_count`/the warning — both properties of the
+  *output* — which stayed byte-identical under a mutation that removed
+  the read bound entirely (`take(limit + 1)` → `take(u64::MAX)`),
+  because the fix's own truncation step still runs after an unbounded
+  read. S-01 was unbounded memory *allocation during decompression*
+  (1.4 MB in, 1.24 GB RSS) — a property of work done, not of final
+  bytes, so an output-only test cannot see it. Added
+  `docx_with_lied_size_field_does_not_decompress_the_whole_bomb`: a
+  `Deflated` (not `Stored`) entry whose real decompressed content is
+  ~50 MB (`"word ".repeat(10_000_000)`, trivially compressible so the
+  on-disk archive itself stays under 200 KB) with its declared size
+  lied down to 10 bytes, asserting on elapsed time — the same technique
+  Task 034 §5's no-newline-file test already used. Confirmed this
+  catches exactly the mutation the review demonstrated: reintroduced
+  `take(u64::MAX)`, the new test failed at ~190ms against a 50ms
+  deadline while the original output-only test still passed; restored.
 - **Two comments asserting something false (Task 034 §10, external
   audit):** `crates/data/db/migrations/0003_scheduler.sql`'s comment
   justified accepting new `index_jobs` status values on an upgraded
