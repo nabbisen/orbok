@@ -623,6 +623,38 @@ next release tag.
 
 ### Fixed
 
+- **`get_health` materialized and sorted the entire queued-job table after
+  every completed job, and `report_health` sent one message per job
+  regardless (Task 034 §6, external audit P-02):**
+  `crates/app/src/bootstrap/startup.rs`'s `get_health` computed the queued
+  count via `IndexJobRepository::list_queued(u32::MAX).unwrap_or_default().len()`
+  — fetching and sorting every queued row just to call `.len()` on the
+  result, on a table `report_health` (`crates/app/src/scheduler_host.rs`)
+  called after *every single completed job*: ~15,000 times on a
+  5,000-file source, per the audit's own count. Added
+  `IndexJobRepository::count_with_status`, a `SELECT COUNT(*) ... WHERE
+  status = ?1` over the existing `idx_index_jobs_status` index, and wired
+  `get_health` onto it. Confirmed the win at a fixed 20,000-row scale
+  (a `COUNT(*)` is still `O(matching rows)` in SQLite — there is no O(1)
+  fast path for a filtered count, so "faster," not "constant," is the
+  honest claim): `get_health` itself dropped from ~20ms to under 1ms: at
+  least 3x faster than `list_queued(..).len()` measured directly at the
+  same scale, confirmed both at the repository-method level and through
+  the real `get_health` wiring, mutation-tested by reverting the wiring
+  and confirming the regression test catches it (20.9ms, over the 5ms
+  budget). Checked `scheduler_host.rs:416`'s own `list_queued(u32::MAX)`
+  call rather than assuming it needed the same fix — it genuinely
+  rebuilds the in-memory scheduler queue from each row's full record, so
+  it stays as-is, documented as a checked decision rather than left
+  silently unchanged. Also throttled `report_health` itself to at most
+  once per 250ms while jobs complete back-to-back, extracted as
+  `should_report_health` for direct, deterministic testing (no real
+  scheduler loop needed) — but a throttled-away report still flushes the
+  moment the queue goes idle, so a small source that finishes faster than
+  the interval still reaches an accurate final health state promptly
+  rather than a stale intermediate one; this addresses the review's own
+  concern about a 250ms cadence looking worse than one update per job on
+  a small source.
 - **Three `load_snippet` robustness defects, and an interim guard against
   showing binary as document text (Task 034 §5, external audit F-03/S-18):**
   `crates/search/engine/src/snippet.rs`.

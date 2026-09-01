@@ -1649,3 +1649,37 @@ async fn search_latency_while_background_indexing_is_running() {
         post_indexing_latencies.len()
     );
 }
+
+// ── Task 034 §6 (audit P-02): health-report throttling ─────────────────
+
+// `should_report_health` must allow the first report (no prior report to
+// throttle against), then throttle a second call within the interval, then
+// allow another once the interval has genuinely elapsed. Deterministic --
+// no real scheduler loop or background task, a short interval and a real
+// sleep are enough.
+#[test]
+fn should_report_health_throttles_then_recovers() {
+    use super::{HEALTH_REPORT_MIN_INTERVAL, should_report_health};
+    let interval = Duration::from_millis(20);
+
+    assert!(
+        should_report_health(None, interval),
+        "the first report must never be throttled"
+    );
+
+    let just_reported = Instant::now();
+    assert!(
+        !should_report_health(Some(just_reported), interval),
+        "a report immediately after the last one must be throttled"
+    );
+
+    std::thread::sleep(Duration::from_millis(30));
+    assert!(
+        should_report_health(Some(just_reported), interval),
+        "a report must be allowed again once the interval has elapsed"
+    );
+
+    // Sanity: the production constant is a real, positive interval, not
+    // zero (which would make throttling a no-op).
+    assert!(HEALTH_REPORT_MIN_INTERVAL > Duration::ZERO);
+}

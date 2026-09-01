@@ -188,16 +188,19 @@ pub fn run_check_with<P: RuntimePathProbe + ?Sized>(
 
 /// Query index health from the catalog for the sidebar summary.
 pub fn get_health(catalog: &Catalog) -> orbok_ui::state::IndexHealth {
-    use orbok_core::FileStatus;
+    use orbok_core::{FileStatus, JobStatus};
     use orbok_db::repo::{FileRepository, IndexJobRepository};
     let files = FileRepository::new(catalog);
     let indexed = files.count_with_status(FileStatus::Indexed).unwrap_or(0);
     let stale = files.count_with_status(FileStatus::Stale).unwrap_or(0);
     let failed = files.count_with_status(FileStatus::Failed).unwrap_or(0);
+    // Task 034 §6 (audit P-02): a COUNT(*), not list_queued(u32::MAX).len()
+    // -- this runs after every completed job, and the old form
+    // materialized and sorted the entire queued-job table just to call
+    // .len() on the result.
     let queued = IndexJobRepository::new(catalog)
-        .list_queued(u32::MAX)
-        .unwrap_or_default()
-        .len() as u64;
+        .count_with_status(JobStatus::Queued)
+        .unwrap_or(0);
     orbok_ui::state::IndexHealth {
         indexed,
         stale,

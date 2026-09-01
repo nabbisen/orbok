@@ -100,6 +100,22 @@ impl<'a> IndexJobRepository<'a> {
         self.list_by_status(JobStatus::Queued, limit)
     }
 
+    /// Count of jobs in a given status, via `SELECT COUNT(*)` over
+    /// `idx_index_jobs_status` (Task 034 §6, audit P-02) -- for a caller
+    /// that only needs the count, not `list_by_status(status,
+    /// u32::MAX).len()`, which materializes and sorts every matching row.
+    pub fn count_with_status(&self, status: JobStatus) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM index_jobs WHERE status = ?1",
+                params![status.as_str()],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
     /// `Blocked` jobs in priority/FIFO order (RFC-036 §20.2): a retry whose
     /// in-memory re-queue was skipped under backpressure, recorded honestly
     /// rather than as `queued` with no in-memory copy to match. Rehydration

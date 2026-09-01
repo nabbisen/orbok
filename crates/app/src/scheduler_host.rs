@@ -70,6 +70,23 @@ const IDLE_POLL: Duration = Duration::from_millis(300);
 /// the last keystroke or submit.
 const USER_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// How often `report_health` may actually send a `HealthUpdated` message
+/// while jobs are completing back-to-back (Task 034 §6, audit P-02): the
+/// loop previously called it -- a `get_health` catalog round trip -- after
+/// every single completed job. A throttled-away report is still flushed
+/// once the queue goes idle (see the `None` tick branch), so this bounds
+/// update *frequency* during a burst without delaying the *final* state a
+/// small source reaches.
+const HEALTH_REPORT_MIN_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Whether enough time has passed since the last health report to send
+/// another one. Pulled out of the loop as its own function so the
+/// throttle/recovery behaviour is directly testable without a real
+/// scheduler loop.
+fn should_report_health(last_report: Option<Instant>, min_interval: Duration) -> bool {
+    last_report.is_none_or(|t| t.elapsed() >= min_interval)
+}
+
 /// An observation a producer reports about the environment (RFC-057 §4.1)
 /// -- not a `ResourceMode` directly. Only [`run_with_context`]'s loop
 /// decides what an observation means for scheduling, per RFC-036 §13; a
@@ -241,6 +258,16 @@ pub(crate) async fn run_with_context(
     // battery source reports current state directly, so this is simply the
     // most recent `OnBattery` observation with no timeout half needed.
     let mut on_battery = false;
+    // Task 034 §6 (audit P-02): `report_health` was called after every
+    // completed job -- ~15,000 times on a 5,000-file source, each one a
+    // `get_health` catalog round trip. `last_health_report`/
+    // `health_report_pending` throttle that to at most once per
+    // `HEALTH_REPORT_MIN_INTERVAL`, while still flushing a final report
+    // before the loop goes idle (see the `None` tick branch below) so a
+    // small source that finishes faster than the interval still reaches an
+    // accurate final health state promptly, not a stale intermediate one.
+    let mut last_health_report: Option<Instant> = None;
+    let mut health_report_pending = false;
 
     loop {
         // RFC-057 §4.1: drain every observation queued since the last
@@ -311,6 +338,16 @@ pub(crate) async fn run_with_context(
                 match scheduler.tick() {
                     Some(job) => job,
                     None => {
+                        // Task 034 §6: flush a throttled-away health report
+                        // before going idle, so a burst of jobs that
+                        // finishes faster than the throttle interval still
+                        // reaches an accurate final state, not one stuck
+                        // mid-throttle.
+                        if health_report_pending {
+                            report_health(&catalog, &mut output).await;
+                            last_health_report = Some(Instant::now());
+                            health_report_pending = false;
+                        }
                         tokio::time::sleep(IDLE_POLL).await;
                         continue;
                     }
@@ -372,7 +409,12 @@ pub(crate) async fn run_with_context(
                 let _ = scheduler.fail(job, error_kind, Some(&error.to_string()), &catalog);
             }
         }
-        report_health(&catalog, &mut output).await;
+        health_report_pending = true;
+        if should_report_health(last_health_report, HEALTH_REPORT_MIN_INTERVAL) {
+            report_health(&catalog, &mut output).await;
+            last_health_report = Some(Instant::now());
+            health_report_pending = false;
+        }
     }
 }
 
@@ -412,6 +454,11 @@ async fn report_health(catalog: &Catalog, output: &mut Sender<Message>) {
 /// so rehydration is the only piece still needed to complete RFC-036 §16
 /// for the in-memory queue.
 fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<JobId>) {
+    // Task 034 §6: checked, not left unchanged by default -- this genuinely
+    // needs each row's full `JobRecord`, not just a count, to rebuild the
+    // in-memory `Scheduler`'s queue below (`index_job_from_record` +
+    // `load_persisted` per row). `IndexJobRepository::count_with_status`
+    // would not serve this caller.
     let jobs = IndexJobRepository::new(catalog);
     let Ok(records) = jobs.list_queued(u32::MAX) else {
         return;
