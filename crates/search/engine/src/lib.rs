@@ -43,7 +43,7 @@ pub use query::build_match_expression;
 pub use result_trust::{
     ResultRecoveryAction, ResultTrustState, ResultWarningSummary, SearchResultTrust,
 };
-pub use rrf::{FusedCandidate, rrf_fuse};
+pub use rrf::{FusedCandidate, rrf_fuse, rrf_fuse_keyword_lists};
 pub use service::{MatchBadge, SearchResult, SearchService};
 pub use vector::ExactVectorSearch;
 

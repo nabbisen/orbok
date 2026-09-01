@@ -15,6 +15,7 @@
 
 use crate::fts5::Fts5KeywordEngine;
 use crate::query::{build_match_expression, build_match_pair_expression};
+use crate::rrf::rrf_fuse_keyword_lists;
 use crate::{KeywordCandidate, KeywordSearchEngine};
 use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
@@ -114,20 +115,16 @@ impl MultilingualKeywordEngine<'_> {
         let kw = Fts5KeywordEngine::new(self.catalog);
         let mut candidates = kw.search(&normalized, limit)?;
 
-        // For CJK queries, also query the trigram table and merge.
+        // For CJK queries, also query the trigram table and fuse (Task 034
+        // §1, audit F-02/F-02b): `bm25(chunk_fts)` and
+        // `bm25(chunk_fts_trigram)` are not on a comparable scale -- the
+        // trigram index has vastly more, shorter terms -- so merging and
+        // sorting raw scores produces an order that is arbitrary, not just
+        // reversed. RRF fuses by rank within each list instead, which is
+        // valid across incomparable scorers.
         if contains_cjk(&normalized) {
             let trigram_hits = self.search_trigram(&normalized, limit)?;
-            merge_candidates(&mut candidates, trigram_hits);
-            candidates.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            candidates.truncate(limit as usize);
-            // Re-assign 1-based ranks after merge.
-            for (i, c) in candidates.iter_mut().enumerate() {
-                c.rank = (i + 1) as u32;
-            }
+            candidates = rrf_fuse_keyword_lists(&candidates, &trigram_hits, limit as usize);
         }
         Ok(candidates)
     }
@@ -143,16 +140,7 @@ impl MultilingualKeywordEngine<'_> {
 
         if contains_cjk(&normalized) {
             let trigram_hits = self.search_trigram_pairs(&normalized, limit)?;
-            merge_candidates(&mut candidates, trigram_hits);
-            candidates.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            candidates.truncate(limit as usize);
-            for (i, c) in candidates.iter_mut().enumerate() {
-                c.rank = (i + 1) as u32;
-            }
+            candidates = rrf_fuse_keyword_lists(&candidates, &trigram_hits, limit as usize);
         }
         Ok(candidates)
     }
@@ -206,18 +194,5 @@ impl MultilingualKeywordEngine<'_> {
             });
         }
         Ok(out)
-    }
-}
-
-/// Merge trigram hits into the candidate list, deduplicating by chunk_id.
-fn merge_candidates(existing: &mut Vec<KeywordCandidate>, new: Vec<KeywordCandidate>) {
-    let existing_ids: std::collections::HashSet<String> = existing
-        .iter()
-        .map(|c| c.chunk_id.as_str().to_string())
-        .collect();
-    for c in new {
-        if !existing_ids.contains(c.chunk_id.as_str()) {
-            existing.push(c);
-        }
     }
 }

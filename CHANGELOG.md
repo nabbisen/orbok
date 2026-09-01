@@ -623,6 +623,47 @@ next release tag.
 
 ### Fixed
 
+- **Japanese keyword search returned results worst-first, and the
+  merge with the trigram index was comparing incomparable numbers
+  (Task 034 §1/§2, external audit F-02/F-02b/F-10):**
+  `MultilingualKeywordEngine`'s two CJK merge sites
+  (`crates/search/engine/src/multilingual.rs`) sorted merged
+  `chunk_fts`/`chunk_fts_trigram` candidates by `b.score.partial_cmp(&a.score)`
+  — descending — while FTS5's `bm25()` is lower-is-better (documented
+  in this crate's own `lib.rs`, and relied on by `fts5.rs`'s own
+  ascending `ORDER BY`). Every Japanese query returned its results
+  worst-first. Reversing the comparator alone would not have fixed it:
+  `chunk_fts` (unicode61) and `chunk_fts_trigram` are different
+  indexes with different term-length distributions, so their raw
+  `bm25` values are not on a comparable scale even sorted the right
+  way — the merged order was arbitrary, not just backwards. Added
+  `rrf_fuse_keyword_lists` (`crates/search/engine/src/rrf.rs`), which
+  fuses two ranked `KeywordCandidate` lists the same way `rrf_fuse`
+  already fuses keyword+vector — by rank within each list, never by
+  raw score — and put both merge sites onto it. Observed the defect
+  failing first: a real two-chunk fixture through the actual FTS5
+  engine (`ChunkRepository::insert_bundle`, not synthetic scores) with
+  a short, dense chunk and a long, diluted one, both containing the
+  same isolated query token — verified against the real `chunk_fts`
+  DDL via the `sqlite3` CLI first (bm25 −1.325e-6 vs −8.029e-7) so the
+  fixture's own correctness didn't depend on the code under test.
+  Confirmed pure-ASCII query ordering is unaffected — `contains_cjk`
+  gates the fusion branch entirely, so a non-CJK query never leaves
+  the original unicode61-only, already-ascending path — with its own
+  regression test rather than an assumption.
+  **Separately, RRF fusion itself was non-deterministic:** `rrf_fuse`
+  collected fused candidates via `scores.into_values()` on a `HashMap`
+  (randomly seeded per instance) and sorted only by score; a tie in
+  fused score is structural, not rare — a document at keyword rank
+  1 / vector rank 5 scores identically to one at rank 5 / 1 — so ties
+  kept whatever order the map happened to yield, which changes between
+  calls (the audit measured 7 distinct orderings in 20 calls). Added a
+  `chunk_id` tie-break to `rrf_fuse` and to the new
+  `rrf_fuse_keyword_lists`, covering all three sort sites the task
+  named. Mutation-tested each tie-break independently — removed one at
+  a time, confirmed its own determinism test goes red, restored,
+  reconfirmed green — rather than trusting that a passing suite meant
+  each guard was load-bearing.
 - **RFC-019 §7 — no `.gitattributes`, so Windows checkout could silently
   CRLF any text file (Task 033):** Task 032's cross-platform test
   expansion surfaced a real failure: `orbok-models`'s
