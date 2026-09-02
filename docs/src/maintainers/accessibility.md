@@ -38,6 +38,37 @@ tone colour. No status depends on colour alone. Verified by the
 `status_badge_label_and_icon_invariant` test and documented in
 `crates/ui/src/components.rs`.
 
+**Notices, added 2026-09-02 (Task 037).** orbok also renders
+`snora::design::notice::Notice` for `UserNotice` (`crates/ui/src/notice.rs`) —
+download/search/folder failures, confirmations, diagnostics results. This is
+Met, and for a different reason than the status badges above: `Notice`'s tone
+(`UserNotice::tone`) only ever varies background/accent colour, but every
+`UserNotice` variant supplies its own `title(locale)`/`body(locale)` text, so
+"Folder could not be added" and "Recent searches cleared" are distinguishable
+by their words regardless of tone. Proven, not asserted in a comment nobody
+checks: `user_notice_text_never_relies_on_colour_alone`
+(`crates/ui/src/tests/notice.rs`) iterates every `UserNotice` variant — kept
+exhaustive by a local macro that generates both the variant list and a
+non-wildcard match from one token list, so a variant added to the enum
+without being added to the test fails to compile (E0004), not silently
+undercovers — and asserts, in both locales, that `title`/`body` are
+non-empty and that no two variants share the same `(title, body)` pair.
+
+**State the dependency direction plainly, as the two entries below already
+do:** this is the *third* time orbok has had to absorb the withdrawal of a
+snora accessibility claim — `text_muted` at 0.34.0 (below), the
+dialog-boundary rationale at 0.39.0 (§1.4.11 below), and now this one. snora
+withdrew the equivalent claim about its own prefab `notice`/`toast` widgets
+in 0.41.1 (RFC-089): both vary only background/accent colour by tone,
+identical text otherwise — a real WCAG 1.4.1 gap in snora's own prefabs.
+**orbok's own claim never rested on snora's** — this entry does not cite the
+withdrawn claim, and the test above is what makes that true rather than
+assumed. But the dependency direction still matters for whoever touches this
+next: **adopting a snora widget whose tone is its only differentiator (a
+toast, or `Notice` used with no caller-supplied text) would change this
+answer**, and this entry's "Met" would need re-checking against whatever was
+actually rendered, not just against `UserNotice`'s own text.
+
 ### 1.4.3 Contrast (Minimum)
 
 **Status: Met (token layer).**

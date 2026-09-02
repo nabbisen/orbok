@@ -63,7 +63,7 @@ localcache                  = { version = "0.21", features = ["compression", "tr
 # here: this comment named 0.18 while the pin read 0.37, which is the same
 # stale-version-in-a-comment class snora found in their own lib.rs at 0.38.3.
 iced                        = { version = "0.14", features = ["tokio"] }
-snora                       = { version = "0.39", features = ["design"] }
+snora                       = { version = "0.42", features = ["design"] }
 rfd                         = "0.15"
 # app-json-settings — RFC-055: the 2.7.0 floor is deliberate, not "latest
 # 2.x". 2.0.3's ConfigManager::new() silently substitutes on two failures

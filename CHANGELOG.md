@@ -447,6 +447,53 @@ next release tag.
 
 ### Changed
 
+- **Task 037 — snora 0.39.3 → 0.42.0, Phase 1 only, and a real ~1.4 MiB
+  win:** version-bump-only, same shape as Tasks 022/023/029/030 — zero
+  files under `crates/` touched, confirmed by `git diff --stat`, not
+  assumed from a clean build alone. Checked snora's three releases in
+  this hop against orbok's own code before scoping anything: the
+  overlay pointer-events fix (0.41.0) and the toast contrast/appearance
+  changes (0.42.0) don't reach orbok — zero `snora::toast`/dialog/modal/
+  chip references anywhere in the workspace, confirmed by grep
+  independently of the task's own assessment. The `iced` `canvas`/`svg`
+  removal (0.42.0, F-26) is a real, measured win: `cargo tree
+  --workspace --edges normal | wc -l` 1505 → 1431; `target/release/orbok`
+  31,223,056 → 29,786,256 bytes (−1,436,800 bytes, −1.37 MiB). Different
+  figures from snora's own ~1.83 MiB/43-package measurement on their
+  release tag, as expected — different build config (`opt-level = "z"`,
+  `lto`, `strip`) and a different starting dependency set — reported as
+  measured here, not snora's number re-quoted. orbok already declares
+  `iced = { features = ["tokio"] }` itself, so `tokio` never arrived
+  transitively through snora and the build needed no feature changes;
+  confirmed by the clean build, not merely inferred from it.
+  **The real reason for this task:** snora withdrew its own "toast/notice
+  tone is distinguishable by more than colour" claim in 0.41.1 (RFC-089)
+  — `orbok`'s equivalent claim, in a `crates/ui/src/notice.rs` doc
+  comment ("never relies on colour alone"), was never tested. Added
+  `user_notice_text_never_relies_on_colour_alone`
+  (`crates/ui/src/tests/notice.rs`), exhaustive over every `UserNotice`
+  variant via a local macro generating both the variant list and a
+  non-wildcard match from one token list (mirroring
+  `crate::i18n::message_keys!`, without restructuring `notice.rs`
+  itself) — a variant added to the enum without being added to the
+  test's macro invocation fails to compile (E0004), confirmed by
+  actually adding one and watching it fail before removing it again.
+  Asserts, per variant, in both locales: `title`/`body` non-empty, and
+  no two variants share the same `(title, body)` pair. Confirmed
+  failing first: gave two variants the same title and body, watched the
+  uniqueness assertion catch it, restored. `docs/src/maintainers/accessibility.md`
+  §1.4.1 now records the notice case explicitly — what makes it Met
+  (per-variant text, not tone), the test that proves it, and states the
+  dependency direction plainly: this is the third snora accessibility
+  claim orbok has had to absorb a withdrawal of (`text_muted` at 0.34.0,
+  the dialog-boundary rationale at 0.39.0, now this), and adopting a
+  snora widget whose tone is its only differentiator would change this
+  answer. Noted, not fixed (out of this task's scope): three
+  `UserNotice` variants (`DiagnosticsFileCreated`, `RecentSearchesCleared`,
+  `RecentSearchFilterDropped`) map the same message key to both `title`
+  and `body`, rendering the identical sentence twice — a UX redundancy,
+  not a colour-alone violation, so it doesn't fail the new test, but
+  worth a future look.
 - **Task 022 — snora 0.25.1 → 0.30.0, Phase 1 of snora's upgrade plan
   only:** the version-bump hop of a four-phase migration; Phases 2–4
   (theme emission via `snora::design::theme()`, dialog card/modal dim,

@@ -7,6 +7,7 @@
 //! | `i18n` | i18n catalog completeness, locale detection, parameterized messages |
 //! | `state` | AppState transitions, theme/scale/motion, navigation, notices |
 //! | `components` | RFC-033 adapter smoke tests and tone-mapping |
+//! | `notice` | Task 037 §2: `UserNotice` text never relies on tone alone |
 //! | `a11y` | RFC-034 contrast guard, keyboard map, RFC-035 CVD + scale |
 //! | `smoke_views` | headless view-render smoke tests |
 //! | `keyboard_reachability` | RFC-034 §2.1.1 keyboard-only reachability through the real app |
@@ -21,6 +22,7 @@ pub mod a11y;
 pub mod components;
 pub mod i18n;
 pub mod keyboard_reachability;
+pub mod notice;
 mod rfc041_search;
 pub mod rfc041_search_state;
 pub mod rfc042_history;
