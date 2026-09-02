@@ -1144,6 +1144,38 @@ next release tag.
 
 ### Tests
 
+- **The declared MSRV had never actually been built against, and
+  `cargo-audit` was unpinned with its own install failure masked
+  (Task 036, RFC-053, external audit D-04/E-06):** `Cargo.toml` declared
+  `rust-version = "1.91"`, but with no `rust-toolchain.toml` and all CI
+  jobs on `dtolnay/rust-toolchain@stable`, nothing had ever compiled the
+  workspace on 1.91 to confirm it. Measured it directly: `cargo +1.91
+  check --workspace --locked --all-targets`, in a fully isolated target
+  directory to rule out cache contamination, compiles clean — zero
+  errors. RFC-053's own earlier decision (pinning `rusqlite = "0.39"`
+  specifically to avoid `0.40`'s `libsqlite3-sys 0.38.x` and its
+  undeclared 1.95 floor) is confirmed to still hold: `cargo tree -i
+  libsqlite3-sys` resolves `0.37.0`, not the problematic line. The
+  declared floor is not fiction; it just had never been checked. Added
+  an `msrv` CI job pinned to `dtolnay/rust-toolchain@1.91` (not
+  `@stable` — the whole point is a floor that doesn't drift with
+  whatever compiler ships on a given day, the same class of problem
+  Review 192 §2 found from the other direction) running `cargo check`,
+  not `test` — compiling on the floor is the question, and a full test
+  run would double this job's cost for no extra signal.
+  Separately (§2b, added after the task went live, audit E-06):
+  `cargo-audit`'s own install step was `cargo install cargo-audit
+  --quiet 2>/dev/null || true` — unpinned, so the gate's behaviour
+  changes with whatever version resolves that day, and `|| true` masked
+  an install failure, so a broken install would silently stop the audit
+  from running instead of turning anything red. This became concrete
+  2026-09-01, when a yanked `chacha20 0.10.0` correctly turned an
+  unrelated commit's Security gate red (Task 034) — the gate was right
+  to fire, but nothing about reaching that state was reproducible. Now
+  `cargo install cargo-audit --version 0.22.2 --locked --quiet`, no
+  `|| true`. Whether to also pin the other four `@stable` jobs is
+  recorded as an explicit open question for the owner, not decided
+  here, per the task's own instruction.
 - **289 tests now run cross-platform that had only ever run on Linux
   (Task 032):** narrowing the Windows manual QA pass (Owner Task 003
   Part B) required knowing what CI already covered there, and counting

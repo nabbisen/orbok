@@ -188,14 +188,37 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
+      # Task 036 §2b (audit E-06): was unpinned (resolves whatever version
+      # is latest on the day CI runs) and masked its own install failure
+      # with `|| true` -- a gate that can silently stop running without
+      # turning anything red. Pinned, and a genuine install failure is now
+      # red like everything else here.
       - name: install cargo-audit
-        run: cargo install cargo-audit --quiet 2>/dev/null || true
+        run: cargo install cargo-audit --version 0.22.2 --locked --quiet
 
       - name: audit dependencies
         run: cargo audit --deny warnings
 
       - name: security unit tests
         run: cargo test -p orbok-workers security -- --test-threads=1
+
+  # ── MSRV gate (RFC-053, Task 036) ──────────────────────────────────
+  # RFC-053's stated purpose is "a measured, not declared, MSRV" --
+  # Cargo.toml's `rust-version = "1.91"` had never actually been built
+  # against until this job existed. Pinned, not `@stable`: the question
+  # this answers is "does the declared floor still build", which must not
+  # itself drift with whatever the latest compiler happens to be on a
+  # given day (Review 192 §2 -- the same class of problem, from the other
+  # direction: an unpinned `@stable` job turning an unchanged commit red).
+  # `check`, not `test` -- the point is compiling on the floor, and a full
+  # test run doubles this job's time for no additional signal.
+  msrv:
+    name: MSRV gate (1.91)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91
+      - run: cargo check --workspace --locked --all-targets
 
   # ── Cross-platform smoke (RFC-019 §9) ────────────────────────────
   cross:
