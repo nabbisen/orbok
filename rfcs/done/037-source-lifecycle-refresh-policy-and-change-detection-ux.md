@@ -4,11 +4,15 @@
 **Former project name:** orbit  
 **RFC:** 037  
 **Title:** Source Lifecycle, Refresh Policy, and Change Detection UX  
-**Status:** Accepted
+**Status:** Implemented (main at `d3f8b93`; release pending)
 **Target milestone:** Source management / refresh stability  
 **Date:** 2026-06-18  
 
-**Returned to `accepted/` 2026-09-02 (RFC-063 §7).** Accepted 2026-06-18; carried `Implemented (v0.18.0)` while §10.1 *Startup Check* and §10.2 *Manual Refresh* — both marked **Required** — do not exist, and `orbok_fs::source_lifecycle` has zero production callers. §21 criteria 3 and 4 are unmet. **The design is settled and authorized; the wiring is dev-team Task 035.** Do not re-derive the design.
+**Closed 2026-09-03.** Wired by dev-team Task 035, verified in Review 200; closure record at
+[`../closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md`](../closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md)
+— the first RFC to enter `done/` under RFC-063's evidence requirement.
+
+**Was returned to `accepted/` 2026-09-02 (RFC-063 §7).** Accepted 2026-06-18; carried `Implemented (v0.18.0)` while §10.1 *Startup Check* and §10.2 *Manual Refresh* — both marked **Required** — do not exist, and `orbok_fs::source_lifecycle` has zero production callers. §21 criteria 3 and 4 are unmet. **The design is settled and authorized; the wiring is dev-team Task 035.** Do not re-derive the design.
 **Related RFCs:** RFC-003 Source Registration and File Access Boundary, RFC-004 File Scanner and Change Detection, RFC-041 Search, Narrow Results, and Browse Around, RFC-036 Resource-Aware Indexing Scheduler and Backpressure  
 
 ---

@@ -1,6 +1,6 @@
 # Closure Record — RFC-037: Source Lifecycle, Refresh Policy, and Change Detection UX
 
-**RFC:** [037](../accepted/037-source-lifecycle-refresh-policy-and-change-detection-ux.md)
+**RFC:** [037](../done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md)
 **Format:** RFC-063 §6.1/§6.2 option B.
 **Implemented by:** Task 035, verified in Review 200 — neither is
 git-tracked (RFC-063 §5): Task 035 is

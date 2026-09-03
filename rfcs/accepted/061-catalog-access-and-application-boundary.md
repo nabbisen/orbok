@@ -56,6 +56,55 @@ next to code that assumes one.
 
 ---
 
+## 2a. Amendment 1 (2026-09-03) — the cost is now measured
+
+When this RFC was written, S-04's effect on throughput was reasoned about and
+never measured. It has now been measured, by accident: dev-team Task 036 (CI
+toolchain pinning, touching no Rust source) hit a Windows CI failure in
+`scheduler_host::tests::search_latency_while_background_indexing_is_running`,
+and the log was captured verbatim before re-running.
+
+That test exists to answer exactly this RFC's question. Its own doc comment
+(`crates/app/src/scheduler_host/tests.rs:1515-1520`):
+
+> *"…and, since both connections share one `Catalog` with no `busy_timeout`
+> pragma set (`catalog.rs`), whether sustained concurrent access instead slows
+> **indexing** down (a `SQLITE_BUSY` returns as an immediate `Err` that this
+> slice's `let _ =` call sites silently drop, not a retry)."*
+
+**The baseline, at `d90b6ad`.** 300 files, ~144 ms/document of simulated
+embedding cost (intrinsic serial cost ≈ 43 s), with a concurrent search sampled
+every 10 ms:
+
+| | Linux | Windows CI |
+|---|---:|---:|
+| Total wall-clock | **44.79 s** | **300.04 s** |
+| Search samples | 731 | 11,000 |
+| Avg search | 49.9 ms | 11.9 ms |
+| Max search | 60.6 ms | **406.8 ms** |
+
+**Linux pays ≈ 4 % over the intrinsic cost for concurrency. Windows pays
+≈ 570 %.** Individual searches are *faster* on Windows; there are 15× more of
+them because indexing takes 6.7× longer. So it is not search being stalled — it
+is **indexing being starved**, which is the second half of the question above.
+
+**The budget's history is the corroborating evidence.** The comment above that
+test's assertion records the threshold being raised twice against this same
+signal: ~45 s measured in isolation → 120 s "comfortable headroom" **still timed
+out on Windows CI** → 300 s, which is now failing at 300.04 s. A measurement has
+been reclassified as variance three times.
+
+**Stated as hypothesis, not proven causation.** The Linux/Windows comparison
+controls the workload but not the platform's general I/O cost. Windows SQLite
+file locking is more expensive than `flock`-based Unix locking, which is
+consistent with a 4 %/570 % split on identical work — but §5's fix landing is
+what would confirm it.
+
+**Do not widen the 300 s budget.** It is currently the only thing making this
+visible. If it fires again before §5 lands, capture and re-run as Task 036 did.
+
+---
+
 ## 3. Goals
 
 - Make RFC-002 §5's "one serialized writer path" describe what the program does.
@@ -239,6 +288,18 @@ Phrased per RFC-058 §5.
    `known`, does not re-run the work, and retries the write on the next tick.
 8. Clicking Clear snippets with the cache path unavailable produces a notice and
    the process survives.
+
+9. **Added by Amendment 1 (2026-09-03).** After §5 lands,
+   `search_latency_while_background_indexing_is_running`'s Windows CI
+   wall-clock drops materially toward the Linux figure recorded in §2a — the
+   pre-fix baseline is 300.04 s against Linux's 44.79 s on identical work.
+   Recorded whatever the result: if the gap does not close, §2a's hypothesis
+   was wrong and the cause lies elsewhere, which is itself worth knowing before
+   anyone parallelises indexing (§4).
+
+   *This criterion was added after the owner accepted this RFC. It is the one
+   part of Amendment 1 that changes what §5 must satisfy; strike it if the
+   baseline in §2a is wanted as evidence only.*
 
 ---
 

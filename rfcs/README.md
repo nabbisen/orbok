@@ -50,6 +50,7 @@ may start" a checked state rather than an implicit convention.
 | 034 | [Accessibility Conformance (WCAG 2.1 AA)](done/034-accessibility-conformance.md) | v0.13.0 |
 | 035 | [Inclusive Design](done/035-inclusive-design.md) | v0.14.0 |
 | 036 | [Resource-Aware Indexing Scheduler and Backpressure](done/036-resource-aware-indexing-scheduler-and-backpressure.md) | v0.17.0 |
+| 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | main at `d3f8b93`; release pending — **first RFC closed under RFC-063**, [closure record](closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) |
 | 039 | [Privacy Modes and Local Data Visibility](done/039-privacy-modes-and-local-data-visibility.md) | v0.19.0 |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](done/040-safe-diagnostics-and-redacted-support-bundle.md) | v0.19.0 |
 | 041 | [Search, Narrow Results, and Browse Around](done/041-search-narrow-and-browse-around.md) | v0.18.0 |
@@ -72,7 +73,6 @@ may start" a checked state rather than an implicit convention.
 
 | ID | Title | Status |
 |---|---|---|
-| 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](accepted/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | Accepted 2026-06-18 — §10.1/§10.2 both "Required", neither exists. Design settled; wiring is dev-team Task 035 |
 | 038 | [Result Freshness, Trust Badges and Recovery Actions](accepted/038-result-freshness-trust-badges-and-recovery-actions.md) | Accepted 2026-06-18 — §16 criteria 4/5/7 false; every result hardcoded `Ready`. Wiring is RFC-060 §7 |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
 | 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — the control that stops the unwired-feature class recurring; its end-to-end test comes before any wiring work |

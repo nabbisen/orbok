@@ -1378,6 +1378,27 @@ next release tag.
 
 ### Docs
 
+- **RFC-037 is the first RFC to enter `done/` under RFC-063's evidence
+  requirement.** Its closure record (`rfcs/closures/037-…`) records, per
+  acceptance criterion, what was run and what was observed, plus a substantive
+  "criteria not met" section: §10.3 automatic refresh remains deferred (RFC-037's
+  own deferral, criterion 9), and §19's data model specifies a 7-variant
+  persisted `SourceState` where the implementation persists 5 and derives
+  `Preparing`/`NeedsUpdate` at render time — a deliberate deviation, since
+  persisting a queue-derived fact is denormalization that can go stale. RFC-037
+  §19 carries a matching amendment note.
+- **RFC-061 Amendment 1: the cost of the unserialized catalog is now measured.**
+  A Windows CI failure in `search_latency_while_background_indexing_is_running`
+  — captured verbatim before re-running — turned out to be the measurement that
+  test was written to produce. On identical work (300 files, ~144 ms/document
+  simulated embedding, intrinsic serial cost ≈ 43 s, concurrent search sampled
+  every 10 ms): **Linux 44.79 s, Windows 300.04 s** — ≈ 4 % versus ≈ 570 % over
+  intrinsic. Searches are *faster* on Windows (11.9 ms vs 49.9 ms avg); there are
+  15× more of them because indexing takes 6.7× longer, so it is indexing being
+  starved, not search. The test's own budget had already been raised twice
+  against this signal (~45 s → 120 s → 300 s). Recorded as the pre-fix baseline
+  for RFC-061 §5 (one shared `Arc<Catalog>` plus `busy_timeout`).
+
 - **RFC-058 through RFC-063 accepted (2026-09-02), and RFC-063's dispositions
   applied to the RFC record.** RFC-063 found that **nine RFCs in `rfcs/done/`
   carried `Status: Implemented` while making a false claim about the product**,
