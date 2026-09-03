@@ -7,6 +7,8 @@
 **Status:** Implemented (v0.18.0)
 **Target milestone:** Search UX / Filter UX refinement  
 **Date:** 2026-06-18  
+
+**Deferred work, recorded 2026-09-02 (RFC-000 granularity clause; RFC-063 §7).** The search view, narrowing chips and recovery states shipped. **§25 criterion 3's filters are stored, rendered and serialized into history, and never applied to a query.** Follow-up: RFC-060 §7.
 **Source basis:** `orbit-search-filter-external-design-v0.1.md`, `orbit-filter-ui-design-addendum.md`  
 
 ---

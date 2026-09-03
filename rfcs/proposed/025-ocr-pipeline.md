@@ -3,9 +3,11 @@
 **Project:** orbok  
 **RFC:** 025  
 **Title:** OCR Pipeline  
-**Status:** Implemented (v0.8.0)
+**Status:** Proposed
 **Target Timing:** After text-based document search is stable and scanned-document demand is confirmed  
 **Date:** 2026-06-06
+
+**Parked since v0.8.0 — moved out of `done/` 2026-09-02 (RFC-063 §8.4).** §1 reads *"This future RFC **will** define OCR support"*; no OCR code exists anywhere in the tree. **Reopen when** scanned-document support is a stated product goal — it is currently a documented non-goal.
 
 > **Future RFC Notice:** This RFC is intentionally deferred. It must be reconsidered only after the basic implementation tasks from RFC-001 through RFC-020 are substantially complete, tested, and benchmarked. It must not block the initial implementation of `orbok`.
 

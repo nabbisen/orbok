@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 061\
 **Title:** Catalog Access and the Application Boundary\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** application correctness and responsiveness\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-002 SQLite Catalog Schema and Migration Policy (§5 "one serialized writer path" — this makes it true); RFC-048 Real-Model Benchmark Performance Recovery (§6 is very likely its unmet p99); RFC-056 Hosting the Indexing Scheduler (this shares the catalog it opens); RFC-018 Crash Recovery, Diagnostics and Repair Tools (§8 surfaces what it currently cannot see)

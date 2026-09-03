@@ -41,11 +41,7 @@ may start" a checked state rather than an implicit convention.
 | 020 | [Documentation and User Guidance Structure](done/020-documentation-and-user-guidance-structure.md) | v0.6.0 |
 | 021 | [Default Embedding Model Selection](done/021-default-embedding-model-selection.md) | v0.7.0 |
 | 022 | [PDF Extraction Backend Selection](done/022-pdf-extraction-backend-selection.md) | v0.7.0 |
-| 023 | [Vector ANN Indexing](done/023-vector-ann-indexing.md) | v0.8.0 |
-| 024 | [Vector Quantization](done/024-vector-quantization.md) | v0.8.0 |
-| 025 | [OCR Pipeline](done/025-ocr-pipeline.md) | v0.8.0 |
 | 027 | [GUI Framework Finalization](done/027-gui-framework-finalization.md) | v0.1.0 |
-| 028 | [Plugin Extractor Architecture](done/028-plugin-extractor-architecture.md) | v0.8.0 |
 | 029 | [Model Download Integrity and Trust Policy](done/029-model-download-integrity-and-trust-policy.md) | v0.7.0 |
 | 030 | [Portable Mode](done/030-portable-mode.md) | v0.8.0 |
 | 031 | [GUI Internationalization (i18n)](done/031-gui-internationalization.md) | v0.1.0 |
@@ -54,8 +50,6 @@ may start" a checked state rather than an implicit convention.
 | 034 | [Accessibility Conformance (WCAG 2.1 AA)](done/034-accessibility-conformance.md) | v0.13.0 |
 | 035 | [Inclusive Design](done/035-inclusive-design.md) | v0.14.0 |
 | 036 | [Resource-Aware Indexing Scheduler and Backpressure](done/036-resource-aware-indexing-scheduler-and-backpressure.md) | v0.17.0 |
-| 037 | [Source Lifecycle, Refresh Policy, and Change Detection UX](done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | v0.18.0 |
-| 038 | [Result Freshness, Trust Badges, and Recovery Actions](done/038-result-freshness-trust-badges-and-recovery-actions.md) | v0.18.0 |
 | 039 | [Privacy Modes and Local Data Visibility](done/039-privacy-modes-and-local-data-visibility.md) | v0.19.0 |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](done/040-safe-diagnostics-and-redacted-support-bundle.md) | v0.19.0 |
 | 041 | [Search, Narrow Results, and Browse Around](done/041-search-narrow-and-browse-around.md) | v0.18.0 |
@@ -78,35 +72,51 @@ may start" a checked state rather than an implicit convention.
 
 | ID | Title | Status |
 |---|---|---|
+| 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](accepted/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | Accepted 2026-06-18 — §10.1/§10.2 both "Required", neither exists. Design settled; wiring is dev-team Task 035 |
+| 038 | [Result Freshness, Trust Badges and Recovery Actions](accepted/038-result-freshness-trust-badges-and-recovery-actions.md) | Accepted 2026-06-18 — §16 criteria 4/5/7 false; every result hardcoded `Ready`. Wiring is RFC-060 §7 |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
+| 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — the control that stops the unwired-feature class recurring; its end-to-end test comes before any wiring work |
+| 059 | [Erasure Completeness and Cache Lifetime](accepted/059-erasure-completeness-and-cache-lifetime.md) | Accepted 2026-09-02 — Reset does not erase the trigram index or the extraction cache |
+| 060 | [Search Result Integrity](accepted/060-search-result-integrity.md) | Accepted 2026-09-02 — snippets, trust, filters, folder scope, source status, reranker decision |
+| 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — one shared catalog, one model per process, failures surfaced. Before 060 and before any parallelism |
+| 062 | [Migration Integrity and Schema Guards](accepted/062-migration-integrity-and-schema-guards.md) | Accepted 2026-09-02 — a released migration was edited; no downgrade guard |
+| 063 | [Evidence for the Implemented Transition](accepted/063-evidence-for-the-implemented-transition.md) | Accepted 2026-09-02 — `done/` may only be entered with a closure record. **No new folder or lifecycle state**; the 5-folder variant is sufficient (§8) |
 
 ## Proposed
 
 | ID | Title | Status |
 |---|---|---|
+| 023 | [Vector ANN Indexing](proposed/023-vector-ann-indexing.md) | **Parked** since v0.8.0 — no ANN index exists. Reopen when a corpus exceeds the exact-scan ceiling (measured at 0.8 % of search cost) |
+| 024 | [Vector Quantization](proposed/024-vector-quantization.md) | **Parked** since v0.8.0 — `quantize_to_i8`/`upsert_i8` have no production caller |
+| 025 | [OCR Pipeline](proposed/025-ocr-pipeline.md) | **Parked** since v0.8.0 — no OCR code exists; scanned documents are a stated non-goal |
+| 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 058 | [Verifying the Wired Application](proposed/058-verifying-the-wired-application.md) | Proposed — review first; the control that stops the unwired-feature class recurring |
-| 059 | [Erasure Completeness and Cache Lifetime](proposed/059-erasure-completeness-and-cache-lifetime.md) | Proposed — Reset does not erase the trigram index or the extraction cache |
-| 060 | [Search Result Integrity](proposed/060-search-result-integrity.md) | Proposed — snippets, trust, filters, folder scope, source status, reranker decision |
-| 061 | [Catalog Access and the Application Boundary](proposed/061-catalog-access-and-application-boundary.md) | Proposed — one shared catalog, one model per process, failures surfaced |
-| 062 | [Migration Integrity and Schema Guards](proposed/062-migration-integrity-and-schema-guards.md) | Proposed — a released migration was edited; no downgrade guard |
-| 063 | [Evidence for the Implemented Transition](proposed/063-evidence-for-the-implemented-transition.md) | Proposed — **owner decision**; `done/` is entered by assertion, not evidence, which is why nine entries make a false claim |
 
-**2026-09-01 — external audit.** An independent architecture audit
-(76 findings: 6 Critical, 23 High) was reviewed and its load-bearing claims
-verified by execution. RFC-058 through RFC-063 are its design output. Two
-things the index itself must carry:
 
-1. **Nine RFCs in `done/` currently make a false claim about the product** —
-   RFC-023/024/025/028 (nothing shipped), RFC-010/037/038 (designed, central
-   mechanism never connected), and RFC-041/045 (shipped with a named gap).
-   RFC-063 traces this to its cause — the `Implemented` transition requires no
-   evidence and names no verifier — and puts the fix to the owner. Until it is
-   decided, **this index overstates the shipped feature set** and should be read
-   alongside RFC-063 §7.
-2. **RFC-037 already contains the full design for the audit's single blocking
-   issue** (registered folders are never re-scanned). It does not need a new RFC;
-   it needs wiring. Routed as a dev-team task, not as RFC-058–063.
+**2026-09-01 — external audit; dispositions applied 2026-09-02.** An independent
+architecture audit (76 findings: 6 Critical, 23 High) was reviewed and its
+load-bearing claims verified by execution. RFC-058 through RFC-063 are its design
+output and **all six were accepted on 2026-09-02**.
+
+RFC-063 found that **nine RFCs in `done/` carried `Status: Implemented` while
+making a false claim about the product**, because RFC-000's `Implemented`
+transition requires no evidence and names no verifier. Of the 55 RFCs then in
+`done/`, the 11 that had a review of their own all held; all 9 false ones were
+among the 44 that did not. Its dispositions are now applied:
+
+- **023, 024, 025, 028 → `proposed/`**, each carrying a parked note and the
+  condition that would reopen it. Nothing shipped for any of them.
+- **037, 038 → `accepted/`** — the design shipped, the wiring did not.
+- **041, 045 stay in `done/`** with an explicit deferred note naming the unmet
+  criterion, per RFC-000's granularity clause.
+- **010 (Optional Local Reranking) is deliberately left in `done/` pending
+  RFC-060 §8**, which decides whether the reranker is implemented or the claim
+  is removed. Moving it to `accepted/` would authorize building a second model
+  pipeline, which is the opposite of RFC-060 §8's recommendation. Its status is
+  known-false in the meantime and is recorded here rather than silently fixed.
+
+**No new folder or lifecycle state was added.** RFC-000 stands as written and the
+5-folder variant is sufficient (RFC-063 §8).
 
 Developer handoffs live in [`handoffs/`](handoffs/). The v0.23.0 resolved
 finding note for the separate `--features tract` recovery is in

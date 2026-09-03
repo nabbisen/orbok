@@ -1378,6 +1378,29 @@ next release tag.
 
 ### Docs
 
+- **RFC-058 through RFC-063 accepted (2026-09-02), and RFC-063's dispositions
+  applied to the RFC record.** RFC-063 found that **nine RFCs in `rfcs/done/`
+  carried `Status: Implemented` while making a false claim about the product**,
+  because RFC-000's `Implemented` transition requires no evidence and names no
+  verifier — it is the only consequential claim in this project that a file move
+  can complete. Of the 55 RFCs then in `done/`, the 11 that had a review of their
+  own all held; all 9 false ones were among the 44 that did not. Applied:
+  RFC-023/024/025/028 moved to `proposed/` with parked notes and the condition
+  that would reopen each (nothing shipped for any of them); RFC-037/038 moved to
+  `accepted/` (the design shipped, the wiring did not); RFC-041/045 stay in
+  `done/` with an explicit deferred note naming the unmet criterion, per
+  RFC-000's granularity clause. **RFC-010 is deliberately left in `done/` with a
+  known-false status** pending RFC-060 §8's decision on whether a reranker is
+  implemented or the claim removed — moving it would authorize building a second
+  model pipeline. `done/` went 55 → 49.
+- **No new RFC lifecycle folder or state was added.** An earlier draft of RFC-063
+  proposed a sixth `deferred/` folder; it was withdrawn on the project owner's
+  objection. RFC-000's "silent withdrawal" anti-pattern names *silence* as the
+  harm, not duration, and these RFCs state their own deferral in their own text —
+  so `proposed/` with an explicit parked note is both accurate and sufficient.
+  RFC-000 stands as written and the 5-folder variant adopted 2026-08-04 is
+  unchanged.
+
 - **Corrected five capability claims in `README.md` that the code does not
   support**, found by an independent architecture audit on 2026-09-01 and
   verified against the tree before correcting. Two were privacy claims. The

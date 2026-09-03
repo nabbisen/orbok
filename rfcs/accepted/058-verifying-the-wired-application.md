@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 058\
 **Title:** Verifying the Wired Application\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** verification integrity\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-000 (acceptance-criteria convention lives in each RFC, but this one constrains how they may be phrased); RFC-016 Benchmark and Retrieval Evaluation Plan (§7 amends its measurement boundary); RFC-019 Test Matrix and Release Readiness (§6 adds a gate); RFC-056 Hosting the Indexing Scheduler (its handoff §4 states this rule for one subsystem; this generalises it)

@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 060\
 **Title:** Search Result Integrity\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** retrieval correctness\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-006 Adaptive Chunking and Location Metadata (§6 persists the field it defines); RFC-010 Optional Local Reranking (§8 decides its fate); RFC-013 Search View and Result Explanation UX; RFC-038 Result Freshness and Trust Badges (§7 makes its §16.4/5/7 true); RFC-041 Search, Narrow and Browse Around (§7); RFC-045 Search-in-Folder Flow (§7); RFC-003 Source Registration and File Access Boundary (§9 closes a bypass of its boundary)

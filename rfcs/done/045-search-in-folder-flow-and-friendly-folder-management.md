@@ -7,6 +7,8 @@
 **Status:** Implemented (v0.20.0)
 **Target milestone:** Search UX simplification / folder onboarding  
 **Date:** 2026-06-20  
+
+**Deferred work, recorded 2026-09-02 (RFC-000 granularity clause; RFC-063 §7).** The picker, remembered-folder handling and the flow shipped. **The selected folder never scopes the query** — §22 criterion 7 describes a UI default value, not a scoped search. Follow-up: RFC-060 §7.
 **Related RFCs:** RFC-041 Search, Narrow Results, and Browse Around; RFC-037 Source Lifecycle, Refresh Policy, and Change Detection UX; RFC-038 Result Freshness, Trust Badges, and Recovery Actions; RFC-039 Privacy Modes and Local Data Visibility  
 **Self-review revision:** Clarifies P0 remembered-folder behavior, search-scope semantics, and non-blocking folder-picker orchestration.  
 

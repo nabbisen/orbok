@@ -3,9 +3,11 @@
 **Project:** orbok  
 **RFC:** 024  
 **Title:** Vector Quantization  
-**Status:** Implemented (v0.8.0)
+**Status:** Proposed
 **Target Timing:** After vector storage size is measured on realistic corpora  
 **Date:** 2026-06-06
+
+**Parked since v0.8.0 — moved out of `done/` 2026-09-02 (RFC-063 §8.4).** `quantize_to_i8`/`upsert_i8` have no production caller and `IndexMode::SpaceSaving` never reaches them. **Reopen when** embedding storage becomes a measured constraint on real corpora.
 
 > **Future RFC Notice:** This RFC is intentionally deferred. It must be reconsidered only after the basic implementation tasks from RFC-001 through RFC-020 are substantially complete, tested, and benchmarked. It must not block the initial implementation of `orbok`.
 

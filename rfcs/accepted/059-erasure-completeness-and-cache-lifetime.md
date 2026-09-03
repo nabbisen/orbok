@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 059\
 **Title:** Erasure Completeness and Cache Lifetime\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** privacy correctness\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-001 Local Data Classification and Lifecycle (this makes its "Ephemeral" class true); RFC-011 Storage Dashboard and Cleanup UX (adds two actions it defines but never exposed); RFC-039 Privacy Modes and Local Data Visibility; RFC-018 Crash Recovery, Diagnostics and Repair Tools (§8 borrows its repair framing)

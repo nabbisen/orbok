@@ -3,9 +3,11 @@
 **Project:** orbok  
 **RFC:** 023  
 **Title:** Vector ANN Indexing  
-**Status:** Implemented (v0.8.0)
+**Status:** Proposed
 **Target Timing:** After exact vector search benchmark shows unacceptable latency  
 **Date:** 2026-06-06
+
+**Parked since v0.8.0 — moved out of `done/` 2026-09-02 (RFC-063 §8.4).** It carried `Implemented (v0.8.0)` while no ANN index exists; `vector.rs`'s own doc says *"ANN is deferred"*. **Reopen when** a corpus exceeds the exact-scan ceiling. Owner Task 003 Part A measured vector scan at **0.8 % of search cost** with a real model, so that condition is not close.
 
 > **Future RFC Notice:** This RFC is intentionally deferred. It must be reconsidered only after the basic implementation tasks from RFC-001 through RFC-020 are substantially complete, tested, and benchmarked. It must not block the initial implementation of `orbok`.
 

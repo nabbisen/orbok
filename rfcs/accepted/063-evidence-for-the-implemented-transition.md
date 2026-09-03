@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 063\
 **Title:** Evidence for the Implemented Transition\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** project-record integrity\
 **Date:** 2026-09-01\
 **Supersedes in draft:** the first version of this RFC, titled *Recording Deferral in the RFC Lifecycle*, which named the wrong defect. See §9.\
@@ -246,26 +247,78 @@ closure record that names the unmet criterion and points at RFC-060. RFC-041 is
 borderline — *Narrow* is half its title — and the owner may reasonably move it to
 the group above. **Flagged, not decided.**
 
-## 8. The deferral question, correctly sized
+## 8. The deferral question needs no new state — revised 2026-09-02
 
-Once §6 exists, RFC-023/024/025/028 can never enter `done/` again. But they still
-need somewhere to live, and RFC-000 has no state that says *decided, not now,
-here is the trigger*:
+**An earlier version of this section proposed a sixth folder (`deferred/`). The
+owner rejected it, and was right. It is withdrawn.**
 
-- `archive/` means Withdrawn — *"the work will not happen"* — which is stronger
-  than the truth, and RFC-000 forbids reusing the number if it is revived.
-- `proposed/` means *"open for review"*, and four files parked there since v0.8.0
-  is precisely the "silent withdrawal" anti-pattern RFC-000 names.
+The objection: *"I did not get why the current RFC lifecycle policy with the
+5-folder variant was insufficient. I doubt whether 6-folder variant can bring
+complexity bad on project management."*
 
-So a sixth state is worth adding — **as a documented variant with a stated
-adoption condition**, the way `draft/` and the 5-folder variant are written, so
-that a project adopting RFC-000 verbatim can skip it and portability survives.
+### 8.1 Why I thought a sixth state was needed, and why it does not hold
 
-**This is a filing question and it is third-order.** It was the whole subject of
-this RFC's first draft, and that was the error: it took the four
-nothing-shipped files at face value and asked which drawer they belonged in,
-which is fixing the filing cabinet. The other five files would have stayed
-exactly where they were.
+The argument was that neither existing state fits RFC-023/024/025/028:
+`archive/` means Withdrawn — *"the work will not happen"* — which is stronger
+than the truth; and `proposed/` would trip RFC-000's own **"Silent withdrawal"**
+anti-pattern, four files parked there since v0.8.0.
+
+Both halves are weaker than they looked.
+
+**The `proposed/` objection misreads the anti-pattern.** RFC-000 describes it as
+*"An RFC that's been abandoned but not formally withdrawn sits in `proposed/`
+indefinitely… the maintainer's unspoken 'I'm not going to do this' is
+invisible."* The harm it names is **silence** — invisible intent, reviewers
+wasting effort on something nobody will do. That does not apply here: these four
+RFCs state their own deferral **in their own text** (*"This future RFC is
+intentionally deferred"*). Add one explicit parked line and the intent is not
+unspoken at all. Duration in `proposed/` is not the defect; silence is.
+
+**And `proposed/` is a genuinely accurate description of them.** It means *"open
+for review and discussion; implementer should not yet start work — the design may
+change."* Every clause is true of ANN, quantization, OCR and plugin extractors.
+Their designs are undecided, which is exactly what they say.
+
+### 8.2 The cost the objection is pointing at is real
+
+A sixth folder is not one directory. It is four edits to
+`scripts/check-rfc-lifecycle.sh` (the `require_dir` list, a status loop, the
+README-section extraction, the path enumeration), a new section in the index, an
+extension to the gate's self-test, and a rule every future contributor must learn
+— for **four files**, against a policy whose own text argues that *"the states
+are deliberately few"* and warns specifically against formalising states that
+small projects route around.
+
+It would also cost RFC-000 its portability, which is a stated design goal
+(*"written to be portable — any project starting an `rfcs/` directory can adopt
+this policy verbatim"*). The variant framing mitigated that; it did not remove it.
+
+### 8.3 What was actually wrong, and it was never the folder
+
+The defect the four files exhibit is **not that they are in the wrong drawer**.
+It is that `Status: Implemented (v0.8.0)` and the index row *"Vector ANN Indexing
+— Implemented"* both read as **"orbok has ANN"**, when what shipped was a
+decision to defer it.
+
+§6's evidence requirement fixes that at the source: no closure record can be
+written for RFC-025, because there is nothing to put in the *what was observed*
+column. It can never enter `done/` again. That is the whole repair, and it needs
+no new state.
+
+### 8.4 The disposition, then
+
+**Move RFC-023, RFC-024, RFC-025 and RFC-028 to `proposed/`**, `Status: Proposed`,
+each carrying one added line naming the parked status and the condition that would
+reopen it — e.g. for RFC-023, *"Parked since v0.8.0. Reopen when a corpus exceeds
+the exact-scan ceiling; Owner Task 003 Part A measured vector scan at 0.8 % of
+search cost, so that condition is not close."*
+
+The index's Status column carries the same, so a reader scanning `proposed/`
+distinguishes RFC-047 (genuinely under review) from four parked entries without
+opening them.
+
+No policy amendment. No gate change. No new folder. RFC-000 stands as written,
+and the 5-folder variant this project adopted on 2026-08-04 is sufficient.
 
 ## 9. What the first draft got wrong, recorded deliberately
 
@@ -287,9 +340,17 @@ all. The owner rejected that too — *"we have confirmed workflow and have had
 several review processes"* — and counting them produced §1.1, which is a better
 statement than either draft: eleven for eleven where the process ran, nine false
 out of forty-four where it did not. **The process is not the problem; its
-optionality is.** Both corrections came from being told the diagnosis was wrong
-and going to look, which is the same discipline this RFC is trying to make
-structural.
+optionality is.**
+
+A third correction followed on 2026-09-02: the owner rejected the sixth folder
+this RFC had carried since its first draft, and §8 is now a withdrawal. That one
+is the most instructive of the three, because the proposal **survived a full
+rewrite** — I changed my mind about the *cause* and kept the *remedy* the wrong
+cause had suggested. A remedy does not inherit correctness from a corrected
+diagnosis; it has to be re-derived, and I did not re-derive it.
+
+All three corrections came from being told the diagnosis was wrong and going to
+look, which is the discipline this RFC is trying to make structural.
 
 ## 10. The pattern this shares with RFC-062
 
@@ -339,10 +400,11 @@ Phrased per RFC-058 §5, over the repository.
 
 1. **§6.2 — where closure records live.** A / B / C. **Owner decision;
    recommendation is B.**
-2. **§8 — the sixth state.** Whether to add it at all, and whether as a folder or
-   a Status value only. **Owner decision.**
-3. **§7 — RFC-041's group.** Judgement about whether "narrow" is central to
+2. **§7 — RFC-041's group.** Judgement about whether "narrow" is central to
    *Search, Narrow and Browse Around*. **Owner decision.**
+
+*(A third question — whether to add a sixth lifecycle state — was withdrawn on
+2026-09-02 after the owner rejected it. See §8.)*
 4. **How far back does the backfill go?** Writing closure records for all 55
    implemented RFCs is archaeology. Proposal: backfill only the nine in §7, and
    require records prospectively. An RFC closed years ago whose feature demonstrably

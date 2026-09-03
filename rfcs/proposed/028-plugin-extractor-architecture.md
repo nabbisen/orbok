@@ -3,9 +3,11 @@
 **Project:** orbok  
 **RFC:** 028  
 **Title:** Plugin Extractor Architecture  
-**Status:** Implemented (v0.8.0)
+**Status:** Proposed
 **Target Timing:** After built-in extractors stabilize and external extension need is confirmed  
 **Date:** 2026-06-06
+
+**Parked — moved out of `done/` 2026-09-02 (RFC-063 §8.4).** Interface only; `plugin.rs`'s module doc has always said so honestly while the index did not. **Reopen when** the extensibility stance is decided — every extension is a recompile today, which is a defensible position that has never been written down as one.
 
 > **Future RFC Notice:** This RFC is intentionally deferred. It must be reconsidered only after the basic implementation tasks from RFC-001 through RFC-020 are substantially complete, tested, and benchmarked. It must not block the initial implementation of `orbok`.
 
