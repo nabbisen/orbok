@@ -2,12 +2,15 @@
 
 **RFC:** [037](../accepted/037-source-lifecycle-refresh-policy-and-change-detection-ux.md)
 **Format:** RFC-063 §6.1/§6.2 option B.
-**Implemented by:** [Task 035](../../.git-exclude/tasks/dev-team/035-wire-rfc037-source-refresh.md),
-verified in [Review 200](../../.git-exclude/reviewed/200-task035-wire-rfc037-source-refresh-review.md).
+**Implemented by:** Task 035, verified in Review 200 — neither is
+git-tracked (RFC-063 §5): Task 035 is
+`.git-exclude/tasks/dev-team/035-wire-rfc037-source-refresh.md`, Review 200
+is `.git-exclude/reviewed/200-task035-wire-rfc037-source-refresh-review.md`.
 **Transcribed, not re-derived**, from Task 035 §5's own re-phrasing of the
 criteria below into the falsifiable form RFC-058 §5 / RFC-063 §6.1 require,
-and from [Review Request 200](../../.git-exclude/review-request/200-task035-wire-rfc037-source-refresh.md)'s
-own §5/§7 observations.
+and from Review Request 200's own §5/§7 observations
+(`.git-exclude/review-request/200-task035-wire-rfc037-source-refresh.md`,
+also not git-tracked).
 
 ---
 

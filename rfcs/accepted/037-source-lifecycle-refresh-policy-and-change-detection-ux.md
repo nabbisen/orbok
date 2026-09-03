@@ -517,9 +517,10 @@ pub enum SourceEvent {
 > queued-job and stale-file counts the catalog already holds, rather than
 > persisting them.
 >
-> This is a deliberate deviation, confirmed correct by review
-> ([Review 200](../../.git-exclude/reviewed/200-task035-wire-rfc037-source-refresh-review.md)
-> §2.2), not an oversight this section failed to anticipate: `Preparing` and
+> This is a deliberate deviation, confirmed correct by review (Review 200,
+> `.git-exclude/reviewed/200-task035-wire-rfc037-source-refresh-review.md`
+> §2.2 — not git-tracked, see RFC-063 §5), not an oversight this section
+> failed to anticipate: `Preparing` and
 > `NeedsUpdate` are derived facts, computable from state the catalog already
 > holds. Persisting them as their own column would be denormalization that
 > can go stale — a worse failure mode than deriving them fresh on every
