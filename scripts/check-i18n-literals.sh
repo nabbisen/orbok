@@ -177,6 +177,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/app/src/runtime_storage.rs"]="Display impl strings for a backend error type, same exemption as runtime_context.rs, verified in full"
   ["crates/app/src/scheduler_host.rs"]="developer-facing tracing::warn! log string only, verified in full; the only user-visible signal this module produces is Message::HealthUpdated, an existing typed variant already routed through the UI's own i18n'd rendering, not a raw string from here"
   ["crates/app/src/settings.rs"]="io::Error Display string only, verified in full"
+  ["crates/app/src/wired_application_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as runtime_isolation_tests.rs"
 )
 
 is_scan_file() {
