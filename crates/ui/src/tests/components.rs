@@ -92,6 +92,7 @@ fn component_smoke_source_card() {
         "/home/user/Documents".to_string(),
         "812 indexed · 0 stale".to_string(),
         "Active",
+        None,
         Some((
             "Prepare again",
             Message::SourceRefreshRequested("src-1".to_string()),
@@ -108,8 +109,24 @@ fn component_smoke_source_card() {
         "812 indexed · 0 stale".to_string(),
         "Active",
         None,
+        None,
         true,
         Message::SourceRemoved("src-1".to_string()),
+    );
+    // RFC-037 §17.3 (Task 035): the Missing state's detail line.
+    let _ = crate::components::source_card(
+        &tokens,
+        "Reports".to_string(),
+        "/home/user/Reports".to_string(),
+        "0 indexed".to_string(),
+        "Folder not found",
+        Some("This can happen if a drive is disconnected or the folder was moved."),
+        Some((
+            "Check again",
+            Message::SourceRefreshRequested("src-2".to_string()),
+        )),
+        false,
+        Message::SourceRemoved("src-2".to_string()),
     );
 }
 

@@ -82,6 +82,33 @@ fn sources_view_renders_both_states() {
     );
 }
 
+// RFC-037 §17.3, Task 035 §5.4: a Missing source's card must actually
+// render §17.3's explanatory line ("This can happen if a drive is
+// disconnected or the folder was moved."), not just its status label --
+// `SourceFolderNotFoundDetail` existed, translated, since before this
+// task with nothing rendering it (the same "capability exists, nothing
+// calls it" pattern RFC-058 exists to catch).
+#[test]
+fn sources_view_shows_folder_not_found_detail_copy() {
+    let _guard = iced_test_guard();
+    let mut state = AppState::default();
+    state.sources.push(SourceCard {
+        display_name: "Reports".into(),
+        display_path: "/home/user/Reports".into(),
+        indexed: 40,
+        stale: 0,
+        failed: 0,
+        status: orbok_core::SourceStatus::Missing,
+        source_id: "src-1".into(),
+    });
+    let mut ui = simulator(views::sources_view(&state));
+    assert!(
+        ui.find(tr(state.locale, MessageKey::SourceFolderNotFoundDetail))
+            .is_ok(),
+        "a Missing source's card must show §17.3's explanatory line"
+    );
+}
+
 // RFC-036 §14.1 (RFC-056 Slice 4): the indexing view's status line uses
 // the literal spec'd copy, naming the folder only when it is the sole
 // source.

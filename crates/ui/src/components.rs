@@ -238,6 +238,11 @@ pub fn source_card<'a>(
     display_path: String,
     summary: String,
     status_label: &'a str,
+    // RFC-037 §17.3 (Task 035): the explanatory line under "Folder not
+    // found" ("This can happen if a drive is disconnected or the folder
+    // was moved.") -- `None` for every other state, which §17's other
+    // wireframes (17.1/17.2/17.4) draw with no such line.
+    detail: Option<&'a str>,
     // RFC-037 §10.2/§17 (Task 035): `[Check again]` for a missing/
     // permission-denied source, `[Prepare again]` for an active one --
     // `None` for a source with nothing to refresh (Paused; RFC-037 §7.4
@@ -253,13 +258,20 @@ pub fn source_card<'a>(
     }
     actions = actions.push(danger(tokens, "", Some(on_remove)));
 
-    let body = column![
+    let mut body = column![
         text(display_name).size(theme::body(tokens)),
         text(display_path).size(theme::meta(tokens)),
         text(summary).size(theme::meta(tokens)),
-        actions,
     ]
     .spacing(tokens.spacing.xs);
+    if let Some(detail) = detail {
+        body = body.push(
+            text(detail.to_string())
+                .size(theme::meta(tokens))
+                .line_height(theme::meta_lh(tokens)),
+        );
+    }
+    body = body.push(actions);
     if is_selected {
         selection_ring(tokens, body)
     } else {

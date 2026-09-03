@@ -497,6 +497,11 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                     Message::SourceRefreshRequested(card.source_id.clone()),
                 )
             });
+            // RFC-037 §17.3 (Task 035): the "Folder not found" wireframe's
+            // explanatory line -- shown only for Missing, matching §17's
+            // other cards (17.1/17.2/17.4), which carry no such line.
+            let detail = matches!(card.status, SourceStatus::Missing)
+                .then(|| tr(locale, MessageKey::SourceFolderNotFoundDetail));
             let summary = source_summary(locale, card.indexed, card.stale, card.failed);
             content = content.push(source_card(
                 tokens,
@@ -504,6 +509,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 card.display_path.clone(),
                 summary,
                 status_label,
+                detail,
                 refresh_action,
                 state.selected_source == Some(i),
                 Message::SourceRemoved(card.source_id.clone()),
