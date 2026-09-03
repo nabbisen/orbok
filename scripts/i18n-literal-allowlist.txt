@@ -68,6 +68,7 @@ crates/app/src/main.rs	clean snippets failed: {e}	tracing::error! log message, n
 crates/app/src/main.rs	clean search cache failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
+crates/app/src/main.rs	source refresh failed: {e}	tracing::error! log message, not rendered in the GUI (Task 035, RFC-037 §10.2 manual refresh) -- no dedicated UserNotice yet, matching the clean-snippets/clean-search-cache log-only precedent above rather than inventing one outside this task's scope
 
 # ── Framework/system technical identifiers ───────────────────────────────
 crates/ui/src/shell.rs	orbok-dark	internal iced::Theme::custom name, an iced framework identifier never rendered to the user

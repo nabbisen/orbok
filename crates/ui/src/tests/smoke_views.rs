@@ -72,7 +72,7 @@ fn sources_view_renders_both_states() {
         indexed: 12,
         stale: 0,
         failed: 0,
-        active: true,
+        status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
     let mut ui = simulator(views::sources_view(&populated));
@@ -96,7 +96,7 @@ fn indexing_view_shows_rfc036_preparing_and_ready_copy() {
         indexed: 0,
         stale: 0,
         failed: 0,
-        active: true,
+        status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
     preparing.health.queued = 5;

@@ -17,6 +17,8 @@ mod model_flow;
 mod runtime_isolation_tests;
 mod scheduler_host;
 mod settings;
+#[cfg(test)]
+mod wired_application_tests;
 
 use orbok_ui::i18n::{dialog_title_add_source, dialog_title_choose_search_folder};
 use orbok_ui::state::{WizardFileCheck, WizardState};
@@ -221,6 +223,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
                         let _ = bootstrap::remove_source(&catalog, source_id);
                     }
+                }
+                // RFC-037 §10.2 manual refresh (Task 035): same function
+                // the startup check calls (bootstrap/startup.rs), invoked
+                // here by explicit user action instead. Re-fetches sources
+                // (the status this call may have just changed) and health
+                // (a freshly enqueued Scan job) immediately, the same
+                // `HealthUpdated` pattern `RequestAddSource` already uses --
+                // the background scheduler emits further updates as the
+                // enqueued job actually runs.
+                Message::SourceRefreshRequested(source_id) => {
+                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                        match bootstrap::check_and_refresh_source(&catalog, source_id) {
+                            Ok(health) => {
+                                app.update(Message::SourcesLoaded(bootstrap::get_sources(
+                                    &catalog,
+                                )));
+                                app.update(Message::HealthUpdated(health));
+                            }
+                            Err(e) => {
+                                tracing::error!("source refresh failed: {e}");
+                            }
+                        }
+                    }
+                    return iced::Task::none();
                 }
                 Message::FocusSearch => {
                     app.update(message);

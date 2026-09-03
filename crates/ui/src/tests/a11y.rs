@@ -587,7 +587,7 @@ fn source_navigation_bounds() {
         indexed: 0,
         stale: 0,
         failed: 0,
-        active: true,
+        status: orbok_core::SourceStatus::Active,
         source_id: id.into(),
     };
     state.update(&Message::SourcesLoaded(vec![make("a"), make("b")]));
@@ -617,7 +617,7 @@ fn selected_source_removed_by_source_removed_message() {
         indexed: 0,
         stale: 0,
         failed: 0,
-        active: true,
+        status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     }]));
     state.update(&Message::SelectNextSource);

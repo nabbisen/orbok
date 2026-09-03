@@ -850,6 +850,103 @@ async fn on_battery_does_not_defer_embedding_when_the_setting_is_disabled() {
     handle.abort();
 }
 
+/// RFC-037 §10.1, RFC-057 §4.3a, Task 035 §5.6: the startup rescan
+/// (`bootstrap::load_initial_state`'s new Task 035 §4.1 loop, not
+/// `scan_and_index_source` called directly, unlike every other test in
+/// this file) is just another caller of the same `scan_and_index_source`
+/// → one `Scan` row path -- there is no startup-specific enqueue route to
+/// have accidentally skipped RFC-057's resource policy. On battery with
+/// `pause_embedding_on_battery` enabled, the scan it triggers must still
+/// extract, chunk, and keyword-index the file (unaffected, same as every
+/// other on-battery test above) while embedding alone defers.
+#[tokio::test]
+async fn startup_rescan_extracts_and_chunks_on_battery_but_defers_embedding() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    // Registered, but never scanned by this test directly -- the only scan
+    // this file ever gets is the one `load_initial_state` triggers below.
+    bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+
+    let model_id = register_mock_model(&ui_catalog, "mock");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(MockEmbeddingModel),
+        model_id.clone(),
+    ));
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    signal_tx
+        .try_send(ResourceObservation::OnBattery(true))
+        .unwrap();
+
+    // The real startup entry point -- this is what enqueues the Scan job,
+    // not this test calling `scan_and_index_source` itself.
+    bootstrap::load_initial_state(&context).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        embedding_parts,
+        true,
+        true,
+        signal_rx,
+        tx,
+        None,
+    ));
+    drop(rx); // never drained in tests: sends must fail-fast, not block (see report_health's comment)
+
+    let embedding_row_count = |catalog: &Catalog, model_id: &ModelId| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM embeddings WHERE model_id = ?1",
+                [model_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+    let active_keyword_rows = |catalog: &Catalog| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM keyword_index_records WHERE status = 'active'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+
+    wait_until(
+        Duration::from_secs(20),
+        "the startup-triggered scan extracts, chunks, and keyword-indexes the file",
+        || indexed_count(&ui_catalog) == 1 && active_keyword_rows(&ui_catalog) > 0,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        embedding_row_count(&ui_catalog, &model_id),
+        0,
+        "embedding must defer on battery even when the scan that produced \
+         the work came from startup, not a manual/initial scan"
+    );
+
+    // Off battery: only now does embedding run -- proves deferral, not loss.
+    let _ = signal_tx.try_send(ResourceObservation::OnBattery(false));
+    wait_until(
+        Duration::from_secs(20),
+        "embedding runs once off battery",
+        || embedding_row_count(&ui_catalog, &model_id) > 0,
+    )
+    .await;
+
+    handle.abort();
+}
+
 /// RFC-057 §3.2 / HANDOFF-057 §3.2: a live, repeated `UserActive` signal
 /// must not resume a scheduler the user paused via `background_indexing`
 /// -- unlike `background_indexing_disabled_pauses_before_any_job_runs`,
@@ -1315,6 +1412,118 @@ fn rehydrate_recovers_a_blocked_job_once_queue_room_exists() {
         .tick()
         .expect("job_b must be dispatchable again after recovery");
     assert_eq!(recovered.id, job_b_id);
+}
+
+/// RFC-037 §14, Task 035 §5.5: a change storm -- `Scanner::scan` calling
+/// `IndexJobRepository::enqueue` directly for thousands of files in one
+/// pass, all landing as fresh `queued` rows `rehydrate`'s first loop (over
+/// `list_queued`, not `list_blocked`) has never seen before -- must not
+/// silently lose jobs once the in-memory queue is at capacity.
+///
+/// Before this test's fix, that first loop unconditionally inserted every
+/// row's id into `known` regardless of whether `load_persisted` actually
+/// found room, so a job that arrived at the *same* rehydrate pass that
+/// filled the queue (not a later one -- `rehydrate_recovers_a_blocked_job_once_queue_room_exists`
+/// above only covers a job that was already `blocked` from a prior pass)
+/// was marked "already handled" while still sitting `queued` in the
+/// catalog with no in-memory copy: every later rehydrate's `known.contains`
+/// check would skip it forever, and it would never dispatch. Fixed by only
+/// inserting into `known` when `load_persisted` succeeds, and marking the
+/// row `blocked` otherwise -- mirroring exactly what `Scheduler::fail`'s
+/// retry branch already does for the same "no room" condition, so the
+/// existing `list_blocked` recovery loop picks it up unchanged.
+///
+/// A tiny capacity override reproduces the shape without needing the
+/// thousands of real files a full application-level repro would (see the
+/// comment on the blocked-job test above for why that test uses the same
+/// approach).
+#[test]
+fn a_change_storm_exceeding_queue_capacity_does_not_lose_jobs() {
+    use orbok_core::{
+        HiddenFilePolicy, IndexMode, JobStatus, JobType, PersistenceMode, SourceType, SymlinkPolicy,
+    };
+    use orbok_db::repo::{IndexJobRepository, NewSource, SourceRepository};
+    use orbok_workers::{QueueCapacity, Scheduler, SchedulerConfig};
+    use std::collections::HashSet;
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = SourceRepository::new(&catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: None,
+            original_path: "/tmp/change-storm-test".to_string(),
+            canonical_path: "/tmp/change-storm-test".to_string(),
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+
+    let capacity = QueueCapacity {
+        extract_queue_max: 1,
+        ..QueueCapacity::default()
+    };
+    let mut sched = Scheduler::new(SchedulerConfig {
+        capacity,
+        ..SchedulerConfig::default()
+    });
+    let mut known = HashSet::new();
+    let jobs = IndexJobRepository::new(&catalog);
+
+    // Both rows land `queued` directly, the way `Scanner::process_file`
+    // writes them mid-scan -- neither has ever been seen by `sched` or
+    // `known` before this call, unlike the blocked-job test's job_a/job_b.
+    let job_a_id = jobs
+        .enqueue(JobType::Extract, Some(&source.source_id), None)
+        .unwrap();
+    let job_b_id = jobs
+        .enqueue(JobType::Extract, Some(&source.source_id), None)
+        .unwrap();
+
+    super::rehydrate(&mut sched, &catalog, &mut known);
+
+    // Capacity is 1: exactly one of the two must have made it into the
+    // in-memory queue.
+    let dispatched = sched
+        .tick()
+        .expect("one of the two jobs must fit in the single extract slot");
+    let (dispatched_id, other_id) = if dispatched.id == job_a_id {
+        (job_a_id, job_b_id)
+    } else {
+        (job_b_id, job_a_id)
+    };
+    assert_eq!(
+        jobs.status_of(&dispatched_id).unwrap(),
+        Some(JobStatus::Queued),
+        "the dispatched job's catalog row is untouched by rehydrate itself"
+    );
+    assert_eq!(
+        jobs.status_of(&other_id).unwrap(),
+        Some(JobStatus::Blocked),
+        "the job that didn't fit on first sight must be marked blocked, \
+         not left queued-but-untracked where it would never be retried"
+    );
+    assert!(
+        !known.contains(&other_id),
+        "an id must only enter `known` once it actually has an in-memory copy"
+    );
+
+    // Room now exists (the dispatched job was popped above); the same
+    // recovery path the blocked-job test proves must reach this one too.
+    super::rehydrate(&mut sched, &catalog, &mut known);
+    assert_eq!(
+        jobs.status_of(&other_id).unwrap(),
+        Some(JobStatus::Queued),
+        "recovered once room exists, exactly like a retry-caused blocked row"
+    );
+    let recovered = sched
+        .tick()
+        .expect("the previously-blocked job must be dispatchable now");
+    assert_eq!(recovered.id, other_id);
 }
 
 /// `job_is_still_queued` directly -- the exact check the dispatch loop

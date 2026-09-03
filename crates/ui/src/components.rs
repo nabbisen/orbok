@@ -238,18 +238,26 @@ pub fn source_card<'a>(
     display_path: String,
     summary: String,
     status_label: &'a str,
+    // RFC-037 §10.2/§17 (Task 035): `[Check again]` for a missing/
+    // permission-denied source, `[Prepare again]` for an active one --
+    // `None` for a source with nothing to refresh (Paused; RFC-037 §7.4
+    // treats a pause as covering exactly this kind of preparation work).
+    refresh_action: Option<(&'a str, Message)>,
     is_selected: bool,
     on_remove: Message,
 ) -> Element<'a, Message> {
+    let mut actions =
+        row![text(status_label.to_string()).size(theme::meta(tokens))].spacing(tokens.spacing.sm);
+    if let Some((label, on_refresh)) = refresh_action {
+        actions = actions.push(secondary(tokens, label, Some(on_refresh)));
+    }
+    actions = actions.push(danger(tokens, "", Some(on_remove)));
+
     let body = column![
         text(display_name).size(theme::body(tokens)),
         text(display_path).size(theme::meta(tokens)),
         text(summary).size(theme::meta(tokens)),
-        row![
-            text(status_label.to_string()).size(theme::meta(tokens)),
-            danger(tokens, "", Some(on_remove)),
-        ]
-        .spacing(tokens.spacing.sm),
+        actions,
     ]
     .spacing(tokens.spacing.xs);
     if is_selected {

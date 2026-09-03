@@ -470,8 +470,20 @@ fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<J
         let Some(job) = index_job_from_record(&record) else {
             continue;
         };
-        known.insert(record.job_id);
-        scheduler.load_persisted(job);
+        // RFC-037 §14, Task 035 §5.5: a change storm can hand this loop
+        // more freshly `queued` rows than the in-memory queue has room for
+        // in one pass -- `known` must only gain an id once `load_persisted`
+        // actually gives it an in-memory copy. Marking a row `blocked`
+        // (rather than leaving it `queued`-but-untracked) is exactly what
+        // `Scheduler::fail`'s retry branch already does for the same "no
+        // room" condition below, so the `list_blocked` loop's existing
+        // recovery picks these up too -- no second recovery path.
+        let id = record.job_id.clone();
+        if scheduler.load_persisted(job) {
+            known.insert(id);
+        } else {
+            let _ = jobs.set_status(&id, JobStatus::Blocked);
+        }
     }
 
     // RFC-036 §20.2: `Scheduler::fail`'s retry branch marks a job `blocked`

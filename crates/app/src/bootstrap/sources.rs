@@ -68,7 +68,7 @@ pub fn add_source(
             indexed: 0,
             stale: 0,
             failed: 0,
-            active: true,
+            status: orbok_core::SourceStatus::Active,
             source_id: src.source_id.as_str().to_string(),
         },
         sensitive,
@@ -101,6 +101,60 @@ pub fn scan_and_index_source(
     IndexJobRepository::new(catalog).enqueue(JobType::Scan, Some(&src.source_id), None)?;
 
     Ok(super::get_health(catalog))
+}
+
+/// Check a registered folder's path and, if reachable, enqueue a scan
+/// (RFC-037 §10.1 startup check / §10.2 manual refresh — Task 035 §4: the
+/// two are the same operation, invoked either once per source at startup or
+/// once by explicit user action). `orbok_fs::source_lifecycle::check_source_path`
+/// is a lightweight `stat()`-only check (RFC-037 §10.1's "check permission
+/// lightly"), never a directory walk — that stays inside `Scanner::scan`,
+/// unchanged.
+///
+/// `SourceState`'s richer RFC-037 vocabulary (`Preparing`, `NeedsUpdate`)
+/// cannot round-trip through `sources.status`: the catalog's CHECK
+/// constraint (`crates/data/db/migrations/0001_baseline.sql`) only allows
+/// `active`/`paused`/`missing`/`permission_denied`/`removed`, matching
+/// `orbok_core::SourceStatus` exactly. `check_source_path` only ever
+/// returns `Active`/`FolderNotFound`/`PermissionProblem`, so this stays
+/// within that constraint without needing a schema change; `Preparing`/
+/// `NeedsUpdate` remain UI-derived (from job/file counts), never persisted.
+///
+/// Enqueuing, not scanning inline: this returns promptly, the same as
+/// `scan_and_index_source` below (RFC-056 §3) — a `Scan` job goes in the
+/// hosted scheduler's queue and the existing resource policy (RFC-057)
+/// decides when it runs. No second execution path.
+pub fn check_and_refresh_source(
+    catalog: &Catalog,
+    source_id_str: &str,
+) -> Result<orbok_ui::state::IndexHealth, Box<dyn std::error::Error>> {
+    use orbok_core::{SourceId, SourceStatus};
+    use orbok_db::repo::SourceRepository;
+    use orbok_fs::source_lifecycle::{SourceState, check_source_path};
+    use std::path::Path;
+
+    let source_id = SourceId::from_string(source_id_str.to_string());
+    let repo = SourceRepository::new(catalog);
+    let src = repo.get(&source_id)?.ok_or("source not found")?;
+
+    match check_source_path(Path::new(&src.canonical_path)) {
+        SourceState::Active => {
+            repo.set_status(&source_id, SourceStatus::Active)?;
+            scan_and_index_source(catalog, source_id_str)
+        }
+        SourceState::FolderNotFound => {
+            repo.set_status(&source_id, SourceStatus::Missing)?;
+            Ok(super::get_health(catalog))
+        }
+        SourceState::PermissionProblem => {
+            repo.set_status(&source_id, SourceStatus::PermissionDenied)?;
+            Ok(super::get_health(catalog))
+        }
+        // check_source_path never returns the remaining SourceState
+        // variants (Preparing/NeedsUpdate/Paused/Removed) -- they describe
+        // states this function does not derive from a filesystem check.
+        other => unreachable!("check_source_path returned an unexpected state: {other:?}"),
+    }
 }
 
 /// Remove a source and its associated indexes from the catalog.
@@ -149,7 +203,7 @@ pub fn find_source_by_canonical_path(
                 indexed,
                 stale,
                 failed,
-                active: true,
+                status: orbok_core::SourceStatus::Active,
                 source_id: src.source_id.as_str().to_string(),
             }
         })

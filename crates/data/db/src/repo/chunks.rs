@@ -7,7 +7,7 @@
 //! (RFC-006 §12 "rechunk failure preserves previous active chunks").
 
 use crate::catalog::{Catalog, db_err};
-use orbok_core::{ChunkId, ExtractionId, FileId, OrbokResult, now_iso8601};
+use orbok_core::{ChunkId, ExtractionId, FileId, OrbokResult, SourceId, now_iso8601};
 use rusqlite::params;
 use sha2::{Digest, Sha256};
 
@@ -191,6 +191,72 @@ impl<'a> ChunkRepository<'a> {
 
         tx.commit().map_err(db_err)?;
         Ok(records)
+    }
+
+    /// RFC-037 §8/§12, Task 035 §5.3: cascade a source's just-marked-missing
+    /// files to their chunks. `Scanner::scan` calls this right after
+    /// `FileRepository::mark_missing_unseen` in the same scan.
+    ///
+    /// Both `fts5.rs`'s keyword search and `vector.rs`'s exact scan
+    /// (via `EmbeddingRepository::list_active_for_scan`) gate solely on
+    /// `chunk_status = 'active'` — neither joins back to `files` at all —
+    /// so a file's own `file_status` flipping to `missing` had no effect on
+    /// whether its content kept surfacing in search. Marked `stale` rather
+    /// than `deleted`: unlike a genuinely superseded extraction, a missing
+    /// file can return with byte-identical content (RFC-004 §11), and
+    /// [`ChunkRepository::reactivate_last_stale_generation`] needs the
+    /// chunks intact to restore. `remove_replaced_stale_indexes`
+    /// (`cleanup.rs`) only purges `stale`/`deleted` chunks for a file that
+    /// still has an *active* replacement, so a fully-missing file's chunks
+    /// (now entirely non-active) are left alone by that cleanup until
+    /// reactivated or genuinely superseded by a fresh extraction.
+    ///
+    /// Idempotent and safe to call every scan regardless of what's newly
+    /// missing this pass: already-`stale`/`deleted` chunks don't match
+    /// `chunk_status = 'active'` again, so re-running it for a file that
+    /// was already missing touches zero rows.
+    pub fn deactivate_for_missing_files(&self, source_id: &SourceId) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n = conn
+            .execute(
+                "UPDATE chunks SET chunk_status = 'stale', updated_at = ?2 \
+                 WHERE chunk_status = 'active' AND file_id IN \
+                 (SELECT file_id FROM files WHERE source_id = ?1 AND file_status = 'missing')",
+                params![source_id.as_str(), now_iso8601()],
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
+    /// RFC-004 §11, Task 035 §5.3's counterpart: a file that went missing
+    /// and reappeared with byte-identical content (`Scanner::process_file`'s
+    /// `restored_status` path) gets no new extraction, so there is no new
+    /// chunk generation to make active — the chunks
+    /// [`ChunkRepository::deactivate_for_missing_files`] set `stale` are
+    /// still exactly right and just need reactivating.
+    ///
+    /// Reactivates only the most recently touched `extraction_id` among
+    /// this file's `stale` chunks (not every stale chunk the file has ever
+    /// had) — `chunks.rs`'s insert path guarantees at most one
+    /// `extraction_id` is `active` for a file at a time, and
+    /// `deactivate_for_missing_files` stamps `updated_at = now()` on
+    /// exactly that generation when the file goes missing, so it is always
+    /// the newest `updated_at` among that file's stale rows at the moment
+    /// of reactivation — never an older, genuinely superseded generation.
+    pub fn reactivate_last_stale_generation(&self, file_id: &FileId) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n = conn
+            .execute(
+                "UPDATE chunks SET chunk_status = 'active', updated_at = ?2 \
+                 WHERE chunk_status = 'stale' AND file_id = ?1 AND extraction_id = ( \
+                     SELECT extraction_id FROM chunks \
+                     WHERE file_id = ?1 AND chunk_status = 'stale' \
+                     ORDER BY updated_at DESC LIMIT 1 \
+                 )",
+                params![file_id.as_str(), now_iso8601()],
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
     }
 
     /// Retrieve chunk records for a file (used by snippet loader and

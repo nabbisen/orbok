@@ -220,6 +220,7 @@ navigation/list/dialog surface:
 | `Enter` (not typing) | Confirm whichever dialog/wizard page/list selection is active, if any (§ below) — on the Setup page this downloads the reviewed model |
 | `Arrow Down`/`Up` (Search view, not typing) | Select next/previous result |
 | `Arrow Down`/`Up` (Sources view, not typing) | Select next/previous source |
+| `Ctrl/Cmd + R` (Sources view, source selected) | Manual refresh for the selected source — "Check again" (missing/permission-denied) or "Prepare again" (active), mirroring the mouse-only button `sources_view` renders per source state (Task 035) |
 
 **The wizard — the walkthrough's actual blocker — is fixed.** `Escape` on
 the Setup/Checked/DownloadFailed pages performs the same zero-confirmation
@@ -265,6 +266,13 @@ scheme covering ~19 more disparate actions is a real design question
 (what keys, how they're discoverable, whether some deserve a different
 mechanism entirely), not a mechanical extension of Task 024's map —
 recorded here so the next person does not have to rediscover the count.
+
+**Task 035 added one new action (Sources' manual-refresh button) and shipped
+it already bound to `Ctrl/Cmd + R`** — see the table above — rather than
+adding it here unbound-then-fixed-later. It was never counted in the ~19
+above (the button did not exist before this task), so that count is
+unchanged by this addition: still ~19. Sources' pre-existing "Add folder"
+button remains in the unbound list above, unaffected by this task's scope.
 
 ### 2.1.2 No Keyboard Trap
 
@@ -537,3 +545,5 @@ its icon and label alone.
 | `select_and_activate_a_source_by_keyboard` | `tests/keyboard_reachability.rs` | Arrow-select + Enter-remove a source, through the rendered app (Task 024) |
 | `enter_on_setup_reaches_the_download_consent_page` | `tests/keyboard_reachability.rs` | `Enter` on Setup reaches and renders `DownloadConsent`, through the rendered app (Task 027) |
 | `escape_on_downloading_requests_cancellation_through_the_real_chain` | `crates/app/src/model_flow.rs` | `Escape`'s Message reaches `model_flow::reduce` and actually sets `cancelling` — the chain `keyboard_reachability.rs` cannot cover, since `CancelDownloadInProgress` is model_flow-owned, not `AppState`-owned (Task 027) |
+| `refresh_selected_source_by_keyboard` | `tests/keyboard_reachability.rs` | `Ctrl/Cmd+R` with a source selected fires `SourceRefreshRequested` for it (Task 035) |
+| `refresh_selected_source_by_keyboard_fails_without_the_binding` | `tests/keyboard_reachability.rs` | No selected source, or the wrong view, and `Ctrl/Cmd+R` does not fire (Task 035) |

@@ -19,7 +19,9 @@
 
 use crate::i18n::{MessageKey, tr};
 use crate::shell::{KeyboardContext, OrbokApp, key_to_message};
-use crate::state::{AppState, ModelDownloadConsent, SourceCard, ViewId, WizardKind, WizardState};
+use crate::state::{
+    AppState, Message, ModelDownloadConsent, SourceCard, ViewId, WizardKind, WizardState,
+};
 use crate::tests::iced_test_guard;
 use iced::keyboard::{Key, Modifiers, key::Named};
 use iced_test::simulator;
@@ -162,7 +164,7 @@ fn select_and_activate_a_source_by_keyboard() {
             indexed: 3,
             stale: 0,
             failed: 0,
-            active: true,
+            status: orbok_core::SourceStatus::Active,
             source_id: "src-1".into(),
         }],
         ..Default::default()
@@ -262,7 +264,7 @@ fn select_and_activate_a_source_by_keyboard_fails_without_the_binding() {
             indexed: 3,
             stale: 0,
             failed: 0,
-            active: true,
+            status: orbok_core::SourceStatus::Active,
             source_id: "src-1".into(),
         }],
         ..Default::default()
@@ -294,5 +296,106 @@ fn select_and_activate_a_source_by_keyboard_fails_without_the_binding() {
         app.state.sources.len(),
         1,
         "the source must remain if Enter did not fire"
+    );
+}
+
+// Task 035 §4.2/§5.7: manual refresh reachable by keyboard alone -- Ctrl/Cmd+R
+// on the Sources view, with a source selected, must reach
+// `Message::SourceRefreshRequested`. Unlike Enter's activation above,
+// `AppState::update`'s handler for this message is a deliberate no-op (the
+// real work -- `bootstrap::check_and_refresh_source` plus the follow-up
+// `SourcesLoaded`/`HealthUpdated` -- lives in `crates/app/src/main.rs`,
+// outside what this UI-only test can drive), so the assertion is on the
+// *message produced*, mirroring how `main.rs`'s subscription would compute
+// `ctx` from `app.state.selected_source` at the moment of the keypress --
+// not on a state mutation this layer never performs.
+#[test]
+fn refresh_selected_source_by_keyboard() {
+    let _guard = iced_test_guard();
+
+    let mut app = OrbokApp::with_state(AppState {
+        active_view: ViewId::Sources,
+        sources: vec![SourceCard {
+            display_name: "Docs".into(),
+            display_path: "/home/user/Docs".into(),
+            indexed: 3,
+            stale: 2,
+            failed: 0,
+            status: orbok_core::SourceStatus::Active,
+            source_id: "src-1".into(),
+        }],
+        ..Default::default()
+    });
+
+    let ctx = neutral_ctx(ViewId::Sources);
+    press(
+        &mut app,
+        Key::Named(Named::ArrowDown),
+        Modifiers::default(),
+        &ctx,
+    );
+    assert_eq!(app.state.selected_source, Some(0));
+
+    // The context reflecting the now-selected source, as `main.rs`'s
+    // subscription would compute it from `app.state.selected_source`.
+    let refresh_ctx = KeyboardContext {
+        selected_source_id: Some("src-1".to_string()),
+        ..neutral_ctx(ViewId::Sources)
+    };
+    let message = key_to_message(
+        &Key::Character("r".into()),
+        Modifiers::COMMAND,
+        &refresh_ctx,
+    );
+    assert!(
+        matches!(&message, Some(Message::SourceRefreshRequested(id)) if id == "src-1"),
+        "Ctrl/Cmd+R with a source selected must fire SourceRefreshRequested for it, got {message:?}"
+    );
+
+    // Driving it through the real chain must not disturb the source list --
+    // this message's effect lives in main.rs, not AppState::update.
+    app.update(message.unwrap());
+    assert_eq!(
+        app.state.sources.len(),
+        1,
+        "SourceRefreshRequested must not remove or alter the source list on its own"
+    );
+}
+
+// Break-it-before-believing-it: without a selected source id in context --
+// the shape `main.rs` would compute with nothing selected, the same gap
+// `select_and_activate_a_source_by_keyboard_fails_without_the_binding`
+// proves for Enter -- Ctrl/Cmd+R must not fire.
+#[test]
+fn refresh_selected_source_by_keyboard_fails_without_the_binding() {
+    let no_selection_ctx = KeyboardContext {
+        selected_source_id: None,
+        ..neutral_ctx(ViewId::Sources)
+    };
+    let message = key_to_message(
+        &Key::Character("r".into()),
+        Modifiers::COMMAND,
+        &no_selection_ctx,
+    );
+    assert!(
+        message.is_none(),
+        "without a selected source id in context, Ctrl/Cmd+R must not fire"
+    );
+
+    // Also confirms the binding is scoped to the Sources view, not global --
+    // the same modifier and key, but on another view with a (stale)
+    // selected id, must not fire either.
+    let wrong_view_ctx = KeyboardContext {
+        selected_source_id: Some("src-1".to_string()),
+        ..neutral_ctx(ViewId::Search)
+    };
+    let message = key_to_message(
+        &Key::Character("r".into()),
+        Modifiers::COMMAND,
+        &wrong_view_ctx,
+    );
+    assert!(
+        message.is_none(),
+        "Ctrl/Cmd+R must be scoped to the Sources view"
     );
 }

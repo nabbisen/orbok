@@ -43,14 +43,14 @@ pub(crate) use search::run_search;
 #[cfg(test)]
 pub(crate) use search::run_search_with;
 pub use sources::{
-    add_source, find_source_by_canonical_path, remove_source, scan_and_index_source,
+    add_source, check_and_refresh_source, find_source_by_canonical_path, remove_source,
+    scan_and_index_source,
 };
-pub use startup::{get_health, load_initial_state, run_check};
-// `get_sources` has no caller outside `startup.rs` itself (unlike
-// `get_health`, which `sources.rs` also calls) — nothing outside
-// `bootstrap/` has ever reached it as `bootstrap::get_sources`, so it is
-// not re-exported here. Kept `pub(crate)` in `startup.rs` for parallelism
-// with `get_health`, not because anything currently needs that reach.
+// `get_sources` re-exported since Task 035: `Message::SourceRefreshRequested`'s
+// handler in `main.rs` needs to re-fetch the sources list after a refresh
+// (the status it may have just changed), the same reach `get_health` has
+// long had for the equivalent reason.
+pub use startup::{get_health, get_sources, load_initial_state, run_check};
 #[cfg(test)]
 pub(crate) use startup::{load_initial_state_with, run_check_with};
 

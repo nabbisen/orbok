@@ -15,7 +15,7 @@ pub use search::{ResultTrustDisplay, ResultsStatus, SearchUiState};
 
 use crate::i18n::{Locale, MessageKey, tr};
 use crate::notice::UserNotice;
-use orbok_core::{SearchHistoryEntry, SearchHistoryId};
+use orbok_core::{SearchHistoryEntry, SearchHistoryId, SourceStatus};
 use orbok_models::SearchCapability;
 use orbok_search::{MatchBadge, ResultRecoveryAction, SearchMode};
 
@@ -77,6 +77,16 @@ pub struct IndexHealth {
 }
 
 /// One source card for the Sources view.
+///
+/// `status` is `orbok_core::SourceStatus` directly (Task 035): the same
+/// enum the catalog's `sources.status` column stores, not a UI-owned
+/// re-encoding — `orbok_core` is the project's shared neutral vocabulary,
+/// already used directly elsewhere in this module (`SearchHistoryEntry`),
+/// so this does not cross the RFC-027 backend-type boundary the way an
+/// `orbok_db`/`orbok_fs` type would. RFC-037's richer `SourceState`
+/// (`Preparing`/`NeedsUpdate`) has no catalog column to read from — those
+/// two are derived at render time from `stale`/`failed` below, not carried
+/// as a separate field here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceCard {
     pub display_name: String,
@@ -84,7 +94,7 @@ pub struct SourceCard {
     pub indexed: u64,
     pub stale: u64,
     pub failed: u64,
-    pub active: bool,
+    pub status: SourceStatus,
     pub source_id: String,
 }
 
@@ -578,6 +588,13 @@ pub enum Message {
     RequestAddSource,
     SourceAdded(SourceCard),
     SourceRemoved(String), // source_id
+    /// RFC-037 §10.2 manual refresh (Task 035): "[Check again]" for a
+    /// missing/permission-denied source, "[Prepare again]" for an active
+    /// one — same message either way, `orbok`'s handler calls the same
+    /// `bootstrap::check_and_refresh_source` regardless of which label the
+    /// view showed, since the action is identical and only the label
+    /// depends on current state.
+    SourceRefreshRequested(String), // source_id
     // Download
     DownloadModel,
     ConfirmModelDownload,
@@ -919,6 +936,7 @@ impl AppState {
                 self.sources.retain(|s| s.source_id != *id);
                 self.selected_source = None;
             }
+            Message::SourceRefreshRequested(_) => {} // handled by orbok; result arrives via SourcesLoaded/HealthUpdated
             Message::HealthUpdated(health) => {
                 self.health = *health;
             }

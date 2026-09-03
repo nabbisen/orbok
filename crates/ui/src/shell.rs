@@ -93,6 +93,19 @@ pub fn key_to_message(
         Key::Character(c) if modifiers.command() && c.as_str() == "6" => {
             Some(Message::Switch(ViewId::Settings))
         }
+        // Ctrl/Cmd + R  →  RFC-037 §10.2 manual refresh for the selected
+        // source (Task 035). The conventional "refresh" key, and free:
+        // nothing else in this map binds it. `Enter` was not reused here --
+        // it already fires `Message::SourceRemoved` for the same selection
+        // (`confirm_message` below), and refresh is not a confirmation of
+        // anything, it is its own action with its own key.
+        Key::Character(c)
+            if modifiers.command() && c.as_str() == "r" && ctx.active_view == ViewId::Sources =>
+        {
+            ctx.selected_source_id
+                .clone()
+                .map(Message::SourceRefreshRequested)
+        }
         // Tab / Shift+Tab  →  move focus among the widgets iced 0.14 can
         // focus at all: `text_input`/`text_editor` only (RFC-034 §2.1.1 /
         // Task 024 §3.1). Not gated on `text_input_focused` -- moving

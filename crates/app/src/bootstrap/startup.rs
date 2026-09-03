@@ -6,7 +6,7 @@ use crate::settings::OrbokSettings;
 use orbok::runtime_context::{AllowRuntimePathProbe, RuntimeContext, RuntimePathProbe};
 use orbok::runtime_storage::RuntimeStorage;
 use orbok_db::Catalog;
-use orbok_db::repo::SettingsRepository;
+use orbok_db::repo::{SettingsRepository, SourceRepository};
 use orbok_ui::AppState;
 use orbok_ui::i18n::Locale;
 use orbok_ui::theme::{TextScale, Theme};
@@ -36,6 +36,33 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
             reset = recovery.jobs_reset,
             "reset interrupted jobs on startup"
         );
+    }
+
+    // RFC-037 §10.1 startup check (Task 035): "check registered folder
+    // exists / check permission lightly / detect obvious changed/missing
+    // files / queue safe refresh work" -- runs after crash recovery
+    // (interrupted jobs must be reset before anything new is enqueued) and
+    // before model resolution, so an early failure there does not skip it.
+    // `check_and_refresh_source` is the exact function manual refresh also
+    // calls (§4.2): a startup rescan is that same operation, run once per
+    // eligible source instead of on explicit user action -- no second path.
+    //
+    // Paused sources are skipped entirely, not just left unscanned: §7.4
+    // defines Paused as "user or resource policy paused *preparation*",
+    // and enqueueing a Scan job is preparation. This is a deliberate
+    // reading of an RFC-037 question the text does not resolve on its own
+    // (§10.1's blanket "check registered folder exists" against §7.4's
+    // narrower "preparation" scope) -- recorded here rather than only in
+    // the task's review request, since nothing currently sets a source to
+    // Paused (no UI action does), so this is a forward-looking choice, not
+    // an observed behaviour.
+    for source in SourceRepository::new(&catalog).list().unwrap_or_default() {
+        if source.status == orbok_core::SourceStatus::Paused {
+            continue;
+        }
+        if let Err(e) = super::check_and_refresh_source(&catalog, source.source_id.as_str()) {
+            tracing::warn!(source = source.source_id.as_str(), error = %e, "startup source check failed");
+        }
     }
 
     // RFC-050: epoch advancement, staged-generation recovery, and real
@@ -234,7 +261,7 @@ pub fn get_sources(catalog: &Catalog) -> Vec<orbok_ui::state::SourceCard> {
                 indexed,
                 stale,
                 failed,
-                active: matches!(src.status, orbok_core::SourceStatus::Active),
+                status: src.status,
                 source_id: src.source_id.as_str().to_string(),
             }
         })

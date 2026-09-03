@@ -15,6 +15,36 @@ next release tag.
 
 ### Added
 
+- **Task 035 — RFC-037 wired: registered folders are now re-scanned, not
+  indexed once and forgotten.** RFC-037's `SourceState`/`FileState`/
+  `check_source_path` vocabulary existed, fully built, since it landed —
+  nothing called it. This task wires it into the running application:
+  orbok now enqueues a scan of every active source at startup (a file
+  edited while orbok was closed is found on next launch), and a manual
+  `Ctrl/Cmd+R` / `[Check again]`/`[Prepare again]` action lets the user
+  refresh a source on demand (a file added while orbok is running is
+  found without waiting for the next restart). A folder that's been
+  renamed or unmounted is marked missing at startup — the RFC-037 §17.3
+  copy, no deletion — rather than erroring or silently vanishing from the
+  Sources list. Both entry points funnel through one function
+  (`check_and_refresh_source`) and one job-queue enqueue, so RFC-057's
+  resource policy (background-indexing pause, on-battery embedding
+  deferral) governs a startup rescan exactly as it already governed a
+  manual one — no second scheduling path. Proven end to end (RFC-058 §6):
+  five new tests drive the real hosted scheduler through `orbok`'s own
+  entry points against files on disk, not a directly-invoked worker.
+  Two real defects surfaced and were fixed along the way, not just wired
+  around: (1) a file's catalog row flipping to `missing` had no effect on
+  whether its content still surfaced in search — the keyword and vector
+  queries only ever gated on chunk status, never joined back to the
+  owning file — now cascaded (`ChunkRepository::deactivate_for_missing_files`/
+  `reactivate_last_stale_generation`), with a byte-identical-content
+  recovery path that needs no re-extraction; (2) the scheduler's
+  rehydration pass could silently and permanently lose a job that arrived
+  `queued` at the same moment the in-memory queue hit capacity (the
+  change-storm case a several-thousand-file folder produces) — it now
+  marks that row `blocked`, exactly like a retry that finds no room,
+  recovered by the loop that already existed for that case.
 - **RFC-050 — Trusted atomic model delivery:** the default embedding model
   is now installed through a generation-based, crash-safe managed store:
   staged downloads are verified against a pinned trust manifest before

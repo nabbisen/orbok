@@ -503,3 +503,52 @@ fn cancellation_leaves_catalog_valid() {
         .unwrap();
     assert_eq!(status_count(&counts, FileStatus::Missing), 0);
 }
+
+// RFC-037 §14, Task 035 §5.5: a several-thousand-file change storm.
+// `Scanner::scan` writes one `index_jobs` row per new/changed file
+// directly (`IndexJobRepository::enqueue`, O(1) per file, no in-memory
+// accumulation of the whole batch) -- capacity enforcement is the
+// *scheduler*'s job at dispatch time
+// (`scheduler_host::tests::a_change_storm_exceeding_queue_capacity_does_not_lose_jobs`
+// covers that half directly, since reproducing real backpressure here
+// would need `SchedulerConfig::default()`'s real 1,000/2,000 caps' worth
+// of files run through actual extraction). What this test measures, on a
+// 3,000-file corpus (comfortably "several thousand" without the minutes a
+// real end-to-end extraction/embedding run over that many files would
+// cost): the scan itself -- discovery, hashing, and enqueueing -- finishes
+// promptly and every file is accounted for in the catalog, rather than
+// the walk itself becoming the bottleneck or losing files under volume.
+#[test]
+fn change_storm_of_several_thousand_files_scans_promptly_and_queues_everything() {
+    const FILE_COUNT: usize = 3_000;
+    let root = tempfile::tempdir().unwrap();
+    for i in 0..FILE_COUNT {
+        fs::write(root.path().join(format!("doc{i:05}.md")), "# Doc").unwrap();
+    }
+
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = register_dir_source(&catalog, root.path());
+
+    let started = std::time::Instant::now();
+    let summary = scan(&catalog, &source.source_id);
+    let elapsed = started.elapsed();
+
+    assert_eq!(summary.new_files, FILE_COUNT as u64);
+    assert_eq!(summary.queued_index_jobs, FILE_COUNT as u64);
+    assert_eq!(summary.failed_files, 0);
+    assert!(
+        elapsed < std::time::Duration::from_secs(15),
+        "a {FILE_COUNT}-file scan took {elapsed:?} -- the walk itself must not \
+         become the bottleneck a change storm creates"
+    );
+
+    let jobs = IndexJobRepository::new(&catalog);
+    let queued = jobs.list_queued(u32::MAX).unwrap();
+    assert_eq!(
+        queued.len(),
+        FILE_COUNT,
+        "every file's Extract job must land in the catalog -- the DB-level \
+         queue is deliberately unbounded; only the in-memory scheduler caps \
+         concurrency (RFC-036 §10.3)"
+    );
+}

@@ -11,7 +11,8 @@ use crate::policy::{CompiledPolicy, FileTypeClass, classify_file_type};
 use orbok_core::{FileStatus, JobType, OrbokResult, SourceId, now_iso8601, system_time_iso8601};
 use orbok_db::Catalog;
 use orbok_db::repo::{
-    FileRepository, IndexJobRepository, NewFile, ObservedMetadata, SourceRecord, SourceRepository,
+    ChunkRepository, FileRepository, IndexJobRepository, NewFile, ObservedMetadata, SourceRecord,
+    SourceRepository,
 };
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -80,6 +81,7 @@ impl<'a> Scanner<'a> {
 
         let files = FileRepository::new(self.catalog);
         let jobs = IndexJobRepository::new(self.catalog);
+        let chunks = ChunkRepository::new(self.catalog);
 
         let mut stack = vec![root.clone()];
         'walk: while let Some(dir) = stack.pop() {
@@ -137,6 +139,7 @@ impl<'a> Scanner<'a> {
                     &policy,
                     &files,
                     &jobs,
+                    &chunks,
                     &path,
                     request,
                     &mut summary,
@@ -151,6 +154,12 @@ impl<'a> Scanner<'a> {
         if !summary.canceled {
             summary.missing_files =
                 files.mark_missing_unseen(&source.source_id, &scan_started_at)?;
+            // RFC-037 §8/§12, Task 035 §5.3: a file's own file_status
+            // flipping to missing has no effect, by itself, on whether its
+            // content still surfaces in search -- see
+            // `ChunkRepository::deactivate_for_missing_files`'s own doc
+            // comment for why.
+            chunks.deactivate_for_missing_files(&source.source_id)?;
             sources.touch_scanned(&source.source_id)?;
         }
         summary.duration_ms = started.elapsed().as_millis() as u64;
@@ -174,6 +183,7 @@ impl<'a> Scanner<'a> {
         policy: &CompiledPolicy,
         files: &FileRepository<'_>,
         jobs: &IndexJobRepository<'_>,
+        chunks: &ChunkRepository<'_>,
         path: &Path,
         request: &ScanRequest,
         summary: &mut ScanSummary,
@@ -266,7 +276,10 @@ impl<'a> Scanner<'a> {
                 if metadata_unchanged && !request.force_hash {
                     match restored_status {
                         Some(status) => {
-                            files.update_observed(&record.file_id, &observed, status)?
+                            files.update_observed(&record.file_id, &observed, status)?;
+                            if status == FileStatus::Indexed {
+                                chunks.reactivate_last_stale_generation(&record.file_id)?;
+                            }
                         }
                         None => files.touch_seen(&record.file_id)?,
                     }
@@ -279,7 +292,10 @@ impl<'a> Scanner<'a> {
                 if record.content_hash.as_deref() == Some(new_hash.as_str()) {
                     match restored_status {
                         Some(status) => {
-                            files.update_observed(&record.file_id, &observed, status)?
+                            files.update_observed(&record.file_id, &observed, status)?;
+                            if status == FileStatus::Indexed {
+                                chunks.reactivate_last_stale_generation(&record.file_id)?;
+                            }
                         }
                         None => files.touch_seen(&record.file_id)?,
                     }

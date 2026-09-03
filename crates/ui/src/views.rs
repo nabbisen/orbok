@@ -461,11 +461,42 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         );
     } else {
         for (i, card) in state.sources.iter().enumerate() {
-            let status_label = if card.active {
-                tr(locale, MessageKey::SourcesStatusActive)
-            } else {
-                tr(locale, MessageKey::SourcesStatusPaused)
+            // RFC-037 §7/§17 (Task 035): the source's persisted status
+            // decides the label and which refresh action applies.
+            // `NeedsUpdate` has no catalog column of its own (§7.3 is
+            // UI-derived, from `stale`) -- Active-with-stale-files reads
+            // as "Needs update" rather than "Ready", the one place this
+            // card's already-present `stale` count changes which label an
+            // Active source gets.
+            use orbok_core::SourceStatus;
+            let (status_label, refresh_action) = match card.status {
+                SourceStatus::Active if card.stale > 0 => (
+                    tr(locale, MessageKey::SourceStateNeedsUpdate),
+                    Some(MessageKey::SourceActionPrepareAgain),
+                ),
+                SourceStatus::Active => (
+                    tr(locale, MessageKey::SourceStateReady),
+                    Some(MessageKey::SourceActionPrepareAgain),
+                ),
+                SourceStatus::Paused => (tr(locale, MessageKey::SourceStatePaused), None),
+                SourceStatus::Missing => (
+                    tr(locale, MessageKey::SourceStateFolderNotFound),
+                    Some(MessageKey::SourceActionCheckAgain),
+                ),
+                SourceStatus::PermissionDenied => (
+                    tr(locale, MessageKey::SourceStateCannotOpen),
+                    Some(MessageKey::SourceActionCheckAgain),
+                ),
+                // Removed sources are deleted from the catalog outright
+                // (`remove_source`), never listed here.
+                SourceStatus::Removed => (tr(locale, MessageKey::SourceStateRemoved), None),
             };
+            let refresh_action = refresh_action.map(|key| {
+                (
+                    tr(locale, key),
+                    Message::SourceRefreshRequested(card.source_id.clone()),
+                )
+            });
             let summary = source_summary(locale, card.indexed, card.stale, card.failed);
             content = content.push(source_card(
                 tokens,
@@ -473,6 +504,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 card.display_path.clone(),
                 summary,
                 status_label,
+                refresh_action,
                 state.selected_source == Some(i),
                 Message::SourceRemoved(card.source_id.clone()),
             ));
