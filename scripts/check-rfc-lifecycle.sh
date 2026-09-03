@@ -299,6 +299,111 @@ while read -r file; do
   for_each_md_link "$file" check_link_into_rfcs
 done < <(git ls-files '*.md' | grep -v '^rfcs/')
 
+# ── Closure records (RFC-063 §6, Task 038) ──────────────────────────────
+# Every rfcs/done/NNN-slug.md must have a matching rfcs/closures/NNN-slug.md
+# (same basename, different directory) naming every one of its RFC's
+# numbered acceptance criteria -- unless its id is on the shrink-only
+# legacy allowlist, rfcs/closures/LEGACY-ALLOWLIST.txt (see that file's own
+# header for why it exists and how "shrink-only" is enforced below).
+
+legacy_allowlist="rfcs/closures/LEGACY-ALLOWLIST.txt"
+
+# Strips both whole-line and trailing '#...' comments, prints one 3-digit
+# id per line. $1 is a full git rev-path spec, e.g. ":$legacy_allowlist" or
+# "HEAD:$legacy_allowlist".
+read_allowlist_ids() {
+  git show "$1" 2>/dev/null | sed -E 's/#.*$//; s/[[:space:]]+$//' | grep -E '^[0-9]{3}$' || true
+}
+
+current_allowlist_ids="$tmp_dir/allowlist-current.txt"
+if git show ":$legacy_allowlist" > /dev/null 2>&1; then
+  read_allowlist_ids ":$legacy_allowlist" | sort -u > "$current_allowlist_ids"
+else
+  : > "$current_allowlist_ids"
+fi
+
+# Shrink-only: the staged id set must be a subset of the immediately
+# preceding commit's id set -- comparing against any earlier ancestor would
+# let a commit that grows the list slip through as long as some later
+# commit shrinks it back down, which is not shrink-only, it is "shrink-only
+# on average". Comparing against HEAD, on every commit, forever, is what
+# makes growth impossible in any single commit across all of history.
+#
+# No preceding committed version to compare against -- either this is the
+# commit that introduces the file, or there is no HEAD yet (an empty
+# repository, exercised by this gate's own self-test's very first
+# baseline commit) -- passes vacuously: growth cannot be detected without
+# a baseline, so there is nothing to flag.
+if git rev-parse -q --verify HEAD > /dev/null 2>&1 \
+    && git show "HEAD:$legacy_allowlist" > /dev/null 2>&1; then
+  previous_allowlist_ids="$tmp_dir/allowlist-previous.txt"
+  read_allowlist_ids "HEAD:$legacy_allowlist" | sort -u > "$previous_allowlist_ids"
+  grown="$(comm -23 "$current_allowlist_ids" "$previous_allowlist_ids" || true)"
+  if [ -n "$grown" ]; then
+    while read -r id; do
+      [ -n "$id" ] || continue
+      flag "$legacy_allowlist grew: $id was not exempt in the previous commit and cannot be added -- see the file's own header"
+    done <<< "$grown"
+  fi
+fi
+
+# Extracts the numbered items directly under an RFC's own
+# "## N. Acceptance Criteria" heading (case-insensitive on "Criteria",
+# matching both spellings already in this corpus). Anchored on "##
+# <digits>. Acceptance" specifically so a section merely discussing
+# acceptance criteria in passing (e.g. a "why they decayed" retrospective
+# heading) is never mistaken for the criteria list itself.
+extract_rfc_criteria_numbers() {
+  git show ":$1" 2>/dev/null | awk '
+    /^## [0-9]+\. [Aa]cceptance [Cc]riteria/ { in_section = 1; next }
+    in_section && /^## / { in_section = 0 }
+    in_section && /^[0-9]+\. / { print }
+  ' | sed -E 's/^([0-9]+)\..*/\1/'
+}
+
+# Extracts every criterion number a closure record actually names: a
+# "### N. ..." heading (the prose shape rfcs/closures/037-...md
+# established as the worked example) or a "| N | ..." table row (RFC-063
+# §6.1's original sketch) -- either counts as "named".
+extract_closure_criteria_numbers() {
+  git show ":$1" 2>/dev/null \
+    | grep -oE '^(### *[0-9]+\.|\| *[0-9]+ *\|)' \
+    | grep -oE '[0-9]+'
+}
+
+while read -r done_file; do
+  [ -n "$done_file" ] || continue
+  rfc_id="$(basename "$done_file" | cut -d- -f1)"
+  if grep -qxF "$rfc_id" "$current_allowlist_ids"; then
+    continue
+  fi
+  closure_file="rfcs/closures/$(basename "$done_file")"
+  if ! git show ":$closure_file" > /dev/null 2>&1; then
+    flag "$done_file has no closure record ($closure_file) and is not on $legacy_allowlist (RFC-063 §6, Task 038)"
+    continue
+  fi
+  # comm requires its inputs sorted in the plain byte/collating order it
+  # checks them against -- not numeric order. `sort -n`'s 1,2,...,9,10,11
+  # is *not* byte-sorted ("10" < "9" lexicographically), so any RFC with
+  # 10+ criteria (e.g. RFC-045's 13) silently broke comm's comparison here
+  # until this was caught by mutation-testing this exact check against a
+  # 13-criterion closure record.
+  rfc_criteria="$tmp_dir/rfc-criteria-$rfc_id.txt"
+  extract_rfc_criteria_numbers "$done_file" | sort -u > "$rfc_criteria"
+  if [ ! -s "$rfc_criteria" ]; then
+    flag "$done_file: could not find a '## N. Acceptance Criteria' section to check $closure_file against"
+    continue
+  fi
+  closure_criteria="$tmp_dir/closure-criteria-$rfc_id.txt"
+  extract_closure_criteria_numbers "$closure_file" | sort -u > "$closure_criteria"
+  missing="$(comm -23 "$rfc_criteria" "$closure_criteria" || true)"
+  if [ -n "$missing" ]; then
+    # Numeric order for the message only -- comm's own inputs above stay
+    # byte-sorted; this is purely for a readable "missing: 2 8 12" list.
+    flag "$closure_file does not name every acceptance criterion in $done_file -- missing: $(sort -n <<< "$missing" | tr '\n' ' ')"
+  fi
+done < <(git ls-files 'rfcs/done/*.md')
+
 if [ "$fail" -ne 0 ]; then
   echo "rfc lifecycle gate: failed" >&2
   exit 1

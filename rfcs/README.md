@@ -53,7 +53,6 @@ may start" a checked state rather than an implicit convention.
 | 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | main at `d3f8b93`; release pending — **first RFC closed under RFC-063**, [closure record](closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) |
 | 039 | [Privacy Modes and Local Data Visibility](done/039-privacy-modes-and-local-data-visibility.md) | v0.19.0 |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](done/040-safe-diagnostics-and-redacted-support-bundle.md) | v0.19.0 |
-| 041 | [Search, Narrow Results, and Browse Around](done/041-search-narrow-and-browse-around.md) | v0.18.0 |
 | 043 | [Model Download Readiness and Bounded Concurrency](done/043-model-download-readiness-and-concurrency.md) | v0.19.0 |
 | 044 | [orbok-extract Production Hardening](done/044-orbok-extract-production-hardening.md) | v0.16.0 |
 | 045 | [Search-in-Folder Flow and Friendly Folder Management](done/045-search-in-folder-flow-and-friendly-folder-management.md) | v0.20.0 |
@@ -74,6 +73,7 @@ may start" a checked state rather than an implicit convention.
 | ID | Title | Status |
 |---|---|---|
 | 038 | [Result Freshness, Trust Badges and Recovery Actions](accepted/038-result-freshness-trust-badges-and-recovery-actions.md) | Accepted 2026-06-18 — §16 criteria 4/5/7 false; every result hardcoded `Ready`. Wiring is RFC-060 §7 |
+| 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — Narrow and Browse Around, two of three named subjects, do not render. Wiring is RFC-060 §7 |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
 | 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — the control that stops the unwired-feature class recurring; its end-to-end test comes before any wiring work |
 | 059 | [Erasure Completeness and Cache Lifetime](accepted/059-erasure-completeness-and-cache-lifetime.md) | Accepted 2026-09-02 — Reset does not erase the trigram index or the extraction cache |

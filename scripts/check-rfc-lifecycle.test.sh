@@ -51,8 +51,20 @@ git init -q
 git config user.email "test@example.invalid"
 git config user.name "Test"
 
-mkdir -p rfcs/done rfcs/proposed rfcs/accepted rfcs/archive scripts
+mkdir -p rfcs/done rfcs/proposed rfcs/accepted rfcs/archive rfcs/closures scripts
 cp "$script_under_test" scripts/check-rfc-lifecycle.sh
+
+# RFC-001 is pre-exempted from the closure-record requirement (Task 038,
+# tested in its own section far below) from the very first commit. The
+# closure-record check applies unconditionally to every rfcs/done/ file
+# from the first run_gate() call onward (the script copy above is made
+# once, at setup) -- without this, every pre-existing assertion in this
+# file below would break the moment RFC-001 enters done/, long before its
+# own dedicated closure-record section ever runs.
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+001
+EOF
 
 cat > rfcs/proposed/001-test.md <<'EOF'
 # RFC-001: Test
@@ -348,6 +360,156 @@ EOF
 git add a/b/page.md
 offbyone_fixed_result="$(run_gate)"
 check "correcting the '../' count makes the gate pass again" "pass" "$offbyone_fixed_result"
+
+# ── Closure records (RFC-063 §6, Task 038) ─────────────────────────────────
+# Reuses the existing RFC-001 fixture (currently valid, Implemented, in
+# done/, pre-exempted via the allowlist since setup -- see the comment
+# there) rather than inventing a third RFC -- the closure-record
+# requirement is a property of any done/ file, not a new fixture-only
+# concept. Gives it a real "## N. Acceptance Criteria" section first, since
+# it never needed one for anything checked above.
+
+cat > rfcs/done/001-test.md <<'EOF'
+# RFC-001: Test
+
+**Status:** Implemented (main at `deadbeef`; release pending)
+
+## 1. Acceptance Criteria
+
+This RFC is accepted when:
+
+1. First criterion.
+2. Second criterion.
+EOF
+git add rfcs/done/001-test.md
+
+exempted_result="$(run_gate)"
+check "already-allowlisted RFC-001 still passes once it needs a closure record" "pass" "$exempted_result"
+
+# Removing the pre-existing exemption exposes the requirement -- proves
+# the allowlist is what was granting the pass above, not a bug that
+# happens to look like one.
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+EOF
+git add rfcs/closures/LEGACY-ALLOWLIST.txt
+no_closure_result="$(run_gate)"
+check "removing the allowlist entry exposes the missing closure record" "fail" "$no_closure_result"
+if [ "$no_closure_result" = "fail" ]; then
+  if grep -q "has no closure record" "$tmp_repo/.gate-output"; then
+    echo "ok: failure names the missing closure record"
+  else
+    echo "FAIL: gate failed, but not for the missing-closure-record reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+fi
+
+# Restoring the exemption passes again (not yet testing shrink-only --
+# there is no previous *committed* version of the allowlist to shrink
+# against at this point; the one committed in the initial commit already
+# had "001", so this restores that exact committed state).
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+001
+EOF
+git add rfcs/closures/LEGACY-ALLOWLIST.txt
+allowlisted_result="$(run_gate)"
+check "restoring the id to the legacy allowlist exempts it again" "pass" "$allowlisted_result"
+
+# Commit this state so a "previous commit" exists to shrink-check
+# against -- everything above this point in the whole test file has stayed
+# staged-but-uncommitted since the very first commit, so this is the first
+# point the shrink-only rule has anything to compare to.
+git commit -q -m "confirm legacy allowlist exempting RFC-001"
+
+# Growing the allowlist -- adding an id absent from the previous commit --
+# must be caught even though the file already existed before this change.
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+001
+002
+EOF
+git add rfcs/closures/LEGACY-ALLOWLIST.txt
+grown_result="$(run_gate)"
+check "adding a new id to the legacy allowlist is caught (shrink-only)" "fail" "$grown_result"
+if [ "$grown_result" = "fail" ]; then
+  if grep -q "grew: 002" "$tmp_repo/.gate-output"; then
+    echo "ok: failure names the id that grew"
+  else
+    echo "FAIL: gate failed, but not for the allowlist-growth reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+fi
+
+# Reverting the growth makes the gate pass again. Not committed here --
+# this exactly restores HEAD's own content ("001" only, committed just
+# above), so there is nothing new to commit; the next commit happens once
+# the real closure record below actually changes something.
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+001
+EOF
+git add rfcs/closures/LEGACY-ALLOWLIST.txt
+shrunk_result="$(run_gate)"
+check "removing the grown id makes the gate pass again" "pass" "$shrunk_result"
+
+# A real closure record, written instead of relying on the allowlist --
+# removing the id from the allowlist in the same step, the shape
+# rfcs/closures/README.md requires -- but missing one criterion. Must
+# still be caught even though the closure-record file now exists.
+cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
+# Test fixture legacy allowlist.
+EOF
+cat > rfcs/closures/001-test.md <<'EOF'
+# Closure Record -- RFC-001: Test
+
+### 1. First criterion.
+
+-> what was run: manual.
+-> what was observed: it happened.
+
+## Criteria not met, and why this closes anyway
+
+None.
+EOF
+git add rfcs/closures/LEGACY-ALLOWLIST.txt rfcs/closures/001-test.md
+missing_criterion_result="$(run_gate)"
+check "a closure record missing a criterion is caught" "fail" "$missing_criterion_result"
+if [ "$missing_criterion_result" = "fail" ]; then
+  if grep -q "missing: 2" "$tmp_repo/.gate-output"; then
+    echo "ok: failure names the missing criterion number"
+  else
+    echo "FAIL: gate failed, but not for the missing-criterion reason:" >&2
+    cat "$tmp_repo/.gate-output" >&2
+    fail=1
+  fi
+fi
+
+# Completing the record -- via a "| N |" table row this time, proving both
+# shapes RFC-063 §6.1/rfcs/closures/README.md allow are honored, not just
+# the "### N." prose heading used above -- makes the gate pass.
+cat > rfcs/closures/001-test.md <<'EOF'
+# Closure Record -- RFC-001: Test
+
+### 1. First criterion.
+
+-> what was run: manual.
+-> what was observed: it happened.
+
+| # | Criterion | What was run | What was observed |
+|---|---|---|---|
+| 2 | Second criterion. | manual | it happened too |
+
+## Criteria not met, and why this closes anyway
+
+None.
+EOF
+git add rfcs/closures/001-test.md
+complete_result="$(run_gate)"
+check "a complete closure record (mixed prose + table criteria) makes the gate pass" "pass" "$complete_result"
+git commit -q -m "add complete closure record for RFC-001, empty allowlist"
 
 if [ "$fail" -ne 0 ]; then
   echo "check-rfc-lifecycle.test.sh: FAILED" >&2

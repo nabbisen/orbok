@@ -1,0 +1,68 @@
+# Legacy allowlist for RFC-063 §6 / Task 038's closure-record requirement.
+#
+# check-rfc-lifecycle.sh requires every rfcs/done/NNN-slug.md to have a
+# matching rfcs/closures/NNN-slug.md naming every one of its RFC's
+# numbered acceptance criteria. Every id listed below entered done/ before
+# RFC-063 was accepted (2026-09-02) and has no closure record yet.
+# Backfilling all of them was considered and rejected (RFC-063 §12 Q4):
+# writing this many records for RFCs nobody is actively revisiting is
+# archaeology, not verification. This list is what makes that decision
+# honest and finite instead of a silent, permanent exemption.
+#
+# THIS LIST CAN ONLY SHRINK. check-rfc-lifecycle.sh compares the id set
+# staged in this file against the id set this file held in the immediately
+# preceding commit, and fails if any id present now was not present then.
+# A new done/ RFC is never exempt — it is not on this list at the moment
+# it enters done/, and it can never be added. On the commit that first
+# introduces this file (no preceding committed version exists yet), the
+# shrink check has nothing to compare against and passes vacuously.
+#
+# Remove an id only in the same commit that adds its real
+# rfcs/closures/NNN-slug.md — see rfcs/closures/README.md.
+000
+001
+002
+003
+004
+005
+006
+007
+008
+009
+010 # known-false Status claim (MockReranker only, no production caller); stays until RFC-060 §8 decides whether reranking ships or the claim is removed -- see rfcs/README.md and Task 038 §4
+011
+012
+013
+014
+015
+016
+017
+018
+019
+020
+021
+022
+027
+029
+030
+031
+032
+033
+034
+035
+036
+039
+040
+042
+043
+044
+046
+049
+050
+051
+052
+053
+054
+055
+056
+057

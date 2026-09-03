@@ -332,6 +332,49 @@ in `proposed/` indefinitely just because one open question
 remains**. Move it to `done/` when the design has shipped, and
 record what didn't make it.
 
+### Accept and ship: closure-record option
+
+An "Accept and ship" move (or the 5-folder variant's `accepted/` →
+`done/` move) records a claim: *this shipped*. Nothing so far requires
+that claim to be checked before the file moves — the Status field is
+prose an implementer writes, not evidence a reviewer verified.
+
+Projects where an RFC's Status field has ever been trusted without a
+review catching it wrong may want a stronger gate: require a **closure
+record** — one entry per numbered acceptance criterion, naming what was
+run, what was observed, and where it was verified — as a precondition
+for the `done/` move, not an afterthought. A criterion with nothing to
+put in *what was observed* is not a criterion; this is what turns
+"Feature X exists" (a claim about a type existing) into "Feature X is
+reachable from the application's own entry points" (a claim a test can
+contradict). Where a record lives is an implementation choice — a
+project already separating `handoffs/` (the forward instrument, what to
+build) from the RFC itself has a natural symmetric home in
+`closures/` (the backward instrument, what was observed); a project
+without that separation can append the record to the RFC's own file
+instead.
+
+The granularity clause above still applies: a closure record documents
+partial implementation, it does not forbid it. A record with a
+non-empty "criteria not met, and why this closes anyway" section is a
+valid, honest closure — the failure mode this option exists to prevent
+is silence, not incompleteness.
+
+### Adoption note (2026-09-02): this project requires closure records
+
+[RFC-063](../accepted/063-evidence-for-the-implemented-transition.md)
+adopted the closure-record option above after an external audit found
+nine RFCs in `done/` carrying a `Status: Implemented` that did not hold
+up against the running code — the exact gap this option exists to
+close. `rfcs/closures/NNN-slug.md` mirrors `rfcs/handoffs/`, per this
+project's own 5-folder adoption note above already establishing that
+pattern of a real, checked directory rather than an implicit
+convention. `scripts/check-rfc-lifecycle.sh` enforces it: every
+`rfcs/done/` file needs a matching closure record naming every one of
+its RFC's acceptance criteria, gated by a shrink-only legacy allowlist
+(`rfcs/closures/LEGACY-ALLOWLIST.txt`) for the RFCs already in `done/`
+before this requirement existed — see that file's own header.
+
 ## README integrity
 
 The `rfcs/README.md` file serves as the index. It should:

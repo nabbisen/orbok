@@ -4,11 +4,27 @@
 **Former project name:** orbit  
 **RFC:** 041  
 **Title:** Search, Narrow Results, and Browse Around  
-**Status:** Implemented (v0.18.0)
+**Status:** Accepted
 **Target milestone:** Search UX / Filter UX refinement  
 **Date:** 2026-06-18  
 
-**Deferred work, recorded 2026-09-02 (RFC-000 granularity clause; RFC-063 §7).** The search view, narrowing chips and recovery states shipped. **§25 criterion 3's filters are stored, rendered and serialized into history, and never applied to a query.** Follow-up: RFC-060 §7.
+**Returned to `accepted/` 2026-09-03 (RFC-063 §7, Review 201 §2).** Carried
+`Implemented (v0.18.0)` while two of this RFC's three named subjects had not
+shipped. **Search** shipped. **Narrow** does not render: `views.rs` never
+reads the state fields behind §25 criteria 2 (suggested filters), 3 (active
+filters — stored and serialized into history, but neither rendered nor
+applied to a query), 5 (no-result-after-filtering recovery), or 6
+("more ways to narrow"). **Browse Around** (criterion 7) has three messages
+defined and zero handlers anywhere in `crates/app`. Criterion 8 (technical-
+term-free default labels) is also violated by copy actually shown
+(`SearchAddSource` → "Add Source", `SearchNoSourcesBody` → "...local search
+index", `SearchSnippetUnavailable` → "(source unavailable)"); criterion 9's
+one rendered Advanced control (search mode) sets state `bootstrap::run_search_with`
+never reads, hardcoded to `Auto`. An earlier version of this note (committed
+2026-09-02, `868ac75`) claimed "narrowing chips and recovery states shipped"
+and that criterion 3's filters were "rendered" — both false, corrected here
+without having been independently verified the first time. **Wiring is
+RFC-060 §7.**
 **Source basis:** `orbit-search-filter-external-design-v0.1.md`, `orbit-filter-ui-design-addendum.md`  
 
 ---

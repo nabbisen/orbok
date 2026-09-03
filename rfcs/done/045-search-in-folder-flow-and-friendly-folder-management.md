@@ -8,7 +8,7 @@
 **Target milestone:** Search UX simplification / folder onboarding  
 **Date:** 2026-06-20  
 
-**Deferred work, recorded 2026-09-02 (RFC-000 granularity clause; RFC-063 §7).** The picker, remembered-folder handling and the flow shipped. **The selected folder never scopes the query** — §22 criterion 7 describes a UI default value, not a scoped search. Follow-up: RFC-060 §7.
+**Deferred work, recorded 2026-09-02, corrected 2026-09-03 (RFC-000 granularity clause; RFC-063 §7; Review 201 §4).** The picker, remembered-folder handling and the flow shipped. **The selected folder never scopes the query, at all** — `SearchFolderScope` exists nowhere outside `crates/ui`, and `run_search`'s signature has no scope parameter, so neither §22 criterion 7 ("and subfolders", the default) nor criterion 8 ("this folder only") reaches the query; one missing mechanism, two unmet criteria, named separately below rather than folded under 7 alone. Criterion 12 (default UI says "folder," not "source") is also violated by copy the Search view shares with RFC-041: `SearchAddSource` → "Add Source", `SearchNoSourcesBody` → "...local search index." See [closure record](../closures/045-search-in-folder-flow-and-friendly-folder-management.md). Follow-up: RFC-060 §7 (scoping); a copy fix for criterion 12 is a separate task.
 **Related RFCs:** RFC-041 Search, Narrow Results, and Browse Around; RFC-037 Source Lifecycle, Refresh Policy, and Change Detection UX; RFC-038 Result Freshness, Trust Badges, and Recovery Actions; RFC-039 Privacy Modes and Local Data Visibility  
 **Self-review revision:** Clarifies P0 remembered-folder behavior, search-scope semantics, and non-blocking folder-picker orchestration.  
 
