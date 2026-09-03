@@ -507,7 +507,32 @@ pub enum SourceEvent {
 
 ---
 
-## 19. Data Model
+## 19. Data Model (Amendment 1)
+
+> **Amendment 1 (2026-09-03), after Task 035 landed.** This section specifies
+> `SourceRecord.state` as a **persisted** field carrying the full 7-variant
+> `SourceState`. The implementation persists 5 variants instead —
+> `orbok_core::SourceStatus`, matching the `sources.status` catalog CHECK
+> constraint — and derives `Preparing`/`NeedsUpdate` at render time from
+> queued-job and stale-file counts the catalog already holds, rather than
+> persisting them.
+>
+> This is a deliberate deviation, confirmed correct by review
+> ([Review 200](../../.git-exclude/reviewed/200-task035-wire-rfc037-source-refresh-review.md)
+> §2.2), not an oversight this section failed to anticipate: `Preparing` and
+> `NeedsUpdate` are derived facts, computable from state the catalog already
+> holds. Persisting them as their own column would be denormalization that
+> can go stale — a worse failure mode than deriving them fresh on every
+> render. `check_source_path` (`orbok_fs::source_lifecycle`) only ever
+> returns `Active`/`FolderNotFound`/`PermissionProblem` in practice, so the
+> 5-variant `SourceStatus` never needed to represent the other two anyway.
+>
+> The `SourceRecord` shape below is retained as originally specified — it
+> remains the correct target for a future migration that widens
+> `sources.status`, should one ever be needed — with this note recording
+> that the shipped implementation does not match it in full. See the
+> [closure record](../closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md)
+> for how this was verified.
 
 ```rust
 pub struct SourceRecord {
