@@ -20,10 +20,11 @@ term-free default labels) is also violated by copy actually shown
 (`SearchAddSource` → "Add Source", `SearchNoSourcesBody` → "...local search
 index", `SearchSnippetUnavailable` → "(source unavailable)"); criterion 9's
 one rendered Advanced control (search mode) sets state `bootstrap::run_search_with`
-never reads, hardcoded to `Auto`. An earlier version of this note (committed
-2026-09-02, `868ac75`) claimed "narrowing chips and recovery states shipped"
-and that criterion 3's filters were "rendered" — both false, corrected here
-without having been independently verified the first time. **Wiring is
+never reads, hardcoded to `Auto`. An earlier version of this note, written
+by the architect and committed 2026-09-02 (`868ac75`), claimed "narrowing
+chips and recovery states shipped" and that criterion 3's filters were
+"rendered" — both false, corrected here after Task 038 checked them
+independently against the running code (Review 201 §3). **Wiring is
 RFC-060 §7.**
 **Source basis:** `orbit-search-filter-external-design-v0.1.md`, `orbit-filter-ui-design-addendum.md`  
 
