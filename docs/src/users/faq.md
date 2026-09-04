@@ -17,10 +17,10 @@ deleting the vector index; Reset catalog clears the whole derived index and
 re-indexes from your source files.
 
 **My source is showing as Stale. What does that mean?**
-The source file changed after it was indexed. **orbok does not currently
-re-scan a registered folder after its first scan** — there is no automatic,
-scheduled, or manual rescan. Re-adding the folder is the only way to pick up
-changes today. RFC-037's startup check and manual refresh are being wired.
+The source file changed after it was indexed. orbok re-scans every
+registered folder each time it starts, and you can refresh a folder on
+demand from the Sources view (`[Check again]`/`[Prepare again]`, or
+`Ctrl/Cmd+R` with a folder selected) without waiting for a restart.
 
 **How do I search Japanese text?**
 Just type normally. orbok detects CJK characters and uses the trigram index

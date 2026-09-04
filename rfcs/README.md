@@ -28,7 +28,6 @@ may start" a checked state rather than an implicit convention.
 | 007 | [Keyword Search Engine Selection](done/007-keyword-search-engine-selection.md) | v0.2.0 |
 | 008 | [Embedding Model and Vector Storage](done/008-embedding-model-and-vector-storage.md) | v0.3.0 |
 | 009 | [Hybrid Search and RRF Fusion](done/009-hybrid-search-and-rrf-fusion.md) | v0.3.0 |
-| 010 | [Optional Local Reranking](done/010-optional-local-reranking.md) | v0.4.0 |
 | 011 | [Storage Dashboard and Cleanup UX](done/011-storage-dashboard-and-cleanup-ux.md) | v0.4.0 |
 | 012 | [Model Registry and Installation Workflow](done/012-model-registry-and-installation-workflow.md) | v0.5.0 |
 | 013 | [Search View and Result Explanation UX](done/013-search-view-and-result-explanation-ux.md) | v0.4.0 |
@@ -90,6 +89,7 @@ may start" a checked state rather than an implicit convention.
 | 024 | [Vector Quantization](proposed/024-vector-quantization.md) | **Parked** since v0.8.0 — `quantize_to_i8`/`upsert_i8` have no production caller |
 | 025 | [OCR Pipeline](proposed/025-ocr-pipeline.md) | **Parked** since v0.8.0 — no OCR code exists; scanned documents are a stated non-goal |
 | 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
+| 010 | [Optional Local Reranking](proposed/010-optional-local-reranking.md) | **Parked** since v0.4.0 — moved out of `done/` 2026-09-04 (RFC-060 §8, Task 040); the only implementation scored by passage length, not relevance, and had no production caller. Reopen when the p99 search-latency gate is met with one embedding model |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
 
 
@@ -109,11 +109,12 @@ among the 44 that did not. Its dispositions are now applied:
 - **037, 038 → `accepted/`** — the design shipped, the wiring did not.
 - **041, 045 stay in `done/`** with an explicit deferred note naming the unmet
   criterion, per RFC-000's granularity clause.
-- **010 (Optional Local Reranking) is deliberately left in `done/` pending
-  RFC-060 §8**, which decides whether the reranker is implemented or the claim
-  is removed. Moving it to `accepted/` would authorize building a second model
-  pipeline, which is the opposite of RFC-060 §8's recommendation. Its status is
-  known-false in the meantime and is recorded here rather than silently fixed.
+- **010 was deliberately left in `done/` pending RFC-060 §8's decision — now
+  made.** RFC-060 §8 decided against building a real cross-encoder for now
+  (a second model before the first is fast is the wrong order) and against
+  leaving the false claim in place. **010 → `proposed/` 2026-09-04 (Task
+  040)**, with the dead reranker wiring deleted and the trait kept as a
+  seam. See its own parked note for the reopen condition.
 
 **No new folder or lifecycle state was added.** RFC-000 stands as written and the
 5-folder variant is sufficient (RFC-063 §8).

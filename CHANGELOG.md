@@ -1428,6 +1428,36 @@ next release tag.
   with 10+ criteria, caught only because the self-test exercised RFC-045's
   real 13-criterion record.
 
+- **RFC-010 (reranking) is no longer a false claim: parked, not deleted
+  (Task 040, RFC-060 §8).** `Status: Implemented (v0.4.0)` claimed a
+  cross-encoder that never existed — the only implementation,
+  `MockReranker`, scored candidates by passage *length*, and its one
+  integration point, `HybridSearchService::with_reranker`, had no
+  production caller. Decided: keep the *contract*, delete the *wiring*.
+  `hybrid.rs`'s `with_reranker`/`reranker` field/`rerank_results` are
+  gone, along with a known bug they carried (`enrich_many` truncated to
+  `limit` *before* reranking, so a reranker could never have reached
+  fusion ranks 21-50 — the exact headroom `Limits::fusion_n = 50` reserves
+  for one, kept, now with a comment naming why). `CrossEncoderReranker`
+  stays in `orbok-models` as the documented insertion point, its doc
+  comment rewritten plainly (follows `plugin.rs`'s module doc, which the
+  external audit singled out as honest where the RFC index was not).
+  `MockReranker` is `#[cfg(test)]` now, not `pub` — it lost its only
+  cross-crate consumer (`orbok-workers`'s two tests exercising the deleted
+  integration) along with the wiring; confirmed absent from the real
+  `orbok` binary (`strings`/`nm`, zero occurrences), not just assumed.
+  RFC-010 → `rfcs/proposed/`, with a parked note whose reopen condition is
+  concrete: the p99 search-latency gate met with one embedding model — a
+  second model before the first is fast is the wrong order. Search results
+  are byte-identical before and after (the full workspace test suite's
+  pass count moved by exactly the two deleted reranker-integration tests,
+  nothing else). Also corrected: five stale capability claims in
+  `docs/src/users/` repeating the reranking claim or its neighbors
+  (`features.md`, `models.md` ×2, `storage.md`), plus one unrelated
+  staleness found in the same sweep — `faq.md` still described the manual-
+  rescan gap Task 035 closed, in the future tense ("being wired") for
+  work that had already shipped.
+
 - **RFC-037 is the first RFC to enter `done/` under RFC-063's evidence
   requirement.** Its closure record (`rfcs/closures/037-…`) records, per
   acceptance criterion, what was run and what was observed, plus a substantive

@@ -12,7 +12,6 @@ use orbok_db::Catalog;
 use orbok_db::repo::{
     FileRepository, IndexJobRepository, NewFile, NewSource, ObservedMetadata, SourceRepository,
 };
-use orbok_models::MockReranker;
 use orbok_search::{HybridSearchService, SearchMode, contains_cjk, normalize_query};
 use std::fs;
 
@@ -83,42 +82,20 @@ fn seed(
 }
 
 // ── RFC-010: Reranking ─────────────────────────────────────────────────
-
-// RFC-010 §19 test 4: reranker changes final order.
-#[test]
-fn reranker_reorders_results() {
-    let dir = tempfile::tempdir().unwrap();
-    let (catalog, cache) = setup(dir.path());
-    seed(&catalog, &cache, dir.path(), "short.md", "auth token\n");
-    seed(
-        &catalog,
-        &cache,
-        dir.path(),
-        "long.md",
-        "auth token — this document discusses authentication token rotation \
-         policies in detail, with many paragraphs of explanation.\n",
-    );
-
-    let reranker = MockReranker;
-    let service = HybridSearchService::keyword_only(&catalog).with_reranker(&reranker);
-    let results = service.search("auth token", SearchMode::Auto, 10).unwrap();
-    assert!(!results.is_empty());
-    // MockReranker sorts by passage length → longer snippet should rank first.
-    let first_snippet_len = results[0].snippet.as_deref().unwrap_or("").len();
-    let last_snippet_len = results
-        .last()
-        .unwrap()
-        .snippet
-        .as_deref()
-        .unwrap_or("")
-        .len();
-    assert!(
-        first_snippet_len >= last_snippet_len,
-        "reranker should put longer passage first"
-    );
-}
-
-// RFC-010 §20: missing reranker does not break search.
+// Task 040 deleted `HybridSearchService::with_reranker` and the dead call
+// path behind it (RFC-060 §8: known-false `Status: Implemented`, no
+// production caller, and a known bug -- `enrich_many` truncated to
+// `limit` before reranking, so a reranker could never have reached
+// fusion ranks 21-50). The two tests that exercised that integration
+// point (`reranker_reorders_results`, `fast_mode_returns_results_without_rerank`)
+// are gone with it -- their entire premise no longer compiles.
+// `MockReranker`/`CrossEncoderReranker` are still tested directly against
+// the trait in `crates/search/models/src/lib.rs`'s own `reranker_tests`
+// module, the mock's only remaining consumer now that the cross-crate
+// integration is gone.
+//
+// RFC-010 §20: missing reranker does not break search -- now simply
+// "search works," since there is no reranker parameter to omit any more.
 #[test]
 fn search_works_without_reranker() {
     let dir = tempfile::tempdir().unwrap();
@@ -131,30 +108,8 @@ fn search_works_without_reranker() {
         "important content here\n",
     );
 
-    // No reranker attached.
     let service = HybridSearchService::keyword_only(&catalog);
     let results = service.search("important", SearchMode::Auto, 10).unwrap();
-    assert!(!results.is_empty());
-}
-
-// RFC-010 §19 test 10: Fast mode disables reranking.
-#[test]
-fn fast_mode_returns_results_without_rerank() {
-    let dir = tempfile::tempdir().unwrap();
-    let (catalog, cache) = setup(dir.path());
-    seed(
-        &catalog,
-        &cache,
-        dir.path(),
-        "doc.md",
-        "quick search test\n",
-    );
-    let reranker = MockReranker;
-    let service = HybridSearchService::keyword_only(&catalog).with_reranker(&reranker);
-    // Fast mode skips reranking in Limits — result still returned.
-    let results = service
-        .search("quick search", SearchMode::Fast, 10)
-        .unwrap();
     assert!(!results.is_empty());
 }
 

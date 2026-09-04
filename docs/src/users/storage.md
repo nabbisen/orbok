@@ -30,6 +30,6 @@ actual files on disk are never touched. This action requires confirmation.
 
 | Mode | Index size | Features |
 |---|---|---|
-| Balanced | Moderate | Keyword + semantic + optional rerank |
-| High Accuracy | Larger | Richer chunking, optional rerank by default |
-| Space Saving | Smallest | Quantized vectors (future), rerank disabled |
+| Balanced | Moderate | Keyword + semantic |
+| High Accuracy | Larger | Richer chunking |
+| Space Saving | Smallest | Quantized vectors (future) |

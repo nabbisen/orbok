@@ -59,9 +59,20 @@ pub struct KeywordDocument {
     pub normalized_text: String,
 }
 
-/// One keyword retrieval candidate (RFC-007 §10): rank is 1-based;
-/// score is the engine-native relevance (BM25; lower = better for
-/// FTS5's bm25()). RRF fusion (RFC-009) consumes ranks, not scores.
+/// One keyword retrieval candidate (RFC-007 §10): rank is 1-based.
+/// RRF fusion (RFC-009) consumes ranks, not scores.
+///
+/// `score`'s meaning depends on which path produced this candidate, and
+/// the two disagree (Review 197 §6): `Fts5KeywordEngine::search` writes
+/// the engine-native BM25 relevance (lower = better, FTS5's `bm25()`
+/// convention) for a non-CJK query; `rrf_fuse_keyword_lists` writes a
+/// fused RRF score (higher = better) for a CJK query, which
+/// `multilingual.rs`'s own doc on that function already warns callers
+/// not to treat as one. Inert today — nothing sorts on `score` after it
+/// reaches `SearchResult.keyword_score` (`hybrid.rs`'s only other writer,
+/// the reranker's own score inside `rerank_results`, was deleted in
+/// Task 040) — but do not add a new comparison against this field
+/// without resolving the inversion first.
 #[derive(Debug, Clone)]
 pub struct KeywordCandidate {
     pub chunk_id: ChunkId,

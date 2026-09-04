@@ -7,7 +7,6 @@ orbok provides local-first AI document search combining:
 - **Semantic search** (optional): finds conceptually related content
   using a local embedding model — no cloud upload.
 - **Hybrid ranking** (RRF): blends keyword and semantic results.
-- **Optional reranking** (cross-encoder): refines top results.
 - **Japanese and mixed-language support**: trigram index for CJK text,
   full-width→half-width normalization.
 

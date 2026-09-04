@@ -323,10 +323,30 @@ pub struct RerankScore {
     pub score: f32,
 }
 
-/// Optional local cross-encoder reranker (RFC-010 §5).
+/// Cross-encoder reranker contract (RFC-010 §5).
 ///
-/// - Reranking is always optional; missing model must not break search.
-/// - Implementors must not log `passage_text` (NFR-014).
+/// Designed in RFC-010, not implemented: the only prior implementation
+/// (`MockReranker`, below) scored by passage *length*, which is not
+/// reranking, and had no production caller. RFC-060 §8 decided against
+/// building a real cross-encoder for now — a second model is a second
+/// download and a second forward pass per query, and orbok's own p99
+/// search-latency gate is unmet by roughly 4x with *one* model already
+/// (RFC-060 §8, Task 040) — so `orbok-search`'s `HybridSearchService`
+/// wires nothing to this trait (its `with_reranker` method and the dead
+/// call path behind it were deleted in Task 040, along with the known bug
+/// that path carried: `enrich_many(&fused, limit)` truncated to `limit`
+/// *before* reranking, so even a real reranker could never have reached
+/// fusion ranks 21-50 — the exact headroom
+/// `crates/search/engine/src/hybrid.rs`'s `Limits::fusion_n = 50` reserves
+/// for it).
+///
+/// This trait is kept anyway, as the documented insertion point if a real
+/// cross-encoder is ever built: RFC-060 §8's reopen condition is orbok's
+/// p99 search-latency gate being met with one model. Implementors:
+///
+/// - Reranking must always be optional; a missing model must not break
+///   search.
+/// - Must not log `passage_text` (NFR-014).
 pub trait CrossEncoderReranker: Send + Sync {
     fn name(&self) -> &str;
     fn version(&self) -> &str;
@@ -340,9 +360,18 @@ pub trait CrossEncoderReranker: Send + Sync {
 }
 
 /// Deterministic mock reranker: scores by passage length (longer = more
-/// informative). Useful for pipeline testing without an ML model.
-pub struct MockReranker;
+/// informative) — this is what makes `Status: Implemented` on RFC-010
+/// false rather than merely incomplete (Task 040): it is not a cross-
+/// encoder, and it never had a production caller. Test-only now that Task
+/// 040 deleted `HybridSearchService::with_reranker`, its only integration
+/// point — nothing outside this crate's own test module (below) uses it
+/// any more, so `#[cfg(test)]` is sufficient (it was `pub` and consumed
+/// across the crate boundary by `orbok-workers`'s tests before that
+/// deletion, which is why it wasn't already gated this way).
+#[cfg(test)]
+struct MockReranker;
 
+#[cfg(test)]
 impl CrossEncoderReranker for MockReranker {
     fn name(&self) -> &str {
         "mock-reranker"

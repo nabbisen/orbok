@@ -3,7 +3,7 @@
 ## Why models?
 
 Keyword search works without any models. Semantic search requires a
-local embedding model. Reranking requires a local cross-encoder model.
+local embedding model.
 
 ## Privacy guarantee
 
@@ -20,7 +20,9 @@ inference. Documents are **never** sent to the model provider's servers.
 ## Changing the embedding model
 
 If you switch embedding models, existing semantic indexes become
-incompatible. orbok marks them stale and reindexes incrementally.
+incompatible. orbok does not currently invalidate or rebuild them
+automatically — vectors indexed under the previous model remain and are
+not used by the new one. Re-index manually after a model change.
 
 ## Recommended models
 

@@ -10,7 +10,7 @@ use crate::snippet::{chunk_records_for, load_snippet};
 use crate::vector::ExactVectorSearch;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
-use orbok_models::{CrossEncoderReranker, EmbeddingModel, RerankCandidate, l2_normalize};
+use orbok_models::{EmbeddingModel, l2_normalize};
 use std::path::Path;
 use std::time::Instant;
 
@@ -24,7 +24,7 @@ pub enum SearchMode {
     Exact,
     /// Vector-first; keyword disabled.
     Conceptual,
-    /// Reduced candidate counts; no reranking.
+    /// Reduced candidate counts.
     Fast,
 }
 
@@ -32,8 +32,14 @@ pub enum SearchMode {
 struct Limits {
     keyword_k: u32,
     vector_k: u32,
+    // RFC-010 §9's reranking headroom: fusion keeps ranks 1-50 so a
+    // reranker can promote a candidate from 21-50 into the visible top
+    // results. No reranker is wired today (Task 040 deleted the dead
+    // `with_reranker` call path -- RFC-010's trait is kept as a seam,
+    // `crates/search/models/src/lib.rs::CrossEncoderReranker`), but the
+    // headroom this constant reserves is still the right fusion width on
+    // its own terms, so it is unchanged.
     fusion_n: usize,
-    rerank: bool,
 }
 
 impl Limits {
@@ -43,35 +49,26 @@ impl Limits {
                 keyword_k: 100,
                 vector_k: 100,
                 fusion_n: 50,
-                rerank: true,
             },
             SearchMode::Exact => Limits {
                 keyword_k: 100,
                 vector_k: 0,
                 fusion_n: 50,
-                rerank: false,
             },
             SearchMode::Conceptual => Limits {
                 keyword_k: 0,
                 vector_k: 100,
                 fusion_n: 50,
-                rerank: true,
             },
             SearchMode::Fast => Limits {
                 keyword_k: 50,
                 vector_k: 50,
                 fusion_n: 20,
-                rerank: false,
             },
         }
     }
 
-    fn adjust_for_request(
-        &mut self,
-        requested_limit: u32,
-        has_embedding_model: bool,
-        has_reranker: bool,
-    ) {
+    fn adjust_for_request(&mut self, requested_limit: u32, has_embedding_model: bool) {
         let requested_limit = requested_limit.max(1);
         if !has_embedding_model {
             // Without a vector source, RRF preserves keyword order. Avoid the
@@ -80,17 +77,15 @@ impl Limits {
             self.keyword_k = self.keyword_k.min(keyword_cap);
             self.vector_k = 0;
             self.fusion_n = self.fusion_n.min(keyword_cap as usize);
-            self.rerank &= has_reranker;
         }
     }
 }
 
-/// Hybrid search service. Optional embedding model and reranker both
-/// degrade gracefully when absent (RFC-009 §21, RFC-010 §20).
+/// Hybrid search service. Optional embedding model degrades gracefully
+/// when absent (RFC-009 §21).
 pub struct HybridSearchService<'a> {
     catalog: &'a Catalog,
     embedding_model: Option<(&'a dyn EmbeddingModel, String)>,
-    reranker: Option<&'a dyn CrossEncoderReranker>,
 }
 
 /// Timing breakdown for one search execution.
@@ -118,7 +113,6 @@ impl<'a> HybridSearchService<'a> {
         Self {
             catalog,
             embedding_model: None,
-            reranker: None,
         }
     }
 
@@ -127,25 +121,14 @@ impl<'a> HybridSearchService<'a> {
         Self {
             catalog,
             embedding_model: Some((model, model_id.to_string())),
-            reranker: None,
         }
-    }
-
-    /// Add optional local reranker (RFC-010).
-    pub fn with_reranker(mut self, reranker: &'a dyn CrossEncoderReranker) -> Self {
-        self.reranker = Some(reranker);
-        self
     }
 
     pub fn is_hybrid(&self) -> bool {
         self.embedding_model.is_some()
     }
 
-    pub fn has_reranker(&self) -> bool {
-        self.reranker.is_some()
-    }
-
-    /// Execute a search and return enriched, optionally reranked results.
+    /// Execute a search and return enriched results.
     pub fn search(
         &self,
         query: &str,
@@ -165,11 +148,7 @@ impl<'a> HybridSearchService<'a> {
         let total_start = Instant::now();
         let mut timing = SearchTiming::default();
         let mut limits = Limits::for_mode(mode);
-        limits.adjust_for_request(
-            limit,
-            self.embedding_model.is_some(),
-            self.reranker.is_some(),
-        );
+        limits.adjust_for_request(limit, self.embedding_model.is_some());
 
         // Keyword candidates — use multilingual engine (RFC-014).
         let keyword_start = Instant::now();
@@ -217,17 +196,13 @@ impl<'a> HybridSearchService<'a> {
 
         // Enrich with snippets.
         let enrichment_start = Instant::now();
-        let mut results = self.enrich_many(&fused, limit as usize)?;
+        let results = self.enrich_many(&fused, limit as usize)?;
         timing.enrichment_ms = elapsed_ms(enrichment_start);
 
-        // Optional reranking (RFC-010): reorder using passage scores.
-        let rerank_start = Instant::now();
-        if limits.rerank
-            && let Some(reranker) = self.reranker
-        {
-            results = rerank_results(reranker, query, results)?;
-        }
-        timing.rerank_ms = elapsed_ms(rerank_start);
+        // No reranker is wired (RFC-010, Task 040): `rerank_ms` stays 0 --
+        // kept as a field, not deleted, since `orbok-bench`'s
+        // `SearchTiming`/`SearchProfile` consumers (crates/bench/src/report.rs,
+        // metrics.rs) still read it for p99 latency reporting.
         timing.total_ms = elapsed_ms(total_start);
 
         Ok(SearchProfile { results, timing })
@@ -283,36 +258,6 @@ impl<'a> HybridSearchService<'a> {
 
 fn elapsed_ms(start: Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
-}
-
-/// Rerank enriched results using the reranker model (RFC-010 §8).
-fn rerank_results(
-    reranker: &dyn CrossEncoderReranker,
-    query: &str,
-    mut results: Vec<SearchResult>,
-) -> OrbokResult<Vec<SearchResult>> {
-    let top_n = reranker.max_candidates() as usize;
-    let to_rerank = results.len().min(top_n);
-    let candidates: Vec<RerankCandidate> = results[..to_rerank]
-        .iter()
-        .map(|r| RerankCandidate {
-            chunk_id: r.chunk_id.clone(),
-            passage_text: r.snippet.clone().unwrap_or_default(),
-        })
-        .collect();
-    let scores = reranker.rerank(query, &candidates)?;
-    // Map scores back to results by chunk_id.
-    for result in results[..to_rerank].iter_mut() {
-        if let Some(score) = scores.iter().find(|s| s.chunk_id == result.chunk_id) {
-            result.keyword_score = score.score as f64;
-        }
-    }
-    results[..to_rerank].sort_by(|a, b| {
-        b.keyword_score
-            .partial_cmp(&a.keyword_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    Ok(results)
 }
 
 fn short_display_path(path: &str) -> String {

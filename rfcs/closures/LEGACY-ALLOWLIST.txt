@@ -29,7 +29,6 @@
 007
 008
 009
-010 # known-false Status claim (MockReranker only, no production caller); stays until RFC-060 §8 decides whether reranking ships or the claim is removed -- see rfcs/README.md and Task 038 §4
 011
 012
 013
