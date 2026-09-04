@@ -299,6 +299,10 @@ id, name, version, and dimension.
       environments — see RFC-051 §5 "Determinism scope")
 - [ ] Release evidence records the source commit and the `tar`/`gzip`
       versions `package.sh` printed, not a pinned toolchain
+- [ ] CI's pinned gate toolchains (`.github/workflows/ci.yml`'s `fast`,
+      `security`, and `cross` jobs, currently `1.98.1`) are bumped to the
+      current stable release — the release manager's job, at each release;
+      an unwritten obligation is not an obligation (Task 039)
 
 ---
 

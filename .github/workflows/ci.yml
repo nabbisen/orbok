@@ -26,7 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Task 039: pinned, not @stable -- an unpinned resolution can turn an
+      # unchanged commit red the day a new stable release ships (Review 192
+      # §2), and RFC-053 already measured this workspace's actual MSRV risk
+      # as low, so there is little to trade away by making this job
+      # reproducible. See the `release` job below for the one gate that
+      # stays @stable and why. Bump at release prep
+      # (docs/src/maintainers/release_readiness.md's packaging checklist).
+      - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
 
@@ -69,6 +76,13 @@ jobs:
     needs: fast
     steps:
       - uses: actions/checkout@v4
+      # Task 039: the one gate job left on @stable, deliberately. Its own
+      # "strict clippy" step below is the only lint pass across the *whole*
+      # workspace with --all-targets -- the entire value of an @stable job
+      # is surfacing a new lint the day it ships, and only a full-workspace
+      # lint does that. `fast`'s clippy excludes orbok/orbok-ui/orbok-bench;
+      # `security` and `cross` run no clippy at all -- neither would satisfy
+      # the purpose, only the letter.
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -186,7 +200,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Task 039: pinned -- see the `fast` job's comment above for the
+      # reasoning; this job runs no clippy at all, so it was never a
+      # candidate for the one job that stays @stable.
+      - uses: dtolnay/rust-toolchain@1.98.1
 
       # Task 036 §2b (audit E-06): was unpinned (resolves whatever version
       # is latest on the day CI runs) and masked its own install failure
@@ -212,6 +229,11 @@ jobs:
   # direction: an unpinned `@stable` job turning an unchanged commit red).
   # `check`, not `test` -- the point is compiling on the floor, and a full
   # test run doubles this job's time for no additional signal.
+  #
+  # Task 039 pinned the rest of the gate jobs for the same reason this one
+  # already was: `fast`, `security`, and `cross` now use
+  # `dtolnay/rust-toolchain@1.98.1`, not `@stable`. `release` is the one
+  # deliberate exception -- see its own comment above.
   msrv:
     name: MSRV gate (1.91)
     runs-on: ubuntu-latest
@@ -234,7 +256,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Task 039: pinned -- see the `fast` job's comment for the reasoning.
+      # `dtolnay/rust-toolchain` resolves the same pinned version on all
+      # three platforms in this matrix, not just ubuntu.
+      - uses: dtolnay/rust-toolchain@1.98.1
 
       - name: build core crates
         run: cargo build -p orbok-core -p orbok-db -p orbok-fs -p orbok-workers

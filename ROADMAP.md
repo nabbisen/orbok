@@ -208,9 +208,14 @@ recorded here rather than given an RFC, because their design is not in question.
   failure-masking `|| true` removed. The declared 1.91 floor turned out to be
   correct rather than rotten — RFC-053's `rusqlite 0.39` pin is what kept it
   true, verified by `cargo tree -i libsqlite3-sys` → `0.37.0`, not the `0.38.x`
-  line that carries an unmeasured 1.95 floor. The remaining half — the four
-  `@stable` gate jobs, whose resolution at run time can turn an unchanged commit
-  red — is dev-team Task 039.
+  line that carries an unmeasured 1.95 floor. **The remaining half — the
+  `@stable` gate jobs, whose resolution at run time could turn an unchanged
+  commit red — closed 2026-09-04 (Task 039).** `fast`, `security`, and
+  `cross` now pin `dtolnay/rust-toolchain@1.98.1`; `release` stays
+  `@stable` deliberately, since its "strict clippy" step is the one gate
+  that lints the whole workspace and surfacing a new lint early is the
+  point of keeping one job unpinned. The pin's bump obligation is written
+  down in `release_readiness.md`'s packaging checklist, not left implicit.
 
 ### Considered and declined
 

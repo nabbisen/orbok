@@ -1396,6 +1396,38 @@ next release tag.
   0.38.x line that carries an unmeasured 1.95 floor). The remaining half — three
   of the four `@stable` gate jobs — is routed as dev-team Task 039.
 
+- **Three of the four `@stable` CI gate jobs are now pinned (Task 039,
+  Task 036 §3, audit D-04/E-06).** `fast`, `security`, and `cross` use
+  `dtolnay/rust-toolchain@1.98.1`; `release` stays `@stable` deliberately
+  — its "strict clippy" step is the only lint pass across the whole
+  workspace with `--all-targets`, and surfacing a new lint the day it
+  ships is the entire reason to keep one job unpinned. RFC-053 had already
+  measured this workspace's actual MSRV risk as low, so pinning trades
+  away little. The bump obligation is written down, not left implicit:
+  `docs/src/maintainers/release_readiness.md`'s packaging checklist now
+  names it as the release manager's job at each release.
+
+- **`done/` now mechanically requires a closure record (Task 038, RFC-063
+  §6).** `scripts/check-rfc-lifecycle.sh` refuses an `rfcs/done/NNN-slug.md`
+  with no matching `rfcs/closures/NNN-slug.md` naming every one of its
+  RFC's acceptance criteria, unless the id is on a shrink-only legacy
+  allowlist (`rfcs/closures/LEGACY-ALLOWLIST.txt`, 47 entries — every
+  `done/` RFC that predates the requirement) that can only lose ids, never
+  gain them: the staged id set is checked against `HEAD`'s committed set on
+  every commit, forever, not against an earlier ancestor. Writing RFC-041's
+  record surfaced six more unmet criteria than RFC-063 §7 had named — its
+  Narrow and Browse Around UI does not render at all, not merely fail to
+  apply — so it returned to `accepted/` rather than getting a record;
+  RFC-045 got its first real one, with three unmet criteria (folder scope
+  never reaches the query at all; leaked "source"/"index" copy) instead of
+  the one previously recorded. Two real bugs in the gate itself were found
+  by its own self-test, not after: a check that broke every pre-existing
+  fixture assertion until the fixture was pre-exempted from its very first
+  commit, and a `comm`/`sort -n` lexicographic-vs-numeric sort mismatch
+  that would have silently broken criterion-coverage checking for any RFC
+  with 10+ criteria, caught only because the self-test exercised RFC-045's
+  real 13-criterion record.
+
 - **RFC-037 is the first RFC to enter `done/` under RFC-063's evidence
   requirement.** Its closure record (`rfcs/closures/037-…`) records, per
   acceptance criterion, what was run and what was observed, plus a substantive
