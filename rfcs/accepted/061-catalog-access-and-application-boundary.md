@@ -289,17 +289,27 @@ Phrased per RFC-058 §5.
 8. Clicking Clear snippets with the cache path unavailable produces a notice and
    the process survives.
 
-9. **Added by Amendment 1 (2026-09-03).** After §5 lands,
-   `search_latency_while_background_indexing_is_running`'s Windows CI
-   wall-clock drops materially toward the Linux figure recorded in §2a — the
-   pre-fix baseline is 300.04 s against Linux's 44.79 s on identical work.
-   Recorded whatever the result: if the gap does not close, §2a's hypothesis
-   was wrong and the cause lies elsewhere, which is itself worth knowing before
-   anyone parallelises indexing (§4).
+9. **Added by Amendment 1 (2026-09-03); kept and re-drafted 2026-09-04 on the
+   owner's decision.** After §5 lands,
+   `search_latency_while_background_indexing_is_running` is run on all three
+   platforms and its wall-clock **recorded** against §2a's pre-fix baseline
+   (Linux 44.79 s, Windows 300.04 s, identical work).
 
-   *This criterion was added after the owner accepted this RFC. It is the one
-   part of Amendment 1 that changes what §5 must satisfy; strike it if the
-   baseline in §2a is wanted as evidence only.*
+   **This criterion is met by the measurement existing and being written down,
+   not by the number improving.** If the Windows figure drops toward Linux,
+   §2a's hypothesis is confirmed and §5 did what it was written to do. If it
+   does not, the hypothesis was wrong and the cost lies somewhere other than
+   catalog contention — which is more important to know, not less, because §4
+   defers parallel indexing until this is understood.
+
+   *Drafting note.* The first version of this criterion read "drops materially
+   toward the Linux figure", which is a threshold. That was the wrong shape and
+   is the reason it is re-drafted rather than merely kept: a threshold on a
+   shared-runner timing measurement gets widened when it fires — this project has
+   watched that happen three times to the very budget in question (~45 s → 120 s
+   → 300 s, now failing at 300.04 s). A criterion that only requires the number
+   be taken and recorded cannot decay that way, and it still makes it impossible
+   to ship §5 without anyone checking whether it worked.
 
 ---
 

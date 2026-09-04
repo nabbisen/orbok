@@ -1378,6 +1378,24 @@ next release tag.
 
 ### Docs
 
+- **RFC-061's acceptance criterion 9 re-drafted from a threshold into a
+  measurement.** It read "drops materially toward the Linux figure", which is a
+  threshold on a shared-CI-runner timing — and this project has watched that
+  exact shape get widened three times on the very budget in question
+  (~45 s → 120 s → 300 s, now failing at 300.04 s). It now requires only that
+  the number be taken on all three platforms and recorded against §2a's
+  pre-fix baseline. If the Windows figure drops toward Linux, §2a's hypothesis
+  is confirmed; if it does not, the cost lies somewhere other than catalog
+  contention, which matters more rather than less, because §4 defers parallel
+  indexing until that is understood.
+- **`ROADMAP.md`'s technical-debt register recorded a closed item as open.** Its
+  MSRV entry still read *"declared and never measured"* and *"every CI job on
+  `dtolnay/rust-toolchain@stable`"* — both false since Task 036 landed. Corrected,
+  including the reason the declared 1.91 floor turned out to be sound rather than
+  rotten (RFC-053's `rusqlite 0.39` pin keeps `libsqlite3-sys` at 0.37.0, off the
+  0.38.x line that carries an unmeasured 1.95 floor). The remaining half — three
+  of the four `@stable` gate jobs — is routed as dev-team Task 039.
+
 - **RFC-037 is the first RFC to enter `done/` under RFC-063's evidence
   requirement.** Its closure record (`rfcs/closures/037-…`) records, per
   acceptance criterion, what was run and what was observed, plus a substantive

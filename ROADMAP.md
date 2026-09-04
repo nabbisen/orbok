@@ -202,11 +202,15 @@ recorded here rather than given an RFC, because their design is not in question.
   from semantic search with no error, no log and no counter. RFC-018 is titled
   *"Crash Recovery, Diagnostics, and Repair Tools"*.
 
-- **MSRV is declared and never measured.** `rust-version = "1.91"` with no
-  `rust-toolchain.toml` and every CI job on `dtolnay/rust-toolchain@stable`.
-  This is the same defect reached from the other direction by an unpinned
-  toolchain turning an unchanged commit red. One pinned `msrv` job closes both.
-  Routed as Task 036.
+- ~~**MSRV is declared and never measured.**~~ **Closed 2026-09-02 (Task 036).**
+  The `msrv` CI job builds the workspace on a pinned `dtolnay/rust-toolchain@1.91`
+  on every push, and `cargo-audit` is pinned to `0.22.2 --locked` with the
+  failure-masking `|| true` removed. The declared 1.91 floor turned out to be
+  correct rather than rotten — RFC-053's `rusqlite 0.39` pin is what kept it
+  true, verified by `cargo tree -i libsqlite3-sys` → `0.37.0`, not the `0.38.x`
+  line that carries an unmeasured 1.95 floor. The remaining half — the four
+  `@stable` gate jobs, whose resolution at run time can turn an unchanged commit
+  red — is dev-team Task 039.
 
 ### Considered and declined
 
