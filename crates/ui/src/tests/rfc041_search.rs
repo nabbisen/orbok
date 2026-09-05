@@ -164,46 +164,124 @@ fn more_ways_panel_opens_and_closes() {
     assert!(!s.search_ui.more_panel_open);
 }
 
-// ── §25.11 / §8.3: Copy does not contain forbidden terms ─────────────
+// ── §25.11 / §8.3, RFC-045 §22.12: copy does not contain forbidden terms ──
+// Task 041: the two tests this replaced (here and
+// `rfc041_search_state.rs::default_ui_copy_avoids_forbidden_technical_terms`,
+// now deleted) each checked a hand-curated array of keys -- and RFC-041's
+// own §25 criterion 8 acceptance evidence turned out to omit exactly the
+// three keys that violate the rule (Review 201 §5(b), Review 202 §6).
+// Exhaustive over `crate::i18n::ALL_KEYS` instead: a new `MessageKey`
+// added to the catalog is checked the day it exists, not the day someone
+// remembers to add it to an array. `EXEMPTIONS` names every case where a
+// forbidden term legitimately survives, so an omission has to be a
+// deliberate, justified line rather than a silent gap in the array again.
+//
+// Per-locale term lists, not one list run against both: RFC-041 §8.2's
+// list is written in English, and the English substring "source" does not
+// appear in a Japanese string that uses the equivalent concept — the
+// katakana loanword `ソース` or the kanji compound `情報源` does. Each
+// Japanese term below is one already used elsewhere in this catalog for
+// that exact concept (verified by grep before use, not invented), so a
+// real drift is what gets caught, not a translation choice this test
+// happens to disagree with.
+const FORBIDDEN_EN: &[&str] = &[
+    "source", "index", "catalog", "cache", "embedding", "vector", "bm25", "rrf", "chunk", "query",
+    "schema", "engine", "backend",
+];
+const FORBIDDEN_JA: &[&str] = &[
+    "ソース",
+    "情報源",
+    "インデックス",
+    "索引",
+    "カタログ",
+    "キャッシュ",
+    "埋め込み",
+    "エンベディング",
+    "ベクトル",
+    "チャンク",
+    "クエリ",
+    "スキーマ",
+    "エンジン",
+    "バックエンド",
+    "BM25",
+    "RRF",
+];
+
+/// `(key, term)` pairs explicitly permitted to contain that forbidden
+/// term, each with the reason on its own line (Task 041 §2). Checked for
+/// completeness by `every_exemption_is_load_bearing` below -- an entry
+/// that stops matching (because the copy changed) must be removed in the
+/// same change, not left as a stale permission nobody re-examines.
+const EXEMPTIONS: &[(MessageKey, &str)] = &[
+    // Model *provenance* metadata ("Source: <model id>", alongside
+    // "Provider:"/"Revision:" rows in the download-consent screen,
+    // `ModelDownloadConsent.source` = `DEFAULT_TRUSTED_MODEL.model.id`) --
+    // a different sense of "source" than the document/folder concept
+    // RFC-041 §8.2 targets. Both locales: en.rs's "Source", ja.rs's
+    // "ソース" name the same field.
+    (MessageKey::ModelConsentSource, "source"),
+    (MessageKey::ModelConsentSource, "ソース"),
+];
+
+fn forbidden_terms_for(locale: Locale) -> &'static [&'static str] {
+    match locale {
+        Locale::En => FORBIDDEN_EN,
+        Locale::Ja => FORBIDDEN_JA,
+    }
+}
+
+fn contains_term(locale: Locale, copy: &str, term: &str) -> bool {
+    if locale == Locale::Ja {
+        copy.contains(term)
+    } else {
+        copy.to_lowercase().contains(&term.to_lowercase())
+    }
+}
 
 #[test]
 fn default_ui_copy_avoids_forbidden_terms() {
-    let forbidden = [
-        "source",
-        "index",
-        "cache",
-        "vector",
-        "embedding",
-        "BM25",
-        "RRF",
-        "chunk",
-        "query",
-        "schema",
-        "backend",
-    ];
-    let keys_to_check = [
-        MessageKey::SearchNarrowResults,
-        MessageKey::SearchNarrowedBy,
-        MessageKey::SearchMoreWays,
-        MessageKey::SearchClearFilters,
-        MessageKey::SearchNoResultsFiltered,
-        MessageKey::SearchNoResultsFilteredBody,
-        MessageKey::SearchInThisFolder,
-        MessageKey::SearchShowNearby,
-        MessageKey::SearchShowSimilar,
-        MessageKey::FilterKind,
-        MessageKey::FilterChanged,
-        MessageKey::FilterSearchIn,
-        MessageKey::FilterReadyStatus,
-    ];
-    for key in keys_to_check {
-        let copy = tr(Locale::En, key);
-        for term in forbidden {
-            assert!(
-                !copy.to_lowercase().contains(&term.to_lowercase()),
-                "key {key:?} contains forbidden term '{term}': \"{copy}\""
-            );
+    let mut violations = Vec::new();
+    for &locale in Locale::ALL {
+        for &key in crate::i18n::ALL_KEYS {
+            let copy = tr(locale, key);
+            for &term in forbidden_terms_for(locale) {
+                if !contains_term(locale, copy, term) {
+                    continue;
+                }
+                if EXEMPTIONS.contains(&(key, term)) {
+                    continue;
+                }
+                violations.push(format!(
+                    "{locale:?} {key:?} contains forbidden term '{term}': {copy:?}"
+                ));
+            }
         }
+    }
+    assert!(
+        violations.is_empty(),
+        "\n{}\n{} violation(s) -- RFC-041 §8.2 / §25 criterion 8, RFC-045 §22 \
+         criterion 12. Either fix the copy or add a justified entry to \
+         EXEMPTIONS.",
+        violations.join("\n"),
+        violations.len()
+    );
+}
+
+/// Every `EXEMPTIONS` entry must actually match something, in at least one
+/// locale -- otherwise it is a permission nobody needs any more, which is
+/// exactly the kind of stale exception that made the two tests this
+/// replaced too permissive in the first place.
+#[test]
+fn every_exemption_is_load_bearing() {
+    for &(key, term) in EXEMPTIONS {
+        let matches_somewhere = Locale::ALL
+            .iter()
+            .any(|&locale| contains_term(locale, tr(locale, key), term));
+        assert!(
+            matches_somewhere,
+            "EXEMPTIONS entry ({key:?}, {term:?}) does not match any locale's \
+             copy any more -- remove it"
+        );
     }
 }
 

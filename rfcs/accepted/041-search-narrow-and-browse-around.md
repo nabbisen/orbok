@@ -15,10 +15,15 @@ reads the state fields behind §25 criteria 2 (suggested filters), 3 (active
 filters — stored and serialized into history, but neither rendered nor
 applied to a query), 5 (no-result-after-filtering recovery), or 6
 ("more ways to narrow"). **Browse Around** (criterion 7) has three messages
-defined and zero handlers anywhere in `crates/app`. Criterion 8 (technical-
-term-free default labels) is also violated by copy actually shown
-(`SearchAddSource` → "Add Source", `SearchNoSourcesBody` → "...local search
-index", `SearchSnippetUnavailable` → "(source unavailable)"); criterion 9's
+defined and zero handlers anywhere in `crates/app`. **Criterion 8
+(technical-term-free default labels) is now met** — was violated by copy
+actually shown (`SearchAddSource` → "Add Source", `SearchNoSourcesBody` →
+"...local search index", `SearchSnippetUnavailable` → "(source
+unavailable)"), fixed by Task 041 (2026-09-05) behind a new exhaustive
+test over every catalog key in both locales, which found 28 violations
+total (not just these three) and an explicit, justified exemption list
+for the one legitimate use of "source" left standing (`ModelConsentSource`,
+model-provenance metadata, a different sense of the word). Criterion 9's
 one rendered Advanced control (search mode) sets state `bootstrap::run_search_with`
 never reads, hardcoded to `Auto`. An earlier version of this note, written
 by the architect and committed 2026-09-02 (`868ac75`), claimed "narrowing

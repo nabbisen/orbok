@@ -27,10 +27,10 @@ characters (Ａ, Ｂ, Ｃ) are normalized to half-width before matching.
 |---|---|
 | Keyword | Matched by the FTS5 keyword index |
 | Semantic | Matched by the vector embedding index |
-| Stale | Source file changed since this chunk was indexed |
+| Needs update | Source file changed since this chunk was indexed |
 | Missing source | Source file is currently unavailable |
 
 ## Snippets
 
 Snippets are loaded dynamically from the original source file. If the
-source file is missing, the snippet shows "(source unavailable)".
+source file is missing, the snippet shows "(preview unavailable)".

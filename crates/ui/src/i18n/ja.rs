@@ -18,16 +18,15 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchButton => "検索",
         SearchNoSourcesTitle => "検索対象がありません",
         SearchNoSourcesBody => {
-            "フォルダーまたはファイルを追加すると、orbok がローカル検索\
-             インデックスを作成します。"
+            "フォルダーまたはファイルを追加すると、orbok が検索できるようになります。"
         }
-        SearchAddSource => "ソースを追加",
+        SearchAddSource => "フォルダーを追加",
         SearchNoResults => "結果が見つかりません",
         SearchKeywordOnlyNotice => {
             "セマンティック検索は利用できません。キーワード検索は使用できます。"
         }
         SearchRunning => "検索中…",
-        SearchSnippetUnavailable => "(情報源を利用できません)",
+        SearchSnippetUnavailable => "(プレビューを利用できません)",
         SourcesTitle => "フォルダー",
         SourcesEmptyTitle => "フォルダーが追加されていません",
         SourcesEmptyBody => {
@@ -40,13 +39,13 @@ pub fn message(key: MessageKey) -> &'static str {
         SourcesStatusMissing => "見つかりません",
         SourcesPathInputPlaceholder => "またはパスを直接入力…",
         SourcesRecursiveHint => "すべてのサブフォルダーが再帰的にスキャンされます。",
-        IndexingTitle => "インデックス",
+        IndexingTitle => "検索の準備",
         IndexingIdle => "検索の準備ができました",
         IndexingHealthIndexed => "済み",
         IndexingHealthStale => "要更新",
         IndexingHealthFailed => "失敗",
         IndexingHealthQueued => "待機中",
-        IndexingRunning => "インデックス中…",
+        IndexingRunning => "準備中…",
         StorageTitle => "ストレージ",
         StorageIntro => "orbok の保存内容を確認し、安全にクリーンアップできます。",
         StorageGroupSearchIndex => "検索データ",
@@ -54,21 +53,21 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageGroupCaches => "一時プレビュー",
         StorageSafeCleanupHeading => "安全なクリーンアップ",
         StorageClearSnippets => "一時スニペットを削除",
-        StorageClearSearchCache => "期限切れの検索キャッシュを削除",
+        StorageClearSearchCache => "古い検索結果を削除",
         StorageDangerHeading => "危険な操作",
-        StorageResetCatalog => "カタログをリセット...",
+        StorageResetCatalog => "保存されたアプリデータをリセット...",
         StorageResetWarning => {
-            "登録済みソースとすべてのインデックスを削除します。\
+            "登録済みフォルダーとすべての検索データを削除します。\
              元のファイルが削除されることはありません。"
         }
         ModelsTitle => "モデル",
-        ModelsEmbeddingRole => "埋め込み",
+        ModelsEmbeddingRole => "検索ヘルパー",
         ModelsRerankerRole => "リランカー",
         ModelsStatusAvailable => "利用可能",
         ModelsStatusMissing => "未導入",
         ModelsKeywordOnlyHint => {
-            "キーワード検索は使用できます。概念的な検索を有効にするには、\
-             埋め込みモデルを導入してください。"
+            "基本検索は使用できます。意味による検索も使うには、\
+             検索ヘルパーを追加してください。"
         }
         ModelsVerification => "検証状態",
         SettingsTitle => "設定",
@@ -77,7 +76,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsAdvancedHeading => "詳細表示",
         SettingsAdvancedOn => "詳細表示: オン",
         SettingsAdvancedOff => "詳細表示: オフ",
-        SettingsAdvancedHint => "検索結果・インデックス・ストレージに技術的な詳細を表示します。",
+        SettingsAdvancedHint => "検索結果・準備状況・ストレージに技術的な詳細を表示します。",
         SettingsPrivacyLocalOnly => "文書はこのコンピューター上でのみ処理されます。",
         SearchModeLabel => "モード",
         SearchModeAuto => "自動",
@@ -88,13 +87,13 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeSemantic => "セマンティック",
         BadgeFused => "融合",
         BadgeReranked => "リランク済み",
-        BadgeSourceStale => "情報源が古い",
+        BadgeSourceStale => "更新が必要",
         DialogAddSourceTitle => "追加するフォルダーを選択",
         DialogChooseSearchFolderTitle => "検索するフォルダーを選択",
         WizardTitleNotConfigured => "セマンティック検索の設定",
-        WizardTitleFileMissing => "埋め込みモデルが見つかりません",
+        WizardTitleFileMissing => "検索ヘルパーが見つかりません",
         WizardTitleValidating => "モデルフォルダを確認中",
-        WizardTitleReady => "埋め込みモデルの準備完了",
+        WizardTitleReady => "検索ヘルパーの準備完了",
         WizardBodyNotConfigured => {
             "キーワード検索は利用可能です。意味による検索を使用するには、             このコンピュータにローカルAIモデルが必要です。             ファイルはアップロードされません。"
         }
@@ -128,7 +127,7 @@ pub fn message(key: MessageKey) -> &'static str {
             "続行すると、orbok は提供元に接続し、このモデルをローカルに保存します。"
         }
         ModelConsentPrivacy => {
-            "文書、検索内容、検索元のパス、この保存場所はモデル提供元に送信されません。"
+            "文書、検索内容、フォルダーのパス、この保存場所はモデル提供元に送信されません。"
         }
         ModelConsentProvider => "提供元",
         ModelConsentSource => "ソース",

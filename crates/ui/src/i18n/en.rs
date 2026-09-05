@@ -17,12 +17,12 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchPlaceholder => "Search local documents...",
         SearchButton => "Search",
         SearchNoSourcesTitle => "Nothing to search yet",
-        SearchNoSourcesBody => "Add a folder or file so orbok can build a local search index.",
-        SearchAddSource => "Add Source",
+        SearchNoSourcesBody => "Add a folder or file so orbok can search it.",
+        SearchAddSource => "Add folder",
         SearchNoResults => "No results found",
         SearchKeywordOnlyNotice => "Search by meaning is not set up yet. Basic search still works.",
         SearchRunning => "Searching…",
-        SearchSnippetUnavailable => "(source unavailable)",
+        SearchSnippetUnavailable => "(preview unavailable)",
         SourcesTitle => "Folders",
         SourcesEmptyTitle => "No folders added",
         SourcesEmptyBody => {
@@ -37,11 +37,11 @@ pub fn message(key: MessageKey) -> &'static str {
         SourcesRecursiveHint => "All sub-folders are scanned recursively.",
         IndexingTitle => "Preparing search",
         IndexingIdle => "Search is ready",
-        IndexingHealthIndexed => "Indexed",
+        IndexingHealthIndexed => "Ready",
         IndexingHealthStale => "Stale",
         IndexingHealthFailed => "Failed",
         IndexingHealthQueued => "Queued",
-        IndexingRunning => "Indexing…",
+        IndexingRunning => "Preparing…",
         StorageTitle => "Storage",
         StorageIntro => "See what orbok stores and clean up safely.",
         StorageGroupSearchIndex => "Search data",
@@ -53,11 +53,11 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageDangerHeading => "Dangerous",
         StorageResetCatalog => "Reset saved app data...",
         StorageResetWarning => {
-            "This removes registered sources and all indexes. \
-             Your source files are never deleted."
+            "This removes registered folders and all search data. \
+             Your files are never deleted."
         }
         ModelsTitle => "Models",
-        ModelsEmbeddingRole => "Embedding",
+        ModelsEmbeddingRole => "Search helper",
         ModelsRerankerRole => "Reranker",
         ModelsStatusAvailable => "Available",
         ModelsStatusMissing => "Missing",
@@ -72,7 +72,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsAdvancedHeading => "Advanced view",
         SettingsAdvancedOn => "Advanced view: On",
         SettingsAdvancedOff => "Advanced view: Off",
-        SettingsAdvancedHint => "Show technical detail in search results, indexing, and storage.",
+        SettingsAdvancedHint => "Show technical detail in search results, preparation, and storage.",
         SettingsPrivacyLocalOnly => "Documents are processed on this computer only.",
         SearchModeLabel => "Mode",
         SearchModeAuto => "Auto",
@@ -83,13 +83,13 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeSemantic => "Semantic",
         BadgeFused => "Fused",
         BadgeReranked => "Reranked",
-        BadgeSourceStale => "Stale Source",
+        BadgeSourceStale => "Needs update",
         DialogAddSourceTitle => "Select a folder to add",
         DialogChooseSearchFolderTitle => "Choose folder to search",
         WizardTitleNotConfigured => "Set up search by meaning",
-        WizardTitleFileMissing => "Embedding model not found",
+        WizardTitleFileMissing => "Search helper not found",
         WizardTitleValidating => "Checking model folder",
-        WizardTitleReady => "Embedding model ready",
+        WizardTitleReady => "Search helper ready",
         WizardBodyNotConfigured => {
             "Keyword search is ready. To also search by meaning,              orbok needs a local AI model on this computer.              No files are uploaded — inference runs locally."
         }
@@ -121,7 +121,7 @@ pub fn message(key: MessageKey) -> &'static str {
             "orbok will contact the provider and save this model locally only after you continue."
         }
         ModelConsentPrivacy => {
-            "Your documents, searches, source paths, and this save location are not sent to the model provider."
+            "Your documents, searches, folder paths, and this save location are not sent to the model provider."
         }
         ModelConsentProvider => "Provider",
         ModelConsentSource => "Source",

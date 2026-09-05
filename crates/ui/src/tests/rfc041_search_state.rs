@@ -183,51 +183,12 @@ fn empty_results_with_filters_sets_empty_after_filtering() {
     ));
 }
 
-// ── Copy compliance: default UI avoids forbidden terms ────────────────
-
-#[test]
-fn default_ui_copy_avoids_forbidden_technical_terms() {
-    // RFC-041 §8.2: forbidden terms in default UI.
-    use crate::i18n::{Locale, MessageKey, tr};
-    let forbidden = [
-        "query",
-        "source",
-        "index",
-        "cache",
-        "vector",
-        "embedding",
-        "bm25",
-        "rrf",
-        "chunk",
-        "schema",
-        "engine",
-        "backend",
-    ];
-    let filter_keys = [
-        MessageKey::SearchNarrowResults,
-        MessageKey::SearchNarrowedBy,
-        MessageKey::SearchMoreWays,
-        MessageKey::SearchClearFilters,
-        MessageKey::SearchNoResultsFiltered,
-        MessageKey::SearchInThisFolder,
-        MessageKey::FilterKind,
-        MessageKey::FilterChanged,
-        MessageKey::FilterSearchIn,
-        MessageKey::FilterKindPdfs,
-        MessageKey::FilterKindNotes,
-        MessageKey::FilterKindCode,
-        MessageKey::FilterAllFolders,
-    ];
-    for key in filter_keys {
-        let copy = tr(Locale::En, key).to_lowercase();
-        for term in &forbidden {
-            assert!(
-                !copy.contains(term),
-                "i18n key {key:?} copy '{copy}' contains forbidden term '{term}'"
-            );
-        }
-    }
-}
+// Copy compliance (RFC-041 §8.2, §25 criterion 8) is now checked
+// exhaustively over every `MessageKey` in both locales, not a curated
+// array here -- see `tests::rfc041_search::default_ui_copy_avoids_forbidden_terms`
+// (Task 041). That test replaced this one, which -- along with
+// `rfc041_search.rs`'s own former curated version -- omitted exactly the
+// three keys that violated the rule (Review 201 §5(b)).
 
 #[test]
 fn project_name_is_orbok_not_orbit() {

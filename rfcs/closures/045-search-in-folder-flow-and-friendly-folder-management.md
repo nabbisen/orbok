@@ -161,23 +161,31 @@ requirement to visit `ViewId::Sources` first.
 (`crates/ui/src/tests/smoke_views.rs`) confirms the Search view renders
 and functions fully with zero registered sources.
 
-### 12. Default UI says "folder," not "source."
+### 12. Default UI says "folder," not "source." (Amendment 1, Task 041)
 
-→ what was run: `grep -n 'NavSources\|SourcesTitle\|SourcesAddFolder\|SearchInLabel\|SearchChooseFolder\|SearchAddSource\|SearchNoSourcesBody\|SearchSnippetUnavailable' crates/ui/src/i18n/en.rs crates/ui/src/i18n/ja.rs crates/ui/src/views.rs`.
-→ what was observed: the primary navigation/label keys are clean —
-`NavSources`/`SourcesTitle` → "Folders", `SourcesAddFolder` → "Add
-Folder", `SearchInLabel` → "Search in", `SearchChooseFolder` → "Choose a
-folder" — and tested. But the *same* Search view this RFC's flow lives on
-renders `SearchAddSource` → "Add Source" (the empty-state CTA button,
-`views.rs:351`) and `SearchNoSourcesBody` → "...so orbok can build a
-local search **index**." (`views.rs:346`, an explicitly forbidden term).
-The Japanese catalog has the matching leak (`"ソースを追加"`). **Not met**
-for the UI as actually rendered, despite the primary folder-vocabulary
-labels being correct.
-→ where verified: `chip_label_never_says_source_or_recursive`
-(`crates/ui/src/tests/rfc045_location.rs`) covers the chip label only;
-no test covers `SearchAddSource`/`SearchNoSourcesBody` — see "Criteria
-not met" below for why the passing copy tests did not catch this.
+→ what was run (original, 2026-09-03): `grep -n 'NavSources\|SourcesTitle\|SourcesAddFolder\|SearchInLabel\|SearchChooseFolder\|SearchAddSource\|SearchNoSourcesBody\|SearchSnippetUnavailable' crates/ui/src/i18n/en.rs crates/ui/src/i18n/ja.rs crates/ui/src/views.rs`; what was observed then: the primary
+navigation/label keys were clean, but the same Search view rendered
+`SearchAddSource` → "Add Source" and `SearchNoSourcesBody` → "...local
+search **index**." — an explicitly forbidden term — with a matching
+Japanese leak. **Not met** at the time, recorded below as the reason a
+copy fix (Task 041) was needed.
+→ what was run (Task 041, 2026-09-05):
+`tests::rfc041_search::default_ui_copy_avoids_forbidden_terms`, made
+exhaustive over every `MessageKey` in both locales rather than a curated
+array — the exact mechanism that missed this criterion originally,
+replaced rather than patched.
+→ what was observed: confirmed failing first, naming 28 violations
+across both locales (not just the two RFC-045 keys — the same sweep
+covers RFC-041 §25 criterion 8 in one pass); all copy corrected,
+including `SearchAddSource` → "Add folder" /
+「フォルダーを追加」, `SearchNoSourcesBody` → "Add a folder or file so
+orbok can search it." / 「フォルダーまたはファイルを追加すると、orbok
+が検索できるようになります。」, `SearchSnippetUnavailable` → "(preview
+unavailable)" / 「(プレビューを利用できません)」; test passes green
+after.
+→ where verified: `crates/ui/src/tests/rfc041_search.rs`, Task 041,
+CI-confirmed. **Met**, as of Task 041 — moved out of "criteria not met"
+below.
 
 ### 13. The user can remove a remembered folder from orbok without deleting files.
 
@@ -207,18 +215,19 @@ of the function's signature, not a separate test result.
   planned instrument for wiring source/scope information into search
   results and queries.
 
-- **§22 criterion 12, default UI avoids "source," is violated by copy
-  actually rendered** on the Search view (`SearchAddSource`,
-  `SearchNoSourcesBody`), in both locales. This is a copy fix, not a
-  missing mechanism, and not part of Task 038's scope — recorded here so
-  the gap is written down rather than silently passing because the
-  existing tests (`default_ui_copy_avoids_forbidden_terms`,
+- ~~**§22 criterion 12, default UI avoids "source."**~~ **Met, Task 041
+  (2026-09-05).** Was violated by copy actually rendered on the Search
+  view (`SearchAddSource`, `SearchNoSourcesBody`), in both locales — not
+  part of Task 038's scope, recorded here so the gap was written down
+  rather than silently passing because the existing tests
+  (`default_ui_copy_avoids_forbidden_terms`,
   `default_ui_copy_avoids_forbidden_technical_terms` — both defined
-  against RFC-041, exercised by RFC-045's shared Search view) check a
-  curated key list that happens to omit the three keys actually
+  against RFC-041, exercised by RFC-045's shared Search view) checked a
+  curated key list that happened to omit the three keys actually
   rendered, rather than checking every `MessageKey` exhaustively. That
-  test-coverage gap is itself a finding, reported in Task 038's own
-  submission per Review 201 §5(b).
+  test-coverage gap was itself a finding, reported in Task 038's own
+  submission per Review 201 §5(b) and closed by Task 041's replacement,
+  exhaustive test. See criterion 12's own entry above for what changed.
 
 **Everything else — the picker flow, automatic search on folder
 selection, remembered-folder reuse and deduplication, and folder-first

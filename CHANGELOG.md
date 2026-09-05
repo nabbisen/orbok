@@ -1378,7 +1378,27 @@ next release tag.
 
 ### Docs
 
-- **RFC-061 Amendment 1 corrected: the Windows figure is a lower bound, not a
+- **Plain-language copy fixed; the test meant to guard it made exhaustive
+  (Task 041, RFC-041 §8.2/§25 criterion 8, RFC-045 §22 criterion 12).**
+  `default_ui_copy_avoids_forbidden_terms` and
+  `default_ui_copy_avoids_forbidden_technical_terms` each checked a
+  hand-curated array of keys — and RFC-041's own acceptance evidence for
+  "default UI avoids forbidden terms" turned out to omit exactly the keys
+  that violated the rule (Review 201 §5(b), Review 202 §6). Replaced with
+  one test, exhaustive over every `MessageKey` in both locales, with an
+  explicit, individually-justified exemption list (one entry: model
+  *provenance* metadata's "Source" label, a different sense of the word).
+  Confirmed failing first — 28 violations, not the 3 previously known,
+  across 15 keys in both locales — then fixed: `SearchAddSource` → "Add
+  folder"/「フォルダーを追加」, `SearchNoSourcesBody` and
+  `SearchSnippetUnavailable` dropped "index"/"source" entirely, and a
+  dozen more (health-cell/badge/wizard/storage/settings copy) brought in
+  line with vocabulary this catalog had already established elsewhere for
+  the same concepts (`SourceStateReady` → "Ready", `SourceStateNeedsUpdate`
+  → "Needs update", "search helper" for the embedding model) rather than
+  inventing new phrasing. RFC-041's and RFC-045's own notes updated to
+  record criterion 8/12 as met; RFC-045's closure record's criterion 12
+  entry moved out of "criteria not met."
   measurement.** The amendment reported `300.04 s` and concluded "Windows pays
   ≈ 570 %". The test sets `overall_start`, wraps the work in
   `tokio::time::timeout(300 s)`, and reads `elapsed()` *after* the timeout
