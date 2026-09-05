@@ -185,8 +185,19 @@ fn more_ways_panel_opens_and_closes() {
 // real drift is what gets caught, not a translation choice this test
 // happens to disagree with.
 const FORBIDDEN_EN: &[&str] = &[
-    "source", "index", "catalog", "cache", "embedding", "vector", "bm25", "rrf", "chunk", "query",
-    "schema", "engine", "backend",
+    "source",
+    "index",
+    "catalog",
+    "cache",
+    "embedding",
+    "vector",
+    "bm25",
+    "rrf",
+    "chunk",
+    "query",
+    "schema",
+    "engine",
+    "backend",
 ];
 const FORBIDDEN_JA: &[&str] = &[
     "ソース",

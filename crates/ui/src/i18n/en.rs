@@ -72,7 +72,9 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsAdvancedHeading => "Advanced view",
         SettingsAdvancedOn => "Advanced view: On",
         SettingsAdvancedOff => "Advanced view: Off",
-        SettingsAdvancedHint => "Show technical detail in search results, preparation, and storage.",
+        SettingsAdvancedHint => {
+            "Show technical detail in search results, preparation, and storage."
+        }
         SettingsPrivacyLocalOnly => "Documents are processed on this computer only.",
         SearchModeLabel => "Mode",
         SearchModeAuto => "Auto",
