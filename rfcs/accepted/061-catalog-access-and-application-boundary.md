@@ -76,32 +76,58 @@ That test exists to answer exactly this RFC's question. Its own doc comment
 embedding cost (intrinsic serial cost ≈ 43 s), with a concurrent search sampled
 every 10 ms:
 
-| | Linux | Windows CI |
-|---|---:|---:|
-| Total wall-clock | **44.79 s** | **300.04 s** |
-| Search samples | 731 | 11,000 |
-| Avg search | 49.9 ms | 11.9 ms |
-| Max search | 60.6 ms | **406.8 ms** |
+| | Linux | Windows CI (`d90b6ad`) | Windows CI (`c161c0b`) |
+|---|---:|---:|---:|
+| Total wall-clock | **44.79 s** | **≥ 300.04 s** | **≥ 300.04 s** |
+| Search samples | 731 | 11,000 | 10,914 |
+| Avg search | 49.9 ms | 11.9 ms | 12.7 ms |
+| Max search | 60.6 ms | 406.8 ms | 203.7 ms |
 
-**Linux pays ≈ 4 % over the intrinsic cost for concurrency. Windows pays
-≈ 570 %.** Individual searches are *faster* on Windows; there are 15× more of
-them because indexing takes 6.7× longer. So it is not search being stalled — it
-is **indexing being starved**, which is the second half of the question above.
+**The Windows figure is a lower bound, not a measurement — corrected
+2026-09-05.** This section originally reported it as "300.04 s" and concluded
+"Windows pays ≈ 570 %". Both overstate what the instrument can see.
 
-**The budget's history is the corroborating evidence.** The comment above that
-test's assertion records the threshold being raised twice against this same
-signal: ~45 s measured in isolation → 120 s "comfortable headroom" **still timed
-out on Windows CI** → 300 s, which is now failing at 300.04 s. A measurement has
-been reclassified as variance three times.
+`crates/app/src/scheduler_host/tests.rs` sets `overall_start` at `:1781`, wraps
+the work in `tokio::time::timeout(Duration::from_secs(300))` at `:1801`, and
+reads `overall = overall_start.elapsed()` at **`:1810` — after the timeout
+returns**. So when the timeout fires, `overall ≈ 300 s **by construction**`. The
+test cannot report a value above its own budget.
+
+**Two independent Windows runs make this concrete.** 2026-09-02 (`d90b6ad`,
+Task 036) reported **300.0358954 s**; 2026-09-04 (`c161c0b`, Task 039) reported
+**300.037572 s** — two days apart, different commits, **two milliseconds apart**.
+That is the signature of a ceiling, not of variance: a flake scatters.
+
+So what is established, and what is not:
+
+- **Established.** Linux completes in 44.79 s against an intrinsic serial cost of
+  ≈ 43 s — a concurrency penalty of ≈ 4 %. Windows does **not** complete within
+  300 s, i.e. its penalty is **≥ 570 %**. Searches are individually *faster* on
+  Windows while indexing takes ≥ 6.7× longer, so it is **indexing being starved**,
+  not search — which is the second half of the question this test poses.
+- **Not established.** How much worse than 570 % Windows actually is. The true
+  figure is unknown and unbounded by this instrument.
+
+**The budget's history is the corroborating evidence, and it now reads
+differently.** The comment above the assertion records the threshold being raised
+twice against this same signal: ~45 s measured in isolation → 120 s "comfortable
+headroom" **still timed out on Windows CI** → 300 s, still timing out. Each raise
+was made in the belief that the previous one had been unlucky. **It was censoring
+the same result at three different ceilings**, and the failure has been called a
+flake three times since.
 
 **Stated as hypothesis, not proven causation.** The Linux/Windows comparison
 controls the workload but not the platform's general I/O cost. Windows SQLite
 file locking is more expensive than `flock`-based Unix locking, which is
-consistent with a 4 %/570 % split on identical work — but §5's fix landing is
-what would confirm it.
+consistent with the split on identical work — but §5's fix landing is what would
+confirm it.
 
-**Do not widen the 300 s budget.** It is currently the only thing making this
-visible. If it fires again before §5 lands, capture and re-run as Task 036 did.
+**Do not widen the 300 s budget as a repair.** Widening is what produced three
+censored data points. If it fires again before §5 lands, capture and re-run as
+Task 036 did, and record the reading.
+
+**The instrument needs fixing before §10 criterion 9 can do its job — see the
+note there.**
 
 ---
 
@@ -294,6 +320,16 @@ Phrased per RFC-058 §5.
    `search_latency_while_background_indexing_is_running` is run on all three
    platforms and its wall-clock **recorded** against §2a's pre-fix baseline
    (Linux 44.79 s, Windows 300.04 s, identical work).
+
+   **The instrument must be uncensored first (added 2026-09-05).** As it stands,
+   the test reports `≈ 300 s` for *any* Windows duration at or above its budget
+   (§2a), so it can only answer "did §5 push Windows under 300 s?" — not "by how
+   much did §5 help?", which is the question this criterion exists to ask. Before
+   taking the reading, either time indexing completion independently of the
+   `tokio::time::timeout` wrapper, or raise the budget far enough that Windows
+   actually finishes. **Raising the budget is not widening a threshold to make a
+   test pass** — the assertion can go, since this criterion wants a number rather
+   than a verdict.
 
    **This criterion is met by the measurement existing and being written down,
    not by the number improving.** If the Windows figure drops toward Linux,

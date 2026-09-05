@@ -1378,6 +1378,22 @@ next release tag.
 
 ### Docs
 
+- **RFC-061 Amendment 1 corrected: the Windows figure is a lower bound, not a
+  measurement.** The amendment reported `300.04 s` and concluded "Windows pays
+  ≈ 570 %". The test sets `overall_start`, wraps the work in
+  `tokio::time::timeout(300 s)`, and reads `elapsed()` *after* the timeout
+  returns — so on timeout the total is `≈ 300 s` **by construction**, and the
+  instrument cannot report any value above its own budget. Two independent
+  Windows runs two days apart on different commits reported **300.0358954 s** and
+  **300.037572 s** — two milliseconds apart, which is a ceiling rather than
+  variance. What is established is that Linux pays ≈ 4 % over intrinsic cost and
+  Windows pays **≥ 570 %**; how much worse is unknown. The budget's own history
+  now reads differently too: ~45 s → 120 s → 300 s was not three unlucky runs but
+  the same result censored at three ceilings, and the failure has been called a
+  flake three times since. Acceptance criterion 9 gains the consequence: the
+  instrument must be uncensored before it can measure whether §5 helped, rather
+  than only whether it crossed 300 s.
+
 - **RFC-061's acceptance criterion 9 re-drafted from a threshold into a
   measurement.** It read "drops materially toward the Linux figure", which is a
   threshold on a shared-CI-runner timing — and this project has watched that
