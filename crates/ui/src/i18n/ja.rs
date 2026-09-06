@@ -281,18 +281,14 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-043: Model download readiness
         ModelCheckingFiles => "モデルを確認中...",
         ModelAlreadyReady => "意味による検索の準備完了",
-        ModelNeedsDownload => {
-            "モデルファイルが必要です。orbokは不足しているものだけをダウンロードします。"
-        }
+        ModelNeedsDownload => "不足しているファイルのみダウンロードします。",
         ModelDownloadInProgress => "モデルをダウンロード中",
         ModelFilesStayLocal => "ファイルはこのコンピューターに保存されます。",
         ModelDownloadFailed => {
             "ダウンロードが完了しませんでした。接続を確認してもう一度お試しください。"
         }
         ModelDownloadRetry => "もう一度試す",
-        ModelRepairingFiles => {
-            "一部のモデルファイルを修復する必要があります。orbokは必要なものだけをダウンロードします。"
-        }
+        ModelRepairingFiles => "修復が必要なファイルのみダウンロードします。",
         ModelBasicSearchAvailable => "基本検索は使えます。意味による検索は後で追加できます。",
         ModelDownloadingWhatNeeded => "必要なものをダウンロード中...",
         // RFC-039: Privacy modes

@@ -1398,6 +1398,21 @@ next release tag.
 
 ### Docs
 
+- **Two model-download messages shortened and de-subjected**, on the owner's
+  reading that they answer a *risk* question — local storage and privacy — so
+  the reassurance should be the whole message rather than its second clause.
+  `ModelNeedsDownload` becomes "Only the missing files are downloaded." /
+  「不足しているファイルのみダウンロードします。」 and `ModelRepairingFiles`
+  becomes "Only the files needing repair are downloaded." /
+  「修復が必要なファイルのみダウンロードします。」 — each roughly half its prior
+  length, with the state carried by the relative clause instead of a leading
+  sentence. The subject "orbok" is dropped from both. Note the rule this
+  follows, since "orbok" remains the subject of twenty other English strings:
+  drop it where a sentence **limits scope** and the actor is already established
+  by the screen; keep it where the sentence **names an actor**, as
+  `PrivacyModelDownloadNote` ("orbok downloads the model, but your documents are
+  not uploaded.") does deliberately.
+
 - **A fourth "search helper" synonym, found by the reviewer, not the sweep
   (Review 206 §3).** Task 042's own catalog sweep answered its own question
   ("anything the sweep found that §2 missed?") with two things that were not
