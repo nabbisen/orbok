@@ -164,17 +164,25 @@ fn more_ways_panel_opens_and_closes() {
     assert!(!s.search_ui.more_panel_open);
 }
 
-// ── §25.11 / §8.3, RFC-045 §22.12: copy does not contain forbidden terms ──
-// Task 041: the two tests this replaced (here and
-// `rfc041_search_state.rs::default_ui_copy_avoids_forbidden_technical_terms`,
-// now deleted) each checked a hand-curated array of keys -- and RFC-041's
-// own §25 criterion 8 acceptance evidence turned out to omit exactly the
-// three keys that violate the rule (Review 201 §5(b), Review 202 §6).
-// Exhaustive over `crate::i18n::ALL_KEYS` instead: a new `MessageKey`
-// added to the catalog is checked the day it exists, not the day someone
-// remembers to add it to an array. `EXEMPTIONS` names every case where a
-// forbidden term legitimately survives, so an omission has to be a
-// deliberate, justified line rather than a silent gap in the array again.
+// ── §25.8 / §25.11 / §8.2 / §8.3, RFC-045 §22.12: copy avoids forbidden
+// terms, including the former project name ───────────────────────────────
+// Task 041: the four tests this replaced -- here and in
+// `rfc041_search_state.rs` (`default_ui_copy_avoids_forbidden_technical_terms`,
+// `copy_uses_orbok_not_orbit`, `project_name_is_orbok_not_orbit`, all now
+// deleted) -- each checked a hand-curated array of keys. RFC-041's own
+// §25 criterion 8 acceptance evidence turned out to omit exactly the
+// three keys that violate the rule (Review 201 §5(b), Review 202 §6);
+// criterion 11's two guards had the identical shape -- one of them named
+// its 4-key array `all_keys` while covering 1.4% of the catalog -- caught
+// only once the first fix made the pattern visible (Review 205 §3).
+// Folding "orbit" into this same scan, rather than giving it its own
+// exhaustive test, is deliberate: it is one more forbidden term, not a
+// different kind of check. Exhaustive over `crate::i18n::ALL_KEYS`
+// instead of any curated array: a new `MessageKey` added to the catalog
+// is checked the day it exists, not the day someone remembers to add it
+// to an array. `EXEMPTIONS` names every case where a forbidden term
+// legitimately survives, so an omission has to be a deliberate, justified
+// line rather than a silent gap in the array again.
 //
 // Per-locale term lists, not one list run against both: RFC-041 §8.2's
 // list is written in English, and the English substring "source" does not
@@ -198,6 +206,15 @@ const FORBIDDEN_EN: &[&str] = &[
     "schema",
     "engine",
     "backend",
+    // RFC-041 §25 criterion 11 / §8.3: former project name, folded into
+    // this same exhaustive scan rather than left in its own curated-array
+    // test (Review 205 §3) -- `copy_uses_orbok_not_orbit` (this file) and
+    // `project_name_is_orbok_not_orbit` (`rfc041_search_state.rs`), now
+    // deleted, checked 4 and 3 keys respectively, English only, out of
+    // 290 -- the exact shape criterion 8's own former guards had, in the
+    // file whose own comment two lines above named that shape as the
+    // defect.
+    "orbit",
 ];
 const FORBIDDEN_JA: &[&str] = &[
     "ソース",
@@ -216,6 +233,11 @@ const FORBIDDEN_JA: &[&str] = &[
     "バックエンド",
     "BM25",
     "RRF",
+    // Not observed anywhere in the live catalog (verified by grep before
+    // adding), but the katakana rendering "orbit" would take if it ever
+    // appeared -- forbidden the same as its English form, not left
+    // uncovered until the day it does.
+    "オービット",
 ];
 
 /// `(key, term)` pairs explicitly permitted to contain that forbidden
@@ -296,21 +318,6 @@ fn every_exemption_is_load_bearing() {
     }
 }
 
-// ── §25.11: Product name is orbok, not orbit ─────────────────────────
-
-#[test]
-fn copy_uses_orbok_not_orbit() {
-    let all_keys = [
-        MessageKey::SearchNarrowResults,
-        MessageKey::SourceActionRemoveFromOrbok,
-        MessageKey::SourceFilesNotDeletedNotice,
-        MessageKey::SourceManyFilesChanged,
-    ];
-    for key in all_keys {
-        let copy = tr(Locale::En, key);
-        assert!(
-            !copy.contains("orbit"),
-            "key {key:?} must say 'orbok', not 'orbit': \"{copy}\""
-        );
-    }
-}
+// §25.11 (product name is orbok, not orbit) is now checked by
+// `default_ui_copy_avoids_forbidden_terms` above, exhaustively over
+// every key in both locales -- see that test's own doc comment.

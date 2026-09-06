@@ -183,27 +183,14 @@ fn empty_results_with_filters_sets_empty_after_filtering() {
     ));
 }
 
-// Copy compliance (RFC-041 §8.2, §25 criterion 8) is now checked
-// exhaustively over every `MessageKey` in both locales, not a curated
-// array here -- see `tests::rfc041_search::default_ui_copy_avoids_forbidden_terms`
-// (Task 041). That test replaced this one, which -- along with
-// `rfc041_search.rs`'s own former curated version -- omitted exactly the
-// three keys that violated the rule (Review 201 §5(b)).
-
-#[test]
-fn project_name_is_orbok_not_orbit() {
-    // RFC-041 §8.3 / §2: use orbok, not orbit.
-    use crate::i18n::{Locale, MessageKey, tr};
-    let keys = [
-        MessageKey::SearchNoResultsFiltered,
-        MessageKey::SourceFilesNotDeletedNotice,
-        MessageKey::SourceFolderNotFoundDetail,
-    ];
-    for key in keys {
-        let copy = tr(Locale::En, key).to_lowercase();
-        assert!(
-            !copy.contains("orbit"),
-            "i18n key {key:?} still uses former name 'orbit': '{copy}'"
-        );
-    }
-}
+// Copy compliance (RFC-041 §8.2/§25 criterion 8, and §8.3/§25 criterion
+// 11 -- product name is orbok, not orbit) is now checked exhaustively
+// over every `MessageKey` in both locales, not a curated array here --
+// see `tests::rfc041_search::default_ui_copy_avoids_forbidden_terms`
+// (Task 041). That test replaced this one and `rfc041_search.rs`'s own
+// former `copy_uses_orbok_not_orbit`, plus `default_ui_copy_avoids_forbidden_technical_terms`
+// above -- all four checked a curated array, and all four omitted
+// exactly the keys that violated their own rule (Review 201 §5(b),
+// Review 205 §3: the second pair sat two lines under a comment naming
+// the first pair's defect, unnoticed until the exhaustive scan existed
+// to check them too).
