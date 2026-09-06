@@ -9,6 +9,21 @@
 # archaeology, not verification. This list is what makes that decision
 # honest and finite instead of a silent, permanent exemption.
 #
+# HOW IT SHRINKS (added 2026-09-07, Review 207 §4a). Not by a scheduled
+# backfill -- that is the campaign RFC-063 §12 Q4 rejected. By intent, at
+# the moment an entry stops being dormant: **when an allowlisted RFC comes
+# up for any reason -- a question about whether one of its criteria holds,
+# a bug traced to its feature, a doc that quotes it -- write its closure
+# record then, rather than answering the question and moving on.**
+#
+# The reason this line exists: RFC-043 came up exactly that way. Seven of
+# its user-facing strings were found to render nowhere (Review 207 §2-3),
+# and its criteria 11 ("Default UI shows one friendly progress experience")
+# and 12 ("Basic search remains available...") are about that copy. Nobody
+# has ever checked them against a running orbok, and this list is why
+# nobody looked. That is the cost of the exemption, and it is acceptable
+# only while the list shrinks when something like that surfaces.
+#
 # THIS LIST CAN ONLY SHRINK. check-rfc-lifecycle.sh compares the id set
 # staged in this file against the id set this file held in the immediately
 # preceding commit, and fails if any id present now was not present then.

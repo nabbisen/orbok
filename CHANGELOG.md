@@ -1398,6 +1398,23 @@ next release tag.
 
 ### Docs
 
+- **Recorded two things Review 207 surfaced, neither scheduled as work.**
+  (1) `rfcs/closures/LEGACY-ALLOWLIST.txt`'s header now says *how* the list
+  shrinks — not by a backfill campaign (the option RFC-063 §12 Q4 rejected) but
+  by intent, when an allowlisted RFC comes up for any reason: write its closure
+  record then rather than answering the question and moving on. RFC-043 is the
+  worked example, and the header says so: seven of its user-facing strings were
+  found to render nowhere while its criteria 11 and 12 are about exactly that
+  copy, and the allowlist is why nobody had looked.
+  (2) `ROADMAP.md`'s debt register records that **100 of 290 `MessageKey`s are
+  referenced nowhere outside `crates/ui/src/i18n/`**, with a one-command
+  reproduction. Mostly RFC-041's narrowing and browse-around copy, written in
+  full in both locales with only the rendering missing. Deliberately **not** a
+  gate: ~100 would fail today and most become reachable when RFC-060 §7 lands.
+  It is noted because `check-i18n-literals.sh` guarantees every key has both
+  translations and nothing guarantees a key is ever *used* — so complete,
+  translated copy for a feature that does not exist passes green.
+
 - **Two model-download messages shortened and de-subjected**, on the owner's
   reading that they answer a *risk* question — local storage and privacy — so
   the reassurance should be the whole message rather than its second clause.

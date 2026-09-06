@@ -227,6 +227,40 @@ recorded here rather than given an RFC, because their design is not in question.
   are promoted as independently reusable, which the FAQ currently half-suggests
   for `orbok-workers`.
 
+- **Roughly a third of the i18n catalog never renders.** Measured 2026-09-07
+  (Review 207 §2): of **290** `MessageKey`s, exactly **100** are referenced
+  nowhere outside `crates/ui/src/i18n/`. One command reproduces it:
+
+  ```sh
+  comm -23 \
+    <(sed -n '/message_keys! {/,/^}/p' crates/ui/src/i18n.rs \
+        | grep -oE '^ {4}[A-Z][A-Za-z0-9]*,' | tr -d ' ,' | sort -u) \
+    <(grep -rho 'MessageKey::[A-Za-z0-9]*' crates/ --include='*.rs' \
+        --exclude-dir=i18n | sed 's/MessageKey:://' | sort -u)
+  ```
+
+  The `sed` narrowing is load-bearing: without it the first list also picks
+  up `Locale`'s `En`/`Ja` variants, which share the file and the indent, and
+  the count comes out 102 of 292 instead of 100 of 290.
+
+  **Not 100 separate defects.** The bulk is RFC-041's narrowing and
+  browse-around copy — `SearchNarrowResults`, `SearchClearFilters`, every
+  `FilterKind*`/`FilterChanged*`, `SearchShowNearby` — whose UI Review 201
+  established does not render at all. What is new is the shape of the
+  evidence: the copy was written in full, in **both locales**, and only the
+  rendering is missing.
+
+  **What it says about the gate we have:** `check-i18n-literals.sh` and the
+  compile-time exhaustive `match` guarantee every key has both translations.
+  Nothing guarantees a key is ever *used*, so complete, translated, reviewed
+  copy for a feature that does not exist passes green.
+
+  **Not made a gate**, deliberately: ~100 keys would fail today, and most
+  become reachable when RFC-060 §7 wires filters, folder scope and
+  browse-around. Revisit after RFC-060 lands, when the residue is small
+  enough to allowlist in the shrink-only shape
+  `rfcs/closures/LEGACY-ALLOWLIST.txt` already uses.
+
 ### Future process hardening candidates
 
 - Reusable owner-run evidence checklist template: extract the pattern from the
