@@ -1378,6 +1378,20 @@ next release tag.
 
 ### Docs
 
+- **One vocabulary for search by meaning, not two (Task 042, owner decision on
+  Review 205 §5).** "Search helper" was doing duty for two different things:
+  a capability ("search by meaning") and a noun for the model artifact
+  ("Checking search helper…", "Some search helper files…"). Split by which
+  each of the nine sites actually meant: capability sites now say "Search by
+  meaning"/"Search by meaning is ready"; artifact sites reuse "model" — a
+  word already used freely elsewhere in the catalog (`ModelsTitle`, "the
+  model folder", "the model provider") and not on the forbidden-terms list.
+  Both locales; `ModelsKeywordOnlyHint`'s Japanese sentence, which bridges
+  both phrasings in one line (Review 205 §5's example of the catalog's best
+  copy), keeps that property with "モデル" replacing "検索ヘルパー". The
+  exhaustive guard (Task 041) still passes but cannot certify this kind of
+  change — it forbids jargon, not incoherence — so its own doc comment
+  says so rather than being cited as evidence.
 - **Plain-language copy fixed; the test meant to guard it made exhaustive
   (Task 041, RFC-041 §8.2/§25 criterion 8, RFC-045 §22 criterion 12).**
   `default_ui_copy_avoids_forbidden_terms` and
@@ -1399,6 +1413,8 @@ next release tag.
   inventing new phrasing. RFC-041's and RFC-045's own notes updated to
   record criterion 8/12 as met; RFC-045's closure record's criterion 12
   entry moved out of "criteria not met."
+
+- **RFC-061 Amendment 1 corrected: the Windows figure is a lower bound, not a
   measurement.** The amendment reported `300.04 s` and concluded "Windows pays
   ≈ 570 %". The test sets `overall_start`, wraps the work in
   `tokio::time::timeout(300 s)`, and reads `elapsed()` *after* the timeout

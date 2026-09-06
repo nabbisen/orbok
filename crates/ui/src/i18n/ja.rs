@@ -49,7 +49,7 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageTitle => "ストレージ",
         StorageIntro => "orbok の保存内容を確認し、安全にクリーンアップできます。",
         StorageGroupSearchIndex => "検索データ",
-        StorageGroupModels => "検索ヘルパー",
+        StorageGroupModels => "モデル",
         StorageGroupCaches => "一時プレビュー",
         StorageSafeCleanupHeading => "安全なクリーンアップ",
         StorageClearSnippets => "一時スニペットを削除",
@@ -61,13 +61,13 @@ pub fn message(key: MessageKey) -> &'static str {
              元のファイルが削除されることはありません。"
         }
         ModelsTitle => "モデル",
-        ModelsEmbeddingRole => "検索ヘルパー",
+        ModelsEmbeddingRole => "意味による検索",
         ModelsRerankerRole => "リランカー",
         ModelsStatusAvailable => "利用可能",
         ModelsStatusMissing => "未導入",
         ModelsKeywordOnlyHint => {
             "基本検索は使用できます。意味による検索も使うには、\
-             検索ヘルパーを追加してください。"
+             モデルを追加してください。"
         }
         ModelsVerification => "検証状態",
         SettingsTitle => "設定",
@@ -91,9 +91,9 @@ pub fn message(key: MessageKey) -> &'static str {
         DialogAddSourceTitle => "追加するフォルダーを選択",
         DialogChooseSearchFolderTitle => "検索するフォルダーを選択",
         WizardTitleNotConfigured => "セマンティック検索の設定",
-        WizardTitleFileMissing => "検索ヘルパーが見つかりません",
+        WizardTitleFileMissing => "モデルが見つかりません",
         WizardTitleValidating => "モデルフォルダを確認中",
-        WizardTitleReady => "検索ヘルパーの準備完了",
+        WizardTitleReady => "意味による検索の準備完了",
         WizardBodyNotConfigured => {
             "キーワード検索は利用可能です。意味による検索を使用するには、             このコンピュータにローカルAIモデルが必要です。             ファイルはアップロードされません。"
         }
@@ -279,10 +279,10 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustSizeLimitDetail => "この大きなファイルの一部のみが準備されました。",
         TrustCannotOpenDetail => "orbokはこのファイルを開けません。",
         // RFC-043: Model download readiness
-        ModelCheckingFiles => "検索ヘルパーを確認中...",
+        ModelCheckingFiles => "モデルを確認中...",
         ModelAlreadyReady => "より良い検索が使えます。",
         ModelNeedsDownload => {
-            "検索ヘルパーファイルが必要です。orbokは不足しているものだけをダウンロードします。"
+            "モデルファイルが必要です。orbokは不足しているものだけをダウンロードします。"
         }
         ModelDownloadingBetterSearch => "より良い検索をダウンロード中",
         ModelFilesStayLocal => "ファイルはこのコンピューターに保存されます。",
@@ -291,7 +291,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         ModelDownloadRetry => "もう一度試す",
         ModelRepairingFiles => {
-            "一部の検索ヘルパーファイルを修復する必要があります。orbokは必要なものだけをダウンロードします。"
+            "一部のモデルファイルを修復する必要があります。orbokは必要なものだけをダウンロードします。"
         }
         ModelBasicSearchAvailable => "基本検索は使えます。意味による検索は後で追加できます。",
         ModelDownloadingWhatNeeded => "必要なものをダウンロード中...",
@@ -319,7 +319,7 @@ pub fn message(key: MessageKey) -> &'static str {
         PrivacyTurnOnAndClear => "有効にして消去",
         PrivacyFilesNotDeleted => "あなたのファイルは削除されません。",
         PrivacyModelDownloadNote => {
-            "orbokは検索ヘルパーをダウンロードしますが、あなたのドキュメントはアップロードされません。"
+            "orbokはモデルをダウンロードしますが、あなたのドキュメントはアップロードされません。"
         }
         // RFC-040: Diagnostics
         DiagnosticsTitle => "診断",

@@ -45,7 +45,7 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageTitle => "Storage",
         StorageIntro => "See what orbok stores and clean up safely.",
         StorageGroupSearchIndex => "Search data",
-        StorageGroupModels => "Search helper",
+        StorageGroupModels => "Models",
         StorageGroupCaches => "Temporary previews",
         StorageSafeCleanupHeading => "Safe cleanup",
         StorageClearSnippets => "Clear temporary previews",
@@ -57,12 +57,12 @@ pub fn message(key: MessageKey) -> &'static str {
              Your files are never deleted."
         }
         ModelsTitle => "Models",
-        ModelsEmbeddingRole => "Search helper",
+        ModelsEmbeddingRole => "Search by meaning",
         ModelsRerankerRole => "Reranker",
         ModelsStatusAvailable => "Available",
         ModelsStatusMissing => "Missing",
         ModelsKeywordOnlyHint => {
-            "Basic search still works. Add a search helper to also \
+            "Basic search still works. Add a model to also \
              search by meaning."
         }
         ModelsVerification => "Verification",
@@ -89,9 +89,9 @@ pub fn message(key: MessageKey) -> &'static str {
         DialogAddSourceTitle => "Select a folder to add",
         DialogChooseSearchFolderTitle => "Choose folder to search",
         WizardTitleNotConfigured => "Set up search by meaning",
-        WizardTitleFileMissing => "Search helper not found",
+        WizardTitleFileMissing => "Model not found",
         WizardTitleValidating => "Checking model folder",
-        WizardTitleReady => "Search helper ready",
+        WizardTitleReady => "Search by meaning is ready",
         WizardBodyNotConfigured => {
             "Keyword search is ready. To also search by meaning,              orbok needs a local AI model on this computer.              No files are uploaded — inference runs locally."
         }
@@ -270,10 +270,10 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustSizeLimitDetail => "Only part of this large file was prepared.",
         TrustCannotOpenDetail => "orbok cannot open this file.",
         // RFC-043: Model download readiness
-        ModelCheckingFiles => "Checking search helper...",
+        ModelCheckingFiles => "Checking model...",
         ModelAlreadyReady => "Better search is ready.",
         ModelNeedsDownload => {
-            "Some search helper files are needed. orbok will download only what is missing."
+            "Some model files are needed. orbok will download only what is missing."
         }
         ModelDownloadingBetterSearch => "Downloading better search",
         ModelFilesStayLocal => "Your files stay on this computer.",
@@ -282,7 +282,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         ModelDownloadRetry => "Try again",
         ModelRepairingFiles => {
-            "Some search helper files need to be repaired. orbok will download only what is needed."
+            "Some model files need to be repaired. orbok will download only what is needed."
         }
         ModelBasicSearchAvailable => "Basic search is ready. Search by meaning can be added later.",
         ModelDownloadingWhatNeeded => "Downloading what is needed...",
@@ -312,7 +312,7 @@ pub fn message(key: MessageKey) -> &'static str {
         PrivacyTurnOnAndClear => "Turn on and clear",
         PrivacyFilesNotDeleted => "Your files will not be deleted.",
         PrivacyModelDownloadNote => {
-            "orbok downloads the search helper, but your documents are not uploaded."
+            "orbok downloads the model, but your documents are not uploaded."
         }
         // RFC-040: Diagnostics
         DiagnosticsTitle => "Diagnostics",
