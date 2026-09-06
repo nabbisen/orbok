@@ -271,11 +271,11 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustCannotOpenDetail => "orbok cannot open this file.",
         // RFC-043: Model download readiness
         ModelCheckingFiles => "Checking model...",
-        ModelAlreadyReady => "Better search is ready.",
+        ModelAlreadyReady => "Search by meaning is ready",
         ModelNeedsDownload => {
             "Some model files are needed. orbok will download only what is missing."
         }
-        ModelDownloadingBetterSearch => "Downloading better search",
+        ModelDownloadInProgress => "Downloading model",
         ModelFilesStayLocal => "Your files stay on this computer.",
         ModelDownloadFailed => {
             "Download did not finish. Please check your connection and try again."

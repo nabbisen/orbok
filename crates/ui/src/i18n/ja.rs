@@ -280,11 +280,11 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustCannotOpenDetail => "orbokはこのファイルを開けません。",
         // RFC-043: Model download readiness
         ModelCheckingFiles => "モデルを確認中...",
-        ModelAlreadyReady => "より良い検索が使えます。",
+        ModelAlreadyReady => "意味による検索の準備完了",
         ModelNeedsDownload => {
             "モデルファイルが必要です。orbokは不足しているものだけをダウンロードします。"
         }
-        ModelDownloadingBetterSearch => "より良い検索をダウンロード中",
+        ModelDownloadInProgress => "モデルをダウンロード中",
         ModelFilesStayLocal => "ファイルはこのコンピューターに保存されます。",
         ModelDownloadFailed => {
             "ダウンロードが完了しませんでした。接続を確認してもう一度お試しください。"

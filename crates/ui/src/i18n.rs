@@ -366,7 +366,7 @@ message_keys! {
     ModelCheckingFiles,
     ModelAlreadyReady,
     ModelNeedsDownload,
-    ModelDownloadingBetterSearch,
+    ModelDownloadInProgress,
     ModelFilesStayLocal,
     ModelDownloadFailed,
     ModelDownloadRetry,

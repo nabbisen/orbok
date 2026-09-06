@@ -1378,6 +1378,30 @@ next release tag.
 
 ### Docs
 
+- **A fourth "search helper" synonym, found by the reviewer, not the sweep
+  (Review 206 §3).** Task 042's own catalog sweep answered its own question
+  ("anything the sweep found that §2 missed?") with two things that were not
+  it: after that task shipped, `WizardTitleReady` said "Search by meaning is
+  ready" while `ModelAlreadyReady` still said "Better search is ready." —
+  "better search" was the fourth vocabulary for the same capability, sitting
+  in a key the sweep's `search helper`/`検索ヘルパー` grep could never have
+  found because it never used either forbidden phrase. Fixed: `ModelAlreadyReady`
+  now reads the same as `WizardTitleReady` in both locales — a deliberate
+  literal duplicate, not an oversight, since both name the identical outcome.
+  `ModelDownloadingBetterSearch` had the same defect the other way — an
+  **artifact** action ("downloading a model") named with a **capability**
+  phrase — fixed to "Downloading model"/「モデルをダウンロード中」, reusing
+  `WizardDownloadProgress`'s own established phrasing, and renamed to
+  `ModelDownloadInProgress` since the old name embedded the retired term in
+  code, not just copy (three references, all internal to `i18n.rs`/`en.rs`/
+  `ja.rs`, so free to rename). **Neither string is currently reachable from
+  any view** — confirmed by grep across the whole workspace for
+  `MessageKey::ModelAlreadyReady`/`ModelDownloadInProgress` and five sibling
+  RFC-043 keys (`ModelCheckingFiles`, `ModelNeedsDownload`,
+  `ModelRepairingFiles`, `ModelBasicSearchAvailable`, `ModelFilesStayLocal`):
+  zero hits outside the i18n files themselves. The duplicate does not
+  currently render to a user, but the catalog is the thing the one-vocabulary
+  rule governs, and dead code is not an exemption from it.
 - **One vocabulary for search by meaning, not two (Task 042, owner decision on
   Review 205 §5).** "Search helper" was doing duty for two different things:
   a capability ("search by meaning") and a noun for the model artifact
