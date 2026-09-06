@@ -477,6 +477,26 @@ next release tag.
 
 ### Changed
 
+- **Task 043 — snora 0.42.0 → 0.46.0, version-bump-only, no measured
+  change.** Same shape as Tasks 022/023/029/030/037 — zero files under
+  `crates/` touched (`git diff --stat -- crates/`: empty). The one
+  breaking release in this hop, 0.45.0's removal of
+  `snora_design::{Emphasis, Size}`, is the change orbok itself confirmed
+  safe in a 2026-09-05 reply to snora's letter; re-checked at bump time,
+  zero occurrences of either name anywhere in the tree. Read snora's own
+  `CHANGELOG.md` for the full 0.43→0.46 range, not just their summary
+  letter (the practice that found the `iced` `advanced`-feature removal
+  in Task 037): nothing beyond what the letter already named reaches
+  orbok. Checked arama's Windows lockfile-shrink finding specifically,
+  since Task 037's bump crossed that exact trigger once already —
+  `gpu-allocator` and `wgpu-hal` still agree on `windows@0.58.0` after
+  this bump, package count unchanged at 676 (a separate, pre-existing
+  `windows@0.62.2` via `mundy`→`iced_winit`, unrelated to the
+  `gpu-allocator`/`wgpu-hal` pair, exists unchanged on both sides of the
+  bump too). `cargo tree --workspace --edges normal | wc -l` and
+  `target/release/orbok`'s size are both byte-for-byte identical before
+  and after (1431 edges; 29,792,272 bytes) — measured, not assumed from
+  the "no behaviour change" letter text.
 - **Task 037 — snora 0.39.3 → 0.42.0, Phase 1 only, and a real ~1.4 MiB
   win:** version-bump-only, same shape as Tasks 022/023/029/030 — zero
   files under `crates/` touched, confirmed by `git diff --stat`, not
