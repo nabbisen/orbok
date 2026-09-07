@@ -192,9 +192,15 @@ resolution is measured.
 
 Three further corrections, all small:
 
-1. **Sample count.** `queries.rs` defines 10 queries × 3 runs = 30 samples. A
-   p99 over 30 samples is the maximum observation. The v1.0 gate is stated as a
-   p99. Raise to ≥ 100 samples before any p99 is reported.
+1. **Sample count.** `queries.rs` defines **9** queries × 3 runs = **27**
+   samples. A p99 over 27 samples is the maximum observation. The v1.0 gate is
+   stated as a p99. Raise to ≥ 100 samples before any p99 is reported.
+
+   *Corrected 2026-09-07.* This read "10 queries × 3 runs = 30 samples", taken
+   from the external audit and never checked against `queries.rs`, which holds
+   nine. The correction does not change the conclusion — 27 is worse than 30 —
+   but an RFC that miscounts a file it names is the defect this RFC exists to
+   end, so it is fixed rather than left as close enough.
 2. **`latency_metrics(vec![])`** indexes `latencies_ms[0]` and panics on an
    empty query set (`metrics.rs:191`). Return an error or an empty summary.
 3. **A `model_construction_ms` field** in the timing breakdown, so the cost this

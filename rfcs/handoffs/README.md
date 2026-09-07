@@ -79,7 +79,20 @@ under RFC-000.
 | 051 | HANDOFF-051-reproducible-reviewed-source-packaging | reviewed tracked inputs, lockfile, and deterministic archives |
 | 052 | HANDOFF-052-ui-localization-and-design-gate-compliance | complete En/Ja UI copy and mandatory token/i18n gates |
 | 053 | HANDOFF-053-rusqlite-line-and-msrv | rusqlite 0.39 line, measured MSRV, and the localcache upgrade it unblocks |
+| 054 | HANDOFF-054-runtime-data-override-profile-scope | `ORBOK_DATA_DIR` profile scope, and the settings path it does not relocate |
+| 055 | HANDOFF-055-settings-path-fail-closed | fail-closed settings-path resolution, and portable mode with no platform config dir |
+| 056 | HANDOFF-056-hosting-the-indexing-scheduler | hosting RFC-036's scheduler in the application, which had never been connected to it |
+| 057 | HANDOFF-057-live-resource-signals | user-activity and battery signal sources feeding RFC-036's existing policy |
+| 058 | HANDOFF-058-verifying-the-wired-application | the end-to-end reachability test, the benchmark's timing boundary, and the release gate |
 
-RFC-047 evidence collection and release-candidate promotion remain paused
-while the RFC-049–052 stabilization blockers and RFC-048 performance gate are
-unresolved.
+**Index corrected 2026-09-07.** Handoffs 054–057 existed on disk and were
+missing from the table above; 058 is new. The closing note below was also stale
+— it described RFC-049–052 as unresolved blockers, and all four have been
+implemented since.
+
+RFC-047 evidence collection remains paused, now behind a different and larger
+set of blockers than the one it was paused behind: RFC-058 through RFC-063,
+opened by the 2026-09-01 external architecture audit. **RFC-048's performance
+gate should not be re-measured until RFC-058 §7 lands** — the benchmark
+constructs its search service outside its own timing loop, so every number the
+project holds excludes the cost the application pays on every search.

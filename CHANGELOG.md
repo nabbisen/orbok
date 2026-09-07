@@ -1398,6 +1398,32 @@ next release tag.
 
 ### Docs
 
+- **RFC-058 has an implementation handoff** (`rfcs/handoffs/HANDOFF-058-…`), the
+  first for any of the six RFCs the 2026-09-01 audit opened. It records that the
+  board moved under the RFC: §6 was drafted when all eight of its assertions
+  described live defects, and three have since changed — row 1 was built by Task
+  035, rows 7 and 8 were fixed by Task 034, and rows 2–6 are RFC-060's. So the
+  assertions split three ways. Already-fixed rows are proven by **mutation**
+  (revert the fix, watch the assertion go red) rather than by the RFC's
+  observe-it-failing rule, which is no longer executable for them. Rows waiting
+  on RFC-060 are written now under `#[should_panic]` with the expected message
+  rather than `#[ignore]` — so they still run on all three platforms, and so a
+  wrapper cannot outlive its defect silently, which is how `ROADMAP.md`'s debt
+  register records RFC-050's durability guarantees stopped being verified.
+  §8 turns out to be already satisfied and better than it asked: Task 035 placed
+  the tests in `--bin orbok`, which CI runs on Linux, macOS and Windows, where
+  §8 had proposed a Linux-only release-gate step.
+- **RFC-058 §7 miscounted a file it names.** It read "10 queries × 3 runs = 30
+  samples"; `crates/bench/src/queries.rs` holds **nine**, so the real figure is
+  **27**. Taken from the audit and never checked. The conclusion is unchanged —
+  a p99 over 27 samples is still the maximum observation — but corrected rather
+  than left as close enough.
+- **`rfcs/handoffs/README.md` was stale.** Handoffs 054–057 existed on disk and
+  were missing from its index, and its closing note still described RFC-049–052
+  as unresolved blockers, all four having shipped since. Both corrected, and the
+  note now records that RFC-048's gate should not be re-measured until RFC-058 §7
+  lands.
+
 - **Recorded two things Review 207 surfaced, neither scheduled as work.**
   (1) `rfcs/closures/LEGACY-ALLOWLIST.txt`'s header now says *how* the list
   shrinks — not by a backfill campaign (the option RFC-063 §12 Q4 rejected) but
