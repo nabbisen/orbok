@@ -15,6 +15,62 @@ next release tag.
 
 ### Added
 
+- **RFC-058 implementation handoff: the reachability test grows to 9 of its
+  8 rows, the benchmark measures model construction, and two new,
+  previously-unknown defects surfaced along the way.** Rows 2 (deleted-file
+  trust), 5 (paused-source, source-level half), 6 (PDF snippet), and 8
+  (Japanese ranking) added to `wired_application_tests.rs`, each observed
+  failing (2, 5, 6 wrapped in `#[should_panic]`, naming the RFC-060
+  criterion that removes the wrapper; 8's fix already landed in Task 034,
+  proven by mutation — the comparator flipped, the test went red naming the
+  wrong order, restored). Row 7 (fusion-order determinism) is written but
+  needs a real hybrid search with genuine RRF score ties to exercise, which
+  needs a real embedding model neither CI nor this environment has —
+  `#[ignore]`d with a manual-run recipe, the same pattern
+  `measure_scan_and_index_blocking_time_with_a_real_model` already
+  established, not executed as part of this task. Rows 3 and 4 (kind
+  filter, folder scope) are not written at all: the search entry point has
+  no parameter surface for either, and adding one is RFC-060 §7's own job,
+  not an instrument change — reported per the handoff's stop condition
+  rather than force-written.
+
+  **Two defects found while building row 6's PDF fixture, neither fixed
+  here.** `crates/pipeline/extract/src/pdf.rs`'s extraction loop calls
+  `lopdf::Document::extract_text(&[*obj_id])` with each page's *object*
+  ID; `extract_text` takes 1-based *page numbers*. For a page whose object
+  ID doesn't equal its page number — true of essentially any real PDF,
+  since fonts, the page tree, and content streams all consume object
+  numbers too — extraction silently returns zero text for every page. The
+  existing extractor-level test tolerated this already (its own comment:
+  "may or may not extract text... depending on lopdf version"), which is
+  why nothing caught it. Separately, `chunker.rs`'s whole-file "document"
+  chunk hardcodes `location_quality: "exact"` regardless of the segments
+  it spans, so Task 034's interim snippet guard (`location_quality !=
+  "exact"` → no snippet) never applies to it — a real PDF's rank-1 result
+  (the document chunk, RFC-060 §10) still returns raw `%PDF-1.5` / `1 0
+  obj` syntax as its snippet today, not `None` as previously believed.
+
+- **The benchmark measures the cost the shipped application actually pays
+  per search (RFC-058 §7).** `crates/bench`'s search-timing loop used to
+  build the embedding model once and reuse it across every measured
+  search; `bootstrap::run_search_with` resolves and constructs the model
+  **inside every search call**, with no caching across calls, so the
+  harness was blind to the single largest cost in a real search — the
+  reason keyword-only p99 has been green while real-model p99 fails by 4×
+  since v0.20.0. `measure_search_timing` now reconstructs the model fresh
+  for every sample (`model_construction_ms`, a new field alongside
+  `keyword_ms`/`fusion_ms`/etc., zero in keyword-only mode where there is
+  no model to construct) — the same shape production pays, not a shape a
+  harness chose for convenience. Sample count raised from 9 queries × 3
+  runs = 27 (already corrected in RFC-058 §7's own text: "the maximum
+  observation," not a real p99) to 9 × 12 = 108, clearing the ≥ 100 floor.
+  `latency_metrics(vec![])` no longer panics (`latencies_ms[0]` on an empty
+  vec — the existing `.min(len.saturating_sub(1))` guard didn't save it);
+  it returns an error, demonstrated by a test that panicked before the fix
+  and passes after. Keyword-only mode's own numbers are unaffected
+  (`bench_full_pipeline`'s existing assertions still pass unchanged) since
+  there is no model to reconstruct in that mode.
+
 - **Task 035 — RFC-037 wired: registered folders are now re-scanned, not
   indexed once and forgotten.** RFC-037's `SourceState`/`FileState`/
   `check_source_path` vocabulary existed, fully built, since it landed —

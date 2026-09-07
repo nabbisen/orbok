@@ -12,6 +12,21 @@
 //! precedent (RFC-049's own boundary tests), which avoids needing to widen
 //! any `bootstrap::` function's visibility beyond `pub`/`pub(crate)` just
 //! for a separate test binary to reach it.
+//!
+//! RFC-058 §6 rows 3 and 4 (kind filter, folder scope) are **not** in this
+//! file, and that is a stop condition (handoff §6), not an omission.
+//! `bootstrap::run_search`/`run_search_with` take `(context, catalog,
+//! query, limit)` -- no filter, no scope parameter exists anywhere on the
+//! call path down to `HybridSearchService::search`. There is no lower-level
+//! entry point either (unlike row 5's source-pausing, which reuses
+//! `SourceRepository::set_status`, a real persistence path the application
+//! already calls elsewhere): `ActiveFilter`/`SearchFolderScope` live only
+//! in UI state and never reach a query anywhere in the stack. Writing
+//! either assertion would mean adding a parameter to the search entry
+//! point myself -- exactly what RFC-060 §7 says is its own job ("grows a
+//! request struct") -- which is the specific thing this handoff's scope
+//! rule warns against. Reported per the handoff's own stop condition
+//! rather than force-written.
 
 use super::bootstrap;
 use super::scheduler_host::{self, ResourceObservation};
@@ -87,6 +102,88 @@ fn write_markdown(path: &Path, body: &str) {
         std::fs::create_dir_all(parent).unwrap();
     }
     std::fs::write(path, body).unwrap();
+}
+
+/// A real, valid three-page PDF, built with `lopdf`'s own document/writer
+/// API rather than hand-authored byte content (`Document::save` computes
+/// its own xref table, which a hand-edited multi-page extension of a
+/// known-good fixture would risk corrupting) -- each page carries its own
+/// distinct marker text, so a query can target one specific page.
+///
+/// Page object IDs are reserved **first**, before any other object, so
+/// they come out numbered 1, 2, 3 in page order. This is not cosmetic:
+/// `crates/pipeline/extract/src/pdf.rs`'s extraction loop calls
+/// `lopdf::Document::extract_text(&[*obj_id])` with the page's *object* ID,
+/// but `extract_text` takes 1-based *page numbers* (`lopdf::parser_aux.rs`'s
+/// own signature, confirmed by reading it: `pages.get(&page_number)` against
+/// the `page_number -> object_id` map `get_pages()` builds) -- a real,
+/// separate defect from the one this test targets, found while building
+/// this fixture and reported rather than fixed here (out of scope for
+/// RFC-058; see the review request). For a page whose object ID does not
+/// equal its page number -- true of essentially every real-world PDF,
+/// where the page tree, fonts, and content streams all consume object
+/// numbers too -- extraction silently returns zero text for every page
+/// today. Numbering pages 1-3 here works around that bug so this test can
+/// still exercise the defect it is actually about; it is not evidence the
+/// bug does not matter.
+fn write_three_page_pdf(path: &Path, page_texts: [&str; 3]) {
+    use lopdf::content::{Content, Operation};
+    use lopdf::{Document, Object, Stream, dictionary};
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+
+    let mut doc = Document::with_version("1.5");
+    let page_ids: Vec<(u32, u16)> = (0..page_texts.len()).map(|_| doc.new_object_id()).collect();
+    let pages_id = doc.new_object_id();
+    let font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Helvetica",
+    });
+    let resources_id = doc.add_object(dictionary! {
+        "Font" => dictionary! { "F1" => font_id },
+    });
+
+    let mut page_refs: Vec<Object> = Vec::new();
+    for (page_id, text) in page_ids.iter().zip(page_texts) {
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                Operation::new("Td", vec![72.into(), 700.into()]),
+                Operation::new("Tj", vec![Object::string_literal(text)]),
+                Operation::new("ET", vec![]),
+            ],
+        };
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        doc.objects.insert(
+            *page_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => content_id,
+            }),
+        );
+        page_refs.push((*page_id).into());
+    }
+
+    let pages = dictionary! {
+        "Type" => "Pages",
+        "Count" => page_refs.len() as i64,
+        "Kids" => page_refs,
+        "Resources" => resources_id,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+    };
+    doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+    let catalog_id = doc.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(path).unwrap();
 }
 
 /// RFC-058 §6 row 1 / Task 035 §5.1: with a source registered and a file
@@ -275,6 +372,198 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
     );
 }
 
+/// RFC-058 §6 row 6 / RFC-060 §11.1 (F-03): a PDF result's snippet must
+/// contain real text from the matched page, not the raw bytes that result
+/// from treating a stored page number as a text-file line number.
+///
+/// Still live, and worse than "no snippet": Task 034's interim guard
+/// (RFC-060 §6 -- `load_snippet` returns `None` unless
+/// `location_quality == "exact"`) does not catch every chunk. The
+/// per-page segment chunks correctly store `PageOnly`/`Approximate` and
+/// are caught. The whole-file **"document"** chunk (`chunker.rs`'s own
+/// aggregate, RFC-060 §10's "document chunk" -- matches nearly any query,
+/// so it is typically the rank-1 result) hardcodes
+/// `location_quality: "exact"` regardless of the segments it spans
+/// (`crates/pipeline/extract/src/chunker.rs:65`), so the guard never
+/// applies to it and `load_snippet` opens the raw PDF file and reads its
+/// first "lines" as if it were plain text -- literal `%PDF-1.5` / `1 0
+/// obj` syntax, confirmed below, not `None`. RFC-060 §5 (persisting
+/// `location_kind` and rendering PDF/DOCX/HTML from the extraction cache)
+/// is what closes this properly; a narrower interim fix would be
+/// `chunker.rs:65` deriving the document chunk's quality from its spanned
+/// segments instead of hardcoding `"exact"`, closing the same gap Task
+/// 034 closed for per-page chunks. Either way, not fixed here -- remove
+/// this wrapper once one of them lands.
+#[tokio::test]
+#[should_panic(expected = "snippet must not contain raw PDF object syntax")]
+async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_three_page_pdf(
+        &source_dir.join("doc.pdf"),
+        [
+            "firstpagemarker content on page one.",
+            "secondpagemarker content on page two.",
+            "thirdpagemarker content on page three.",
+        ],
+    );
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = bootstrap::run_search(&context, &catalog, "thirdpagemarker", 20).unwrap();
+    assert!(
+        !results.is_empty(),
+        "the PDF must be findable by text unique to its third page"
+    );
+    let snippet = results[0].snippet.as_deref().unwrap_or("");
+    assert!(
+        !snippet.contains(" obj") && !snippet.contains("endobj"),
+        "snippet must not contain raw PDF object syntax, got {snippet:?}"
+    );
+    assert!(
+        snippet.contains("thirdpagemarker"),
+        "snippet must contain real text from page 3, got {snippet:?}"
+    );
+}
+
+/// RFC-058 §6 row 2 / RFC-060 §11.3 (F-06): a result's trust state must
+/// reflect the file's real state, and today it never does --
+/// `bootstrap/search.rs` hardcodes `ResultTrustDisplay::default()` (state
+/// `Ready`, no recovery actions) on every result, regardless of the file
+/// backing it.
+///
+/// Deliberately does **not** call `check_and_refresh_source` after
+/// deleting the file. A refresh would mark the file `missing` and
+/// deactivate its chunks (Task 035), which excludes it from search results
+/// entirely -- correct for that scenario, but it means the file could never
+/// appear in a result to carry a trust badge on. The gap F-06 describes is
+/// the window this test occupies instead: a file gone from disk that
+/// **no refresh has processed yet**, so the catalog still calls it
+/// `indexed`, search still returns it, and the trust the result carries is
+/// wrong regardless -- always `Ready`, never reflecting that the file
+/// backing it no longer exists.
+///
+/// `#[should_panic]`, not `#[ignore]` (RFC-058 §6 Group B): remove the
+/// wrapper once RFC-060 §7 wires `SearchResultTrust::from_catalog` into
+/// this path.
+#[tokio::test]
+#[should_panic(expected = "must not be Ready for a file deleted from disk")]
+async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    let doc = source_dir.join("vanishing.md");
+    write_markdown(&doc, "# Vanishing\n\nvanishingfilemarker content.\n");
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let results = bootstrap::run_search(&context, &catalog, "vanishingfilemarker", 20).unwrap();
+        assert!(
+            !results.is_empty(),
+            "baseline: the file must be findable before it is deleted"
+        );
+    }
+
+    // Deleted, but no refresh has run: the catalog does not know yet.
+    std::fs::remove_file(&doc).unwrap();
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = bootstrap::run_search(&context, &catalog, "vanishingfilemarker", 20).unwrap();
+    assert!(
+        !results.is_empty(),
+        "sanity: with no refresh run, the stale catalog entry must still surface a result \
+         -- otherwise this is no longer the window F-06 describes"
+    );
+    assert_ne!(
+        results[0].trust.state,
+        orbok_ui::state::ResultTrustDisplay::default().state,
+        "a result's trust state must not be Ready for a file deleted from disk, \
+         got {:?}",
+        results[0].trust
+    );
+}
+
+/// RFC-058 §6 row 5 / RFC-060 §11.6 (F-07, source-level): a source set to
+/// `Paused` must contribute no results, and today it still does -- no
+/// retrieval query joins `sources` (RFC-060 §7's own table). Task 035
+/// closed only the *file*-level half of row 5 (a missing file's chunks are
+/// deactivated); this is the untouched *source*-level half, per the
+/// handoff's own note that no assumption should be made that Task 035
+/// covered it.
+///
+/// Paused via `SourceRepository::set_status` directly -- the same
+/// repository method `bootstrap::check_and_refresh_source` itself calls to
+/// persist a status change -- because no UI action pauses a source yet
+/// (`bootstrap/startup.rs`'s own comment on `SourceStatus::Paused` says so).
+/// This sets up the precondition through the application's real persistence
+/// path, the same way other tests in this file use `std::fs::remove_file`
+/// to arrange a precondition, and then observes the outcome through the
+/// real entry point under test, `bootstrap::run_search`.
+///
+/// `#[should_panic]`, not `#[ignore]` (RFC-058 §6 Group B): this runs on
+/// every push and fails loudly, naming the RFC-060 criterion, if the guard
+/// disappears without anyone removing this wrapper. Remove the wrapper once
+/// RFC-060 §7 makes source status honoured at the query layer.
+#[tokio::test]
+#[should_panic(expected = "a paused source's files must not appear in search results")]
+async fn a_paused_source_contributes_no_search_results() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\npausedsourcemarker content.\n",
+    );
+
+    let source_id = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        card.source_id
+    };
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let results = bootstrap::run_search(&context, &catalog, "pausedsourcemarker", 20).unwrap();
+        assert!(
+            !results.is_empty(),
+            "baseline: the file must be findable before its source is paused"
+        );
+    }
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        orbok_db::repo::SourceRepository::new(&catalog)
+            .set_status(
+                &orbok_core::SourceId::from_string(source_id.clone()),
+                orbok_core::SourceStatus::Paused,
+            )
+            .unwrap();
+    }
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = bootstrap::run_search(&context, &catalog, "pausedsourcemarker", 20).unwrap();
+    assert!(
+        results.is_empty(),
+        "a paused source's files must not appear in search results, got {results:?}"
+    );
+}
+
 /// RFC-004 §11 / Task 035 §5.3's recovery counterpart: a file that went
 /// missing and then reappears with byte-identical content -- the case the
 /// previous test's own doc comment names as the reason
@@ -410,4 +699,162 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
         file_count, 1,
         "RFC-037 §12 'deletes nothing': the file row must survive"
     );
+}
+
+/// RFC-058 §6 row 8 / RFC-060 §11.8 (F-02, F-02b): a short, dense Japanese
+/// chunk containing the query term must outrank a long chunk that mentions
+/// it once, buried in filler -- through the real application entry point,
+/// not `MultilingualKeywordEngine` invoked directly (that already has this
+/// exact corpus at the library level,
+/// `orbok-search`'s `task034_ranking_fusion::cjk_merge_ranks_the_dense_relevant_chunk_first`,
+/// which is proof the library is correct, not that the app calls it
+/// correctly -- RFC-058's own point). Same term ("認証エラー") and filler
+/// text as that test, verified there against real FTS5 `bm25()` scores
+/// (short: -1.3253e-6, long: -8.0292e-7, lower is better) -- reused rather
+/// than re-derived.
+///
+/// Needs no embedding model: `contains_cjk` routes this query through
+/// `MultilingualKeywordEngine`'s unicode61+trigram merge
+/// (`rrf_fuse_keyword_lists`) regardless of search mode, so this exercises
+/// the fix Task 034 landed (`multilingual.rs`'s comparator direction) via
+/// keyword-only search alone.
+#[tokio::test]
+async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+
+    write_markdown(&source_dir.join("short.md"), "# Short\n\n認証エラー\n");
+    let filler = "今日は天気がとても良いので散歩に出かけました。".repeat(2);
+    write_markdown(
+        &source_dir.join("long.md"),
+        &format!("# Long\n\n{filler}認証エラー。{filler}\n"),
+    );
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = bootstrap::run_search(&context, &catalog, "認証エラー", 20).unwrap();
+    assert!(!results.is_empty(), "the corpus must be findable at all");
+    // RFC-060 §10's own recorded, separate defect: the whole-file "document"
+    // chunk isn't deduped from the section-level chunk, so each file can
+    // appear twice. Not this test's concern -- dedupe by path to check
+    // ordering between the two *files*, which is what row 8 is about.
+    let mut first_rank_by_file: Vec<&str> = Vec::new();
+    for r in &results {
+        if !first_rank_by_file.contains(&r.display_path.as_str()) {
+            first_rank_by_file.push(&r.display_path);
+        }
+    }
+    assert_eq!(
+        first_rank_by_file.len(),
+        2,
+        "both files must be found: {results:?}"
+    );
+    assert!(
+        first_rank_by_file[0].ends_with("short.md"),
+        "the short, dense chunk must rank first -- got file order {first_rank_by_file:?}"
+    );
+}
+
+/// RFC-058 §6 row 7 / RFC-060 §11.7 (F-10): two identical searches issued
+/// in one process must return identical result orders, over 20
+/// repetitions. The fix (`rrf_fuse`'s `chunk_id` tie-break, Task 034 §2)
+/// only has anything to prove itself against when two candidates'
+/// `rrf_score`s **tie** -- `1/(60+kw_rank) + 1/(60+vec_rank)` landing on
+/// the same value for two different chunks, e.g. one at keyword-rank 1 /
+/// vector-rank 5 and another at keyword-rank 5 / vector-rank 1 (the
+/// structural case `rrf.rs`'s own comment names). A single keyword list
+/// can never produce this -- ranks 1..N are already unique, so
+/// `rrf_fuse`'s score is too, with nothing to tie -- fusing keyword
+/// candidates with an **empty** vector list (`SearchCapability::KeywordOnly`,
+/// this repo's normal state) cannot exercise the defect no matter how the
+/// corpus is shaped. Only a real hybrid search, with real vector
+/// candidates from a real embedding model, produces the tie.
+///
+/// `#[ignore]`d for the same reason `bootstrap::tests::embedding_blocking_measurement`
+/// is (no ONNX model file is available in CI or this sandbox), gated the
+/// way RFC-058 §11 open question 2 asks model-dependent assertions to be:
+/// not silently skipped, run manually. **Not executed as part of this
+/// task** -- I could not construct or verify a genuine tie without a real
+/// model to check ranks against, so I cannot report having observed this
+/// one green, let alone red-then-green under mutation. Whoever next has
+/// `RFC013_MODEL_DIR` available should run it once (with `-p orbok --bin
+/// orbok --features orbok-embed/tract --release -- --ignored`), confirm
+/// it passes, then mutate `rrf_fuse`'s `chunk_id` tie-break away (delete
+/// the `.then_with(...)` in `crates/search/engine/src/rrf.rs`) and confirm
+/// it goes red, the same way row 8's mutation was carried out and recorded
+/// here.
+///
+/// ```sh
+/// RFC013_MODEL_DIR=~/.local/share/orbok/models/multilingual-e5-small \
+///   cargo test -p orbok --bin orbok --features orbok-embed/tract --release \
+///   two_identical_searches_return_identical_orders -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires the real embedding model on disk; see RFC013_MODEL_DIR"]
+async fn two_identical_searches_return_identical_orders() {
+    let model_dir = std::env::var("RFC013_MODEL_DIR").expect(
+        "RFC013_MODEL_DIR must point at the multilingual-e5-small model directory \
+         (e.g. ~/.local/share/orbok/models/multilingual-e5-small)",
+    );
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    crate::settings::save_settings(
+        &temp.path().join("settings.json"),
+        &crate::settings::OrbokSettings {
+            embedding_model_dir: Some(model_dir),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let source_dir = temp.path().join("source");
+    // A modest field of candidates sharing the query term but otherwise
+    // varied, so keyword rank and semantic (vector) rank are unlikely to
+    // agree file-for-file -- the condition under which `rrf_fuse` produces
+    // a structural tie somewhere in the set. Which pair ties, if any,
+    // cannot be predicted without the real model; the assertion below
+    // does not depend on knowing which -- only that whichever order comes
+    // back is the same every time.
+    for i in 0..8 {
+        write_markdown(
+            &source_dir.join(format!("doc{i}.md")),
+            &format!(
+                "# Document {i}\n\n\
+                 Notes on authentication token rotation and related topics, \
+                 variant {i}, covering configuration step {i} in some detail.\n"
+            ),
+        );
+    }
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let first =
+        bootstrap::run_search(&context, &catalog, "authentication token rotation", 20).unwrap();
+    assert!(!first.is_empty(), "the corpus must be findable at all");
+    let first_order: Vec<String> = first.iter().map(|r| r.display_path.clone()).collect();
+
+    for i in 1..20 {
+        let repeat =
+            bootstrap::run_search(&context, &catalog, "authentication token rotation", 20).unwrap();
+        let order: Vec<String> = repeat.iter().map(|r| r.display_path.clone()).collect();
+        assert_eq!(
+            order, first_order,
+            "search {i} returned a different order than search 0 -- \
+             identical searches must return identical result orders"
+        );
+    }
 }

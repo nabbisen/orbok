@@ -191,6 +191,7 @@ impl BenchmarkResult {
              ## Search Timing Breakdown (p99)\n\n\
              | Component | p99 |\n|---|---:|\n\
              | Total | {:.2} ms |\n\
+             | Model construction | {:.2} ms |\n\
              | Keyword retrieval | {:.2} ms |\n\
              | Query embedding | {:.2} ms |\n\
              | Vector scan | {:.2} ms |\n\
@@ -229,6 +230,7 @@ impl BenchmarkResult {
             self.search_latency_ms.min_ms,
             self.search_latency_ms.max_ms,
             self.timing_ms.search.total_ms.p99_ms,
+            self.timing_ms.search.model_construction_ms.p99_ms,
             self.timing_ms.search.keyword_ms.p99_ms,
             self.timing_ms.search.query_embedding_ms.p99_ms,
             self.timing_ms.search.vector_scan_ms.p99_ms,
@@ -412,6 +414,7 @@ mod tests {
             embedding_batches: None,
             search: SearchTimingMetrics {
                 total_ms: latency(),
+                model_construction_ms: latency(),
                 keyword_ms: latency(),
                 query_embedding_ms: latency(),
                 vector_scan_ms: latency(),

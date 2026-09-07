@@ -122,7 +122,7 @@ pub fn run_bench_with_options(
     let search_timing = metrics::measure_search_timing(
         &catalog,
         queries::LABELED_QUERIES,
-        search_model,
+        options.model_dir.as_deref(),
         model_id.as_deref(),
     )?;
     let latencies = search_timing.total_ms.clone();

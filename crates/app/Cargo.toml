@@ -47,3 +47,4 @@ windows-sys                 = { workspace = true, features = ["Win32_Foundation"
 
 [dev-dependencies]
 tempfile                    = { workspace = true }
+lopdf                       = { workspace = true }

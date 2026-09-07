@@ -3482,6 +3482,7 @@ dependencies = [
  "futures",
  "iced",
  "localcache",
+ "lopdf",
  "orbok-cache",
  "orbok-core",
  "orbok-db",
