@@ -1454,6 +1454,28 @@ next release tag.
 
 ### Docs
 
+- **RFC-061 has an implementation handoff.** Five slices ordered by dependency
+  rather than by RFC section: one shared `Arc<Catalog>` with `busy_timeout`
+  first (it alone closes the broken serialization, the per-message migration
+  probe, and **twelve `if let Ok(catalog)` silent-swallow sites — with no
+  fallible open there is nothing to swallow**), then `bootstrap` returning
+  `OrbokResult` because that is what makes failure-surfacing possible, then the
+  surfacing itself, then one model per process, and moving work off the update
+  thread last because it changes concurrency.
+
+  **Re-measured against the tree rather than trusting the RFC's own numbers, and
+  one had grown:** `open_catalog` call sites in `main.rs` went **13 → 14** since
+  the audit, the new one added by Task 035's source-refresh wiring. The defect
+  grows while it is described, because the shape invites it. `busy_timeout` is
+  still zero in production — its single grep hit is a test comment.
+
+  The handoff also records how to take acceptance criterion 9's reading: **fix
+  the censored instrument first.** The latency test reads `elapsed()` *after* a
+  `tokio::time::timeout(300s)` returns, so it reports ≈300 s by construction —
+  and the uncensored shape already exists twelve lines above it in the same file,
+  where the no-concurrency baseline drains to completion and simply prints
+  elapsed with no timeout and no assertion.
+
 - **RFC-060 Slice 1 has a handoff**, scoped to Amendment 1 §4a alone — two
   production lines and the tests that prove them — so a Critical can close
   without waiting on RFC-060 §12's open product question, which only bites at §6.
