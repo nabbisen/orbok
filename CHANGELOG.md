@@ -1454,6 +1454,40 @@ next release tag.
 
 ### Docs
 
+- **RFC-060 Amendment 1: PDF text extraction returns nothing, and it reorders
+  that RFC.** Found by RFC-058's end-to-end test on its first run and **absent
+  from the 2026-09-01 external audit**. `crates/pipeline/extract/src/pdf.rs:116`
+  calls `lopdf::Document::extract_text(&[*obj_id])` with each page's *object* ID;
+  that function takes 1-based *page numbers*, resolved through `get_pages()`'s
+  `page_number → object_id` map. Measured on a three-page PDF whose page objects
+  land at 5/7/9 because font, resources and content streams are allocated first
+  — as any real writer does — **every page extracts empty**, and the file is then
+  reported `PossiblyScannedPdf`. Object ID equals page number only for hand-built
+  minimal fixtures. **PDF is one of seven advertised formats and is effectively
+  non-functional on real files.** The fix is one line: `page_num` is computed at
+  `pdf.rs:106` and never used for extraction.
+
+  It survived because `pdf_extractor_extracts_text_from_valid_pdf`'s own comment
+  says it *"May or may not extract text… doesn't panic, returns Ok"* — accepting
+  either outcome, so total failure and a benign `lopdf` version difference are
+  indistinguishable to it. Nothing ran a real PDF through extract → cache → chunk
+  until RFC-058's row 6.
+
+  **It reorders RFC-060.** §6 plans to render non-`Lines` snippets from the cached
+  `ExtractOutput` segments; for real PDFs those segments are empty, so the plan
+  rested on a cache with no content for the format it exists to fix. The
+  extraction fix goes first. A new acceptance criterion 0 requires a fixture whose
+  page objects are deliberately *not* numbered 1/2/3 — RFC-058's row 6 uses one
+  that is, documented there as a workaround, and such a fixture cannot detect this.
+
+  Amendment 1 also records `chunker.rs:65` hardcoding `location_quality: "exact"`
+  on the whole-file document chunk while deriving its `location_kind` — so Task
+  034's interim snippet guard never fires for what is typically the rank-1 result,
+  and a real PDF's top hit renders `"%PDF-1.5\n1 0 obj"` rather than nothing.
+
+  `ROADMAP.md`'s blocker list gains row 3a and marks the Japanese-ranking half of
+  row 3 closed.
+
 - **RFC-058 has an implementation handoff** (`rfcs/handoffs/HANDOFF-058-…`), the
   first for any of the six RFCs the 2026-09-01 audit opened. It records that the
   board moved under the RFC: §6 was drafted when all eight of its assertions

@@ -71,6 +71,94 @@ on every result, from the first search.
 
 ---
 
+## 4a. Amendment 1 (2026-09-08) — PDF extraction returns nothing, and that reorders this RFC
+
+**Two defects found by RFC-058's end-to-end test on its first run** (Review
+Request 209 §4, verified in Review 209 §1–§2). Neither was in the 2026-09-01
+audit. The first changes the order of the work below.
+
+### 4a.1 `pdf.rs:116` passes an object ID where lopdf wants a page number
+
+`crates/pipeline/extract/src/pdf.rs:116` calls `doc.extract_text(&[*obj_id])`
+with each page's **object** ID, taken from `page_iter()`. `lopdf 0.42.0`'s
+signature (`parser_aux.rs:51,62-67`) is:
+
+```rust
+pub fn extract_text(&self, page_numbers: &[u32]) -> Result<String>
+pub fn extract_text_chunks(&self, page_numbers: &[u32]) -> Vec<Result<String>> {
+    let pages: BTreeMap<u32, (u32, u16)> = self.get_pages();
+    page_numbers.iter().flat_map(|page_number| { … pages.get(&page_number) … })
+```
+
+It takes **1-based page numbers**, resolved through `get_pages()`'s
+`page_number → object_id` map. Passing an object ID looks up the wrong key.
+
+**Measured, not inferred.** A three-page PDF built with font, resources and
+content streams allocated first — as any real writer does — puts its page objects
+at 5, 7, 9:
+
+```
+get_pages(): {1: (5, 0), 2: (7, 0), 3: (9, 0)}
+
+page 1 obj=5 | by OBJECT ID: ""          | by PAGE NUMBER: "ALPHA_ONE"
+page 2 obj=7 | by OBJECT ID: ""          | by PAGE NUMBER: "BETA_TWO"
+page 3 obj=9 | by OBJECT ID: ""          | by PAGE NUMBER: "GAMMA_THREE"
+```
+
+**Every page empty**, and the file is then reported `PossiblyScannedPdf`.
+
+Object ID equals page number only when nothing else was allocated first, which is
+true of hand-built minimal fixtures and of almost no real document. **PDF is one
+of seven advertised formats and is effectively non-functional on real files.**
+
+**The fix is one line:** `page_num` is already computed at `pdf.rs:106`
+(`let page_num = (page_idx + 1) as u32;`) and is never used for extraction.
+
+**Why it survived.** `orbok-workers::v07_features::pdf_extractor_extracts_text_from_valid_pdf`
+carries its own comment: *"May or may not extract text from this minimal PDF
+depending on lopdf version… doesn't panic, returns Ok"* — it accepts either
+outcome, so total extraction failure and a benign version difference are
+indistinguishable to it. A test written to tolerate an unknown cannot report one.
+No test ran a real PDF through extract → cache → chunk until RFC-058's row 6.
+
+### 4a.2 `chunker.rs:65` hardcodes the document chunk's location quality
+
+The parent `"document"` chunk derives `location_kind` from its segments
+(`doc_location_kind`) and then sets `location_quality: "exact"` as a **bare
+literal**, whatever those segments actually are.
+
+That chunk spans the whole file and matches nearly any query, so it is typically
+the rank-1 result — and §6's interim guard (`None` unless
+`location_quality == "exact"`) therefore never fires for it. A real PDF's top hit
+does not render an empty snippet as the guard was believed to guarantee; it
+renders the raw head of the file, `"%PDF-1.5\n1 0 obj"`.
+
+### 4a.3 What this changes about §5 and §6
+
+**§6 plans to render non-`Lines` snippets from the cached `ExtractOutput`
+segments. For real PDFs those segments are empty**, because §4a.1 means nothing
+was ever extracted. The plan was resting on a cache that has no content in it for
+the format the plan exists to fix.
+
+So the order inside this RFC changes:
+
+1. **§4a.1 first.** One line. Until it lands there is no page text to render a
+   snippet *from*, and any evaluation of §6 would be measuring an empty cache
+   rather than a rendering strategy.
+2. **§4a.2 next**, or as part of §5 — the two are the same gap at different
+   granularity, and whoever persists `location_kind` should derive
+   `location_quality` in the same pass rather than leave one literal behind.
+3. **§5 and §6 then proceed as written**, against extraction that produces text.
+
+**A consequence worth stating, because it changes what §6 is worth:** the audit
+described the PDF snippet defect as *wrong bytes* — a chunk labelled "Page 3"
+yielding `1 0 obj`. That was the visible half. The whole of PDF extraction was
+returning nothing, and the wrong-bytes snippet was the raw file showing through
+an empty result. Fixing §6 without §4a.1 would have replaced a wrong snippet with
+an absent one and left the format still broken.
+
+---
+
 ## 5. Decision 1 — persist `location_kind`
 
 **Root cause of the snippet defect.** `chunk_locations.line_start/line_end` means
@@ -205,6 +293,13 @@ result slots with a document-level blur and a section-level match. Exclude
 
 Phrased per RFC-058 §5. These are the same assertions RFC-058 §6 requires, and
 they must be observed failing before their fixes land.
+
+0. **Added by Amendment 1.** A three-page PDF whose page objects are **not**
+   numbered 1/2/3 — font, resources and content streams allocated first — is
+   extracted with all three pages' text present and **no**
+   `PossiblyScannedPdf` warning. Assert against a fixture built that way
+   deliberately; a fixture that reserves page objects first cannot detect this
+   (RFC-058's row 6 uses one, and it is documented there as a workaround).
 
 1. With a three-page PDF indexed and a query matching text on page 3, the
    returned snippet contains words from that page and does not contain PDF
