@@ -1454,6 +1454,29 @@ next release tag.
 
 ### Docs
 
+- **RFC-060 Slice 1 has a handoff**, scoped to Amendment 1 §4a alone — two
+  production lines and the tests that prove them — so a Critical can close
+  without waiting on RFC-060 §12's open product question, which only bites at §6.
+- **Amendment 1 §4a.2 corrected: it understated the defect by four call sites.**
+  It read "`chunker.rs:65` hardcodes the document chunk's location quality". True,
+  and not the whole thing. Five extractors write `LocationQuality` — `markdown.rs`
+  and `text.rs` `Exact`, `html.rs` and `docx.rs` `Approximate`, `pdf.rs`
+  `PageOnly` — and **the chunker reads it zero times**. All five of its
+  `location_quality` values are bare literals chosen from how it chunked rather
+  than what the source supports, and two of them (`:164`, `:202`) derive
+  `location_kind` from the segment while hardcoding the quality beside it. There
+  is no `LocationQuality` → `&'static str` conversion anywhere in the tree. PDF,
+  DOCX and HTML all take `append_paragraph_chunks`, so every chunk they produce
+  claims `"exact"`.
+
+  **Which means Task 034 §5's interim snippet guard has never suppressed anything
+  for those formats.** It returns `None` unless `location_quality == "exact"`, and
+  nothing in the pipeline gives them a non-`"exact"` quality. Its test constructs
+  a `ChunkRecord` with `"approximate"` *directly* — proving `load_snippet` honours
+  the field, and nothing about whether the field is ever set that way. A guard
+  whose precondition never occurs passed as a working guard, which is why
+  RFC-058's row 6 fails with `"%PDF-1.5\n1 0 obj"` rather than an absent snippet.
+
 - **RFC-060 Amendment 1: PDF text extraction returns nothing, and it reorders
   that RFC.** Found by RFC-058's end-to-end test on its first run and **absent
   from the 2026-09-01 external audit**. `crates/pipeline/extract/src/pdf.rs:116`

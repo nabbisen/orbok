@@ -121,17 +121,46 @@ outcome, so total extraction failure and a benign version difference are
 indistinguishable to it. A test written to tolerate an unknown cannot report one.
 No test ran a real PDF through extract → cache → chunk until RFC-058's row 6.
 
-### 4a.2 `chunker.rs:65` hardcodes the document chunk's location quality
+### 4a.2 The chunker never reads the `LocationQuality` the extractors set
 
-The parent `"document"` chunk derives `location_kind` from its segments
-(`doc_location_kind`) and then sets `location_quality: "exact"` as a **bare
-literal**, whatever those segments actually are.
+**Corrected 2026-09-09**, while writing this slice's handoff. This section first
+read *"`chunker.rs:65` hardcodes the document chunk's location quality"*, which is
+true and understates it by four call sites.
 
-That chunk spans the whole file and matches nearly any query, so it is typically
-the rank-1 result — and §6's interim guard (`None` unless
-`location_quality == "exact"`) therefore never fires for it. A real PDF's top hit
-does not render an empty snippet as the guard was believed to guarantee; it
-renders the raw head of the file, `"%PDF-1.5\n1 0 obj"`.
+**Five extractors write `LocationQuality`:** `markdown.rs` and `text.rs` set
+`Exact`, `html.rs` and `docx.rs` set `Approximate`, `pdf.rs` sets `PageOnly`.
+
+**The chunker reads it zero times.** Every chunk's `location_quality` is a bare
+literal chosen from how the chunker chunked, not from what the source supports:
+
+| `chunker.rs` | function | literal |
+|---|---|---|
+| `:65` | `chunk()` — whole-file document chunk | `"exact"` |
+| `:164` | `append_markdown_sections()` | `"exact"` |
+| `:202` | `append_paragraph_chunks()` | `"exact"` |
+| `:257` | `append_text_windows()` | `"approximate"` |
+| `:279` | `empty_document_chunk()` | `"unknown"` |
+
+`:164` and `:202` each derive `location_kind` from the segment and hardcode the
+quality beside it — the same asymmetry as `:65`, twice more. There is no
+`LocationQuality` → `&'static str` conversion function anywhere in the tree.
+
+**PDF, DOCX and HTML all take `append_paragraph_chunks`**, so every chunk they
+produce claims `"exact"` whatever the extractor observed. This is the same defect
+as `location_kind` being dropped at the DB boundary (§5), one layer earlier: a
+field is populated carefully and then discarded by its only consumer.
+
+**The consequence, and why it is not cosmetic.** Task 034 §5's interim guard —
+`load_snippet` returns `None` unless `location_quality == "exact"` — was reviewed,
+mutation-tested and believed to suppress snippets for PDF/DOCX/HTML until §5/§6
+land. **It has never suppressed anything for those formats**, because nothing in
+the pipeline gives them a non-`"exact"` quality.
+
+Its test constructs a `ChunkRecord` with `"approximate"` *directly* and asserts
+`load_snippet` honours it. That is true and is all it proves; nothing asserted
+that the field ever receives a non-exact value in a real pipeline. A guard whose
+precondition never occurs passed as a working guard — which is why RFC-058's row
+6 fails with `"%PDF-1.5\n1 0 obj"` rather than with an absent snippet.
 
 ### 4a.3 What this changes about §5 and §6
 

@@ -84,6 +84,7 @@ under RFC-000.
 | 056 | HANDOFF-056-hosting-the-indexing-scheduler | hosting RFC-036's scheduler in the application, which had never been connected to it |
 | 057 | HANDOFF-057-live-resource-signals | user-activity and battery signal sources feeding RFC-036's existing policy |
 | 058 | HANDOFF-058-verifying-the-wired-application | the end-to-end reachability test, the benchmark's timing boundary, and the release gate |
+| 060 | HANDOFF-060-slice1-pdf-extraction-and-location-quality | Slice 1 only: PDF extraction by page number, and the chunk quality the chunker never reads |
 
 **Index corrected 2026-09-07.** Handoffs 054–057 existed on disk and were
 missing from the table above; 058 is new. The closing note below was also stale
