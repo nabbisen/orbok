@@ -51,6 +51,85 @@ pub enum LocationQuality {
     Unknown,
 }
 
+impl LocationQuality {
+    /// Combine two segments' quality into the quality of a chunk spanning
+    /// both: a chunk is only as trustworthy as its least trustworthy
+    /// segment (RFC-060 Amendment 1 §4a.2).
+    pub(crate) fn combine(self, other: LocationQuality) -> LocationQuality {
+        use LocationQuality::*;
+        match (self, other) {
+            (Unknown, _) | (_, Unknown) => Unknown,
+            (Approximate, _) | (_, Approximate) => Approximate,
+            (PageOnly, _) | (_, PageOnly) => PageOnly,
+            (Exact, Exact) => Exact,
+        }
+    }
+}
+
+/// Derive an [`ExtractedChunk`]'s `location_quality` string from the
+/// [`LocationQuality`] of every segment it spans.
+///
+/// Before RFC-060 Amendment 1 §4a.2, `chunker.rs` read `location_kind` from
+/// segments but never `location_quality` — every chunk's quality was a
+/// bare literal chosen by which chunking function produced it, not by what
+/// the extractor observed. This is the one conversion point that replaces
+/// all five of those literals: `Exact` only when every spanned segment is
+/// `Exact`; `Approximate`/`PageOnly` (not distinguished in the chunk-level
+/// string — both mean "do not treat this as exact") when at least one
+/// segment is either and none are `Unknown`; `Unknown` when there are no
+/// segments at all, or any segment's quality is itself `Unknown`.
+pub fn chunk_location_quality(
+    segment_qualities: impl IntoIterator<Item = LocationQuality>,
+) -> &'static str {
+    let combined = segment_qualities
+        .into_iter()
+        .reduce(LocationQuality::combine);
+    match combined {
+        None => "unknown",
+        Some(LocationQuality::Exact) => "exact",
+        Some(LocationQuality::Approximate) | Some(LocationQuality::PageOnly) => "approximate",
+        Some(LocationQuality::Unknown) => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod location_quality_tests {
+    use super::*;
+
+    #[test]
+    fn all_exact_segments_yield_exact() {
+        assert_eq!(
+            chunk_location_quality([LocationQuality::Exact, LocationQuality::Exact]),
+            "exact"
+        );
+    }
+
+    #[test]
+    fn any_approximate_or_page_only_yields_approximate() {
+        assert_eq!(
+            chunk_location_quality([LocationQuality::Exact, LocationQuality::PageOnly]),
+            "approximate"
+        );
+        assert_eq!(
+            chunk_location_quality([LocationQuality::Exact, LocationQuality::Approximate]),
+            "approximate"
+        );
+    }
+
+    #[test]
+    fn any_unknown_yields_unknown_even_alongside_exact() {
+        assert_eq!(
+            chunk_location_quality([LocationQuality::Exact, LocationQuality::Unknown]),
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn no_segments_yields_unknown() {
+        assert_eq!(chunk_location_quality([]), "unknown");
+    }
+}
+
 // ── Resource limits ─────────────────────────────────────────────────────
 
 /// Per-extraction resource limits (RFC-044 §9).

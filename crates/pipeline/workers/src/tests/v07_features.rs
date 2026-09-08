@@ -140,36 +140,29 @@ startxref
 %%EOF";
 
 // RFC-022 AC: PDF extractor handles a valid PDF.
-#[test]
-fn pdf_extractor_extracts_text_from_valid_pdf() {
-    use orbok_extract::pdf::PdfExtractor;
-    let dir = tempfile::tempdir().unwrap();
-    let pdf_path = dir.path().join("test.pdf");
-    fs::write(&pdf_path, MINIMAL_PDF).unwrap();
-    let canonical = fs::canonicalize(&pdf_path).unwrap();
-    let vp = ValidatedPath {
-        source_id: orbok_core::SourceId::from_string("s1".to_string()),
-        canonical,
-    };
-    // May or may not extract text from this minimal PDF depending on lopdf version;
-    // the key requirements are: doesn't panic, returns Ok, location quality is PageOnly.
-    match PdfExtractor.extract(&vp) {
-        Ok(output) => {
-            assert_eq!(output.extractor_name, "pdf-lopdf");
-            for seg in &output.segments {
-                assert_eq!(
-                    seg.location_quality,
-                    LocationQuality::PageOnly,
-                    "PDF segments must use PageOnly quality"
-                );
-            }
-        }
-        Err(_e) => {
-            // Acceptable — the key RFC-022 requirement is no panic and
-            // failure isolation. A minimal PDF may fail with any typed error.
-        }
-    }
-}
+//
+// RFC-060 Amendment 1 §4a.1 / HANDOFF-060 slice 1 §2.2: `pdf_extractor_extracts_text_from_valid_pdf`
+// deleted rather than tightened. It used to accept either `Ok` or `Err`
+// ("may or may not extract text... doesn't panic, returns Ok") — the exact
+// shape that let `pdf.rs:116` passing an object ID where `extract_text`
+// wants a page number go undetected, since a total extraction failure and
+// a benign difference looked identical to it. Tightening it to require
+// `Ok` (attempted here first) found a second, unrelated, pre-existing
+// problem: `MINIMAL_PDF` (above) fails to even *load* under this
+// workspace's `lopdf` 0.42.0 (`"lopdf: couldn't parse input: invalid file
+// trailer"`, at `Document::load`, before `extract_text` is ever reached) —
+// exactly the "depending on lopdf version" the old comment hedged against,
+// now materialized. Hand-authored PDF bytes with a manually-computed xref
+// table are fragile in a way a real writer's output is not; the
+// replacement below is built with `lopdf`'s own writer API instead of hand
+// counted byte offsets. `MINIMAL_PDF` is kept only for
+// `pdf_extractor_missing_file_returns_typed_error` (uses a nonexistent
+// path, never touches these bytes), `pdf_extractor_registered_in_registry`
+// (accepts any non-`unsupported` outcome, including this parse error), and
+// `pdf_location_quality_is_page_only` (below, itself in the
+// tolerates-either-outcome shape and now silently asserting nothing
+// against this fixture -- flagged in the review request, not fixed here,
+// since the handoff named only this one test).
 
 // RFC-022 AC: Failure isolation — missing file returns typed error, no panic.
 #[test]

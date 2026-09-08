@@ -776,6 +776,55 @@ next release tag.
 
 ### Fixed
 
+- **RFC-060 Amendment 1 / HANDOFF-060 slice 1: PDF extraction found no text
+  on essentially any real PDF, and the chunker's `location_quality` never
+  reflected what the extractor actually observed.** Two production lines.
+
+  `crates/pipeline/extract/src/pdf.rs:116` called
+  `lopdf::Document::extract_text(&[*obj_id])` with each page's *object* ID;
+  `extract_text` takes 1-based *page numbers*, resolved internally through
+  `get_pages()`'s own `page_number -> object_id` map. For a page whose
+  object ID doesn't equal its page number — true of essentially every real
+  PDF, since fonts, the page tree, and content streams all consume object
+  numbers first — every page came back unreadable and the file was
+  reported `PossiblyScannedPdf`. One-line fix (`page_num`, already computed
+  and already used for every other field on the segment). Observed failing
+  first: a new fixture built with `lopdf`'s own writer API (font/resources/
+  content allocated *before* the page objects, so they land at realistic
+  numbers like 5/7/9 rather than 1/2/3 — the shape RFC-058's own row 6
+  fixture avoids and therefore could not have caught) produced
+  `segments: []`, `warnings: [SomePagesUnreadable, PossiblyScannedPdf]`
+  against unfixed code. The existing extractor-level test tolerated this
+  already (its own comment: *"may or may not extract text... depending on
+  lopdf version"*) — deleted rather than left half-fixed, once tightening
+  it surfaced a second, unrelated, pre-existing problem: its hand-authored
+  `MINIMAL_PDF` fixture fails to even *load* under this workspace's
+  `lopdf` 0.42.0 (a fragile hand-computed xref table, not something this
+  task's fix touches).
+
+  Separately, `chunker.rs` read `location_kind` from a chunk's spanned
+  segments but never `location_quality` — every chunk's quality was a bare
+  literal picked by which chunking function produced it (`"exact"` in three
+  places, `"approximate"` and `"unknown"` in the other two), regardless of
+  what the extractor actually set. PDF, DOCX and HTML all flow through the
+  same literal-`"exact"` path. Consequence: Task 034's interim snippet guard
+  (`load_snippet` returns `None` unless `location_quality == "exact"`) had
+  never once suppressed anything for those formats, because nothing in the
+  pipeline ever produced a non-`"exact"` chunk to trigger it — which is why
+  RFC-058's row 6 failed with literal `"%PDF-1.5\n1 0 obj"` in a snippet
+  rather than an absent one. Added one conversion function
+  (`chunk_location_quality`, `types.rs`) used at all three sites that
+  derive from segments (the document chunk, Markdown sections, paragraph
+  buffers); the fourth site (fallback text windows) keeps its hardcoded
+  `"approximate"` deliberately, since a window's own boundaries are
+  approximate regardless of the segments' quality. Observed failing first
+  (a PDF-shaped chunk asserted `"approximate"`, got `"exact"`); confirmed
+  text/Markdown chunks are unaffected (still `"exact"`, per the stop
+  condition this task named in advance). RFC-058 row 6 now fails for the
+  reason this predicts — an absent snippet, not raw PDF syntax — updated to
+  match, kept `#[should_panic]` since the underlying criterion (a real
+  snippet) is still unmet; that remains RFC-060 §5/§6's work.
+
 - **Task 034 §3's own regression test didn't guard the property the fix
   was for (Review 197 §2):** `docx_with_lied_size_field_is_still_bounded`
   asserted only on `char_count`/the warning — both properties of the

@@ -102,7 +102,7 @@ impl DocumentExtractor for PdfExtractor {
         let mut total_chars = 0u64;
         let mut unreadable_pages = Vec::new();
 
-        for (page_idx, (obj_id, _gen_id)) in pages_to_process.iter().enumerate() {
+        for (page_idx, _) in pages_to_process.iter().enumerate() {
             let page_num = (page_idx + 1) as u32;
 
             // RFC-044 §9.5: extracted char limit.
@@ -113,7 +113,15 @@ impl DocumentExtractor for PdfExtractor {
                 break;
             }
 
-            match doc.extract_text(&[*obj_id]) {
+            // RFC-060 Amendment 1 §4a.1: `extract_text` takes 1-based page
+            // *numbers* (it resolves them through `lopdf`'s own
+            // `page_number -> object_id` map internally), not the page's
+            // object ID. Passing the object ID here (`*obj_id`, the tuple
+            // this loop used to destructure) silently returned no text for
+            // any page whose object ID didn't equal its page number --
+            // true of essentially every real PDF, since fonts, the page
+            // tree, and content streams all consume object numbers first.
+            match doc.extract_text(&[page_num]) {
                 Ok(text) => {
                     if text.trim().is_empty() {
                         continue;

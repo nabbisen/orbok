@@ -111,21 +111,21 @@ fn write_markdown(path: &Path, body: &str) {
 /// distinct marker text, so a query can target one specific page.
 ///
 /// Page object IDs are reserved **first**, before any other object, so
-/// they come out numbered 1, 2, 3 in page order. This is not cosmetic:
-/// `crates/pipeline/extract/src/pdf.rs`'s extraction loop calls
-/// `lopdf::Document::extract_text(&[*obj_id])` with the page's *object* ID,
-/// but `extract_text` takes 1-based *page numbers* (`lopdf::parser_aux.rs`'s
-/// own signature, confirmed by reading it: `pages.get(&page_number)` against
-/// the `page_number -> object_id` map `get_pages()` builds) -- a real,
-/// separate defect from the one this test targets, found while building
-/// this fixture and reported rather than fixed here (out of scope for
-/// RFC-058; see the review request). For a page whose object ID does not
-/// equal its page number -- true of essentially every real-world PDF,
-/// where the page tree, fonts, and content streams all consume object
-/// numbers too -- extraction silently returns zero text for every page
-/// today. Numbering pages 1-3 here works around that bug so this test can
-/// still exercise the defect it is actually about; it is not evidence the
-/// bug does not matter.
+/// they come out numbered 1, 2, 3 in page order. **Historical note, no
+/// longer load-bearing as of RFC-060 Amendment 1 / HANDOFF-060 slice 1**:
+/// this ordering was originally a workaround for a real, separate defect
+/// found while building this fixture -- `crates/pipeline/extract/src/pdf.rs`'s
+/// extraction loop called `lopdf::Document::extract_text(&[*obj_id])` with
+/// the page's *object* ID where `extract_text` wants a 1-based *page
+/// number*, so a page whose object ID didn't equal its page number (true
+/// of essentially every real-world PDF) extracted no text at all. That is
+/// now fixed (`pdf.rs` uses `page_num`; see
+/// `orbok-extract::tests::pdf_extraction_finds_every_page_regardless_of_object_numbering`,
+/// which deliberately constructs the *opposite* object numbering to prove
+/// it). This function's page-IDs-first ordering is kept as-is since it is
+/// still a valid, working fixture and there is no reason to touch it
+/// further, not because the ordering still matters for extraction to
+/// succeed.
 fn write_three_page_pdf(path: &Path, page_texts: [&str; 3]) {
     use lopdf::content::{Content, Operation};
     use lopdf::{Document, Object, Stream, dictionary};
@@ -376,26 +376,29 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 /// contain real text from the matched page, not the raw bytes that result
 /// from treating a stored page number as a text-file line number.
 ///
-/// Still live, and worse than "no snippet": Task 034's interim guard
-/// (RFC-060 §6 -- `load_snippet` returns `None` unless
-/// `location_quality == "exact"`) does not catch every chunk. The
-/// per-page segment chunks correctly store `PageOnly`/`Approximate` and
-/// are caught. The whole-file **"document"** chunk (`chunker.rs`'s own
-/// aggregate, RFC-060 §10's "document chunk" -- matches nearly any query,
-/// so it is typically the rank-1 result) hardcodes
-/// `location_quality: "exact"` regardless of the segments it spans
-/// (`crates/pipeline/extract/src/chunker.rs:65`), so the guard never
-/// applies to it and `load_snippet` opens the raw PDF file and reads its
-/// first "lines" as if it were plain text -- literal `%PDF-1.5` / `1 0
-/// obj` syntax, confirmed below, not `None`. RFC-060 §5 (persisting
-/// `location_kind` and rendering PDF/DOCX/HTML from the extraction cache)
-/// is what closes this properly; a narrower interim fix would be
-/// `chunker.rs:65` deriving the document chunk's quality from its spanned
-/// segments instead of hardcoding `"exact"`, closing the same gap Task
-/// 034 closed for per-page chunks. Either way, not fixed here -- remove
-/// this wrapper once one of them lands.
+/// **Updated for RFC-060 Amendment 1 / HANDOFF-060 slice 1.** This test
+/// used to fail with raw `%PDF-1.5` / `1 0 obj` syntax in the snippet,
+/// because the whole-file "document" chunk (`chunker.rs`'s aggregate,
+/// RFC-060 §10 -- matches nearly any query, so it is typically the rank-1
+/// result) hardcoded `location_quality: "exact"` regardless of the
+/// segments it spanned, so Task 034's interim guard (`load_snippet`
+/// returns `None` unless `location_quality == "exact"`) never applied to
+/// it. Slice 1 fixed that (`chunker.rs` now derives quality from spanned
+/// segments, `crates/pipeline/extract/src/types.rs::chunk_location_quality`)
+/// and separately fixed the extraction bug that made every PDF page
+/// unreadable in the first place (`pdf.rs:116` was passing an object ID
+/// where `extract_text` wants a page number). With both fixed, the guard
+/// now correctly fires for the document chunk, so the snippet is `None`
+/// (empty) rather than garbage -- **this is the expected next failure
+/// state, not a regression** (handoff §3.3 predicted exactly this and
+/// named it "correct behaviour, not a regression"). RFC-060 §5/§6
+/// (persisting `location_kind`, rendering non-`Lines` snippets from the
+/// extraction cache) is what makes a real snippet appear; until then this
+/// stays `#[should_panic]`, not deleted and not un-panicked, because the
+/// criterion itself -- a PDF result's snippet contains real page text --
+/// is still unmet.
 #[tokio::test]
-#[should_panic(expected = "snippet must not contain raw PDF object syntax")]
+#[should_panic(expected = "snippet must contain real text from page 3")]
 async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());

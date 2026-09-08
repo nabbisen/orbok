@@ -13,7 +13,10 @@
 //! This removes the `orbok-db` dependency from `orbok-extract`
 //! (RFC-044 §14.6 boundary rule).
 
-use crate::types::{ExtractOutput, ExtractedChunk, LocationKind, SegmentKind};
+use crate::types::{
+    ExtractOutput, ExtractedChunk, LocationKind, LocationQuality, SegmentKind,
+    chunk_location_quality,
+};
 
 /// Characters per fallback window (approximate token proxy).
 const MAX_CHARS: usize = 1200;
@@ -62,7 +65,13 @@ pub fn chunk(output: &ExtractOutput, file_display_name: &str) -> Vec<ExtractedCh
         line_end: last_line,
         byte_start: None,
         byte_end: None,
-        location_quality: "exact",
+        // RFC-060 Amendment 1 §4a.2: derived from every segment the
+        // document chunk spans (all of them), not a bare literal --
+        // `location_kind` two lines above was already derived this way,
+        // `location_quality` never was.
+        location_quality: chunk_location_quality(
+            output.segments.iter().map(|s| s.location_quality),
+        ),
         parent_idx: None,
     };
 
@@ -161,7 +170,12 @@ fn append_markdown_sections(output: &ExtractOutput, chunks: &mut Vec<ExtractedCh
                 line_end: last.line_end,
                 byte_start: None,
                 byte_end: None,
-                location_quality: "exact",
+                location_quality: chunk_location_quality(
+                    section
+                        .segments
+                        .iter()
+                        .map(|&i| output.segments[i].location_quality),
+                ),
                 parent_idx: Some(0),
             });
         }
@@ -174,11 +188,17 @@ fn append_paragraph_chunks(output: &ExtractOutput, chunks: &mut Vec<ExtractedChu
     let mut buf_start = 0u32;
     let mut buf_end = 0u32;
     let mut buf_kind = LocationKind::Unknown;
+    // RFC-060 Amendment 1 §4a.2: combined over every segment folded into
+    // the buffer below (not just the first, unlike `buf_kind`), so a
+    // buffer spanning a worse-quality segment can't inherit an earlier
+    // segment's better quality.
+    let mut buf_quality: Option<LocationQuality> = None;
 
     let flush = |buf: &mut String,
                  start: u32,
                  end: u32,
                  kind: LocationKind,
+                 quality: Option<LocationQuality>,
                  chunks: &mut Vec<ExtractedChunk>| {
         let text = buf.trim().to_string();
         if text.is_empty() {
@@ -199,7 +219,7 @@ fn append_paragraph_chunks(output: &ExtractOutput, chunks: &mut Vec<ExtractedChu
                 line_end: end,
                 byte_start: None,
                 byte_end: None,
-                location_quality: "exact",
+                location_quality: chunk_location_quality(quality),
                 parent_idx: Some(0),
             });
         }
@@ -212,15 +232,20 @@ fn append_paragraph_chunks(output: &ExtractOutput, chunks: &mut Vec<ExtractedChu
             buf_kind = seg.location_kind;
         }
         buf_end = seg.line_end;
+        buf_quality = Some(match buf_quality {
+            None => seg.location_quality,
+            Some(q) => q.combine(seg.location_quality),
+        });
         buf.push_str(&seg.text);
         buf.push('\n');
         if buf.len() >= MAX_CHARS {
-            flush(&mut buf, buf_start, buf_end, buf_kind, chunks);
+            flush(&mut buf, buf_start, buf_end, buf_kind, buf_quality, chunks);
             buf_start = seg.line_end + 1;
+            buf_quality = None;
         }
     }
     if !buf.trim().is_empty() {
-        flush(&mut buf, buf_start, buf_end, buf_kind, chunks);
+        flush(&mut buf, buf_start, buf_end, buf_kind, buf_quality, chunks);
     }
 }
 
@@ -254,6 +279,13 @@ fn append_text_windows(
             line_end: wl_end,
             byte_start: None,
             byte_end: None,
+            // Deliberately not derived from the spanned segments' quality
+            // (RFC-060 Amendment 1 §4a.2 / HANDOFF-060 slice 1 §3.2): the
+            // windower's own boundaries (`wl_start`/`wl_end` above,
+            // interpolated by character fraction) are approximate even
+            // when every underlying segment is `Exact` -- a window never
+            // aligns with a real segment boundary, so it cannot be more
+            // precise than "approximate" regardless of its source.
             location_quality: "approximate",
             parent_idx: Some(0),
         });

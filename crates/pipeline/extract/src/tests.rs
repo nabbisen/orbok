@@ -5,7 +5,7 @@
 
 use crate::ExtractorRegistry;
 use crate::normalize::normalize_document;
-use crate::types::{LocationKind, LocationQuality, SegmentKind};
+use crate::types::{ExtractWarning, LocationKind, LocationQuality, SegmentKind};
 use orbok_core::{ErrorCategory, OrbokError, SourceId};
 use orbok_fs::ValidatedPath;
 use std::fs;
@@ -328,6 +328,71 @@ fn fallback_chunks_have_approximate_quality() {
     }
 }
 
+// RFC-060 Amendment 1 §4a.2 / HANDOFF-060 slice 1 §3.2: chunk-level
+// `location_quality` must derive from the segments it spans, not a bare
+// literal chosen by which chunking function ran. Observed failing first:
+// before the fix, both chunks below came out `"exact"` (`chunker.rs`'s
+// hardcoded literals in `chunk()` and `append_paragraph_chunks()`), which
+// is exactly why Task 034's snippet guard (`load_snippet` returns `None`
+// unless `location_quality == "exact"`) never suppressed a PDF snippet —
+// nothing in the pipeline ever produced a non-`"exact"` chunk to trigger
+// it on.
+#[test]
+fn a_pdfs_chunks_come_out_approximate_not_exact() {
+    let segments = vec![ExtractedSegment {
+        kind: SegmentKind::Other,
+        text: "text found on the page".into(),
+        line_start: 1,
+        line_end: 1,
+        location_kind: LocationKind::Pages,
+        heading_path: Some("Page 1".into()),
+        location_quality: LocationQuality::PageOnly,
+    }];
+    let output = ExtractOutput {
+        extractor_name: "pdf-lopdf".into(),
+        extractor_version: "v1".into(),
+        normalization_version: "norm-v1".into(),
+        segments,
+        char_count: 23,
+        warnings: Vec::new(),
+    };
+    let specs = chunk(&output, "doc.pdf");
+
+    let document_chunk = specs
+        .iter()
+        .find(|s| s.chunk_kind == "document")
+        .expect("a document chunk must exist");
+    assert_eq!(
+        document_chunk.location_quality, "approximate",
+        "a PDF's document chunk must not claim exact quality"
+    );
+    let paragraph_chunk = specs
+        .iter()
+        .find(|s| s.chunk_kind == "paragraph")
+        .expect("a paragraph chunk must exist");
+    assert_eq!(
+        paragraph_chunk.location_quality, "approximate",
+        "a PDF's paragraph chunk must not claim exact quality"
+    );
+}
+
+// RFC-060 handoff §3, stop condition: deriving quality must not make a
+// plain-text or Markdown chunk `"unknown"` -- those extractors set `Exact`
+// on every segment (`text.rs`, `markdown.rs`), so their chunks must stay
+// `"exact"` exactly as before.
+#[test]
+fn text_and_markdown_chunks_stay_exact_after_deriving_quality() {
+    let output = extract_str("Para one.\n\nPara two.");
+    let specs = chunk(&output, "notes.txt");
+    for spec in &specs {
+        assert_eq!(
+            spec.location_quality, "exact",
+            "chunk {:?} of an all-Exact-segment document must stay exact",
+            spec.chunk_kind
+        );
+    }
+}
+
 // Parent-child: all children except index-0 have parent_idx = Some(0).
 #[test]
 fn children_point_to_parent() {
@@ -339,6 +404,130 @@ fn children_point_to_parent() {
             Some(0),
             "child chunk {} must point to parent",
             spec.chunk_ordinal
+        );
+    }
+}
+
+// ──────────────────────────────────────────────
+// RFC-060 Amendment 1 §4a.1 (HANDOFF-060 slice 1 §2): PDF extraction must
+// find text by page number, not by the page's object ID.
+// ──────────────────────────────────────────────
+
+/// A real PDF whose page objects do **not** coincide with their page
+/// numbers: font, resources and content streams are allocated first, as
+/// any real PDF writer does, so the three page objects land at 5/7/9
+/// rather than 1/2/3. RFC-058's row 6 fixture reserves page object IDs
+/// *first* specifically to avoid this shape, which is why it could not
+/// detect this defect (confirmed there: applying the fix did not change
+/// its behaviour). This fixture is the opposite on purpose.
+fn write_pdf_with_realistic_object_numbering(path: &Path, page_texts: [&str; 3]) {
+    use lopdf::content::{Content, Operation};
+    use lopdf::{Document, Object, Stream, dictionary};
+
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Helvetica",
+    });
+    let resources_id = doc.add_object(dictionary! {
+        "Font" => dictionary! { "F1" => font_id },
+    });
+
+    let mut page_refs: Vec<Object> = Vec::new();
+    for text in page_texts {
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                Operation::new("Td", vec![72.into(), 700.into()]),
+                Operation::new("Tj", vec![Object::string_literal(text)]),
+                Operation::new("ET", vec![]),
+            ],
+        };
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+        });
+        page_refs.push(page_id.into());
+    }
+
+    let pages = dictionary! {
+        "Type" => "Pages",
+        "Count" => page_refs.len() as i64,
+        "Kids" => page_refs,
+        "Resources" => resources_id,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+    };
+    doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+    let catalog_id = doc.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages_id,
+    });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(path).unwrap();
+}
+
+/// Observed failing before the fix (RFC-060 handoff §2.1): against
+/// unfixed `pdf.rs`, this produced `segments: []`, `char_count: 0`,
+/// `warnings: [SomePagesUnreadable{pages:[1,2,3]}, PossiblyScannedPdf]` --
+/// every page reported unreadable because `extract_text` was asked for
+/// object IDs 5/7/9 as if they were page numbers, and no page 5, 7, or 9
+/// exists in a 3-page document. This is RFC-060 acceptance criterion 0.
+#[test]
+fn pdf_extraction_finds_every_page_regardless_of_object_numbering() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("realistic.pdf");
+    write_pdf_with_realistic_object_numbering(
+        &file,
+        [
+            "ALPHA_ONE content on page one.",
+            "BETA_TWO content on page two.",
+            "GAMMA_THREE content on page three.",
+        ],
+    );
+
+    let out = ExtractorRegistry::default()
+        .extract(&validated(&file))
+        .unwrap();
+
+    assert!(
+        !out.warnings.contains(&ExtractWarning::PossiblyScannedPdf),
+        "a real, text-bearing PDF must not be reported as possibly scanned: {:?}",
+        out.warnings
+    );
+    assert_eq!(
+        out.segments.len(),
+        3,
+        "all three pages must produce a segment, got {:?}",
+        out.segments
+    );
+    for (marker, segment) in ["ALPHA_ONE", "BETA_TWO", "GAMMA_THREE"]
+        .iter()
+        .zip(&out.segments)
+    {
+        assert!(
+            segment.text.contains(marker),
+            "expected {marker:?} in segment text, got {:?}",
+            segment.text
+        );
+    }
+    // The current code already derives these correctly from `page_num`
+    // (`pdf.rs:106`) for every field except the `extract_text` call
+    // itself -- asserted here so a "fix" cannot restore object-ID-based
+    // extraction while leaving these three consistent with it (handoff
+    // §2.1 item 3).
+    for (i, segment) in out.segments.iter().enumerate() {
+        let page_num = (i + 1) as u32;
+        assert_eq!(segment.line_start, page_num);
+        assert_eq!(segment.line_end, page_num);
+        assert_eq!(
+            segment.heading_path.as_deref(),
+            Some(format!("Page {page_num}")).as_deref()
         );
     }
 }
