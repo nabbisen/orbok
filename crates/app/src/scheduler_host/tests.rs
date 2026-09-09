@@ -1788,17 +1788,29 @@ async fn search_latency_while_background_indexing_is_running() {
     // that made the first cut of this fix measure ~1.1s, identical to the
     // no-embedding baseline, despite the slow model being wired in.
     //
+    // RFC-061 §3: this used to wrap the loop in
+    // `tokio::time::timeout(Duration::from_secs(300))` and read
+    // `overall_start.elapsed()` *after* `.await` returned -- so on a
+    // timeout the reading was ~300s by construction, not a measurement.
+    // Two Windows runs two days apart reported 300.0358954s and
+    // 300.037572s, two milliseconds apart: a ceiling, not variance. Gone
+    // uncensored, the same shape as `background_indexing_baseline_with_no_concurrent_access`
+    // above it: drain to completion and read `elapsed()` once the loop
+    // actually exits. The timeout stays only as a generous hang-detector
+    // (an hour -- can only fire on a genuine wedge, never on realistic
+    // indexing time for 300 files) so a real deadlock still fails the test
+    // instead of hanging CI forever; it is no longer what the reported
+    // number comes from.
+    //
     // 300 files * ~144ms/doc of simulated embedding cost alone is ~43s,
     // serialized through the loop's one-job-at-a-time dispatch; measured
-    // ~45s locally, in isolation. 120s (comfortable headroom over that in
-    // isolation) still timed out on Windows CI, where this test's worker
-    // threads share the runner with every other test in the same binary
-    // running concurrently (`cargo test` doesn't serialize test
-    // functions) -- the same cross-platform I/O/scheduling variance
-    // Review 162 §2.2 already found for scanning. 300s absorbs that
-    // without shrinking the file count or the per-document cost, both of
-    // which are what makes the measurement below realistic.
-    let sampling = tokio::time::timeout(Duration::from_secs(300), async {
+    // ~45s locally, in isolation. Windows CI's worker threads share the
+    // runner with every other test in the same binary running concurrently
+    // (`cargo test` doesn't serialize test functions) -- the same
+    // cross-platform I/O/scheduling variance Review 162 §2.2 already found
+    // for scanning -- which is real variance this reading should reflect,
+    // not something to hide behind a ceiling.
+    tokio::time::timeout(Duration::from_secs(3600), async {
         while job_counts_by_status(&ui_catalog, JobStatus::Queued) > 0 {
             let start = Instant::now();
             let _ = bootstrap::run_search(&search_catalog, None, "install", 20);
@@ -1806,7 +1818,11 @@ async fn search_latency_while_background_indexing_is_running() {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
-    .await;
+    .await
+    .expect(
+        "300 files did not finish indexing within an hour while a concurrent search ran \
+         every 10ms -- this is a hang, not a slow measurement; see HANDOFF §3.2",
+    );
     let overall = overall_start.elapsed();
     handle.abort();
 
@@ -1820,11 +1836,6 @@ async fn search_latency_while_background_indexing_is_running() {
          search sampling every 10ms: total {overall:?} ({} search samples, avg {avg:?}, \
          max {max:?} per search) -- HANDOFF §3.2",
         latencies.len()
-    );
-    assert!(
-        sampling.is_ok(),
-        "300 files did not finish indexing within 300s while a concurrent search ran every 10ms -- \
-         see the no-concurrency baseline for comparison; report this per HANDOFF §3.2"
     );
 
     // §3.2b (HANDOFF-056, Review 172 §3): settle what the during-indexing
