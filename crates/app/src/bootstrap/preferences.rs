@@ -13,10 +13,7 @@ pub fn persist_locale(catalog: &Catalog, locale: &Locale) -> OrbokResult<()> {
 }
 
 /// Persist the selected UI theme to `OrbokSettings` (RFC-032).
-pub fn persist_theme(
-    context: &RuntimeContext,
-    theme: Theme,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn persist_theme(context: &RuntimeContext, theme: Theme) -> OrbokResult<()> {
     persist_theme_with(context, &AllowRuntimePathProbe, theme)
 }
 
@@ -24,27 +21,21 @@ pub(crate) fn persist_theme_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
     theme: Theme,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> OrbokResult<()> {
     let mut settings = super::runtime_settings_with(context, probe)?;
     settings.theme = theme.as_str().to_string();
     super::save_runtime_settings_with(context, probe, &settings)
 }
 
 /// Persist the text scale to `OrbokSettings` (RFC-035).
-pub fn persist_text_scale(
-    context: &RuntimeContext,
-    scale: TextScale,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn persist_text_scale(context: &RuntimeContext, scale: TextScale) -> OrbokResult<()> {
     let mut settings = super::runtime_settings_with(context, &AllowRuntimePathProbe)?;
     settings.text_scale = scale.as_str().to_string();
     super::save_runtime_settings_with(context, &AllowRuntimePathProbe, &settings)
 }
 
 /// Persist the reduced-motion preference to `OrbokSettings` (RFC-035).
-pub fn persist_reduced_motion(
-    context: &RuntimeContext,
-    val: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn persist_reduced_motion(context: &RuntimeContext, val: bool) -> OrbokResult<()> {
     let mut settings = super::runtime_settings_with(context, &AllowRuntimePathProbe)?;
     settings.reduced_motion = val;
     super::save_runtime_settings_with(context, &AllowRuntimePathProbe, &settings)
@@ -63,10 +54,7 @@ pub fn resolve_os_reduced_motion() -> bool {
 
 /// Persist the validated model directory to `OrbokSettings` (called when
 /// the user completes the wizard and accepts a model folder).
-pub fn persist_model_dir(
-    context: &RuntimeContext,
-    model_dir: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn persist_model_dir(context: &RuntimeContext, model_dir: &str) -> OrbokResult<()> {
     persist_model_dir_with(context, &AllowRuntimePathProbe, model_dir)
 }
 
@@ -74,15 +62,13 @@ pub(crate) fn persist_model_dir_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
     model_dir: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> OrbokResult<()> {
     let mut settings = super::runtime_settings_with(context, probe)?;
     settings.embedding_model_dir = Some(model_dir.to_string());
     super::save_runtime_settings_with(context, probe, &settings)
 }
 
-pub fn remove_managed_model_dir_setting(
-    context: &RuntimeContext,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn remove_managed_model_dir_setting(context: &RuntimeContext) -> OrbokResult<()> {
     let mut settings = super::runtime_settings_with(context, &AllowRuntimePathProbe)?;
     let store = super::model_store(context)?;
     if settings

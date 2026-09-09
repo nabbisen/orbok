@@ -16,6 +16,7 @@ use orbok::runtime_context::{
 };
 #[cfg(test)]
 use orbok::runtime_storage::ProfileModelStore;
+use orbok_core::OrbokResult;
 
 mod cleanup;
 pub(crate) mod embedding_resolution;
@@ -98,21 +99,21 @@ pub fn resolve_runtime_context(
 pub use orbok::runtime_storage::cache as cache_service;
 pub use orbok::runtime_storage::{model_store, open_catalog};
 
-pub fn load_runtime_settings(context: &RuntimeContext) -> std::io::Result<OrbokSettings> {
+pub fn load_runtime_settings(context: &RuntimeContext) -> OrbokResult<OrbokSettings> {
     runtime_settings_with(context, &AllowRuntimePathProbe)
 }
 
 pub(crate) fn runtime_settings_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
-) -> std::io::Result<OrbokSettings> {
-    orbok::runtime_storage::load_settings_with(context, probe)
+) -> OrbokResult<OrbokSettings> {
+    Ok(orbok::runtime_storage::load_settings_with(context, probe)?)
 }
 
 pub fn save_runtime_settings(
     context: &RuntimeContext,
     settings: &OrbokSettings,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> OrbokResult<()> {
     save_runtime_settings_with(context, &AllowRuntimePathProbe, settings)
 }
 
@@ -120,9 +121,10 @@ pub(crate) fn save_runtime_settings_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
     settings: &OrbokSettings,
-) -> Result<(), Box<dyn std::error::Error>> {
-    orbok::runtime_storage::save_settings_with(context, probe, settings)
-        .map_err(|error| format!("settings save failed: {error:?}").into())
+) -> OrbokResult<()> {
+    Ok(orbok::runtime_storage::save_settings_with(
+        context, probe, settings,
+    )?)
 }
 
 #[cfg(test)]

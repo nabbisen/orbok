@@ -48,6 +48,35 @@ pub enum ModelLifecycleError {
     Catalog,
 }
 
+/// RFC-061 §5 Slice 2: lets `bootstrap/startup.rs` propagate
+/// `run_managed_model_startup`'s error with `?` under `OrbokResult` instead
+/// of erasing it into `Box<dyn Error>`. Defined here, not in `orbok-core`
+/// (which `ModelLifecycleError` cannot depend on without an inverted
+/// dependency) -- `From` may live in the crate owning either type, and this
+/// crate owns `ModelLifecycleError`. No exact `OrbokError` variant exists
+/// for "managed model store" failures specifically; mapped to the closest
+/// existing bucket per variant, matching `download.rs::map_delivery_error`'s
+/// established `StoreUnavailable`/`StoreBusy` → local-storage grouping for
+/// the sibling `ModelDeliveryError` type.
+impl From<ModelLifecycleError> for orbok_core::OrbokError {
+    fn from(error: ModelLifecycleError) -> Self {
+        match error {
+            ModelLifecycleError::StoreUnavailable => {
+                orbok_core::OrbokError::Cache("managed model store is unavailable".into())
+            }
+            ModelLifecycleError::StoreBusy => {
+                orbok_core::OrbokError::Cache("managed model store is busy".into())
+            }
+            ModelLifecycleError::Filesystem => {
+                orbok_core::OrbokError::Cache("managed model filesystem recovery failed".into())
+            }
+            ModelLifecycleError::Catalog => {
+                orbok_core::OrbokError::Database("managed model catalog recovery failed".into())
+            }
+        }
+    }
+}
+
 /// Advance the durable startup epoch, recover filesystem state, and validate
 /// the current generation before normal runtime resolution can observe it.
 pub fn run_managed_model_startup(

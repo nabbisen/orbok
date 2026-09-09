@@ -22,7 +22,7 @@ type InstallerFuture<'a> =
 /// it asks the worker to stop at its next safe point.
 pub async fn run(
     store: ProfileModelStore,
-    catalog: orbok_db::Catalog,
+    catalog: Arc<orbok_db::Catalog>,
     tx: Sender<Message>,
     cancel: Arc<AtomicBool>,
 ) {

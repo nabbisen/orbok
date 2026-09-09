@@ -45,10 +45,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("orbok: portable mode — data directory: ./orbok-data/");
     }
     if args.iter().any(|a| a == "--check") {
-        return bootstrap::run_check(&runtime);
+        bootstrap::run_check(&runtime)?;
+        return Ok(());
     }
 
     let state = bootstrap::load_initial_state(&runtime)?;
+
+    // RFC-061 §5 Slice 1: one `Catalog` for the whole `update` closure's
+    // lifetime, opened once here rather than once per message. This is a
+    // deliberately separate connection from the one `load_initial_state`
+    // just opened and dropped internally above -- that one runs entirely
+    // before the event loop starts (crash recovery, the startup rescan,
+    // model resolution), so it is not the "per-message" cost this slice
+    // targets, and threading it through would touch `load_initial_state`'s
+    // signature and every test that calls it for no benefit this RFC asks
+    // for. `Arc` rather than a bare reference: several branches below hand
+    // it to a spawned task (`tokio::spawn`/`iced::Task::perform`) that must
+    // outlive this synchronous closure invocation.
+    let catalog = std::sync::Arc::new(bootstrap::open_catalog(&runtime)?);
 
     // RFC-057 §4.1: the resource-observation channel. Constructed once
     // here, not inside the `.subscription(..)` closure below (which iced
@@ -102,14 +116,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     model_flow::ModelFlowEffect::StartManagedDownload => {
                         let model_store = bootstrap::model_store(&runtime)
                             .expect("active model store must be authorized");
-                        let catalog = match bootstrap::open_catalog(&runtime) {
-                            Ok(catalog) => catalog,
-                            Err(_) => return iced::Task::none(),
-                        };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
                         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                         *active_download_cancel.lock().unwrap() = Some(cancel.clone());
-                        tokio::spawn(download::run(model_store, catalog, tx, cancel));
+                        tokio::spawn(download::run(model_store, catalog.clone(), tx, cancel));
                         iced::Task::stream(rx)
                     }
                     model_flow::ModelFlowEffect::CancelManagedDownload => {
@@ -157,72 +167,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(folder) = picked {
                         let path = folder.to_string_lossy().to_string();
                         app.update(Message::SourcePathChanged(path.clone()));
-                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                            match bootstrap::add_source(&catalog, &path) {
-                                Ok((card, sensitive)) => {
-                                    if let Some(warning) = sensitive {
-                                        tracing::warn!("sensitive source: {warning}");
-                                        app.update(Message::ShowNotice(
-                                            orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                                        ));
-                                    }
-                                    let source_id = card.source_id.clone();
-                                    app.update(Message::SourceAdded(card));
-                                    match bootstrap::scan_and_index_source(&catalog, &source_id) {
-                                        Ok(health) => app.update(Message::HealthUpdated(health)),
-                                        Err(e) => {
-                                            tracing::error!("scan failed: {e}");
-                                            app.update(Message::ShowNotice(
-                                                orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
-                                            ));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!("add source failed: {e}");
+                        match bootstrap::add_source(&catalog, &path) {
+                            Ok((card, sensitive)) => {
+                                if let Some(warning) = sensitive {
+                                    tracing::warn!("sensitive source: {warning}");
                                     app.update(Message::ShowNotice(
-                                        orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                        orbok_ui::notice::UserNotice::SensitiveSourceAdded,
                                     ));
                                 }
+                                let source_id = card.source_id.clone();
+                                app.update(Message::SourceAdded(card));
+                                match bootstrap::scan_and_index_source(&catalog, &source_id) {
+                                    Ok(health) => app.update(Message::HealthUpdated(health)),
+                                    Err(e) => {
+                                        tracing::error!("scan failed: {e}");
+                                        app.update(Message::ShowNotice(
+                                            orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("add source failed: {e}");
+                                app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                ));
                             }
                         }
                     }
                     return iced::Task::none();
                 }
                 Message::CleanSnippets => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let cache = bootstrap::cache_service(&runtime)
-                            .expect("active cache path must be authorized");
-                        match bootstrap::clean_snippets(&catalog, &cache) {
-                            Ok(_) => app.update(Message::CleanupDone),
-                            Err(e) => tracing::error!("clean snippets failed: {e}"),
-                        }
+                    let cache = bootstrap::cache_service(&runtime)
+                        .expect("active cache path must be authorized");
+                    match bootstrap::clean_snippets(&catalog, &cache) {
+                        Ok(_) => app.update(Message::CleanupDone),
+                        Err(e) => tracing::error!("clean snippets failed: {e}"),
                     }
                     return iced::Task::none();
                 }
                 Message::CleanSearchCache => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let cache = bootstrap::cache_service(&runtime)
-                            .expect("active cache path must be authorized");
-                        match bootstrap::clean_search_cache(&catalog, &cache) {
-                            Ok(_) => app.update(Message::CleanupDone),
-                            Err(e) => tracing::error!("clean search cache failed: {e}"),
-                        }
+                    let cache = bootstrap::cache_service(&runtime)
+                        .expect("active cache path must be authorized");
+                    match bootstrap::clean_search_cache(&catalog, &cache) {
+                        Ok(_) => app.update(Message::CleanupDone),
+                        Err(e) => tracing::error!("clean search cache failed: {e}"),
                     }
                     return iced::Task::none();
                 }
                 Message::ConfirmResetCatalog => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let cache = bootstrap::cache_service(&runtime)
-                            .expect("active cache path must be authorized");
-                        let _ = bootstrap::reset_catalog(&catalog, &cache);
-                    }
+                    let cache = bootstrap::cache_service(&runtime)
+                        .expect("active cache path must be authorized");
+                    let _ = bootstrap::reset_catalog(&catalog, &cache);
                     // UI state pre-cleared in AppState::update; fall through for update().
                 }
                 Message::SourceRemoved(source_id) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let _ = bootstrap::remove_source(&catalog, source_id);
-                    }
+                    let _ = bootstrap::remove_source(&catalog, source_id);
                 }
                 // RFC-037 §10.2 manual refresh (Task 035): same function
                 // the startup check calls (bootstrap/startup.rs), invoked
@@ -233,17 +233,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // the background scheduler emits further updates as the
                 // enqueued job actually runs.
                 Message::SourceRefreshRequested(source_id) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        match bootstrap::check_and_refresh_source(&catalog, source_id) {
-                            Ok(health) => {
-                                app.update(Message::SourcesLoaded(bootstrap::get_sources(
-                                    &catalog,
-                                )));
-                                app.update(Message::HealthUpdated(health));
-                            }
-                            Err(e) => {
-                                tracing::error!("source refresh failed: {e}");
-                            }
+                    match bootstrap::check_and_refresh_source(&catalog, source_id) {
+                        Ok(health) => {
+                            app.update(Message::SourcesLoaded(bootstrap::get_sources(&catalog)));
+                            app.update(Message::HealthUpdated(health));
+                        }
+                        Err(e) => {
+                            tracing::error!("source refresh failed: {e}");
                         }
                     }
                     return iced::Task::none();
@@ -273,9 +269,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::widget::operation::focus_previous();
                 }
                 Message::PersistLocale(locale) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let _ = bootstrap::persist_locale(&catalog, locale);
-                    }
+                    let _ = bootstrap::persist_locale(&catalog, locale);
                 }
                 Message::SetTheme(theme) => {
                     let _ = bootstrap::persist_theme(&runtime, *theme);
@@ -310,34 +304,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 },
                             );
                         }
-                        if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
-                                Ok(results) => {
-                                    let count = results.len();
-                                    app.update(message.clone());
-                                    app.update(Message::SearchResultsReady(results));
-                                    // RFC-042: record this search if history is on.
-                                    let s = bootstrap::load_runtime_settings(&runtime)
-                                        .unwrap_or_default();
-                                    history::record_search(
-                                        &catalog,
-                                        &s.privacy_settings(),
-                                        &s.history_settings(),
-                                        &query,
-                                        &app.state.search_ui.active_filters,
-                                        count,
-                                        &s.locale,
-                                    );
-                                    app.update(Message::HistoryLoaded(history::load_history(
-                                        &catalog,
-                                    )));
-                                    return iced::Task::none();
-                                }
-                                Err(e) => {
-                                    app.update(message.clone());
-                                    app.update(Message::SearchError(e.to_string()));
-                                    return iced::Task::none();
-                                }
+                        match bootstrap::run_search(&runtime, &catalog, &query, 20) {
+                            Ok(results) => {
+                                let count = results.len();
+                                app.update(message.clone());
+                                app.update(Message::SearchResultsReady(results));
+                                // RFC-042: record this search if history is on.
+                                let s =
+                                    bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
+                                history::record_search(
+                                    &catalog,
+                                    &s.privacy_settings(),
+                                    &s.history_settings(),
+                                    &query,
+                                    &app.state.search_ui.active_filters,
+                                    count,
+                                    &s.locale,
+                                );
+                                app.update(Message::HistoryLoaded(history::load_history(&catalog)));
+                                return iced::Task::none();
+                            }
+                            Err(e) => {
+                                app.update(message.clone());
+                                app.update(Message::SearchError(e.to_string()));
+                                return iced::Task::none();
                             }
                         }
                     }
@@ -345,7 +335,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // RFC-045: folder picked — create or reuse the remembered folder.
                 Message::FolderPicked(path) => {
                     let path_str = path.to_string_lossy().to_string();
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                    {
                         // Reuse an existing source if the canonical path already
                         // exists — never create duplicates (RFC-045 §19.3).
                         let card = if let Some(existing) =
@@ -409,9 +399,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime)
-                        && let Some(entry) = history::get_entry(&catalog, id)
-                    {
+                    if let Some(entry) = history::get_entry(&catalog, id) {
                         // Restore search text immediately (RFC-042 §9 step 1).
                         app.state.query = entry.search_text.clone();
                         app.state.search_ui.text = entry.search_text.clone();
@@ -449,18 +437,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: remove one entry.
                 Message::RemoveRecentSearch(id) => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        let refreshed = history::remove_entry(&catalog, id);
-                        app.update(message.clone());
-                        app.update(Message::HistoryLoaded(refreshed));
-                    }
+                    let refreshed = history::remove_entry(&catalog, id);
+                    app.update(message.clone());
+                    app.update(Message::HistoryLoaded(refreshed));
                     return iced::Task::none();
                 }
                 // RFC-042: clear all entries.
                 Message::ConfirmClearRecentSearches => {
-                    if let Ok(catalog) = bootstrap::open_catalog(&runtime) {
-                        history::clear_history(&catalog);
-                    }
+                    history::clear_history(&catalog);
                     app.update(Message::RecentSearchesCleared);
                     app.update(Message::ShowNotice(
                         orbok_ui::notice::UserNotice::RecentSearchesCleared,
@@ -474,7 +458,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = bootstrap::save_runtime_settings(&runtime, &s);
                     // If turned off, also clear existing entries (RFC-042 §13.4
                     // "Turn off and clear" — default safe behavior here).
-                    if !*on && let Ok(catalog) = bootstrap::open_catalog(&runtime) {
+                    if !*on {
                         history::clear_history(&catalog);
                         app.update(Message::RecentSearchesCleared);
                     }

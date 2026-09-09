@@ -29,6 +29,17 @@ impl std::fmt::Display for ManagedModelResolutionError {
 
 impl std::error::Error for ManagedModelResolutionError {}
 
+/// RFC-061 §5 Slice 2: lets `run_check_with` propagate this with `?` under
+/// `OrbokResult`. `load_initial_state_with`'s own call site handles this
+/// error explicitly (falls back to no model, logs a warning) rather than
+/// propagating it, so this conversion exists for the one call site that
+/// does propagate, not both.
+impl From<ManagedModelResolutionError> for orbok_core::OrbokError {
+    fn from(error: ManagedModelResolutionError) -> Self {
+        orbok_core::OrbokError::Cache(error.to_string())
+    }
+}
+
 pub(crate) struct ResolvedModelDir {
     pub(crate) _guard: Option<ModelStoreMutationGuard<SharedAccess>>,
     pub(crate) path: Option<String>,

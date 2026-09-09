@@ -10,6 +10,27 @@ use orbok_core::{OrbokError, OrbokResult};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
+
+/// How long a connection waits on `SQLITE_BUSY` before giving up (RFC-061
+/// §5). One `Catalog` per process (Slice 1) makes contention from this
+/// process alone impossible, but the scheduler task and the UI still meet
+/// at the SQLite level through WAL as two separate connections to the same
+/// file -- this is what turns that contention into a bounded wait instead
+/// of an immediate error.
+///
+/// **Checked, not assumed, and the RFC's premise was wrong**: RFC-061 §1
+/// says this is `0` in production today. It is not — `rusqlite` 0.39's
+/// `Connection::open_with_flags` already calls `sqlite3_busy_timeout(db,
+/// 5000)` unconditionally for every connection it opens
+/// (`inner_connection.rs:118`, confirmed by reading the vendored source and
+/// by a standalone reproduction: a bare `Connection::open_in_memory()`
+/// already reports `PRAGMA busy_timeout` = 5000). So this call is currently
+/// a no-op, not a fix. Kept anyway, explicitly: the requirement should not
+/// depend on an undocumented default in a dependency that could change
+/// without notice on an upgrade, and this makes the 5-second figure this
+/// project's own decision rather than an inherited accident.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// File name of the authoritative catalog database (Appendix A §3).
 pub const CATALOG_FILE_NAME: &str = "orbok-catalog.sqlite3";
@@ -40,6 +61,7 @@ impl Catalog {
     }
 
     fn from_connection(conn: Connection, path: PathBuf) -> OrbokResult<Self> {
+        conn.busy_timeout(BUSY_TIMEOUT).map_err(db_err)?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(db_err)?;
         // WAL is unsupported for in-memory databases; ignore that case.
@@ -87,4 +109,37 @@ impl Catalog {
 /// Map a rusqlite error to the typed orbok error.
 pub(crate) fn db_err(e: rusqlite::Error) -> OrbokError {
     OrbokError::Database(e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RFC-061 §5: a busy timeout must actually be set on every opened
+    /// connection, not just declared as a constant nobody applies.
+    ///
+    /// **Not mutation-testable against this line specifically, and said so
+    /// rather than claimed otherwise**: `rusqlite` 0.39 already applies
+    /// `sqlite3_busy_timeout(db, 5000)` internally for every connection
+    /// (see `BUSY_TIMEOUT`'s own doc comment), so removing the explicit
+    /// `conn.busy_timeout(BUSY_TIMEOUT)` call does not change this
+    /// assertion's outcome -- confirmed by actually removing it and
+    /// re-running, not assumed. What this guards against is a *different*
+    /// regression: a future `rusqlite` upgrade silently changing that
+    /// internal default, or a later pragma in `from_connection` resetting
+    /// it. The property is real and worth asserting even though this one
+    /// line isn't what a mutation of it would currently prove.
+    #[test]
+    fn busy_timeout_is_set_on_the_connection() {
+        let catalog = Catalog::open_in_memory().unwrap();
+        let ms: i64 = catalog
+            .lock()
+            .pragma_query_value(None, "busy_timeout", |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            ms,
+            BUSY_TIMEOUT.as_millis() as i64,
+            "busy_timeout pragma must reflect BUSY_TIMEOUT"
+        );
+    }
 }

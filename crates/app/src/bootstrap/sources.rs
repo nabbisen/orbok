@@ -1,5 +1,6 @@
 //! Source registration, scan/index execution, removal, and folder lookup.
 
+use orbok_core::{OrbokError, OrbokResult};
 use orbok_db::Catalog;
 
 // ── Source management ─────────────────────────────────────────────────
@@ -9,14 +10,21 @@ use orbok_db::Catalog;
 pub fn add_source(
     catalog: &Catalog,
     raw_path: &str,
-) -> Result<(orbok_ui::state::SourceCard, Option<&'static str>), Box<dyn std::error::Error>> {
+) -> OrbokResult<(orbok_ui::state::SourceCard, Option<&'static str>)> {
     use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
     use orbok_db::repo::{NewSource, SourceRepository};
     use std::path::Path;
 
     let raw = raw_path.trim();
     if raw.is_empty() {
-        return Err("path is empty".into());
+        // RFC-061 Slice 2: no dedicated "invalid input" variant exists in
+        // `OrbokError` and adding one for this single, narrow validation
+        // message is not this slice's job (it is about threading existing
+        // structured errors through, not growing the taxonomy). `PathCanonicalization`
+        // is the closest existing bucket -- an empty path is a path that
+        // cannot be resolved, the same family as the `canonicalize()`
+        // failure two lines below, just caught earlier.
+        return Err(OrbokError::PathCanonicalization("path is empty".into()));
     }
     // Resolve tilde and canonicalize.
     let expanded = if let Some(stripped) = raw.strip_prefix('~') {
@@ -27,7 +35,7 @@ pub fn add_source(
     };
     let canonical = Path::new(&expanded)
         .canonicalize()
-        .map_err(|e| format!("cannot access '{expanded}': {e}"))?
+        .map_err(|e| OrbokError::PathCanonicalization(format!("cannot access '{expanded}': {e}")))?
         .to_string_lossy()
         .to_string();
 
@@ -89,14 +97,14 @@ pub fn add_source(
 pub fn scan_and_index_source(
     catalog: &Catalog,
     source_id_str: &str,
-) -> Result<orbok_ui::state::IndexHealth, Box<dyn std::error::Error>> {
+) -> OrbokResult<orbok_ui::state::IndexHealth> {
     use orbok_core::{JobType, SourceId};
     use orbok_db::repo::{IndexJobRepository, SourceRepository};
 
     let source_id = SourceId::from_string(source_id_str.to_string());
     let src = SourceRepository::new(catalog)
         .get(&source_id)?
-        .ok_or("source not found")?;
+        .ok_or(OrbokError::SourceNotFound)?;
 
     IndexJobRepository::new(catalog).enqueue(JobType::Scan, Some(&src.source_id), None)?;
 
@@ -127,7 +135,7 @@ pub fn scan_and_index_source(
 pub fn check_and_refresh_source(
     catalog: &Catalog,
     source_id_str: &str,
-) -> Result<orbok_ui::state::IndexHealth, Box<dyn std::error::Error>> {
+) -> OrbokResult<orbok_ui::state::IndexHealth> {
     use orbok_core::{SourceId, SourceStatus};
     use orbok_db::repo::SourceRepository;
     use orbok_fs::source_lifecycle::{SourceState, check_source_path};
@@ -135,7 +143,7 @@ pub fn check_and_refresh_source(
 
     let source_id = SourceId::from_string(source_id_str.to_string());
     let repo = SourceRepository::new(catalog);
-    let src = repo.get(&source_id)?.ok_or("source not found")?;
+    let src = repo.get(&source_id)?.ok_or(OrbokError::SourceNotFound)?;
 
     match check_source_path(Path::new(&src.canonical_path)) {
         SourceState::Active => {
@@ -158,10 +166,7 @@ pub fn check_and_refresh_source(
 }
 
 /// Remove a source and its associated indexes from the catalog.
-pub fn remove_source(
-    catalog: &Catalog,
-    source_id_str: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn remove_source(catalog: &Catalog, source_id_str: &str) -> OrbokResult<()> {
     use orbok_core::SourceId;
     use orbok_db::repo::SourceRepository;
     let source_id = SourceId::from_string(source_id_str.to_string());

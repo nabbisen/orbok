@@ -2,6 +2,7 @@
 
 use super::model_resolution::{ResolvedModelDir, resolve_model_dir};
 use orbok::runtime_context::{AllowRuntimePathProbe, RuntimeContext, RuntimePathProbe};
+use orbok_core::OrbokResult;
 use orbok_db::Catalog;
 use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
 use orbok_models::EmbeddingModel;
@@ -16,7 +17,7 @@ pub(crate) fn run_search(
     catalog: &Catalog,
     query: &str,
     limit: u32,
-) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
+) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
     run_search_with(context, &AllowRuntimePathProbe, catalog, query, limit)
 }
 
@@ -26,7 +27,7 @@ pub(crate) fn run_search_with<P: RuntimePathProbe + ?Sized>(
     catalog: &Catalog,
     query: &str,
     limit: u32,
-) -> Result<Vec<orbok_ui::state::SearchResultDisplay>, Box<dyn std::error::Error>> {
+) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
     let settings = super::runtime_settings_with(context, probe)?;
     let resolved_model = match resolve_model_dir(context, probe, catalog, &settings) {
         Ok(resolved) => resolved,

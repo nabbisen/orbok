@@ -5,6 +5,7 @@ use super::model_resolution::{ResolvedModelDir, resolve_model_dir};
 use crate::settings::OrbokSettings;
 use orbok::runtime_context::{AllowRuntimePathProbe, RuntimeContext, RuntimePathProbe};
 use orbok::runtime_storage::RuntimeStorage;
+use orbok_core::OrbokResult;
 use orbok_db::Catalog;
 use orbok_db::repo::{SettingsRepository, SourceRepository};
 use orbok_ui::AppState;
@@ -15,16 +16,14 @@ use orbok_workers::verify_embedding_model;
 /// Build the initial `AppState` from persisted settings and startup
 /// model verification. Activates the wizard when any required model
 /// file is missing or not yet configured.
-pub fn load_initial_state(
-    context: &RuntimeContext,
-) -> Result<AppState, Box<dyn std::error::Error>> {
+pub fn load_initial_state(context: &RuntimeContext) -> OrbokResult<AppState> {
     load_initial_state_with(context, &AllowRuntimePathProbe)
 }
 
 pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
-) -> Result<AppState, Box<dyn std::error::Error>> {
+) -> OrbokResult<AppState> {
     let storage = RuntimeStorage::new(context, probe);
     let model_store = storage.model_store()?;
     let catalog = storage.open_catalog()?;
@@ -182,14 +181,14 @@ pub(crate) fn resolve_locale(
 }
 
 /// Headless backend validation (`--check` mode, RFC-017).
-pub fn run_check(context: &RuntimeContext) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_check(context: &RuntimeContext) -> OrbokResult<()> {
     run_check_with(context, &AllowRuntimePathProbe)
 }
 
 pub fn run_check_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> OrbokResult<()> {
     let storage = RuntimeStorage::new(context, probe);
     storage.model_store()?;
     tracing::info!(path = %context.descriptor(), "opening catalog");
@@ -197,7 +196,14 @@ pub fn run_check_with<P: RuntimePathProbe + ?Sized>(
     let version = catalog.schema_version()?;
     let expected = orbok_db::migrations::latest_version();
     if version != expected {
-        return Err(format!("schema version {version} != expected {expected}").into());
+        // RFC-062 §6 will replace this with a typed schema-version-mismatch
+        // error (a stated, not discovered, provisional choice): this is the
+        // exact check that handoff moves into `Catalog::from_connection`
+        // with its own dedicated `OrbokError` variant naming both versions.
+        // `Database` is the closest existing bucket until then.
+        return Err(orbok_core::OrbokError::Database(format!(
+            "schema version {version} != expected {expected}"
+        )));
     }
 
     // Report model status in --check output.
