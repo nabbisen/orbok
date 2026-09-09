@@ -776,6 +776,23 @@ next release tag.
 
 ### Fixed
 
+- **Review 210 §3: the RFC-022 "PDF never claims Exact" criterion was
+  guarded nowhere in the workspace.** `orbok-workers::v07_features::pdf_location_quality_is_page_only`
+  was its only assertion (`if let Ok(output) = PdfExtractor.extract(&vp) {
+  assert_ne!(…, Exact) }`) and its own fixture (`MINIMAL_PDF`) stopped
+  loading under this workspace's `lopdf` at some unknown point (Review 210
+  §2's finding) — so the `Ok` arm never ran and the test asserted nothing,
+  silently, while still reporting green. The property it existed to check
+  is exactly the one Slice 1's Defect B violated (the chunker claiming
+  `"exact"` for PDF chunks), so this guard sat inert through the whole
+  window that defect was live. Moved the assertion to
+  `orbok-extract::tests::pdf_extraction_finds_every_page_regardless_of_object_numbering`
+  (a fixture that parses, built with `lopdf`'s writer API), asserting
+  `PageOnly` specifically; mutation-tested by flipping `pdf.rs`'s
+  `PageOnly` to `Exact` and confirming the assertion fails by name, then
+  reverting. The vacuous `orbok-workers` test deleted, not left beside the
+  new one.
+
 - **RFC-060 Amendment 1 / HANDOFF-060 slice 1: PDF extraction found no text
   on essentially any real PDF, and the chunker's `location_quality` never
   reflected what the extractor actually observed.** Two production lines.

@@ -529,6 +529,18 @@ fn pdf_extraction_finds_every_page_regardless_of_object_numbering() {
             segment.heading_path.as_deref(),
             Some(format!("Page {page_num}")).as_deref()
         );
+        // RFC-022 acceptance criterion ("Location quality is PageOnly,
+        // not Exact -- honest claims"). Review 210 §3: this property was
+        // asserted nowhere in the workspace against a real `PdfExtractor`
+        // output -- `orbok-workers::v07_features::pdf_location_quality_is_page_only`
+        // was its only guard, and it silently asserted nothing once
+        // `MINIMAL_PDF` stopped loading (deleted below, in favour of this
+        // assertion against a fixture that actually parses).
+        assert_eq!(
+            segment.location_quality,
+            LocationQuality::PageOnly,
+            "PDF segments must claim PageOnly, never Exact"
+        );
     }
 }
 

@@ -6,7 +6,7 @@ use orbok_db::repo::verify_model_sha256;
 use orbok_db::repo::{ModelRepository, ModelRole, ModelStatus, NewModel};
 use orbok_embed::{RECOMMENDED_MODEL_DIMENSION, create_embedding_model, recommended_config};
 use orbok_extract::ExtractorRegistry;
-use orbok_extract::types::{DocumentExtractor, LocationQuality};
+use orbok_extract::types::DocumentExtractor;
 use orbok_fs::ValidatedPath;
 use orbok_models::{EmbeddingModelConfig, InferenceBackend};
 
@@ -199,26 +199,18 @@ fn pdf_extractor_registered_in_registry() {
 }
 
 // RFC-022 AC: Location quality is PageOnly, not Exact (honest claims).
-#[test]
-fn pdf_location_quality_is_page_only() {
-    use orbok_extract::pdf::PdfExtractor;
-    let dir = tempfile::tempdir().unwrap();
-    let pdf_path = dir.path().join("test.pdf");
-    fs::write(&pdf_path, MINIMAL_PDF).unwrap();
-    let vp = ValidatedPath {
-        source_id: orbok_core::SourceId::from_string("s1".to_string()),
-        canonical: fs::canonicalize(&pdf_path).unwrap(),
-    };
-    if let Ok(output) = PdfExtractor.extract(&vp) {
-        for seg in &output.segments {
-            assert_ne!(
-                seg.location_quality,
-                LocationQuality::Exact,
-                "PDF segments must never claim Exact location quality"
-            );
-        }
-    }
-}
+//
+// Review 210 §3: `pdf_location_quality_is_page_only` deleted, not kept
+// alongside the assertion below. Its `if let Ok(output) = …` shape
+// silently asserted nothing once `MINIMAL_PDF` stopped loading under this
+// workspace's `lopdf` (Review 210 §2) — it read as a guard for this exact
+// RFC-022 criterion (the criterion Defect B violated) while actually
+// covering nothing, at either layer, for an unknown period. The assertion
+// now lives in `orbok-extract`'s own
+// `tests::pdf_extraction_finds_every_page_regardless_of_object_numbering`,
+// against a fixture built with `lopdf`'s writer API rather than hand-typed
+// bytes, and is mutation-tested there (flipping `pdf.rs`'s `PageOnly` to
+// `Exact` fails it by name; confirmed, then reverted).
 
 // ── RFC-029: Model integrity ───────────────────────────────────────────
 
