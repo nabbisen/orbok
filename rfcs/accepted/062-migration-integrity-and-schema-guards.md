@@ -185,10 +185,23 @@ Phrased per RFC-058 §5.
    recorded tag in the script and bump it at release. The second is uglier and
    has no failure mode; the first is cleaner and fails confusingly when the
    checkout is shallow. Implementer's call, documented in the script's header.
-2. **Should `0007` also repair anything else edited post-release?** The audit
-   found one edit. A full `git log -p` over `migrations/` since 0.1.0 should be
-   run once as part of this work, so that "one edit" is a verified statement and
-   not an assumption. If others exist, they join `0007` or get their own numbers.
+2. ~~**Should `0007` also repair anything else edited post-release?**~~
+   **Answered 2026-09-10 by the sweep this question asked for** (recorded in
+   HANDOFF-062 §1). **Two released migrations were edited, not one.**
+   `0001_baseline.sql` semantically, by `c54e89d` — the audit's finding and
+   §5's repair target. `0003_scheduler.sql` **comment-only**, by `7a9605c`
+   (Task 034 §10's correction of the false SQLite claim): five `--` lines
+   replacing three, zero SQL statements changed. `0002`, `0004` and `0005` are
+   clean; `0006` is not in any tag yet.
+
+   **`0007` repairs only `0001`.** The `0003` edit cannot affect any catalog:
+   `migrations.rs` contains no hashing of any kind, and `schema_migrations`
+   records only `version`, `name` and `applied_at` — no content digest — so an
+   applied migration is never re-read and its bytes are never verified. It
+   violates the rule as literally written and nothing else. **§7's gate must
+   therefore grandfather it**, which is a design constraint the gate did not
+   previously know it had; see HANDOFF-062 §2.
+
 3. **Does the guard belong in `from_connection` or in `open`?** `from_connection`
    is also used by `open_in_memory` for tests, where the check is a no-op.
    Harmless either way; note it so it is a choice rather than an accident.

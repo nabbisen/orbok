@@ -86,6 +86,7 @@ under RFC-000.
 | 058 | HANDOFF-058-verifying-the-wired-application | the end-to-end reachability test, the benchmark's timing boundary, and the release gate |
 | 060 | HANDOFF-060-slice1-pdf-extraction-and-location-quality | Slice 1 only: PDF extraction by page number, and the chunk quality the chunker never reads |
 | 061 | HANDOFF-061-catalog-access-and-application-boundary | one shared catalog, one model per process, failures surfaced, and the censored latency instrument |
+| 062 | HANDOFF-062-migration-integrity-and-schema-guards | the 0007 repair, the downgrade guard, and a gate that must grandfather one comment-only edit |
 
 **Index corrected 2026-09-07.** Handoffs 054–057 existed on disk and were
 missing from the table above; 058 is new. The closing note below was also stale

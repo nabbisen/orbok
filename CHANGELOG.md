@@ -1520,6 +1520,29 @@ next release tag.
 
 ### Docs
 
+- **RFC-062 has an implementation handoff, and the sweep its §9 Q2 asked for is
+  done — it found a second edited migration.** `0001_baseline.sql` was edited
+  semantically by `c54e89d` (the audit's finding). **`0003_scheduler.sql` was
+  also edited after release**, by `7a9605c` (Task 034 §10), **comment-only**:
+  five `--` lines replacing three, zero SQL statements changed. `0002`, `0004`
+  and `0005` are clean; `0006` is not in any tag yet.
+
+  The `0003` edit cannot affect any catalog — `migrations.rs` contains no hashing
+  of any kind and `schema_migrations` records only `version`/`name`/`applied_at`,
+  no content digest, so an applied migration is never re-read and its bytes never
+  verified. It violates the append-only rule as literally written and nothing
+  else. **But a byte-level CI gate would fail on today's tree**, which is a
+  constraint §7's gate did not previously know it had: the handoff takes a
+  shrink-only allowlist with one grandfathered entry over either a semantic
+  "ignore comment-only diffs" gate (a judgement a shell script makes badly) or
+  reverting a comment that was corrected because it was factually wrong.
+
+  The handoff also carries a method warning, because the sweep produced two
+  different wrong answers before a right one: `git rev-parse "$tag:$path"` prints
+  its input to stdout and exits 0 when the path does not exist, and this
+  project's shell parses unbraced `$t:path` as a parameter modifier. Brace it,
+  check exit codes, and put a self-check in front of any sweep.
+
 - **RFC-061 has an implementation handoff.** Five slices ordered by dependency
   rather than by RFC section: one shared `Arc<Catalog>` with `busy_timeout`
   first (it alone closes the broken serialization, the per-message migration
