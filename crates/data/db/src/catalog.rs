@@ -76,6 +76,28 @@ impl Catalog {
             path,
         };
         migrations::run_pending(&catalog)?;
+
+        // RFC-062 §6: the schema-downgrade guard, moved here from
+        // `run_check` -- the headless `--check` diagnostic already refused
+        // a catalog from a newer version; the actual application did not.
+        // Checked after `run_pending`, not before: `run_pending` only ever
+        // adds rows for migrations *this* binary knows about, so on a
+        // catalog written by a newer orbok it is a no-op (nothing in
+        // `MIGRATIONS` is still unapplied) and `schema_version()` still
+        // reflects the newer binary's higher stamp afterward -- exactly the
+        // condition this guard exists to catch.
+        //
+        // Also reached by `open_in_memory` (tests): a fresh in-memory
+        // catalog always starts at `stored = 0` and `run_pending` always
+        // brings it to `latest_version()`, so `stored > supported` never
+        // holds there and this is a no-op in practice, not a special case
+        // — a choice, not an accident (HANDOFF-062 §4/§5 Q3).
+        let stored = catalog.schema_version()?;
+        let supported = migrations::latest_version();
+        if stored > supported {
+            return Err(OrbokError::SchemaVersionUnsupported { stored, supported });
+        }
+
         Ok(catalog)
     }
 
@@ -141,5 +163,47 @@ mod tests {
             BUSY_TIMEOUT.as_millis() as i64,
             "busy_timeout pragma must reflect BUSY_TIMEOUT"
         );
+    }
+
+    /// RFC-062 §8 acceptance criterion 4: a catalog whose `schema_version`
+    /// is one above `latest_version()` is refused, with an error naming
+    /// both versions. A fully-migrated real catalog, closed, then stamped
+    /// with one extra `schema_migrations` row one version beyond what this
+    /// binary's own `MIGRATIONS` list knows about -- the same situation a
+    /// downgrade, a synced profile from a newer machine, or `ORBOK_DATA_DIR`
+    /// pointed at a newer install would produce (RFC-049/RFC-054).
+    #[test]
+    fn schema_version_from_the_future_is_refused_naming_both_versions() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("future.sqlite3");
+        let future_version = migrations::latest_version() + 1;
+        {
+            let catalog = Catalog::open(&path).unwrap();
+            catalog
+                .lock()
+                .execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at) \
+                     VALUES (?1, 'from_the_future', '2099-01-01T00:00:00Z')",
+                    rusqlite::params![future_version],
+                )
+                .unwrap();
+        }
+
+        match Catalog::open(&path) {
+            Err(OrbokError::SchemaVersionUnsupported { stored, supported }) => {
+                assert_eq!(stored, future_version);
+                assert_eq!(supported, migrations::latest_version());
+            }
+            Err(other) => panic!(
+                "expected OrbokError::SchemaVersionUnsupported {{ stored: {future_version}, \
+                 supported: {} }}, got a different error: {other}",
+                migrations::latest_version()
+            ),
+            Ok(_) => panic!(
+                "a catalog stamped with schema_version {future_version} (one above this \
+                 build's {}) must be refused, not opened",
+                migrations::latest_version()
+            ),
+        }
     }
 }

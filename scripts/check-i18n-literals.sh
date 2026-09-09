@@ -173,6 +173,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/app/src/model_flow.rs"]="developer-facing tracing/log/panic/assert strings and inline #[cfg(test)] module content only, verified in full"
   ["crates/app/src/physical_identity.rs"]="io::Error Display strings only — a backend error type never rendered raw to users (RFC-052 §3), verified in full"
   ["crates/app/src/rfc061_acceptance_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as runtime_isolation_tests.rs"
+  ["crates/app/src/rfc062_acceptance_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as runtime_isolation_tests.rs"
   ["crates/app/src/runtime_context.rs"]="Display impl strings for a backend error type (RFC-049), same RFC-052 §3 exemption as physical_identity.rs, verified in full"
   ["crates/app/src/runtime_isolation_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code"
   ["crates/app/src/runtime_storage.rs"]="Display impl strings for a backend error type, same exemption as runtime_context.rs, verified in full"

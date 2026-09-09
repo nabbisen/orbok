@@ -16,6 +16,8 @@ mod model_flow;
 #[cfg(test)]
 mod rfc061_acceptance_tests;
 #[cfg(test)]
+mod rfc062_acceptance_tests;
+#[cfg(test)]
 mod runtime_isolation_tests;
 mod scheduler_host;
 mod settings;

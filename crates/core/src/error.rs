@@ -126,6 +126,19 @@ pub enum OrbokError {
 
     #[error("queue {queue} is full — backpressure active")]
     BackpressureActive { queue: String },
+
+    /// RFC-062 §6: a catalog whose `schema_migrations` table already
+    /// records a version this build's own `migrations::latest_version()`
+    /// doesn't know about — written by a newer orbok, synced from another
+    /// machine, or `ORBOK_DATA_DIR` pointed at a newer profile (RFC-049,
+    /// RFC-054). Refused rather than opened: running an older binary's
+    /// queries against an unknown, possibly-incompatible layout produces
+    /// arbitrary query failures instead of one clear one.
+    #[error(
+        "catalog schema version {stored} is newer than this build supports (up to {supported}) \
+         — this data directory was written by a newer orbok"
+    )]
+    SchemaVersionUnsupported { stored: i64, supported: i64 },
 }
 
 /// Convenience result alias.

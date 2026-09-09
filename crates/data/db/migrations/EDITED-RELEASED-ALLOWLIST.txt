@@ -1,0 +1,29 @@
+# Shrink-only allowlist for scripts/check-migration-integrity.sh
+# (RFC-062 §7 / HANDOFF-062 §2).
+#
+# A released migration file must never change (crates/data/db/src/migrations.rs's
+# own doc comment: "New migrations are appended here and never reordered or
+# edited after release"). This gate enforces that at the byte level, comparing
+# every migration file against its blob at the last release tag. Every
+# filename listed below is a grandfathered exception to that rule, found by
+# the sweep RFC-062 §9 open question 2 asked for (HANDOFF-062 §1) -- not a
+# license for further edits to the file it names.
+#
+# THIS LIST CAN ONLY SHRINK. The gate compares the staged id set against
+# HEAD's, the same mechanism rfcs/closures/LEGACY-ALLOWLIST.txt already uses
+# and self-tests -- see that file's own header for the reasoning. There is
+# no path that adds an entry here without a human deciding to, since a
+# shrinking-only list cannot pass an addition through review by accident.
+
+# 0003_scheduler.sql: comment-only, by 7a9605c (Task 034 §10). Replaced a
+# false claim about SQLite's CHECK-constraint re-validation behavior
+# (0003's own comment used to assert existing rows would keep working
+# forever, which conflated "does not re-validate existing rows" with "does
+# not enforce the CHECK going forward" -- untrue, and the root cause RFC-062
+# exists to fix) with a correct one pointing at RFC-062/0007. Zero SQL
+# statements changed -- confirmed via `git diff <tag> -- <file>` naming only
+# comment lines. `crates/data/db/src/migrations.rs` contains no hashing of
+# any kind and `schema_migrations` records no content digest, so this edit
+# cannot affect any catalog, upgraded or fresh: it violates the append-only
+# rule as literally written, and nothing else.
+0003_scheduler.sql

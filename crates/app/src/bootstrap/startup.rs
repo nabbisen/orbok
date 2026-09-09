@@ -192,19 +192,15 @@ pub fn run_check_with<P: RuntimePathProbe + ?Sized>(
     let storage = RuntimeStorage::new(context, probe);
     storage.model_store()?;
     tracing::info!(path = %context.descriptor(), "opening catalog");
+    // RFC-062 §6: the schema-version guard now lives in
+    // `Catalog::from_connection`, naming both versions in a typed
+    // `OrbokError::SchemaVersionUnsupported` -- this used to duplicate that
+    // check here with a provisional `Database(...)` string. The
+    // `open_catalog()?` call below already surfaces it: `--check` still
+    // reports the condition, just via the shared path instead of its own
+    // copy.
     let catalog = storage.open_catalog()?;
     let version = catalog.schema_version()?;
-    let expected = orbok_db::migrations::latest_version();
-    if version != expected {
-        // RFC-062 §6 will replace this with a typed schema-version-mismatch
-        // error (a stated, not discovered, provisional choice): this is the
-        // exact check that handoff moves into `Catalog::from_connection`
-        // with its own dedicated `OrbokError` variant naming both versions.
-        // `Database` is the closest existing bucket until then.
-        return Err(orbok_core::OrbokError::Database(format!(
-            "schema version {version} != expected {expected}"
-        )));
-    }
 
     // Report model status in --check output.
     let settings = storage.load_settings::<OrbokSettings>()?;

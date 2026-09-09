@@ -3494,6 +3494,7 @@ dependencies = [
  "orbok-ui",
  "orbok-workers",
  "rfd",
+ "rusqlite",
  "serde",
  "serde_json",
  "starship-battery",

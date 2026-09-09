@@ -25,7 +25,15 @@ jobs:
     name: Fast gate (fmt + clippy + unit tests)
     runs-on: ubuntu-latest
     steps:
+      # RFC-062 §7/§9 open question 1: `check-migration-integrity.sh` below
+      # needs `git describe --tags --abbrev=0` to find the last release
+      # tag, which needs the full history -- the default shallow checkout
+      # makes it fail confusingly rather than silently. The alternative
+      # (pinning a tag in the script, bumping it at release) was rejected:
+      # a stale pin nobody bumps fails silently, which is worse.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # Task 039: pinned, not @stable -- an unpinned resolution can turn an
       # unchanged commit red the day a new stable release ships (Review 192
       # §2), and RFC-053 already measured this workspace's actual MSRV risk
@@ -48,6 +56,12 @@ jobs:
 
       - name: i18n literal-copy gate (RFC-052 §6)
         run: bash scripts/check-i18n-literals.sh
+
+      - name: migration integrity gate self-test (RFC-062 §7)
+        run: bash scripts/check-migration-integrity.test.sh
+
+      - name: migration integrity gate (RFC-062 §7)
+        run: bash scripts/check-migration-integrity.sh
 
       - name: unit tests (no GUI crates)
         env:

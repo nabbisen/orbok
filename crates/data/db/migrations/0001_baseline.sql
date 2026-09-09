@@ -205,7 +205,7 @@ CREATE TABLE index_jobs (
         )
     ),
     status TEXT NOT NULL CHECK (
-        status IN ('queued', 'running', 'succeeded', 'failed', 'canceled', 'blocked', 'paused', 'waiting_for_dependency')
+        status IN ('queued', 'running', 'succeeded', 'failed', 'canceled', 'blocked')
     ),
     priority INTEGER NOT NULL DEFAULT 0,
     progress_current INTEGER NOT NULL DEFAULT 0,

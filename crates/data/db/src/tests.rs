@@ -3,6 +3,7 @@
 
 mod rfc042_history;
 mod rfc050_generations;
+mod rfc062_migration_integrity;
 
 use crate::Catalog;
 use crate::migrations;
