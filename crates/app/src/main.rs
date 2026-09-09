@@ -76,11 +76,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `resolve_embedding_worker_parts`'s own `model_missing` fallback on
     // the indexing side.
     let search_settings = bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
-    let search_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
-        &runtime,
-        &orbok::runtime_context::AllowRuntimePathProbe,
-        &catalog,
-        &search_settings,
+    // `Arc`, not a bare `Option<EmbeddingWorkerParts>`: RFC-061 §7 Slice 5
+    // moves `run_search`'s call sites onto `iced::Task::perform`, so each
+    // one needs its own cheap, owned handle to move into a `'static` async
+    // block -- the same reason `catalog` above is an `Arc`.
+    let search_model = std::sync::Arc::new(
+        bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &runtime,
+            &orbok::runtime_context::AllowRuntimePathProbe,
+            &catalog,
+            &search_settings,
+        ),
     );
 
     // RFC-057 §4.1: the resource-observation channel. Constructed once
@@ -189,43 +195,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::RequestAddSource => {
-                    // Open the OS-native folder picker.
-                    // `pick_folder()` is synchronous; it blocks the update loop
-                    // while the dialog is open, which is expected for a modal dialog.
-                    let picked = rfd::FileDialog::new()
-                        .set_title(dialog_title_add_source(app.state.locale))
-                        .pick_folder();
-                    if let Some(folder) = picked {
-                        let path = folder.to_string_lossy().to_string();
-                        app.update(Message::SourcePathChanged(path.clone()));
-                        match bootstrap::add_source(&catalog, &path) {
-                            Ok((card, sensitive)) => {
-                                if let Some(warning) = sensitive {
-                                    tracing::warn!("sensitive source: {warning}");
-                                    app.update(Message::ShowNotice(
-                                        orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                                    ));
-                                }
-                                let source_id = card.source_id.clone();
-                                app.update(Message::SourceAdded(card));
-                                match bootstrap::scan_and_index_source(&catalog, &source_id) {
-                                    Ok(health) => app.update(Message::HealthUpdated(health)),
-                                    Err(e) => {
-                                        tracing::error!("scan failed: {e}");
-                                        app.update(Message::ShowNotice(
-                                            orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
-                                        ));
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!("add source failed: {e}");
+                    // RFC-061 §7 Slice 5: `pick_folder()` used to be
+                    // synchronous, blocking the whole update loop for as
+                    // long as the OS dialog stayed open -- the same
+                    // `AsyncFileDialog`/`Task::perform` pattern `SubmitSearch`
+                    // (above) already uses for RFC-045's picker.
+                    let locale = app.state.locale;
+                    return iced::Task::perform(
+                        async move {
+                            rfd::AsyncFileDialog::new()
+                                .set_title(dialog_title_add_source(locale))
+                                .pick_folder()
+                                .await
+                                .map(|h| h.path().to_path_buf())
+                        },
+                        |result| match result {
+                            Some(path) => Message::AddSourceFolderPicked(path),
+                            None => Message::AddSourceFolderPickerCancelled,
+                        },
+                    );
+                }
+                Message::AddSourceFolderPicked(folder) => {
+                    let path = folder.to_string_lossy().to_string();
+                    app.update(Message::SourcePathChanged(path.clone()));
+                    match bootstrap::add_source(&catalog, &path) {
+                        Ok((card, sensitive)) => {
+                            if let Some(warning) = sensitive {
+                                tracing::warn!("sensitive source: {warning}");
                                 app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                    orbok_ui::notice::UserNotice::SensitiveSourceAdded,
                                 ));
                             }
+                            let source_id = card.source_id.clone();
+                            app.update(Message::SourceAdded(card));
+                            match bootstrap::scan_and_index_source(&catalog, &source_id) {
+                                Ok(health) => app.update(Message::HealthUpdated(health)),
+                                Err(e) => {
+                                    tracing::error!("scan failed: {e}");
+                                    app.update(Message::ShowNotice(
+                                        orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                    ));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("add source failed: {e}");
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                            ));
                         }
                     }
+                    return iced::Task::none();
+                }
+                Message::AddSourceFolderPickerCancelled => {
                     return iced::Task::none();
                 }
                 Message::CleanSnippets => {
@@ -396,138 +418,191 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 },
                             );
                         }
-                        match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20) {
-                            Ok(results) => {
-                                let count = results.len();
-                                app.update(message.clone());
-                                app.update(Message::SearchResultsReady(results));
-                                // RFC-042: record this search if history is on.
-                                let s =
-                                    bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
-                                history::record_search(
-                                    &catalog,
-                                    &s.privacy_settings(),
-                                    &s.history_settings(),
-                                    &query,
-                                    &app.state.search_ui.active_filters,
-                                    count,
-                                    &s.locale,
-                                );
-                                app.update(Message::HistoryLoaded(history::load_history(&catalog)));
-                                return iced::Task::none();
-                            }
-                            Err(e) => {
-                                app.update(message.clone());
-                                app.update(Message::SearchError(e.to_string()));
-                                return iced::Task::none();
-                            }
+                        // RFC-061 §7 Slice 5: show "Searching…" immediately
+                        // (was previously only shown *after* the search
+                        // returned, since the whole match below ran
+                        // synchronously) -- then run the actual search off
+                        // the update thread, the same `Task::perform`
+                        // pattern as the picker above.
+                        app.update(message.clone());
+                        let catalog_task = catalog.clone();
+                        let search_model_task = search_model.clone();
+                        let query_task = query.clone();
+                        return iced::Task::perform(
+                            async move {
+                                bootstrap::run_search(
+                                    &catalog_task,
+                                    search_model_task.as_ref().as_ref(),
+                                    &query_task,
+                                    20,
+                                )
+                                .map_err(|e| e.to_string())
+                            },
+                            move |outcome| Message::SubmitSearchCompleted {
+                                query: query.clone(),
+                                outcome,
+                            },
+                        );
+                    }
+                }
+                Message::SubmitSearchCompleted { query, outcome } => {
+                    match outcome {
+                        Ok(results) => {
+                            let count = results.len();
+                            app.update(Message::SearchResultsReady(results.clone()));
+                            // RFC-042: record this search if history is on.
+                            let s = bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
+                            history::record_search(
+                                &catalog,
+                                &s.privacy_settings(),
+                                &s.history_settings(),
+                                query,
+                                &app.state.search_ui.active_filters,
+                                count,
+                                &s.locale,
+                            );
+                            app.update(Message::HistoryLoaded(history::load_history(&catalog)));
+                        }
+                        Err(e) => {
+                            app.update(Message::SearchError(e.clone()));
                         }
                     }
+                    return iced::Task::none();
                 }
                 // RFC-045: folder picked — create or reuse the remembered folder.
                 Message::FolderPicked(path) => {
                     let path_str = path.to_string_lossy().to_string();
+                    // Reuse an existing source if the canonical path already
+                    // exists — never create duplicates (RFC-045 §19.3).
+                    let card = if let Some(existing) =
+                        bootstrap::find_source_by_canonical_path(&catalog, &path_str)
                     {
-                        // Reuse an existing source if the canonical path already
-                        // exists — never create duplicates (RFC-045 §19.3).
-                        let card = if let Some(existing) =
-                            bootstrap::find_source_by_canonical_path(&catalog, &path_str)
-                        {
-                            existing
-                        } else {
-                            match bootstrap::add_source(&catalog, &path_str) {
-                                Ok((card, sensitive)) => {
-                                    if let Some(warning) = sensitive {
-                                        tracing::warn!("sensitive source: {warning}");
-                                        app.update(Message::ShowNotice(
-                                            orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                                        ));
-                                    }
-                                    app.update(Message::SourceAdded(card.clone()));
-                                    card
-                                }
-                                Err(e) => {
-                                    tracing::error!("add source from search failed: {e}");
-                                    app.update(Message::FolderPickerCancelled);
+                        existing
+                    } else {
+                        match bootstrap::add_source(&catalog, &path_str) {
+                            Ok((card, sensitive)) => {
+                                if let Some(warning) = sensitive {
+                                    tracing::warn!("sensitive source: {warning}");
                                     app.update(Message::ShowNotice(
-                                        orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                        orbok_ui::notice::UserNotice::SensitiveSourceAdded,
                                     ));
-                                    return iced::Task::none();
                                 }
+                                app.update(Message::SourceAdded(card.clone()));
+                                card
                             }
-                        };
-
-                        let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
-                        let display_name = card.display_name.clone();
-
-                        // Promote to selected search location and run the
-                        // pending search — RFC-045 §8.1 "run search as soon
-                        // as possible".
-                        app.update(Message::SearchLocationSelected(
-                            orbok_ui::SearchLocation::remembered(source_id.clone(), display_name),
-                        ));
-
-                        // Begin background preparation and immediately search
-                        // whatever is already indexed (RFC-045 §14, §8.1).
-                        match bootstrap::scan_and_index_source(&catalog, source_id.as_str()) {
-                            Ok(health) => app.update(Message::HealthUpdated(health)),
-                            Err(e) => tracing::warn!("initial scan failed: {e}"),
-                        }
-
-                        // Resume the search that triggered the picker.
-                        let query = app.state.last_query.clone().unwrap_or_default();
-                        if !query.is_empty() {
-                            match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20)
-                            {
-                                Ok(results) => {
-                                    app.update(Message::SearchResultsReady(results));
-                                }
-                                Err(e) => {
-                                    app.update(Message::SearchError(e.to_string()));
-                                }
+                            Err(e) => {
+                                tracing::error!("add source from search failed: {e}");
+                                app.update(Message::FolderPickerCancelled);
+                                app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
+                                ));
+                                return iced::Task::none();
                             }
                         }
+                    };
+
+                    let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
+                    let display_name = card.display_name.clone();
+
+                    // Promote to selected search location and run the
+                    // pending search — RFC-045 §8.1 "run search as soon
+                    // as possible".
+                    app.update(Message::SearchLocationSelected(
+                        orbok_ui::SearchLocation::remembered(source_id.clone(), display_name),
+                    ));
+
+                    // Begin background preparation and immediately search
+                    // whatever is already indexed (RFC-045 §14, §8.1).
+                    match bootstrap::scan_and_index_source(&catalog, source_id.as_str()) {
+                        Ok(health) => app.update(Message::HealthUpdated(health)),
+                        Err(e) => tracing::warn!("initial scan failed: {e}"),
                     }
-                    return iced::Task::none();
+
+                    // Resume the search that triggered the picker.
+                    // RFC-061 §7 Slice 5: off the update thread, same as
+                    // `SubmitSearch` above -- this resume doesn't record
+                    // history (matches the pre-Slice-5 behavior), so its
+                    // outcome maps straight onto the plain
+                    // `SearchResultsReady`/`SearchError` messages.
+                    let query = app.state.last_query.clone().unwrap_or_default();
+                    if query.is_empty() {
+                        return iced::Task::none();
+                    }
+                    let catalog_task = catalog.clone();
+                    let search_model_task = search_model.clone();
+                    return iced::Task::perform(
+                        async move {
+                            bootstrap::run_search(
+                                &catalog_task,
+                                search_model_task.as_ref().as_ref(),
+                                &query,
+                                20,
+                            )
+                            .map_err(|e| e.to_string())
+                        },
+                        |outcome| match outcome {
+                            Ok(results) => Message::SearchResultsReady(results),
+                            Err(e) => Message::SearchError(e),
+                        },
+                    );
                 }
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
-                    if let Some(entry) = history::get_entry(&catalog, id) {
-                        // Restore search text immediately (RFC-042 §9 step 1).
-                        app.state.query = entry.search_text.clone();
-                        app.state.search_ui.text = entry.search_text.clone();
+                    let Some(entry) = history::get_entry(&catalog, id) else {
+                        return iced::Task::none();
+                    };
+                    // Restore search text immediately (RFC-042 §9 step 1).
+                    app.state.query = entry.search_text.clone();
+                    app.state.search_ui.text = entry.search_text.clone();
 
-                        // Restore valid filters; drop missing folders.
-                        let (kept, dropped) = history::restore_valid_filters(&catalog, &entry);
-                        if dropped {
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::RecentSearchFilterDropped,
-                            ));
-                        }
-                        // Note: filters are stored for display; re-applying
-                        // them to the live ActiveFilter set is a P1 refinement.
-                        let _ = kept;
-
-                        // UI status → "Searching again…".
-                        app.update(Message::SearchAgain(id.clone()));
-
-                        // Rerun against current files (RFC-042 §9 step 6).
-                        let query = entry.search_text.trim().to_string();
-                        if !query.is_empty() {
-                            match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20)
-                            {
-                                Ok(results) => {
-                                    app.update(Message::SearchResultsReady(results));
-                                }
-                                Err(e) => {
-                                    app.update(Message::SearchError(e.to_string()));
-                                }
-                            }
-                        }
-                        app.update(Message::RecentSearchRestored(id.clone()));
-                        app.update(Message::HistoryLoaded(history::load_history(&catalog)));
+                    // Restore valid filters; drop missing folders.
+                    let (kept, dropped) = history::restore_valid_filters(&catalog, &entry);
+                    if dropped {
+                        app.update(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::RecentSearchFilterDropped,
+                        ));
                     }
-                    return iced::Task::none();
+                    // Note: filters are stored for display; re-applying
+                    // them to the live ActiveFilter set is a P1 refinement.
+                    let _ = kept;
+
+                    // UI status → "Searching again…".
+                    app.update(Message::SearchAgain(id.clone()));
+                    // RFC-061 §7 Slice 5: these two don't depend on the
+                    // search outcome below (restoring the entry and
+                    // refreshing the history list are independent of
+                    // whether the rerun finds anything), so they no longer
+                    // need to wait behind it.
+                    app.update(Message::RecentSearchRestored(id.clone()));
+                    app.update(Message::HistoryLoaded(history::load_history(&catalog)));
+
+                    // Rerun against current files (RFC-042 §9 step 6), off
+                    // the update thread -- same as `SubmitSearch`/
+                    // `FolderPicked` above. Doesn't record history (matches
+                    // pre-Slice-5 behavior), so its outcome maps straight
+                    // onto the plain `SearchResultsReady`/`SearchError`
+                    // messages.
+                    let query = entry.search_text.trim().to_string();
+                    if query.is_empty() {
+                        return iced::Task::none();
+                    }
+                    let catalog_task = catalog.clone();
+                    let search_model_task = search_model.clone();
+                    return iced::Task::perform(
+                        async move {
+                            bootstrap::run_search(
+                                &catalog_task,
+                                search_model_task.as_ref().as_ref(),
+                                &query,
+                                20,
+                            )
+                            .map_err(|e| e.to_string())
+                        },
+                        |outcome| match outcome {
+                            Ok(results) => Message::SearchResultsReady(results),
+                            Err(e) => Message::SearchError(e),
+                        },
+                    );
                 }
                 // RFC-042: remove one entry.
                 Message::RemoveRecentSearch(id) => {

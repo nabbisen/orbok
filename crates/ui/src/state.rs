@@ -523,6 +523,18 @@ pub enum Message {
     WizardBack,
     QueryChanged(String),
     SubmitSearch,
+    /// RFC-061 §7 Slice 5: `SubmitSearch`'s own search now runs off the
+    /// update thread (`iced::Task::perform`); this carries its outcome back,
+    /// plus the query that was actually searched (not re-read from
+    /// `AppState.query` on arrival, which may have changed if the user kept
+    /// typing while the search was in flight) -- `orbok`'s handler needs it
+    /// for RFC-042 history recording. `FolderPicked`/`SearchAgain`'s own
+    /// resumed searches don't record history, so they map straight onto
+    /// `SearchResultsReady`/`SearchError` below instead of this variant.
+    SubmitSearchCompleted {
+        query: String,
+        outcome: Result<Vec<SearchResultDisplay>, String>,
+    },
     SearchResultsReady(Vec<SearchResultDisplay>),
     SearchError(String),
     SelectResult(usize),
@@ -586,6 +598,14 @@ pub enum Message {
     // Source management
     SourcePathChanged(String),
     RequestAddSource,
+    /// RFC-061 §7 Slice 5: the OS folder picker `RequestAddSource` opens
+    /// returned `path` -- mirrors RFC-045's `FolderPicked`, but for the
+    /// Sources-management "Add source" flow rather than the search-in-folder
+    /// one (different follow-up: create/scan the source, no search to
+    /// resume).
+    AddSourceFolderPicked(std::path::PathBuf),
+    /// The "Add source" folder picker was cancelled -- neutral, no error.
+    AddSourceFolderPickerCancelled,
     SourceAdded(SourceCard),
     SourceRemoved(String), // source_id
     /// RFC-037 §10.2 manual refresh (Task 035): "[Check again]" for a
@@ -736,6 +756,7 @@ impl AppState {
                     self.search_ui.results_status = ResultsStatus::Searching;
                 }
             }
+            Message::SubmitSearchCompleted { .. } => {} // handled in orbok: dispatches SearchResultsReady/SearchError
             Message::SearchResultsReady(results) => {
                 let count = results.len();
                 self.search_results = results.clone();
@@ -923,6 +944,8 @@ impl AppState {
             | Message::CancelDownloadInProgress => {} // handled in model_flow.rs
             Message::SourcePathChanged(p) => self.source_path_input = p.clone(),
             Message::RequestAddSource => {} // handled in orbok
+            Message::AddSourceFolderPicked(_) => {} // handled in orbok
+            Message::AddSourceFolderPickerCancelled => {} // neutral, no state to clear
             Message::SourceAdded(card) => {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();
