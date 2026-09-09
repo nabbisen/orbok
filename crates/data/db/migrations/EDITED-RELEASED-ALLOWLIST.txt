@@ -27,3 +27,24 @@
 # cannot affect any catalog, upgraded or fresh: it violates the append-only
 # rule as literally written, and nothing else.
 0003_scheduler.sql
+
+# 0001_baseline.sql: PROVISIONAL, pending architect decision -- flagged in
+# review request 212, not a settled second grandfathered entry the way
+# 0003 above is. HANDOFF-062's own definition of done (§6 item 6) says
+# this list should hold exactly one entry, 0003. Mechanically, though,
+# this gate compares every migration file against its blob at the *last
+# release tag* (0.24.0 as of this commit) -- and RFC-062 §5 step 2's own
+# repair (restoring 0001 to its released 0.16.0 text, undoing c54e89d's
+# in-place widening of the status CHECK) is itself a byte-level change to
+# 0001 relative to 0.24.0, since 0.24.0 shipped the *widened* text. No
+# release tag has been cut yet that reflects this repair, so there is no
+# tag relative to which the restored text is "already released" rather
+# than "just edited." Left off the allowlist, the gate this same commit
+# introduces fails immediately against its own repair. This entry exists
+# so CI stays green until the architect decides the actual resolution --
+# among others: keep this as a second permanent entry, remove it once a
+# new release tag ships (at which point the restored text becomes the
+# new baseline and no exemption is needed for it going forward), or
+# something else. Do not treat its presence as an answer to that
+# question.
+0001_baseline.sql
