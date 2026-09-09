@@ -46,15 +46,24 @@ fn wizard_page<'a>(
 }
 
 /// Dispatch to the correct wizard page.
+///
+/// RFC-061 §8(d): used to `.expect("wizard_view called without active
+/// wizard")`. The only caller (`shell.rs`'s `view`) already checks
+/// `state.wizard.is_some()` first, so this should be structurally
+/// unreachable -- but a panic inside `view` is unrecoverable in `iced`
+/// (it terminates the whole process, not just this frame), so the
+/// defensive branch renders an empty page instead of trusting that
+/// invariant to hold forever. Not given its own user-facing copy: a
+/// state that should never occur does not need polished text, only to
+/// not crash.
 pub fn wizard_view(state: &AppState) -> Element<'_, Message> {
     let locale = state.locale;
     let tokens = &state.tokens;
     let sc = state.text_scale;
-    match state
-        .wizard
-        .as_ref()
-        .expect("wizard_view called without active wizard")
-    {
+    let Some(wizard) = state.wizard.as_ref() else {
+        return wizard_page(tokens, column![]);
+    };
+    match wizard {
         WizardState::NotConfigured => page_setup(locale, state, None),
         WizardState::FileMissing {
             previous_dir,

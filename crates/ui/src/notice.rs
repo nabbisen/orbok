@@ -30,6 +30,22 @@ pub enum UserNotice {
     RecentSearchesCleared,
     /// Info: a narrowing choice was dropped on reopen (folder gone).
     RecentSearchFilterDropped,
+    // ── RFC-061 §8: failures that were silently swallowed before ───────
+    /// A theme/text-scale/reduced-motion write failed; the UI shows the
+    /// new value but the next launch may show the old one.
+    SettingCouldNotBeSaved,
+    /// `reset_catalog` failed; some app data may not have been cleared.
+    CatalogResetFailed,
+    /// `remove_source` failed; the folder is still registered.
+    SourceCouldNotBeRemoved,
+    /// The model store or cache handle could not be opened for an
+    /// in-session action (download, clear previews, clear search data,
+    /// full reset) -- was a panic (`.expect(...)`) before RFC-061 §8(d).
+    StorageUnavailable,
+    /// The background preparation task could not start at all (runtime
+    /// context, catalog, or cache open failure) -- orbok looks healthy
+    /// but never prepares anything, for the rest of the session.
+    IndexingCouldNotStart,
 }
 
 impl UserNotice {
@@ -44,6 +60,11 @@ impl UserNotice {
                 | Self::SearchDidNotFinish
                 | Self::FilesMovedOrMissing
                 | Self::DiagnosticsFileFailed
+                | Self::SettingCouldNotBeSaved
+                | Self::CatalogResetFailed
+                | Self::SourceCouldNotBeRemoved
+                | Self::StorageUnavailable
+                | Self::IndexingCouldNotStart
         )
     }
 
@@ -57,7 +78,12 @@ impl UserNotice {
             Self::DownloadDidNotFinish
             | Self::FolderCouldNotBeAdded
             | Self::SearchDidNotFinish
-            | Self::DiagnosticsFileFailed => Tone::Danger,
+            | Self::DiagnosticsFileFailed
+            | Self::SettingCouldNotBeSaved
+            | Self::CatalogResetFailed
+            | Self::SourceCouldNotBeRemoved
+            | Self::StorageUnavailable
+            | Self::IndexingCouldNotStart => Tone::Danger,
             // Cautions: action succeeded but the user should be aware.
             Self::FilesMovedOrMissing | Self::SensitiveSourceAdded => Tone::Warning,
             // Positive confirmations.
@@ -82,6 +108,11 @@ impl UserNotice {
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
             Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
             Self::RecentSearchFilterDropped => MessageKey::DroppedFilterNotice,
+            Self::SettingCouldNotBeSaved => MessageKey::NoticeSettingSaveFailTitle,
+            Self::CatalogResetFailed => MessageKey::NoticeResetFailTitle,
+            Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailTitle,
+            Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
+            Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
         };
         tr(locale, key)
     }
@@ -100,6 +131,11 @@ impl UserNotice {
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
             Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
             Self::RecentSearchFilterDropped => MessageKey::DroppedFilterNotice,
+            Self::SettingCouldNotBeSaved => MessageKey::NoticeSettingSaveFailBody,
+            Self::CatalogResetFailed => MessageKey::NoticeResetFailBody,
+            Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailBody,
+            Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableBody,
+            Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
         };
         tr(locale, key)
     }
@@ -120,6 +156,13 @@ impl UserNotice {
             | Self::DiagnosticsFileCreated => return None,
             Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => return None,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFile,
+            Self::SettingCouldNotBeSaved
+            | Self::CatalogResetFailed
+            | Self::SourceCouldNotBeRemoved
+            | Self::StorageUnavailable => MessageKey::NoticeActionTryAgain,
+            // No in-app action can restart the background task; the body
+            // text names the recovery step (restart orbok) as prose instead.
+            Self::IndexingCouldNotStart => return None,
         };
         Some(tr(locale, key))
     }

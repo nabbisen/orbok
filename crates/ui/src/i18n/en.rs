@@ -177,6 +177,24 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticePreviewsClearedBody => "Freed up space. Your files are untouched.",
         NoticeActionTryAgain => "Try again",
         NoticeActionChooseFolder => "Choose another folder",
+        NoticeSettingSaveFailTitle => "Setting not saved",
+        NoticeSettingSaveFailBody => {
+            "Your change didn't save. It may not be there next time you open orbok."
+        }
+        NoticeResetFailTitle => "Reset didn't finish",
+        NoticeResetFailBody => {
+            "Some app data may not have been cleared. Try again, or check available storage space."
+        }
+        NoticeSourceRemoveFailTitle => "Folder not removed",
+        NoticeSourceRemoveFailBody => "This folder is still registered. Try removing it again.",
+        NoticeStorageUnavailableTitle => "Local storage unavailable",
+        NoticeStorageUnavailableBody => {
+            "orbok could not reach its local files just now. Check storage space and permissions, then try again."
+        }
+        NoticePreparationCouldNotStartTitle => "Search preparation isn't running",
+        NoticePreparationCouldNotStartBody => {
+            "orbok couldn't start getting your files ready to search. Restart orbok, or check that its local files are reachable."
+        }
         SettingsThemeHeading => "Theme",
         ThemeSystem => "Follow system",
         ThemeLight => "Light",

@@ -53,6 +53,11 @@ every_user_notice! {
     DiagnosticsFileFailed,
     RecentSearchesCleared,
     RecentSearchFilterDropped,
+    SettingCouldNotBeSaved,
+    CatalogResetFailed,
+    SourceCouldNotBeRemoved,
+    StorageUnavailable,
+    IndexingCouldNotStart,
 }
 
 /// The invariant `notice.rs:37` claims: every notice is distinguishable by

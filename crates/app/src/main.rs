@@ -33,6 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+    install_panic_hook();
 
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
@@ -114,8 +115,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return match effect {
                     model_flow::ModelFlowEffect::None => iced::Task::none(),
                     model_flow::ModelFlowEffect::StartManagedDownload => {
-                        let model_store = bootstrap::model_store(&runtime)
-                            .expect("active model store must be authorized");
+                        // RFC-061 §8(d): was `.expect("active model store must
+                        // be authorized")` -- a bad model-store path
+                        // terminated the whole process on starting a
+                        // download.
+                        let model_store = match bootstrap::model_store(&runtime) {
+                            Ok(store) => store,
+                            Err(e) => {
+                                tracing::error!("model store unavailable: {e}");
+                                app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::StorageUnavailable,
+                                ));
+                                return iced::Task::none();
+                            }
+                        };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);
                         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                         *active_download_cancel.lock().unwrap() = Some(cancel.clone());
@@ -198,31 +211,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 Message::CleanSnippets => {
-                    let cache = bootstrap::cache_service(&runtime)
-                        .expect("active cache path must be authorized");
-                    match bootstrap::clean_snippets(&catalog, &cache) {
-                        Ok(_) => app.update(Message::CleanupDone),
-                        Err(e) => tracing::error!("clean snippets failed: {e}"),
+                    // RFC-061 §8(d): was `.expect("active cache path must be
+                    // authorized")` -- a bad cache path terminated the whole
+                    // process on a click of "Clear temporary previews".
+                    match bootstrap::cache_service(&runtime) {
+                        Ok(cache) => match bootstrap::clean_snippets(&catalog, &cache) {
+                            Ok(_) => app.update(Message::CleanupDone),
+                            Err(e) => tracing::error!("clean snippets failed: {e}"),
+                        },
+                        Err(e) => {
+                            tracing::error!("cache handle unavailable for clean snippets: {e}");
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::StorageUnavailable,
+                            ));
+                        }
                     }
                     return iced::Task::none();
                 }
                 Message::CleanSearchCache => {
-                    let cache = bootstrap::cache_service(&runtime)
-                        .expect("active cache path must be authorized");
-                    match bootstrap::clean_search_cache(&catalog, &cache) {
-                        Ok(_) => app.update(Message::CleanupDone),
-                        Err(e) => tracing::error!("clean search cache failed: {e}"),
+                    // RFC-061 §8(d): same panic-on-bad-cache-path fix as
+                    // `CleanSnippets` above.
+                    match bootstrap::cache_service(&runtime) {
+                        Ok(cache) => match bootstrap::clean_search_cache(&catalog, &cache) {
+                            Ok(_) => app.update(Message::CleanupDone),
+                            Err(e) => tracing::error!("clean search cache failed: {e}"),
+                        },
+                        Err(e) => {
+                            tracing::error!("cache handle unavailable for clean search cache: {e}");
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::StorageUnavailable,
+                            ));
+                        }
                     }
                     return iced::Task::none();
                 }
                 Message::ConfirmResetCatalog => {
-                    let cache = bootstrap::cache_service(&runtime)
-                        .expect("active cache path must be authorized");
-                    let _ = bootstrap::reset_catalog(&catalog, &cache);
+                    // RFC-061 §8(d): `.expect(...)` here used to panic the
+                    // whole process on a bad cache path. `StorageUnavailable`
+                    // covers this open failure; `bootstrap::cache_service`
+                    // itself never fails on a legitimately authorized
+                    // profile, only on a broken one (RFC-049 §8's sealed
+                    // handle contract).
+                    match bootstrap::cache_service(&runtime) {
+                        Ok(cache) => {
+                            // RFC-061 §8(b): a failed reset used to be
+                            // silently invisible -- the UI cleared its own
+                            // state (below, via the fallthrough `update`)
+                            // regardless of whether anything was actually
+                            // cleared on disk.
+                            if let Err(e) = bootstrap::reset_catalog(&catalog, &cache) {
+                                tracing::error!("reset catalog failed: {e}");
+                                app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::CatalogResetFailed,
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("cache handle unavailable for reset: {e}");
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::StorageUnavailable,
+                            ));
+                        }
+                    }
                     // UI state pre-cleared in AppState::update; fall through for update().
                 }
                 Message::SourceRemoved(source_id) => {
-                    let _ = bootstrap::remove_source(&catalog, source_id);
+                    if let Err(e) = bootstrap::remove_source(&catalog, source_id) {
+                        tracing::error!("remove source failed: {e}");
+                        app.update(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::SourceCouldNotBeRemoved,
+                        ));
+                    }
                 }
                 // RFC-037 §10.2 manual refresh (Task 035): same function
                 // the startup check calls (bootstrap/startup.rs), invoked
@@ -272,13 +331,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = bootstrap::persist_locale(&catalog, locale);
                 }
                 Message::SetTheme(theme) => {
-                    let _ = bootstrap::persist_theme(&runtime, *theme);
+                    if let Err(e) = bootstrap::persist_theme(&runtime, *theme) {
+                        tracing::error!("persist theme failed: {e}");
+                        app.update(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
+                        ));
+                    }
                 }
                 Message::SetTextScale(scale) => {
-                    let _ = bootstrap::persist_text_scale(&runtime, *scale);
+                    if let Err(e) = bootstrap::persist_text_scale(&runtime, *scale) {
+                        tracing::error!("persist text scale failed: {e}");
+                        app.update(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
+                        ));
+                    }
                 }
                 Message::SetReducedMotion(val) => {
-                    let _ = bootstrap::persist_reduced_motion(&runtime, *val);
+                    if let Err(e) = bootstrap::persist_reduced_motion(&runtime, *val) {
+                        tracing::error!("persist reduced motion failed: {e}");
+                        app.update(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
+                        ));
+                    }
                 }
                 Message::SubmitSearch => {
                     let query = app.state.query.trim().to_string();
@@ -516,6 +590,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .run()?;
     Ok(())
+}
+
+/// RFC-061 §8(d): before this, there was no `std::panic::set_hook` anywhere
+/// in the tree. `iced` runs `update`/`view` on the GUI thread; a panic
+/// there was previously whatever the Rust default panic hook prints
+/// (`panicked at ...` to stderr, no `tracing` structure, easy to miss when
+/// stderr isn't captured) and then process termination either way -- this
+/// does not change *that* (still not unwind-safe to keep running an `iced`
+/// app after `update`/`view` panicked), it changes what gets recorded
+/// before the process goes down, so RFC-018's diagnostics have a
+/// structured, `tracing`-routed record of the panic rather than raw stderr
+/// text that may not have been captured anywhere.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        tracing::error!(
+            location = location.as_deref().unwrap_or("unknown"),
+            "panic: {info}"
+        );
+        default_hook(info);
+    }));
 }
 
 /// Convert a `VerifyOutcome` into the file check list shown in the wizard.

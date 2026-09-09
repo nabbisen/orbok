@@ -415,3 +415,18 @@ fn downloading_page_offers_cancel_then_shows_cancelling_once_pressed() {
         "the Cancel action must not still be offered once cancelling"
     );
 }
+
+// RFC-061 §8(d): `wizard_view` called with `state.wizard: None` (the
+// structurally-unreachable case its only caller, `shell.rs`'s `view`,
+// already guards against) must not panic -- a panic inside `view`
+// terminates the whole process, not just this frame.
+#[test]
+fn wizard_view_with_no_active_wizard_does_not_panic() {
+    let _guard = iced_test_guard();
+    let state = AppState::default();
+    assert!(
+        state.wizard.is_none(),
+        "this test's premise is a default state with no active wizard"
+    );
+    let _ = views::wizard_view(&state);
+}

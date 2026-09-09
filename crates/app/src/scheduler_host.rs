@@ -116,15 +116,37 @@ pub async fn run(
     portable: bool,
     resource_signals: Receiver<ResourceObservation>,
     resource_signal_tx: Sender<ResourceObservation>,
-    output: Sender<Message>,
+    mut output: Sender<Message>,
 ) {
+    // RFC-061 §8(c): three consecutive silent-failure branches used to
+    // return with no log and no notice -- the application looked
+    // completely healthy while background preparation never started, for
+    // the rest of the session, with nothing anywhere recording why.
     let Ok(runtime) = crate::bootstrap::resolve_runtime_context(portable) else {
+        tracing::error!("background preparation could not start: runtime context unavailable");
+        let _ = output
+            .send(Message::ShowNotice(
+                orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+            ))
+            .await;
         return;
     };
     let Ok(catalog) = crate::bootstrap::open_catalog(&runtime) else {
+        tracing::error!("background preparation could not start: catalog unavailable");
+        let _ = output
+            .send(Message::ShowNotice(
+                orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+            ))
+            .await;
         return;
     };
     let Ok(cache) = crate::bootstrap::cache_service(&runtime) else {
+        tracing::error!("background preparation could not start: cache unavailable");
+        let _ = output
+            .send(Message::ShowNotice(
+                orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+            ))
+            .await;
         return;
     };
     // Best-effort: a settings load failure falls back to defaults for both
@@ -226,7 +248,14 @@ pub(crate) async fn run_with_context(
         // anything), so this is cheap on the normal path (matches zero
         // rows) and correct on the restart-after-off path (matches the
         // rows that previous session paused).
-        let _ = scheduler.resume(&catalog);
+        // RFC-061 §8(a): a failed resume used to be entirely invisible --
+        // this is also how RFC-062's CHECK-constraint mismatch became a
+        // silent behaviour change rather than a visible error on a catalog
+        // built before that migration existed (`pause`/`resume` fail, the
+        // setting still saves, nothing actually pauses or resumes).
+        if let Err(error) = scheduler.resume(&catalog) {
+            tracing::warn!(%error, "could not resume background indexing");
+        }
     } else {
         // RFC-036 §12.2 Safe Pause, applied before any job has been
         // dispatched: "finish the current small unit" is vacuously true
@@ -235,7 +264,9 @@ pub(crate) async fn run_with_context(
         // `pause`'s catalog update -- any `queued` row already present
         // (e.g. left over from a prior session) is marked `paused` too,
         // not just future ones.
-        let _ = scheduler.pause(&catalog);
+        if let Err(error) = scheduler.pause(&catalog) {
+            tracing::warn!(%error, "could not pause background indexing");
+        }
     }
     let mut known: HashSet<JobId> = HashSet::new();
     let cache_service = cache.service();
@@ -394,8 +425,26 @@ pub(crate) async fn run_with_context(
 
         match result {
             Ok(()) => {
-                let _ = scheduler.complete(&job.id, &catalog);
-                known.remove(&job.id);
+                // RFC-061 §8(a): `let _ =` here was the live-lock -- it
+                // dropped the write error *and* removed the job from
+                // `known` unconditionally, so a catalog write failure
+                // after real work succeeded meant the work got redone
+                // (nothing left to say it was already done) rather than
+                // the write simply retried. Keep the job in `known` on
+                // failure so `rehydrate` does not load a second copy, and
+                // retry the write on the next iteration.
+                match scheduler.complete(&job.id, &catalog) {
+                    Ok(()) => {
+                        known.remove(&job.id);
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            job = job.id.as_str(),
+                            %error,
+                            "could not record completion"
+                        );
+                    }
+                }
             }
             Err(error) => {
                 tracing::warn!(job = job.id.as_str(), error = %error, "indexing job failed");
@@ -406,7 +455,15 @@ pub(crate) async fn run_with_context(
                 // here would risk `rehydrate` loading a second in-memory
                 // copy of a job `fail`'s own retry path already re-queued.
                 let error_kind = error_kind_for(&error);
-                let _ = scheduler.fail(job, error_kind, Some(&error.to_string()), &catalog);
+                if let Err(write_error) =
+                    scheduler.fail(job, error_kind, Some(&error.to_string()), &catalog)
+                {
+                    // RFC-061 §8(a): the job's failure was already logged
+                    // above; this is specifically the *catalog write*
+                    // recording that failure not landing, a second,
+                    // distinct problem worth its own log line.
+                    tracing::warn!(%write_error, "could not record job failure");
+                }
             }
         }
         health_report_pending = true;
@@ -482,7 +539,14 @@ fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<J
         if scheduler.load_persisted(job) {
             known.insert(id);
         } else {
-            let _ = jobs.set_status(&id, JobStatus::Blocked);
+            // RFC-061 §8(a) / §4's caution (Review 200 §5): a log line only
+            // -- the `list_blocked` loop below already retries this on the
+            // next rehydration pass regardless of whether this write lands,
+            // so a second recovery path is not needed, only visibility that
+            // the write failed.
+            if let Err(error) = jobs.set_status(&id, JobStatus::Blocked) {
+                tracing::warn!(job = id.as_str(), %error, "could not mark job blocked");
+            }
         }
     }
 
@@ -503,7 +567,16 @@ fn rehydrate(scheduler: &mut Scheduler, catalog: &Catalog, known: &mut HashSet<J
         };
         if scheduler.load_persisted(job) {
             known.insert(id.clone());
-            let _ = jobs.set_status(&id, JobStatus::Queued);
+            // RFC-061 §8(a) / §4's caution (Review 200 §5): same as the
+            // `Blocked` write above -- a log line only. The row is already
+            // correctly tracked in memory (`known.insert` just above)
+            // regardless of whether this catalog write lands; if it does
+            // not, the next rehydration pass finds it still `blocked` and
+            // retries, which is `list_blocked`'s own existing recovery,
+            // not a new one.
+            if let Err(error) = jobs.set_status(&id, JobStatus::Queued) {
+                tracing::warn!(job = id.as_str(), %error, "could not mark job queued");
+            }
         }
     }
 }

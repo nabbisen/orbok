@@ -184,6 +184,26 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticePreviewsClearedBody => "空き容量を増やしました。ファイルはそのままです。",
         NoticeActionTryAgain => "もう一度試す",
         NoticeActionChooseFolder => "別のフォルダを選ぶ",
+        NoticeSettingSaveFailTitle => "設定を保存できませんでした",
+        NoticeSettingSaveFailBody => {
+            "変更を保存できませんでした。次回起動時に元に戻っている可能性があります。"
+        }
+        NoticeResetFailTitle => "リセットが完了しませんでした",
+        NoticeResetFailBody => {
+            "一部のアプリデータが消去されていない可能性があります。もう一度お試しいただくか、空き容量をご確認ください。"
+        }
+        NoticeSourceRemoveFailTitle => "フォルダーを削除できませんでした",
+        NoticeSourceRemoveFailBody => {
+            "このフォルダーはまだ登録されたままです。もう一度削除をお試しください。"
+        }
+        NoticeStorageUnavailableTitle => "ローカルストレージにアクセスできません",
+        NoticeStorageUnavailableBody => {
+            "orbokが現在ローカルファイルにアクセスできませんでした。空き容量と権限を確認し、もう一度お試しください。"
+        }
+        NoticePreparationCouldNotStartTitle => "検索の準備が実行されていません",
+        NoticePreparationCouldNotStartBody => {
+            "orbokがファイルを検索できるようにする準備を開始できませんでした。orbokを再起動するか、ローカルファイルにアクセスできるか確認してください。"
+        }
         SettingsThemeHeading => "テーマ",
         ThemeSystem => "システムに合わせる",
         ThemeLight => "ライト",
