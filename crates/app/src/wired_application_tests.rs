@@ -15,8 +15,8 @@
 //!
 //! RFC-058 §6 rows 3 and 4 (kind filter, folder scope) are **not** in this
 //! file, and that is a stop condition (handoff §6), not an omission.
-//! `bootstrap::run_search`/`run_search_with` take `(context, catalog,
-//! query, limit)` -- no filter, no scope parameter exists anywhere on the
+//! `bootstrap::run_search` takes `(catalog, model, query, limit)` -- no
+//! filter, no scope parameter exists anywhere on the
 //! call path down to `HybridSearchService::search`. There is no lower-level
 //! entry point either (unlike row 5's source-pausing, which reuses
 //! `SourceRepository::set_status`, a real persistence path the application
@@ -30,7 +30,9 @@
 
 use super::bootstrap;
 use super::scheduler_host::{self, ResourceObservation};
-use orbok::runtime_context::{PlatformRuntimePaths, RuntimeContext, RuntimeSelection};
+use orbok::runtime_context::{
+    AllowRuntimePathProbe, PlatformRuntimePaths, RuntimeContext, RuntimeSelection,
+};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -56,6 +58,21 @@ fn test_context(data_dir: &Path) -> RuntimeContext {
 /// runs, including `Scan` jobs enqueued by `bootstrap::check_and_refresh_source`
 /// or `bootstrap::scan_and_index_source` before this is called.
 async fn drain_scheduler_until_idle(context: &RuntimeContext, timeout: Duration) {
+    drain_scheduler_until_idle_with_embedding(context, timeout, None).await;
+}
+
+/// `drain_scheduler_until_idle`, but with a caller-supplied embedding
+/// model wired into the hosted scheduler instead of always running with
+/// `embedding_parts: None`. Every other caller stays keyword-only (no
+/// reason to pay for a model load in tests that never search by vector);
+/// `two_identical_searches_return_identical_orders` (RFC013_MODEL_DIR)
+/// is the one exception -- it needs `GenerateEmbedding` jobs to actually
+/// produce vectors, not fall back to `model_missing` (RFC-008 §15).
+async fn drain_scheduler_until_idle_with_embedding(
+    context: &RuntimeContext,
+    timeout: Duration,
+    embedding_parts: Option<crate::bootstrap::embedding_resolution::EmbeddingWorkerParts>,
+) {
     let loop_catalog = bootstrap::open_catalog(context).unwrap();
     let cache = bootstrap::cache_service(context).unwrap();
     let (tx, rx) = futures::channel::mpsc::channel(64);
@@ -63,7 +80,7 @@ async fn drain_scheduler_until_idle(context: &RuntimeContext, timeout: Duration)
     let handle = tokio::spawn(scheduler_host::run_with_context(
         loop_catalog,
         cache,
-        None,
+        embedding_parts,
         true,
         true,
         resource_signals,
@@ -215,8 +232,7 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
         drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&context, &catalog, "originalcontentmarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "originalcontentmarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the original content must be findable before any edit"
@@ -234,7 +250,7 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "revisedcontentmarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "revisedcontentmarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "restarting orbok must re-scan registered sources and pick up a file \
@@ -289,7 +305,7 @@ async fn manual_refresh_picks_up_a_file_added_while_running() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "newlyaddedmarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "newlyaddedmarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "manual refresh must re-scan the source and find a file added while \
@@ -331,7 +347,7 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&context, &catalog, "soontobegonemarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "soontobegonemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -347,7 +363,7 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "soontobegonemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "soontobegonemarker", 20).unwrap();
     assert!(
         results.is_empty(),
         "a file marked missing by refresh must stop appearing as a normal \
@@ -420,7 +436,7 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "thirdpagemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "thirdpagemarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "the PDF must be findable by text unique to its third page"
@@ -474,7 +490,7 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&context, &catalog, "vanishingfilemarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "vanishingfilemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -485,7 +501,7 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
     std::fs::remove_file(&doc).unwrap();
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "vanishingfilemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "vanishingfilemarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "sanity: with no refresh run, the stale catalog entry must still surface a result \
@@ -542,7 +558,7 @@ async fn a_paused_source_contributes_no_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&context, &catalog, "pausedsourcemarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "pausedsourcemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before its source is paused"
@@ -560,7 +576,7 @@ async fn a_paused_source_contributes_no_search_results() {
     }
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "pausedsourcemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "pausedsourcemarker", 20).unwrap();
     assert!(
         results.is_empty(),
         "a paused source's files must not appear in search results, got {results:?}"
@@ -598,8 +614,7 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&context, &catalog, "temporarilygonemarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "temporarilygonemarker", 20).unwrap();
         assert!(
             results.is_empty(),
             "sanity: must be gone from search while missing"
@@ -616,7 +631,7 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "temporarilygonemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "temporarilygonemarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "a file that reappears with unchanged content must become searchable \
@@ -657,8 +672,7 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&context, &catalog, "unmountedfoldermarker", 20).unwrap();
+        let results = bootstrap::run_search(&catalog, None, "unmountedfoldermarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before the folder disappears"
@@ -742,7 +756,7 @@ async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&context, &catalog, "認証エラー", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, "認証エラー", 20).unwrap();
     assert!(!results.is_empty(), "the corpus must be findable at all");
     // RFC-060 §10's own recorded, separate defect: the whole-file "document"
     // chunk isn't deduped from the section-level chunk, so each file can
@@ -837,22 +851,72 @@ async fn two_identical_searches_return_identical_orders() {
         );
     }
 
+    let settings = bootstrap::load_runtime_settings(&context).unwrap();
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
         let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        // The hosted scheduler needs its own resolved model to actually run
+        // `GenerateEmbedding` jobs against (RFC-008 §15's `model_missing`
+        // fallback otherwise means no vector ever gets written, regardless
+        // of what `run_search` is later given) -- resolved separately from
+        // the one below since `EmbeddingWorkerParts` isn't `Clone` and this
+        // one is moved into the spawned scheduler task.
+        let indexing_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &settings,
+        )
+        .expect("RFC013_MODEL_DIR must resolve to a loadable embedding model");
+        drain_scheduler_until_idle_with_embedding(
+            &context,
+            Duration::from_secs(60),
+            Some(indexing_model),
+        )
+        .await;
     }
-    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
+    // RFC-061 §6 Slice 4: resolve once, the same way `main.rs` now does,
+    // and reuse the same `EmbeddingWorkerParts` across every call below --
+    // this loop is exactly the "hold for the loop's lifetime" shape the
+    // RFC asks for. `resolve_embedding_worker_parts` finds-or-registers by
+    // model name/version (`ensure_embedding_model_registered`), so this
+    // gets back the identical catalog `ModelId` the indexing resolution
+    // above registered, even though it is a second, separate model load.
+    let model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+        &context,
+        &AllowRuntimePathProbe,
+        &catalog,
+        &settings,
+    )
+    .expect("RFC013_MODEL_DIR must resolve to a loadable embedding model");
     let first =
-        bootstrap::run_search(&context, &catalog, "authentication token rotation", 20).unwrap();
+        bootstrap::run_search(&catalog, Some(&model), "authentication token rotation", 20).unwrap();
     assert!(!first.is_empty(), "the corpus must be findable at all");
+    // RFC-061 §6 Slice 4 mutation check: before this slice, `run_search`
+    // passed `HybridSearchService::with_model` the model's constant
+    // `model_name` as the vector lookup key, while the embedding worker
+    // writes vectors under a catalog-registered `ModelId` -- the two never
+    // matched, so `ExactVectorSearch` silently found zero rows and every
+    // result's badges were keyword-only, no matter how well the corpus
+    // matched semantically. Reverting `parts.model_id.as_str()` back to
+    // `config.model_name` in `search.rs` makes this assertion fail.
+    assert!(
+        first
+            .iter()
+            .any(|r| r.badges.contains(&orbok_search::MatchBadge::Semantic)),
+        "hybrid search must find at least one vector candidate under the shared \
+         model_id -- if this fails, search and the embedding worker have drifted \
+         back onto two different model_id keys"
+    );
     let first_order: Vec<String> = first.iter().map(|r| r.display_path.clone()).collect();
 
     for i in 1..20 {
         let repeat =
-            bootstrap::run_search(&context, &catalog, "authentication token rotation", 20).unwrap();
+            bootstrap::run_search(&catalog, Some(&model), "authentication token rotation", 20)
+                .unwrap();
         let order: Vec<String> = repeat.iter().map(|r| r.display_path.clone()).collect();
         assert_eq!(
             order, first_order,

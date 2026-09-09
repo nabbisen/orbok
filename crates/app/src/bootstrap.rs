@@ -41,8 +41,6 @@ pub use preferences::{
 #[cfg(test)]
 pub(crate) use preferences::{persist_model_dir_with, persist_theme_with};
 pub(crate) use search::run_search;
-#[cfg(test)]
-pub(crate) use search::run_search_with;
 pub use sources::{
     add_source, check_and_refresh_source, find_source_by_canonical_path, remove_source,
     scan_and_index_source,

@@ -65,6 +65,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // outlive this synchronous closure invocation.
     let catalog = std::sync::Arc::new(bootstrap::open_catalog(&runtime)?);
 
+    // RFC-061 §6 Slice 4: resolve the embedding model once for the whole
+    // process, the same way `scheduler_host::run` already resolves its own
+    // (separate -- indexing and search are different processes' worth of
+    // work sharing one binary, not one model instance) copy once at the top
+    // of its loop, instead of `bootstrap::search::run_search` loading a
+    // fresh model (a full deserialize off disk) on every single search.
+    // `None` when no model is configured or the backend fails to load --
+    // `run_search` treats that as keyword-only, mirroring
+    // `resolve_embedding_worker_parts`'s own `model_missing` fallback on
+    // the indexing side.
+    let search_settings = bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
+    let search_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+        &runtime,
+        &orbok::runtime_context::AllowRuntimePathProbe,
+        &catalog,
+        &search_settings,
+    );
+
     // RFC-057 §4.1: the resource-observation channel. Constructed once
     // here, not inside the `.subscription(..)` closure below (which iced
     // re-evaluates every frame), so `update` can hold a stable `Sender`
@@ -378,7 +396,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 },
                             );
                         }
-                        match bootstrap::run_search(&runtime, &catalog, &query, 20) {
+                        match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20) {
                             Ok(results) => {
                                 let count = results.len();
                                 app.update(message.clone());
@@ -459,7 +477,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Resume the search that triggered the picker.
                         let query = app.state.last_query.clone().unwrap_or_default();
                         if !query.is_empty() {
-                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
+                            match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20)
+                            {
                                 Ok(results) => {
                                     app.update(Message::SearchResultsReady(results));
                                 }
@@ -495,7 +514,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Rerun against current files (RFC-042 §9 step 6).
                         let query = entry.search_text.trim().to_string();
                         if !query.is_empty() {
-                            match bootstrap::run_search(&runtime, &catalog, &query, 20) {
+                            match bootstrap::run_search(&catalog, search_model.as_ref(), &query, 20)
+                            {
                                 Ok(results) => {
                                     app.update(Message::SearchResultsReady(results));
                                 }

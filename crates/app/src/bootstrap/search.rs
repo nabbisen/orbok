@@ -1,67 +1,41 @@
 //! Keyword/hybrid search execution.
 
-use super::model_resolution::{ResolvedModelDir, resolve_model_dir};
-use orbok::runtime_context::{AllowRuntimePathProbe, RuntimeContext, RuntimePathProbe};
+use super::embedding_resolution::EmbeddingWorkerParts;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
-use orbok_embed::{create_embedding_model, recommended_config_from_model_dir};
-use orbok_models::EmbeddingModel;
 use orbok_search::HybridSearchService;
 
 /// Execute a keyword/hybrid search and convert results to UI structs.
-/// Uses hybrid search (keyword + semantic) when an embedding model is
-/// configured and the tract feature is compiled in; keyword-only
-/// otherwise (RFC-008/009).
+/// Uses hybrid search (keyword + semantic) when `model` is `Some`
+/// (RFC-008/009); keyword-only otherwise.
+///
+/// RFC-061 §6 Slice 4: this used to resolve its own model -- calling
+/// `create_embedding_model` (a full model load off disk) on every single
+/// search. The caller now resolves once, the same way `scheduler_host::run`
+/// already does via `embedding_resolution::resolve_embedding_worker_parts`,
+/// and passes a borrow in here for the resolved model's whole lifetime.
+/// That consolidation also fixes a correctness bug this replaces: the old
+/// code passed `HybridSearchService::with_model` the model's constant
+/// `model_name` (e.g. `"multilingual-e5-small"`) as the vector lookup key,
+/// but the embedding worker writes vectors under a catalog-registered
+/// `ModelId` (a generated `model_<uuid>` string, from `ModelRepository::insert`)
+/// -- the two never matched, so `ExactVectorSearch` always scanned for a
+/// `model_id` no row ever had and silently returned zero vector candidates.
+/// Hybrid mode degraded to keyword-only in practice, at the added cost of
+/// loading a model and embedding the query for nothing. Passing
+/// `parts.model_id` (the same registered id the write side uses) fixes
+/// this.
 pub(crate) fn run_search(
-    context: &RuntimeContext,
     catalog: &Catalog,
+    model: Option<&EmbeddingWorkerParts>,
     query: &str,
     limit: u32,
 ) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
-    run_search_with(context, &AllowRuntimePathProbe, catalog, query, limit)
-}
-
-pub(crate) fn run_search_with<P: RuntimePathProbe + ?Sized>(
-    context: &RuntimeContext,
-    probe: &P,
-    catalog: &Catalog,
-    query: &str,
-    limit: u32,
-) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
-    let settings = super::runtime_settings_with(context, probe)?;
-    let resolved_model = match resolve_model_dir(context, probe, catalog, &settings) {
-        Ok(resolved) => resolved,
-        Err(error) => {
-            tracing::warn!(category = %error, "managed model resolution failed closed");
-            ResolvedModelDir {
-                _guard: None,
-                path: None,
-                provenance: None,
-            }
-        }
-    };
-    let results = if let Some(dir) = &resolved_model.path {
-        let config = recommended_config_from_model_dir(dir);
-        match create_embedding_model(&config) {
-            Ok(model) => {
-                // Real model available — use hybrid search.
-                let model_ref: &dyn EmbeddingModel = model.as_ref();
-                let service =
-                    HybridSearchService::with_model(catalog, model_ref, &config.model_name);
-                service.search(query, orbok_search::SearchMode::Auto, limit)?
-            }
-            Err(_) => {
-                // Model configured but backend not compiled in (e.g. no --features tract).
-                // Fall back to keyword-only.
-                HybridSearchService::keyword_only(catalog).search(
-                    query,
-                    orbok_search::SearchMode::Auto,
-                    limit,
-                )?
-            }
-        }
+    let results = if let Some(parts) = model {
+        let service =
+            HybridSearchService::with_model(catalog, parts.model.as_ref(), parts.model_id.as_str());
+        service.search(query, orbok_search::SearchMode::Auto, limit)?
     } else {
-        // No model configured — keyword-only.
         HybridSearchService::keyword_only(catalog).search(
             query,
             orbok_search::SearchMode::Auto,

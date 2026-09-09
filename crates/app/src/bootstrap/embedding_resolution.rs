@@ -76,6 +76,18 @@ pub(crate) fn resolve_embedding_worker_parts<P: RuntimePathProbe + ?Sized>(
             return None;
         }
     };
+    // RFC-061 §6 Slice 4 definition-of-done item 4: "one model per process,
+    // observable in `model_construction_ms` or a load counter." This is
+    // that counter -- both this function's callers (`scheduler_host::run`
+    // for indexing, `main` for search) resolve exactly once per process
+    // lifetime and hold the result for as long as they need it, so this
+    // line should appear at most once per caller per run, never once per
+    // search or once per indexed file.
+    tracing::info!(
+        model_name = %config.model_name,
+        model_id = %model_id.as_str(),
+        "embedding model resolved"
+    );
     Some(EmbeddingWorkerParts {
         model,
         model_id,

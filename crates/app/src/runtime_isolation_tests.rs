@@ -436,7 +436,13 @@ fn exercise_later_profile_operations_with<P: orbok::runtime_context::RuntimePath
     let catalog = storage.open_catalog()?;
     let cache = storage.cache()?;
     let (source, _) = bootstrap::add_source(&catalog, &source_path.to_string_lossy())?;
-    let _ = bootstrap::run_search_with(context, probe, &catalog, "isolation", 20)?;
+    // RFC-061 §6 Slice 4: `run_search` no longer resolves its own model (a
+    // caller-supplied `Option<&EmbeddingWorkerParts>` replaces the
+    // `context`/`probe`-driven resolution it used to do internally), so
+    // this profile-isolation exercise no longer needs a probe-aware
+    // variant here -- `persist_model_dir_with`/`persist_theme_with` above
+    // still cover this function's probe-injection responsibility.
+    let _ = bootstrap::run_search(&catalog, None, "isolation", 20)?;
     SearchHistoryRepository::new(&catalog).upsert(
         "later isolation search",
         &[],

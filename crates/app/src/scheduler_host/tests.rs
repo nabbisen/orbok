@@ -1801,7 +1801,7 @@ async fn search_latency_while_background_indexing_is_running() {
     let sampling = tokio::time::timeout(Duration::from_secs(300), async {
         while job_counts_by_status(&ui_catalog, JobStatus::Queued) > 0 {
             let start = Instant::now();
-            let _ = bootstrap::run_search(&context, &search_catalog, "install", 20);
+            let _ = bootstrap::run_search(&search_catalog, None, "install", 20);
             latencies.push(start.elapsed());
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -1838,7 +1838,7 @@ async fn search_latency_while_background_indexing_is_running() {
     let post_indexing_latencies: Vec<Duration> = (0..20)
         .map(|_| {
             let start = Instant::now();
-            let _ = bootstrap::run_search(&context, &search_catalog, "install", 20);
+            let _ = bootstrap::run_search(&search_catalog, None, "install", 20);
             start.elapsed()
         })
         .collect();
