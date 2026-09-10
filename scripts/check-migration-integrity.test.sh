@@ -92,12 +92,15 @@ git add -A
 git commit -q -m "allowlist 0001's edit"
 check "an allowlisted edit: passes" "pass" "$(run_gate)"
 
-# ── Shrink-only, staged against the *previous commit* -- the same
-#    methodology check-rfc-lifecycle.test.sh uses for LEGACY-ALLOWLIST.txt,
-#    which HANDOFF-062 §2 names as this gate's own model. Growth is only
-#    ever detectable relative to what the *immediately preceding commit*
-#    already held (that comparison is what "shrink-only, forever" means);
-#    within one not-yet-committed change it shows up as index vs HEAD ──
+# ── Shrink-only, checked against HEAD~1, its immediate parent commit --
+#    the same mechanism check-rfc-lifecycle.test.sh uses for
+#    LEGACY-ALLOWLIST.txt, which HANDOFF-062 §2 names as this gate's own
+#    model (both fixed together, Review 212 §4: comparing the index
+#    against HEAD, as this used to, is a no-op on a clean CI checkout --
+#    index and HEAD are the same tree there, so a *pushed* commit's own
+#    growth was never actually caught, only a staged-but-uncommitted local
+#    edit was). HEAD is what a push actually publishes, so that is what
+#    both the edited-migration check and this shrink check validate now.
 cat > crates/data/db/migrations/0004_fourth.sql <<'EOF'
 ALTER TABLE t ADD COLUMN c TEXT;
 EOF
@@ -114,28 +117,42 @@ check "editing released 0004 with only 0001 allowlisted: fails" "fail" "$(run_ga
 grep -q "released migration edited" "$tmp_repo/.gate-output" \
   || { echo "FAIL: failure message must name the edited-migration violation" >&2; fail=1; }
 
-# Growing the allowlist to cover 0004's edit -- staged, not committed, so
-# there is a "previous commit" (the one just above) to shrink-check
-# against, matching check-rfc-lifecycle.test.sh's own methodology exactly.
+# Staging the allowlist growth *without committing* is not enough to clear
+# the failure above, and not enough to trip the shrink-only check either --
+# this gate only ever looks at HEAD. Documented here as a real, understood
+# property of the design (a local `git add` alone gives no signal from
+# this gate either way), not an oversight: the check is meant to validate
+# what a push publishes, not what is merely staged.
 cat > crates/data/db/migrations/EDITED-RELEASED-ALLOWLIST.txt <<'EOF'
 # test fixture
 0001_baseline.sql
 0004_fourth.sql
 EOF
 git add crates/data/db/migrations/EDITED-RELEASED-ALLOWLIST.txt
-check "growing the allowlist (staged) is caught even though it 'explains' 0004's edit" "fail" "$(run_gate)"
+check "staging (not committing) the allowlist growth still fails -- HEAD is unchanged" "fail" "$(run_gate)"
+grep -q "released migration edited" "$tmp_repo/.gate-output" \
+  || { echo "FAIL: staged-only growth must fail for the *edited-migration* reason (HEAD still lacks the entry), not be silently accepted" >&2; fail=1; }
+
+# Committing the growth is what actually trips the shrink-only check --
+# this is the case Review 212 found missing entirely: a *pushed* commit
+# that grows the allowlist, checked against its own immediate parent.
+git commit -q -m "commit the allowlist growth (covers 0004's edit, but grows the list)"
+check "committing the allowlist growth: fails (shrink-only, even though it 'explains' 0004's edit)" "fail" "$(run_gate)"
 grep -q "grew" "$tmp_repo/.gate-output" \
   || { echo "FAIL: failure message must name the shrink-only violation" >&2; fail=1; }
 
-# Reverting the staged growth makes the gate pass again (0004's edit is
-# still there, still unallowlisted -- back to the state already proven to
-# fail above, for the other reason).
+# Reverting the growth in a *new* commit is a shrink relative to the bad
+# commit's parent -- the shrink-only check passes -- but 0004's edit is
+# still unallowlisted, so the gate still fails, now for the other reason.
 cat > crates/data/db/migrations/EDITED-RELEASED-ALLOWLIST.txt <<'EOF'
 # test fixture
 0001_baseline.sql
 EOF
-git add crates/data/db/migrations/EDITED-RELEASED-ALLOWLIST.txt
-check "reverting the staged growth still fails (0004's edit is still unallowlisted)" "fail" "$(run_gate)"
+git add -A
+git commit -q -m "revert the allowlist growth (0004's edit is still unallowlisted)"
+check "reverting the growth in a new commit: still fails (0004's edit is still unallowlisted)" "fail" "$(run_gate)"
+grep -q "released migration edited" "$tmp_repo/.gate-output" \
+  || { echo "FAIL: failure message must name the edited-migration violation, not shrink-only (the revert itself is a shrink)" >&2; fail=1; }
 
 # ── Self-check: confirm this test actually distinguishes gate behavior,
 #    not merely that every scenario happens to pass ──────────────────────

@@ -417,22 +417,32 @@ git add rfcs/closures/LEGACY-ALLOWLIST.txt
 allowlisted_result="$(run_gate)"
 check "restoring the id to the legacy allowlist exempts it again" "pass" "$allowlisted_result"
 
-# Commit this state so a "previous commit" exists to shrink-check
-# against -- everything above this point in the whole test file has stayed
+# Commit this state so a parent commit exists to shrink-check against --
+# everything above this point in the whole test file has stayed
 # staged-but-uncommitted since the very first commit, so this is the first
 # point the shrink-only rule has anything to compare to.
 git commit -q -m "confirm legacy allowlist exempting RFC-001"
 
-# Growing the allowlist -- adding an id absent from the previous commit --
-# must be caught even though the file already existed before this change.
+# Staging a growth -- adding an id absent from the parent commit -- without
+# committing it is *not* caught (Review 212 §4: this gate validates HEAD,
+# what a push actually publishes, not the index; a `git add` alone gives
+# no signal from it either way). Documented explicitly as a real, intended
+# property of the design, not an oversight.
 cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
 # Test fixture legacy allowlist.
 001
 002
 EOF
 git add rfcs/closures/LEGACY-ALLOWLIST.txt
+check "staging (not committing) a new legacy-allowlist id: passes -- HEAD is unchanged" "pass" "$(run_gate)"
+
+# Committing the growth is what actually trips the shrink-only check --
+# the case Review 212 found this mechanism was never actually enforcing:
+# a *pushed* commit that grows the allowlist, checked against its own
+# immediate parent.
+git commit -q -m "grow the legacy allowlist to exempt 002 too"
 grown_result="$(run_gate)"
-check "adding a new id to the legacy allowlist is caught (shrink-only)" "fail" "$grown_result"
+check "committing a new id to the legacy allowlist is caught (shrink-only)" "fail" "$grown_result"
 if [ "$grown_result" = "fail" ]; then
   if grep -q "grew: 002" "$tmp_repo/.gate-output"; then
     echo "ok: failure names the id that grew"
@@ -443,17 +453,16 @@ if [ "$grown_result" = "fail" ]; then
   fi
 fi
 
-# Reverting the growth makes the gate pass again. Not committed here --
-# this exactly restores HEAD's own content ("001" only, committed just
-# above), so there is nothing new to commit; the next commit happens once
-# the real closure record below actually changes something.
+# Reverting the growth in a *new* commit is a shrink relative to the bad
+# commit's own parent -- passes again.
 cat > rfcs/closures/LEGACY-ALLOWLIST.txt <<'EOF'
 # Test fixture legacy allowlist.
 001
 EOF
 git add rfcs/closures/LEGACY-ALLOWLIST.txt
+git commit -q -m "revert the legacy allowlist growth"
 shrunk_result="$(run_gate)"
-check "removing the grown id makes the gate pass again" "pass" "$shrunk_result"
+check "removing the grown id in a new commit makes the gate pass again" "pass" "$shrunk_result"
 
 # A real closure record, written instead of relying on the allowlist --
 # removing the id from the allowlist in the same step, the shape

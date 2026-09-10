@@ -46,9 +46,17 @@ read_allowlist() {
   git show "$1" 2>/dev/null | sed -E 's/^[[:space:]]*#.*$//; s/[[:space:]]+$//' | grep -v '^[[:space:]]*$' || true
 }
 
+# The state being validated is HEAD -- not the index. Review 212 §4: on a
+# clean CI checkout (the only way this gate ever actually runs in
+# practice) the index and HEAD are the same tree, so comparing them is a
+# structural no-op -- it can only ever catch a *staged-but-uncommitted*
+# local edit, never a commit that has already been made and pushed, which
+# is the one case this gate exists to protect against. HEAD is what a
+# `git push` actually publishes, so that is what gets checked, both here
+# and in the shrink-only comparison below.
 current_allowlist="$tmp_dir/allowlist-current.txt"
-if git show ":$allowlist" > /dev/null 2>&1; then
-  read_allowlist ":$allowlist" | sort -u > "$current_allowlist"
+if git rev-parse -q --verify HEAD > /dev/null 2>&1 && git show "HEAD:$allowlist" > /dev/null 2>&1; then
+  read_allowlist "HEAD:$allowlist" | sort -u > "$current_allowlist"
 else
   : > "$current_allowlist"
 fi
@@ -57,23 +65,27 @@ is_allowlisted() {
   grep -qxF "$1" "$current_allowlist"
 }
 
-# Shrink-only, the same mechanism rfcs/closures/LEGACY-ALLOWLIST.txt already
-# uses and self-tests (check-rfc-lifecycle.sh): the staged id set must be a
-# subset of the immediately preceding commit's id set. Comparing against
-# HEAD on every commit, rather than some earlier ancestor, is what makes
-# growth impossible in any single commit across all of history -- an
-# earlier-ancestor comparison would let a commit that grows the list slip
-# through as long as some later commit shrinks it back down, which is
-# "shrink-only on average", not shrink-only.
-if git rev-parse -q --verify HEAD > /dev/null 2>&1 \
-    && git show "HEAD:$allowlist" > /dev/null 2>&1; then
+# Shrink-only, the same mechanism rfcs/closures/LEGACY-ALLOWLIST.txt uses
+# (both fixed together, Review 212 §4 -- neither ever compared against a
+# parent commit before this, only index vs HEAD, which is why the hole
+# above existed in both). HEAD's id set must be a subset of HEAD~1's --
+# its immediate parent, the commit it was pushed on top of. Comparing
+# against the immediate parent specifically, not some earlier ancestor, is
+# what makes growth impossible in any single commit across all of
+# history: an earlier-ancestor comparison would let a commit that grows
+# the list slip through as long as some later commit shrinks it back
+# down, which is "shrink-only on average", not shrink-only. No parent to
+# compare against (a root commit, or no HEAD at all) passes vacuously --
+# growth cannot be detected without a baseline.
+if git rev-parse -q --verify HEAD~1 > /dev/null 2>&1 \
+    && git show "HEAD~1:$allowlist" > /dev/null 2>&1; then
   previous_allowlist="$tmp_dir/allowlist-previous.txt"
-  read_allowlist "HEAD:$allowlist" | sort -u > "$previous_allowlist"
+  read_allowlist "HEAD~1:$allowlist" | sort -u > "$previous_allowlist"
   grown="$(comm -23 "$current_allowlist" "$previous_allowlist" || true)"
   if [ -n "$grown" ]; then
     while read -r name; do
       [ -n "$name" ] || continue
-      flag "$allowlist grew: $name was not exempt in the previous commit and cannot be added -- see the file's own header"
+      flag "$allowlist grew: $name was not exempt in the parent commit and cannot be added -- see the file's own header"
     done <<< "$grown"
   fi
 fi

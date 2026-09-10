@@ -315,6 +315,13 @@ read_allowlist_ids() {
   git show "$1" 2>/dev/null | sed -E 's/#.*$//; s/[[:space:]]+$//' | grep -E '^[0-9]{3}$' || true
 }
 
+# The substantive check below ("is this id currently exempt") reads the
+# index, like every other check in this gate -- it validates what is
+# about to be committed, staged changes included. The shrink-only *growth*
+# check just below is a different question ("did a commit that already
+# happened make the list bigger than its own parent's") and deliberately
+# reads HEAD instead -- see that check's own comment for why the two must
+# not share a source.
 current_allowlist_ids="$tmp_dir/allowlist-current.txt"
 if git show ":$legacy_allowlist" > /dev/null 2>&1; then
   read_allowlist_ids ":$legacy_allowlist" | sort -u > "$current_allowlist_ids"
@@ -322,27 +329,38 @@ else
   : > "$current_allowlist_ids"
 fi
 
-# Shrink-only: the staged id set must be a subset of the immediately
-# preceding commit's id set -- comparing against any earlier ancestor would
-# let a commit that grows the list slip through as long as some later
-# commit shrinks it back down, which is not shrink-only, it is "shrink-only
-# on average". Comparing against HEAD, on every commit, forever, is what
-# makes growth impossible in any single commit across all of history.
+# Shrink-only: HEAD's id set must be a subset of HEAD~1's -- its immediate
+# parent, the commit it was pushed on top of. Deliberately HEAD, not the
+# index used just above: Review 212 §4 found that comparing the index
+# against HEAD (as this used to) is a no-op on a clean CI checkout, since
+# the index and HEAD are the same tree there -- a *pushed* commit's own
+# growth was never actually caught, only a staged-but-uncommitted local
+# edit was, which is the reverse of what the check needs to protect
+# against. HEAD is what a `git push` actually publishes, so that is what
+# gets checked here. Comparing against the immediate parent specifically,
+# not some earlier ancestor, is what makes growth impossible in any single
+# commit across all of history: an earlier-ancestor comparison would let a
+# commit that grows the list slip through as long as some later commit
+# shrinks it back down, which is not shrink-only, it is "shrink-only on
+# average".
 #
-# No preceding committed version to compare against -- either this is the
-# commit that introduces the file, or there is no HEAD yet (an empty
-# repository, exercised by this gate's own self-test's very first
+# No parent to compare against -- either this is the commit that
+# introduces the file, this is a root commit, or there is no HEAD yet (an
+# empty repository, exercised by this gate's own self-test's very first
 # baseline commit) -- passes vacuously: growth cannot be detected without
 # a baseline, so there is nothing to flag.
-if git rev-parse -q --verify HEAD > /dev/null 2>&1 \
-    && git show "HEAD:$legacy_allowlist" > /dev/null 2>&1; then
+if git rev-parse -q --verify HEAD > /dev/null 2>&1 && git show "HEAD:$legacy_allowlist" > /dev/null 2>&1 \
+    && git rev-parse -q --verify HEAD~1 > /dev/null 2>&1 \
+    && git show "HEAD~1:$legacy_allowlist" > /dev/null 2>&1; then
+  head_allowlist_ids="$tmp_dir/allowlist-head.txt"
   previous_allowlist_ids="$tmp_dir/allowlist-previous.txt"
-  read_allowlist_ids "HEAD:$legacy_allowlist" | sort -u > "$previous_allowlist_ids"
-  grown="$(comm -23 "$current_allowlist_ids" "$previous_allowlist_ids" || true)"
+  read_allowlist_ids "HEAD:$legacy_allowlist" | sort -u > "$head_allowlist_ids"
+  read_allowlist_ids "HEAD~1:$legacy_allowlist" | sort -u > "$previous_allowlist_ids"
+  grown="$(comm -23 "$head_allowlist_ids" "$previous_allowlist_ids" || true)"
   if [ -n "$grown" ]; then
     while read -r id; do
       [ -n "$id" ] || continue
-      flag "$legacy_allowlist grew: $id was not exempt in the previous commit and cannot be added -- see the file's own header"
+      flag "$legacy_allowlist grew: $id was not exempt in the parent commit and cannot be added -- see the file's own header"
     done <<< "$grown"
   fi
 fi
