@@ -166,6 +166,8 @@ message_keys! {
     StorageSafeCleanupHeading,
     StorageClearSnippets,
     StorageClearSearchCache,
+    StorageClearTemporaryExtraction,
+    StorageRemoveReplacedStaleIndexes,
     StorageDangerHeading,
     StorageResetCatalog,
     StorageResetWarning,

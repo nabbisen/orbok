@@ -54,6 +54,8 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageSafeCleanupHeading => "安全なクリーンアップ",
         StorageClearSnippets => "一時スニペットを削除",
         StorageClearSearchCache => "古い検索結果を削除",
+        StorageClearTemporaryExtraction => "一時抽出テキストを削除",
+        StorageRemoveReplacedStaleIndexes => "古い検索データを削除",
         StorageDangerHeading => "危険な操作",
         StorageResetCatalog => "保存されたアプリデータをリセット...",
         StorageResetWarning => {

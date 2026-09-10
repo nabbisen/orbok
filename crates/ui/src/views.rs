@@ -694,8 +694,19 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 tr(locale, MessageKey::StorageClearSearchCache),
                 Some(Message::CleanSearchCache)
             ),
+            components::secondary(
+                tokens,
+                tr(locale, MessageKey::StorageClearTemporaryExtraction),
+                Some(Message::CleanTemporaryExtraction)
+            ),
+            components::secondary(
+                tokens,
+                tr(locale, MessageKey::StorageRemoveReplacedStaleIndexes),
+                Some(Message::RemoveReplacedStaleIndexes)
+            ),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
         text(tr(locale, MessageKey::StorageDangerHeading)).size(theme::body_s(tokens, sc)),
         components::danger(
             tokens,

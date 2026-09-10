@@ -20,6 +20,26 @@ pub fn clean_search_cache(catalog: &Catalog, cache: &ProfileCache) -> OrbokResul
     Ok(())
 }
 
+/// Clear expired extraction-cache entries (safe, re-extracted on demand
+/// -- RFC-059 §8 Slice 4: implemented since M10, reachable from no UI
+/// until this).
+pub fn clean_temporary_extraction(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()> {
+    use orbok_core::{CleanupAction, CleanupPlan};
+    let plan = CleanupPlan::for_action(CleanupAction::ClearTemporaryExtraction, 0);
+    cache.run_safe_cleanup(catalog, &plan)?;
+    Ok(())
+}
+
+/// Remove index rows already superseded by a re-index (safe -- RFC-059
+/// §8 Slice 4, after Slice 2: only frees real bytes because Slice 2 fixed
+/// this action's own FTS-row leak; exposed here, not before).
+pub fn remove_replaced_stale_indexes(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()> {
+    use orbok_core::{CleanupAction, CleanupPlan};
+    let plan = CleanupPlan::for_action(CleanupAction::RemoveReplacedStaleIndexes, 0);
+    cache.run_safe_cleanup(catalog, &plan)?;
+    Ok(())
+}
+
 /// Full catalog reset (destructive — caller must have confirmed).
 pub fn reset_catalog(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()> {
     use orbok_core::{CleanupAction, CleanupPlan};

@@ -117,9 +117,20 @@ impl KeywordSearchEngine for Fts5KeywordEngine<'_> {
         let mut conn = self.catalog.lock();
         let tx = conn.transaction().map_err(db)?;
         for chunk_id in chunk_ids {
+            // RFC-059 §6/§0(ii): both FTS rows must go before the mapping
+            // row that addresses them -- `keyword_index_records` is the
+            // only chunk_id <-> FTS-rowid link that exists (both tables are
+            // contentless), so deleting it first orphans whichever FTS row
+            // hasn't been deleted yet, permanently.
             tx.execute(
                 "DELETE FROM chunk_fts WHERE rowid = \
                  (SELECT fts_rowid FROM keyword_index_records WHERE chunk_id = ?1)",
+                params![chunk_id.as_str()],
+            )
+            .map_err(db)?;
+            tx.execute(
+                "DELETE FROM chunk_fts_trigram WHERE rowid = \
+                 (SELECT trigram_fts_rowid FROM keyword_index_records WHERE chunk_id = ?1)",
                 params![chunk_id.as_str()],
             )
             .map_err(db)?;

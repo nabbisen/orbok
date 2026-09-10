@@ -2,7 +2,7 @@
 //! extraction cache, embeds it in batches, and stores vectors in the
 //! catalog. Chunk text is consumed and not logged (NFR-014).
 
-use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
+use orbok_cache::{CacheService, OrbokCacheNamespace};
 use orbok_core::{FileId, ModelId, OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::ChunkRecord;
@@ -123,7 +123,7 @@ impl<'a> EmbeddingWorker<'a> {
         let engine = self.cache.engine::<ExtractOutput>(
             self.catalog,
             &OrbokCacheNamespace::ExtractSegments,
-            EngineOptions::default(),
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
         )?;
         let Some(extract_output) = CacheService::get_fresh(&engine, &validated)? else {
             return Ok(None); // No extraction cache yet — skip (will retry later).

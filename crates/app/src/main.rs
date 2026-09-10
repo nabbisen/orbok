@@ -14,6 +14,8 @@ mod download;
 mod history;
 mod model_flow;
 #[cfg(test)]
+mod rfc059_cache_measurement;
+#[cfg(test)]
 mod rfc061_acceptance_tests;
 #[cfg(test)]
 mod rfc062_acceptance_tests;
@@ -282,6 +284,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         Err(e) => {
                             tracing::error!("cache handle unavailable for clean search cache: {e}");
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::StorageUnavailable,
+                            ));
+                        }
+                    }
+                    return iced::Task::none();
+                }
+                Message::CleanTemporaryExtraction => {
+                    // RFC-059 §8 Slice 4: same panic-on-bad-cache-path fix as
+                    // `CleanSnippets` above.
+                    match bootstrap::cache_service(&runtime) {
+                        Ok(cache) => {
+                            match bootstrap::clean_temporary_extraction(&catalog, &cache) {
+                                Ok(_) => app.update(Message::CleanupDone),
+                                Err(e) => tracing::error!("clean temporary extraction failed: {e}"),
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "cache handle unavailable for clean temporary extraction: {e}"
+                            );
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::StorageUnavailable,
+                            ));
+                        }
+                    }
+                    return iced::Task::none();
+                }
+                Message::RemoveReplacedStaleIndexes => {
+                    // RFC-059 §8 Slice 4: same panic-on-bad-cache-path fix as
+                    // `CleanSnippets` above.
+                    match bootstrap::cache_service(&runtime) {
+                        Ok(cache) => {
+                            match bootstrap::remove_replaced_stale_indexes(&catalog, &cache) {
+                                Ok(_) => app.update(Message::CleanupDone),
+                                Err(e) => {
+                                    tracing::error!("remove replaced stale indexes failed: {e}")
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "cache handle unavailable for remove replaced stale indexes: {e}"
+                            );
                             app.update(Message::ShowNotice(
                                 orbok_ui::notice::UserNotice::StorageUnavailable,
                             ));

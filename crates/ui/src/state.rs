@@ -515,6 +515,14 @@ pub enum Message {
     // Storage cleanup
     CleanSnippets,
     CleanSearchCache,
+    /// RFC-059 §8 Slice 4: exposes `CleanupAction::ClearTemporaryExtraction`,
+    /// implemented since M10 but reachable from no UI until this.
+    CleanTemporaryExtraction,
+    /// RFC-059 §8 Slice 4: exposes `CleanupAction::RemoveReplacedStaleIndexes`
+    /// -- added after RFC-059 Slice 2 landed, so it actually frees bytes
+    /// instead of reporting rows deleted while reclaiming nothing (the
+    /// RFC's own §8 ordering).
+    RemoveReplacedStaleIndexes,
     AskResetCatalog,
     ConfirmResetCatalog,
     CancelResetCatalog,
@@ -729,7 +737,10 @@ impl AppState {
                 self.storage_rows.clear();
                 self.storage_total_bytes = 0;
             }
-            Message::CleanSnippets | Message::CleanSearchCache => {
+            Message::CleanSnippets
+            | Message::CleanSearchCache
+            | Message::CleanTemporaryExtraction
+            | Message::RemoveReplacedStaleIndexes => {
                 // Actual work done in orbok; state update arrives via CleanupDone.
             }
             Message::CleanupDone => {

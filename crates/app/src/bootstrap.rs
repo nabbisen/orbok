@@ -28,7 +28,10 @@ mod startup;
 #[cfg(test)]
 mod tests;
 
-pub use cleanup::{clean_search_cache, clean_snippets, reset_catalog};
+pub use cleanup::{
+    clean_search_cache, clean_snippets, clean_temporary_extraction, remove_replaced_stale_indexes,
+    reset_catalog,
+};
 pub use preferences::{
     persist_locale, persist_model_dir, persist_reduced_motion, persist_text_scale, persist_theme,
     remove_managed_model_dir_setting, resolve_os_reduced_motion,

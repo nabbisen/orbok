@@ -2,7 +2,7 @@
 //! extractor, stores the output in the cache, and writes an
 //! extraction_record. On success, queues a Chunk job.
 
-use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
+use orbok_cache::{CacheService, OrbokCacheNamespace};
 use orbok_core::ExtractionId;
 use orbok_core::{FileId, JobType, OrbokError, OrbokResult, now_iso8601};
 use orbok_db::Catalog;
@@ -46,7 +46,7 @@ impl<'a> ExtractionWorker<'a> {
         let engine = self.cache.engine::<ExtractOutput>(
             self.catalog,
             &OrbokCacheNamespace::ExtractSegments,
-            EngineOptions::default(),
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
         )?;
         if CacheService::get_fresh(&engine, &validated)?.is_some() {
             // Still fresh — queue the chunk job and return.

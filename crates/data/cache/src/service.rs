@@ -194,7 +194,12 @@ impl CacheService {
         catalog: &Catalog,
         namespace: &OrbokCacheNamespace,
     ) -> OrbokResult<CacheEngine<serde_json::Value>> {
-        self.engine::<serde_json::Value>(catalog, namespace, EngineOptions::default())
+        // RFC-059 §7 Slice 3: per-namespace tuning (ExtractSegments' TTL
+        // and entry cap), not a blanket default -- see
+        // `OrbokCacheNamespace::default_engine_options`'s own doc comment
+        // for why passing the wrong options here would corrupt that
+        // namespace's registered `cache_engines` metadata.
+        self.engine::<serde_json::Value>(catalog, namespace, namespace.default_engine_options())
     }
 
     /// Upsert the engine registration row (RFC-002 §7.16).

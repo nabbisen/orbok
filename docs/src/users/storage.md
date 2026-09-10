@@ -17,14 +17,16 @@ orbok does **not** copy your source files. It stores:
 
 The **Storage** view shows usage per category. Safe cleanup removes:
 - Expired snippet and search caches
+- Expired extracted-text cache entries
 - Superseded stale index entries
 
 Safe cleanup **never** deletes your source files or source registrations.
 
 ## Reset catalog
 
-**Reset catalog** removes all source registrations and indexes. Your
-actual files on disk are never touched. This action requires confirmation.
+**Reset catalog** removes all source registrations, indexes, and cached
+data (including the extracted-text cache). Your actual files on disk are
+never touched. This action requires confirmation.
 
 ## Storage modes
 

@@ -3,7 +3,7 @@
 //! into the catalog (one transaction).
 
 use crate::chunk_adapter::to_chunk_specs;
-use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
+use orbok_cache::{CacheService, OrbokCacheNamespace};
 use orbok_core::{ErrorCategory, ExtractionId, FileId, JobType, OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::{ChunkRepository, FileRepository, IndexJobRepository, SourceRepository};
@@ -38,7 +38,7 @@ impl<'a> ChunkAndIndexWorker<'a> {
         let engine = self.cache.engine::<ExtractOutput>(
             self.catalog,
             &OrbokCacheNamespace::ExtractSegments,
-            EngineOptions::default(),
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
         )?;
         let output = CacheService::get_fresh(&engine, &validated)?.ok_or_else(|| {
             OrbokError::Extraction {

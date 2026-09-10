@@ -50,6 +50,8 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageSafeCleanupHeading => "Safe cleanup",
         StorageClearSnippets => "Clear temporary previews",
         StorageClearSearchCache => "Clear old search results",
+        StorageClearTemporaryExtraction => "Clear temporary extracted text",
+        StorageRemoveReplacedStaleIndexes => "Remove outdated search data",
         StorageDangerHeading => "Dangerous",
         StorageResetCatalog => "Reset saved app data...",
         StorageResetWarning => {

@@ -77,6 +77,60 @@ impl<'a> ChunkRepository<'a> {
         let mut conn = self.catalog.lock();
         let tx = conn.transaction().map_err(db_err)?;
 
+        // RFC-059 §6/§0(i): delete the previous generation's FTS rows --
+        // and their now-meaningless `keyword_index_records` mapping rows --
+        // before inserting the new ones, addressed by file_id, not
+        // chunk_id. A fresh chunk_id is minted for every chunk below on
+        // every call, so a chunk_id never repeats and a delete keyed on it
+        // (which is what the RFC found `Fts5KeywordEngine::index`'s own
+        // "replace-on-reindex" delete does, on a path with no production
+        // caller) can never match the previous generation. Without this,
+        // the old chunks' FTS rows keep matching searches -- only the
+        // catalog-row status flips to 'stale' just below -- until
+        // `remove_replaced_stale_indexes` cascades them away later, and
+        // even that path used to orphan them permanently before this same
+        // slice fixed it.
+        //
+        // The mapping row is deleted here too, not left for that later
+        // cascade: `remove_replaced_stale_indexes` only deletes the
+        // `chunks` row itself (cascading `keyword_index_records`), but
+        // `insert_bundle` deliberately does not delete `chunks` here (the
+        // stale row is kept, e.g. for `reactivate_last_stale_generation`'s
+        // missing-file case elsewhere). Left behind, that mapping row
+        // would still count toward `keyword_index_records` while its FTS
+        // row no longer exists -- the exact `count(chunk_fts) ==
+        // count(keyword_index_records)` invariant (§6) failing immediately
+        // after every re-index, confirmed by first shipping this fix
+        // without the mapping delete and watching the invariant test fail
+        // with `keyword_index_records` one row ahead.
+        let superseded_chunks = "SELECT chunk_id FROM chunks WHERE file_id = ?1 AND extraction_id != ?2 \
+             AND chunk_status = 'active'";
+        tx.execute(
+            &format!(
+                "DELETE FROM chunk_fts WHERE rowid IN ( \
+                     SELECT fts_rowid FROM keyword_index_records \
+                     WHERE chunk_id IN ({superseded_chunks}) AND fts_rowid IS NOT NULL \
+                 )"
+            ),
+            params![file_id.as_str(), extraction_id.as_str()],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            &format!(
+                "DELETE FROM chunk_fts_trigram WHERE rowid IN ( \
+                     SELECT trigram_fts_rowid FROM keyword_index_records \
+                     WHERE chunk_id IN ({superseded_chunks}) AND trigram_fts_rowid IS NOT NULL \
+                 )"
+            ),
+            params![file_id.as_str(), extraction_id.as_str()],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            &format!("DELETE FROM keyword_index_records WHERE chunk_id IN ({superseded_chunks})"),
+            params![file_id.as_str(), extraction_id.as_str()],
+        )
+        .map_err(db_err)?;
+
         let mut records = Vec::with_capacity(specs.len());
         for (i, spec) in specs.iter().enumerate() {
             let chunk_id = &ids[i];
