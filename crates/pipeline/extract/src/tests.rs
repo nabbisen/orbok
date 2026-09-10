@@ -534,7 +534,7 @@ fn pdf_extraction_finds_every_page_regardless_of_object_numbering() {
         // asserted nowhere in the workspace against a real `PdfExtractor`
         // output -- `orbok-workers::v07_features::pdf_location_quality_is_page_only`
         // was its only guard, and it silently asserted nothing once
-        // `MINIMAL_PDF` stopped loading (deleted below, in favour of this
+        // `MINIMAL_PDF` stopped loading (now deleted, in favour of this
         // assertion against a fixture that actually parses).
         assert_eq!(
             segment.location_quality,

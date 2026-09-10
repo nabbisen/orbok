@@ -1520,6 +1520,52 @@ next release tag.
 
 ### Docs
 
+- **RFC-060 Amendment 2: semantic search had never returned a candidate, and
+  the amendment retires an audit finding.** `bootstrap/search.rs` built the
+  hybrid searcher with `&config.model_name` — the compile-time constant
+  `"multilingual-e5-small"` — while the embedding worker stores vectors under
+  the catalog id from `ModelId::generate()`, and `list_active_for_scan` filters
+  `WHERE e.model_id = ?1`. A constant and a generated id are never equal, so the
+  exact scan matched **zero rows on every search, unconditionally**: hybrid
+  search silently degraded to keyword-only after paying the full cost of loading
+  the model and embedding the query. The 2026-09-01 external audit's feature
+  matrix records `Dense vector search | Implemented (exact scan)`; it was not.
+
+  **This retires the audit's P-04**, which weighed "≈ 30 MB allocated and copied
+  per query" as a scaling ceiling — a cost never paid, on a scan returning
+  nothing. RFC-023's exact-scan deferral is unaffected on its design argument,
+  but Owner Task 003 Part A's "vector scan is 0.8 % of search cost" measured a
+  scan over zero rows and no longer supports it. The regression guard is a
+  `Semantic` match badge on at least one result, which cannot pass vacuously;
+  RFC-058 §6's eight rows checked every visible property of a result and none
+  asked whether the semantic half returned anything at all.
+
+- **RFC-061 Amendment 2: `busy_timeout` was never unset — the correction to a
+  claim that reached four documents from one grep.** RFC-061 §1, §2, §5,
+  Amendment 1, `HANDOFF-061` §1, and the audit finding S-04 they derive from all
+  state that no `busy_timeout` is set, so a contended write returns
+  `SQLITE_BUSY` immediately rather than retrying. **False.**
+  `rusqlite-0.39.0/src/inner_connection.rs:118` calls
+  `sqlite3_busy_timeout(db, 5000)` unconditionally on every
+  `Connection::open_with_flags`, and fails the open if it cannot — so contended
+  writes have always waited up to five seconds. `PRAGMA busy_timeout` on a fresh
+  catalog reports `5000`.
+
+  Amendment 1's *measurements* stand (Linux 44.79 s against ≈ 43 s intrinsic;
+  Windows censored at its own 300 s ceiling); its *explanation* loses half its
+  mechanism. Slice 1's fix worked by collapsing fourteen connections to one
+  `Arc<Catalog>`, not by adding a timeout that was already there — consistent
+  with the post-fix Windows reading (~175–185 s, off the ceiling, still ≈ 4×
+  Linux). The explicit `conn.busy_timeout(5 s)` line is kept and re-documented
+  as making an inherited library default explicit rather than establishing it.
+  The claim's origin is the test comment at `scheduler_host/tests.rs:1726`,
+  now corrected in place. **Absence in your own source is not absence:** a grep
+  answering "does orbok write this?" was read as "is this set?".
+
+- Stale comments corrected in `crates/pipeline/workers/src/tests/v07_features.rs`
+  and `crates/pipeline/extract/src/tests.rs`, both of which still described
+  `pdf_location_quality_is_page_only` as present after Review 210 §3 deleted it.
+
 - **RFC-062 has an implementation handoff, and the sweep its §9 Q2 asked for is
   done — it found a second edited migration.** `0001_baseline.sql` was edited
   semantically by `c54e89d` (the audit's finding). **`0003_scheduler.sql` was

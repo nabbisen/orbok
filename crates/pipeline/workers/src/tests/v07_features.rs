@@ -159,10 +159,10 @@ startxref
 // `pdf_extractor_missing_file_returns_typed_error` (uses a nonexistent
 // path, never touches these bytes), `pdf_extractor_registered_in_registry`
 // (accepts any non-`unsupported` outcome, including this parse error), and
-// `pdf_location_quality_is_page_only` (below, itself in the
-// tolerates-either-outcome shape and now silently asserting nothing
-// against this fixture -- flagged in the review request, not fixed here,
-// since the handoff named only this one test).
+// -- until `4aecd30` -- `pdf_location_quality_is_page_only`, which was in
+// the same tolerates-either-outcome shape and so asserted nothing against
+// this fixture. Review 210 §3 replaced it with a guard that fails when the
+// PDF path claims `Exact`, so no such test remains.
 
 // RFC-022 AC: Failure isolation — missing file returns typed error, no panic.
 #[test]

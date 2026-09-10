@@ -22,8 +22,14 @@ The application calls `bootstrap::open_catalog` **thirteen times in `main.rs`**,
 once per UI message family, each constructing a fresh `rusqlite::Connection`
 wrapped in its own `Mutex`. The scheduler task opens a fourteenth. The mutex
 serializes nothing across handles; SQLite's file locking is the only
-serialization; and **no `busy_timeout` is set anywhere in the workspace**, so a
-contended write returns `SQLITE_BUSY` immediately rather than retrying.
+serialization; and ~~**no `busy_timeout` is set anywhere in the workspace**, so a
+contended write returns `SQLITE_BUSY` immediately rather than retrying~~.
+
+> **Struck 2026-09-10 — this sentence is false. See Amendment 2 (§2b).** No
+> `busy_timeout` appears in *orbok's* source, but rusqlite sets 5000 ms inside
+> every `Connection::open*`. Contended writes have always retried for five
+> seconds. The rest of §1 stands: fourteen handles, a mutex that serializes
+> nothing, and a discarded `Err` are all real and all independent of the timeout.
 
 That error is then discarded. `let _ = scheduler.complete(&job.id, &catalog)`
 drops the failure while removing the job from `known` on the same line — so the
@@ -131,6 +137,84 @@ note there.**
 
 ---
 
+## 2b. Amendment 2 (2026-09-10) — `busy_timeout` was never unset
+
+**Correction, not new work.** The mechanism this RFC attributed to a missing
+`busy_timeout` — §1, §2, Amendment 1's hypothesis, and the audit finding S-04
+they all derive from — **does not exist**. Slice 1's fix is still correct; its
+stated reason was not.
+
+### 2b.1 What was checked
+
+`rusqlite-0.39.0/src/inner_connection.rs:118`, on the open path taken by every
+`Connection::open_with_flags`:
+
+```rust
+let r = ffi::sqlite3_busy_timeout(db, 5000);
+if r != ffi::SQLITE_OK { /* close and fail */ }
+```
+
+Unconditional. Not behind a feature flag, not behind an `OpenFlags` bit, and
+fatal if it fails — so a `Connection` that exists has a 5000 ms busy timeout.
+`PRAGMA busy_timeout` on a freshly opened catalog reports `5000`, which
+`crates/data/db/src/catalog.rs:155` now asserts.
+
+**A contended write therefore never returned `SQLITE_BUSY` immediately.** It
+retried for five seconds first.
+
+### 2b.2 What propagated the claim
+
+The audit's **S-04** states *"no `busy_timeout` pragma is set, so a contended
+write returns `SQLITE_BUSY` immediately rather than retrying."* Its first clause
+is true of orbok's own source and its second does not follow from it — a library
+default is invisible to a workspace grep. That sentence was then copied into this
+RFC §1, quoted into §2 by way of the `scheduler_host/tests.rs:1726` comment that
+says the same thing, carried into Amendment 1's causal story, and repeated in
+`HANDOFF-061` §1. **Four documents, one grep.**
+
+The test comment at `scheduler_host/tests.rs:1726` is the origin and is still
+wrong; it is the same "recorded where only its finder will read it" pattern §2
+names, with the added twist that what was recorded was incorrect.
+
+### 2b.3 What this changes about Amendment 1
+
+Amendment 1's *measurements* are untouched: Linux 44.79 s against ≈ 43 s of
+intrinsic serial cost, Windows not completing inside its 300 s ceiling, the
+ceiling itself being an artefact of reading `overall_start.elapsed()` after the
+timeout. All of that stands.
+
+What changes is its explanation. Amendment 1 offered "Windows file locking is
+more expensive, and with no timeout the losing writer fails instantly" as the
+hypothesis. **The second half is void.** The surviving hypothesis is that
+fourteen connections contending on Windows locking cost enough *in five-second
+retry waits* to starve indexing — which predicts stalls, not instant errors, and
+is consistent with the same workload finishing in 44 s on Linux.
+
+**Slice 1 fixed it by the other half of its change.** Collapsing fourteen handles
+to one `Arc<Catalog>` removes the contention; adding `conn.busy_timeout(5 s)`
+sets a value that was already 5 s and changes nothing. The post-fix Windows
+reading (~175–185 s, no longer hitting the ceiling, still ≈ 4× Linux) is what a
+contention fix predicts.
+
+**Keep the explicit `busy_timeout` call.** It is now documented at
+`catalog.rs:24-28` as making a library default explicit rather than establishing
+it — which is a defensible reason to keep a line, and the honest one. Deleting it
+would leave the value depending silently on a rusqlite implementation detail.
+
+### 2b.4 The lesson worth keeping
+
+**Absence in your own source is not absence.** The whole chain — audit, RFC,
+handoff, amendment — treated `grep -rn busy_timeout crates/` returning nothing as
+proof that no timeout was set. Every layer below the workspace was invisible to
+it. This is the same shape as RFC-060 Amendment 2 and as RFC-062's gates: *a
+check that passes while verifying less than it claims* — here, a grep that
+answers "does orbok write this?" being read as "is this set?".
+
+The disposition of the audit's other findings is unchanged; S-04's *conclusion*
+(share one connection) was right for reasons its *mechanism* got wrong.
+
+---
+
 ## 3. Goals
 
 - Make RFC-002 §5's "one serialized writer path" describe what the program does.
@@ -175,6 +259,11 @@ conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(db_err)?;
 One shared handle plus a timeout is belt and braces, deliberately: the scheduler
 task and the UI still contend at the SQLite level through WAL, and the timeout
 is what makes that contention a wait instead of an error.
+
+> **Amended 2026-09-10 (§2b).** The last clause is wrong: rusqlite already set
+> 5000 ms on every open, so contention was *already* a wait. This call makes an
+> inherited default explicit and load-bearing in orbok's own source rather than
+> introducing behaviour. Keep it for that reason, and only that reason.
 
 ## 6. Decision 2 — one embedding model for the process
 

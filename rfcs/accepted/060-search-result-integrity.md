@@ -188,6 +188,74 @@ an absent one and left the format still broken.
 
 ---
 
+## 4b. Amendment 2 (2026-09-10) — semantic search has never returned a candidate
+
+**Found while implementing RFC-061 Slice 4** (Review Request 211 §3, verified in
+Review 211 §1). **Not in the 2026-09-01 audit** — which recorded the opposite.
+
+### 4b.1 The two identifiers could never be equal
+
+`bootstrap/search.rs`, before the fix:
+
+```rust
+HybridSearchService::with_model(catalog, model_ref, &config.model_name)
+```
+
+- **Read side.** `config.model_name` is `RECOMMENDED_MODEL_NAME`
+  (`crates/search/embed/src/lib.rs:55`) — the constant `"multilingual-e5-small"`.
+- **Write side.** The embedding worker stores vectors under a catalog-registered
+  id, produced by `ModelRepository::insert`'s `let id = ModelId::generate();`
+  (`crates/data/db/src/repo/models.rs:109`).
+- **The filter.** `EmbeddingRepository::list_active_for_scan` selects
+  `WHERE e.model_id = ?1` (`crates/data/db/src/repo/embeddings.rs:81`).
+
+A compile-time constant and a generated id are never equal. **The scan matched
+zero rows on every search, unconditionally** — so `ExactVectorSearch` returned no
+candidates, `rrf_fuse` fused a keyword list with an empty vector list, and hybrid
+search silently degraded to keyword-only. The cost of loading the model and
+embedding the query was paid anyway, for a result set that was structurally
+empty.
+
+**Fixed** by passing `parts.model_id` — the same registered id the write side
+uses — which falls out of routing search through
+`embedding_resolution::resolve_embedding_worker_parts`, the find-or-register
+lookup the indexing side already used.
+
+### 4b.2 What it retires
+
+**The audit's feature matrix records `Dense vector search | Implemented (exact
+scan)`.** It was not implemented in the shipped application, at any point, and a
+full external audit did not detect it — because nothing ran a search through the
+application's own entry point with a real model and checked that a `Semantic`
+badge appeared.
+
+**It also retires the audit's P-04.** That finding described the exact scan as
+*"20,000 chunks × 384 dims × 4 B ≈ 30 MB allocated and copied per query"* and
+weighed it as a scaling ceiling. The scan was returning nothing, so that cost was
+never paid and the ceiling was never approached. **P-04's reasoning was sound
+about code that never ran.**
+
+RFC-023's exact-scan deferral is *unaffected* and remains correct — but note that
+Owner Task 003 Part A's measurement of "vector scan is 0.8 % of search cost", used
+to vindicate it, was measuring a scan over zero rows. **The deferral stands on
+its design argument, not on that number.**
+
+### 4b.3 The guard
+
+The regression assertion is a **`Semantic` match badge on at least one result**,
+which is reachable only if a vector candidate was actually found — it cannot pass
+vacuously. It lives on the `RFC013_MODEL_DIR`-gated test in
+`wired_application_tests.rs` and was confirmed by reverting `parts.model_id` to a
+hardcoded wrong key and watching it fail.
+
+**This is the assertion RFC-058 §6 should have had and did not.** Its eight rows
+covered trust, filters, scope, snippets, determinism and ranking — every visible
+property of a result — and none asked whether the *semantic half of hybrid search
+returned anything at all*. A capability can be absent without any of its
+downstream properties looking wrong.
+
+---
+
 ## 5. Decision 1 — persist `location_kind`
 
 **Root cause of the snippet defect.** `chunk_locations.line_start/line_end` means
@@ -329,6 +397,11 @@ they must be observed failing before their fixes land.
    `PossiblyScannedPdf` warning. Assert against a fixture built that way
    deliberately; a fixture that reserves page objects first cannot detect this
    (RFC-058's row 6 uses one, and it is documented there as a workaround).
+
+0a. **Added by Amendment 2.** With a real embedding model configured and a
+   corpus indexed, a search returns at least one result carrying the `Semantic`
+   match badge. Assert the badge, not the result count: a keyword-only fallback
+   returns results too, which is exactly how this went unnoticed.
 
 1. With a three-page PDF indexed and a query matching text on page 3, the
    returned snippet contains words from that page and does not contain PDF

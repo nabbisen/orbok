@@ -43,6 +43,15 @@ RFC removes.
 Open once in `main`, share by `Arc<Catalog>`; every current call site borrows it.
 Add `conn.busy_timeout(Duration::from_secs(5))` in `Catalog::from_connection`.
 
+> **Corrected 2026-09-10 — see RFC-061 §2b.** This handoff's premise that no
+> busy timeout was set is false: rusqlite 0.39 calls
+> `sqlite3_busy_timeout(db, 5000)` unconditionally inside every
+> `Connection::open*`. The line above is worth keeping as an explicit statement
+> of an inherited default, but it fixed nothing. What fixed the contention was
+> the one-shared-handle half of this slice. The table row above, the §1 grep it
+> rests on, and every "0 in production" reading of it answer "does orbok write
+> this?", not "is this set?".
+
 **This is the slice that pays for the RFC.** It closes, in one change: the broken
 serialization, the per-message migration probe (six `SELECT EXISTS` per UI
 message), the double-open in `SubmitSearch`, and **twelve `if let Ok(catalog)`

@@ -1723,10 +1723,15 @@ async fn background_indexing_baseline_with_no_concurrent_access() {
 
 /// HANDOFF §3.2: measure whether a concurrent UI search is stalled by the
 /// hosting loop's own catalog operations while it is actively indexing --
-/// and, since both connections share one `Catalog` with no `busy_timeout`
-/// pragma set (`catalog.rs`), whether sustained concurrent access instead
-/// slows *indexing* down (a `SQLITE_BUSY` returns as an immediate `Err`
-/// that this slice's `let _ =` call sites silently drop, not a retry).
+/// and, since both connections contend at the SQLite level, whether
+/// sustained concurrent access instead slows *indexing* down.
+///
+/// RFC-061 §2b (2026-09-10): this comment previously said `catalog.rs` sets
+/// no `busy_timeout`, so a contended write returned an immediate `Err`. That
+/// was false and it is the origin of the claim -- rusqlite calls
+/// `sqlite3_busy_timeout(db, 5000)` on every open (`catalog.rs:24-28`), so a
+/// loser waits up to 5 s. It propagated from here into the external audit's
+/// S-04, RFC-061 §1, and HANDOFF-061 before anyone read the library.
 /// Reported, not gated on a strict threshold -- per the handoff, a
 /// measurable regression is a finding to report, not something to work
 /// around speculatively in this slice.
