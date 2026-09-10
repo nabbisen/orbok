@@ -219,11 +219,18 @@ Phrased per RFC-058 §5.
    Proposal: start from a storage budget (e.g. cap the namespace at a fraction
    of the catalog size) rather than a time, because "how long ago" is not what
    the user cares about here. Needs one measurement pass on a real corpus.
-2. **Does Reset clear search history unconditionally?** §5 says yes, on the
-   grounds that history is derived from the user's queries. RFC-042 §13.4 has
-   its own "turn off and clear" semantics; if the owner reads history as
-   user-authored content rather than derived state, Reset should prompt rather
-   than assume. **Owner decision.**
+2. ~~**Does Reset clear search history unconditionally?**~~ **Resolved
+   2026-09-10 — owner decision: keep it unconditional.** §5's row stands.
+
+   Note for whoever implements this: **it is already the shipped behaviour, not
+   a proposal.** `run_reset_catalog` (`crates/data/db/src/repo/cleanup.rs:65`)
+   has `search_queries` in its unconditional `DELETE FROM` list, and
+   `search_result_cache.query_id` is `ON DELETE CASCADE`
+   (`0001_baseline.sql:254`) with `PRAGMA foreign_keys` ON
+   (`catalog.rs:65`, asserted at `crates/data/db/src/tests.rs:85`). So the
+   decision is to *keep* code that exists; there is no work item here, and the
+   confirmation dialog's own text already promises it ("This removes registered
+   folders and all search data").
 3. **Should Reset be confirmable and reversible?** It is not today. Out of scope
    here but worth recording: an erasure action that is correct and instant is
    more dangerous than one that is incorrect.

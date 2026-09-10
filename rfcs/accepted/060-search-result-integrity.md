@@ -438,8 +438,12 @@ they must be observed failing before their fixes land.
    expensive, and re-reads a user file at query time — which has its own privacy
    shape). Proposal: no snippet, with the result still shown. Needs a decision
    before §6 is implemented.
-3. **Does a `NULL` `location_kind` on a backfilled row mean "unknown" or "lines"?**
-   §5 says unknown. That is safe but it means every chunk indexed before the
-   migration loses its snippet until re-indexed — which, once Task 035 lands,
-   happens on the next rescan. Acceptable, but it should be a stated consequence
-   rather than a discovered one.
+3. ~~**Does a `NULL` `location_kind` on a backfilled row mean "unknown" or
+   "lines"?**~~ **Closed 2026-09-10 — owner: orbok is not in production use, so
+   no catalog carries pre-migration rows that matter.** §5's "unknown" reading
+   stands as the safe default; the "loses its snippet until re-indexed"
+   consequence has no one to affect and is struck.
+
+   **This closes the migration question only.** Question 2 below is a permanent
+   runtime behaviour and is unaffected — orbok *will* be in production use, and
+   the answer ships with it.
