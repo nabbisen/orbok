@@ -5,8 +5,9 @@ time of this record -- criterion 6 has a disclosed nuance below; whether that
 still permits moving to `done/` is a review decision, not this record's own.)
 **Format:** RFC-063 §6.1/§6.2 option B.
 **Implemented by:** `rfcs/handoffs/HANDOFF-059-erasure-completeness-and-cache-lifetime.md`,
-not yet reviewed at the time of this writing -- neither the review nor its
-request is git-tracked (RFC-063 §5).
+commit `5754b54`, not yet reviewed at the time of this writing -- neither the
+review nor its request is git-tracked (RFC-063 §5). Every "where verified"
+line below runs against that same commit unless it names a different one.
 **Transcribed, not re-derived**, from the handoff's own five-slice structure
 and this implementation's own mutation-tested observations below.
 
