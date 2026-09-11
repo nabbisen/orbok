@@ -151,6 +151,19 @@ impl<'a> CleanupService<'a> {
                 engine
                     .shrink_database()
                     .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+                drop(engine);
+                // RFC-059 Amendment 1 §2a.2 (Review 213 §3): the entry cap
+                // enforces here, not at write time -- see
+                // `OrbokCacheNamespace::EXTRACTION_CACHE_CLEANUP_ENTRY_CAP`'s
+                // own doc comment for why a write-time bound broke the
+                // indexing pipeline it was meant to protect. `localcache`
+                // 0.21.1 exposes no public maintenance-time LRU-trim API
+                // (`enforce_max_entries` and the `delete_lru_n` query it
+                // runs are both private), so this replicates that exact
+                // query directly against the cache database file.
+                if let Some(cap) = OrbokCacheNamespace::ExtractSegments.cleanup_time_entry_cap() {
+                    enforce_extract_segments_cleanup_cap(self.cache_db_path, cap)?;
+                }
             }
             CleanupAction::RemoveReplacedStaleIndexes => {
                 // Clean up chunk and embedding bundle caches. Per-namespace
@@ -238,4 +251,54 @@ impl<'a> CleanupService<'a> {
         let size_after = self.cache_db_path.metadata().map(|m| m.len()).unwrap_or(0);
         Ok(size_before.saturating_sub(size_after))
     }
+}
+
+/// Trim `ExtractSegments` down to `cap` entries, evicting the least
+/// recently accessed first -- the exact query `localcache` 0.21.1's own
+/// (private) `enforce_max_entries`/`repository::delete_lru_n` run at write
+/// time, replicated here because no public maintenance-time equivalent
+/// exists. RFC-059 Amendment 1 §2a.2: called only from the
+/// `ClearTemporaryExtraction` cleanup action, never from a write path, so
+/// it cannot evict an entry a running indexing job still needs.
+pub(crate) fn enforce_extract_segments_cleanup_cap(
+    cache_db_path: &Path,
+    cap: usize,
+) -> OrbokResult<()> {
+    use orbok_cache::OrbokCacheNamespace;
+    let namespace = OrbokCacheNamespace::ExtractSegments.as_namespace();
+    let conn = rusqlite::Connection::open(cache_db_path)
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM files WHERE namespace = ?1",
+            [&namespace],
+            |r| r.get(0),
+        )
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    let excess = count.saturating_sub(cap as i64);
+    if excess <= 0 {
+        return Ok(());
+    }
+    let deleted = conn
+        .execute(
+            "DELETE FROM files
+             WHERE namespace = ?1
+               AND id IN (
+                   SELECT id FROM files
+                   WHERE namespace = ?1
+                   ORDER BY last_accessed_at ASC, updated_at ASC
+                   LIMIT ?2
+               )",
+            rusqlite::params![namespace, excess],
+        )
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    conn.execute_batch("VACUUM;")
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    info!(
+        namespace = namespace,
+        entries_evicted = deleted,
+        cap,
+        "extraction-cache cleanup-time cap enforced"
+    );
+    Ok(())
 }

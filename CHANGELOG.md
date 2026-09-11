@@ -776,6 +776,51 @@ next release tag.
 
 ### Fixed
 
+- **RFC-059: Reset didn't erase what it indexed, and the extraction cache
+  had no lifetime at all.** Two permanent leaks. `chunk_fts_trigram` (the
+  CJK trigram index) was never cleared by anything, so it survived Reset
+  and, once its `keyword_index_records` mapping was cascaded away, became
+  permanently orphaned. The extraction cache (full extracted text of every
+  indexed document) was opened everywhere with no TTL and no entry cap, so
+  nothing ever expired it.
+
+  Four sites were orphaning FTS rows by deleting `keyword_index_records`
+  (the only chunk_id ↔ FTS-rowid link, both tables being contentless)
+  before the FTS rows it addressed: `run_reset_catalog` (fixed by adding
+  the trigram table's own `'delete-all'`), `Fts5KeywordEngine::delete`,
+  `remove_replaced_stale_indexes`, and — found only by Review 213's own
+  execution, not by the original implementation's reading — `SourceRepository::delete_with_all_data`
+  ("Remove folder"), the erasure action a user actually reaches for. All
+  four now delete FTS rows before anything can orphan them. The RFC's
+  originally named fix target, `Fts5KeywordEngine::index`, turned out to
+  have no production caller at all — the real replace-on-reindex bug was
+  in `ChunkRepository::insert_bundle`, which mints a fresh `chunk_id` on
+  every call, so a delete keyed on `chunk_id` never matched the superseded
+  generation.
+
+  `ExtractSegments` gained a 90-day TTL, derived from indexing this
+  repo's own `rfcs/` corpus (110 files, ~5.4 KB/entry). A first attempt
+  paired the TTL with a 20,000-entry write-time cap; Review 213 found by
+  execution that `localcache` enforces `max_entries` on every write while
+  Extract and Chunk jobs share one FIFO priority, so a corpus above the
+  cap evicted its earliest files' text before their own chunk jobs could
+  read it back — the chunk job hard-failed, the embedding job silently
+  succeeded with no vectors written. The write-time cap is withdrawn; the
+  same bound now enforces only at cleanup time (`ClearTemporaryExtraction`),
+  which cannot run mid-pipeline.
+
+  `ClearTemporaryExtraction` and `RemoveReplacedStaleIndexes` — implemented
+  since M10, reachable from no UI — are now two more buttons in the
+  Storage view's Safe cleanup row.
+
+  The two-invariant test (`count(chunk_fts) == count(keyword_index_records)`,
+  same for the trigram table) is the deliverable per the handoff's own
+  framing, not the fixes: asserted after every operation that can drop a
+  mapping row (a re-index, a direct keyword-engine delete, each cleanup
+  action, Reset, and — added by Review 213's Amendment 1 — Remove folder),
+  confirmed failing before each underlying fix, restored byte-identical
+  after each mutation check.
+
 - **Review 210 §3: the RFC-022 "PDF never claims Exact" criterion was
   guarded nowhere in the workspace.** `orbok-workers::v07_features::pdf_location_quality_is_page_only`
   was its only assertion (`if let Ok(output) = PdfExtractor.extract(&vp) {

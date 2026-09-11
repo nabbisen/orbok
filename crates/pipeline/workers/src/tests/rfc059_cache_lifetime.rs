@@ -21,8 +21,17 @@ fn setup(root: &std::path::Path) -> (Catalog, CacheService) {
 /// waiting out a real TTL, and it is what actually distinguishes this
 /// slice's fix from doing nothing: every open site used to register
 /// `ttl_seconds = NULL, max_entries = NULL` for this namespace.
+///
+/// RFC-059 Amendment 1 §2a.2 (Review 213 §3): `max_entries` is registered
+/// as **NULL** here, deliberately -- a write-time bound evicted entries
+/// out from under a running indexing pipeline (a scan's extractions all
+/// run before any chunk job reads them back, so the earliest files' text
+/// was evicted before their own chunk jobs could use it). The entry cap
+/// still exists; it moved to `OrbokCacheNamespace::cleanup_time_entry_cap`,
+/// enforced only by the `ClearTemporaryExtraction` cleanup action, which
+/// cannot run mid-pipeline.
 #[test]
-fn extract_segments_namespace_is_registered_with_a_ttl_and_a_cap() {
+fn extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap() {
     let dir = tempfile::tempdir().unwrap();
     let (catalog, cache) = setup(dir.path());
 
@@ -52,8 +61,15 @@ fn extract_segments_namespace_is_registered_with_a_ttl_and_a_cap() {
          RFC-059 §1's verified finding was that every open site registered NULL"
     );
     assert!(
-        max_entries.is_some(),
-        "ExtractSegments must be registered with a non-null max_entries"
+        max_entries.is_none(),
+        "ExtractSegments must NOT register a write-time max_entries -- \
+         Amendment 1 §2a.2 withdrew it after Review 213 found it broke \
+         indexing above the cap"
+    );
+    assert_eq!(
+        OrbokCacheNamespace::ExtractSegments.cleanup_time_entry_cap(),
+        Some(20_000),
+        "the bound itself is unchanged -- only the enforcement point moved"
     );
 }
 
@@ -216,4 +232,211 @@ fn clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired() {
          (RFC-059 §10 criterion 5) -- got {}",
         outcome.cache_bytes_freed
     );
+}
+
+/// RFC-059 Amendment 1 §2a.2 (Review 213 §3): the cleanup-time cap
+/// mechanism itself, in isolation from the real 20,000 production value
+/// (writing and evicting 20,000 real entries is not a unit test). Five
+/// entries, a cap of three, staggered `last_accessed_at`/`updated_at` via
+/// raw SQL (deterministic, not a sleep-ordered race) so eviction order is
+/// unambiguous: the two least-recently-accessed must go, the three most
+/// recent must survive.
+#[test]
+fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let cache_path = dir.path().join("orbok-cache.sqlite3");
+    let namespace = OrbokCacheNamespace::ExtractSegments;
+
+    let engine = cache
+        .engine::<Vec<u8>>(&catalog, &namespace, namespace.default_engine_options())
+        .unwrap();
+    let mut paths = Vec::new();
+    for i in 0..5 {
+        let path = dir.path().join(format!("doc-{i}.md"));
+        std::fs::write(&path, format!("content {i}")).unwrap();
+        engine.set(&path, &b"payload".to_vec()).unwrap();
+        paths.push(path);
+    }
+    drop(engine);
+
+    // Stagger access times: doc-0 oldest, doc-4 newest. `last_accessed_at`
+    // is what `delete_lru_n`'s query orders by (`updated_at` only as a
+    // tiebreaker), so set both explicitly rather than relying on write
+    // order or real elapsed time.
+    {
+        let raw = rusqlite::Connection::open(&cache_path).unwrap();
+        for (i, path) in paths.iter().enumerate() {
+            let ts = i as i64;
+            raw.execute(
+                "UPDATE files SET last_accessed_at = ?1, updated_at = ?1 \
+                 WHERE namespace = ?2 AND path = ?3",
+                rusqlite::params![ts, namespace.as_namespace(), path.to_string_lossy()],
+            )
+            .unwrap();
+        }
+    }
+
+    crate::cleanup_service::enforce_extract_segments_cleanup_cap(&cache_path, 3).unwrap();
+
+    let remaining: Vec<String> = {
+        let raw = rusqlite::Connection::open(&cache_path).unwrap();
+        let mut stmt = raw
+            .prepare("SELECT path FROM files WHERE namespace = ?1 ORDER BY path")
+            .unwrap();
+        stmt.query_map([namespace.as_namespace()], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    };
+    assert_eq!(
+        remaining.len(),
+        3,
+        "the cap must trim the namespace to exactly 3 entries, got {remaining:?}"
+    );
+    for evicted in &paths[0..2] {
+        assert!(
+            !remaining.contains(&evicted.to_string_lossy().to_string()),
+            "doc-0 and doc-1 (the two oldest by last_accessed_at) must be evicted, \
+             remaining: {remaining:?}"
+        );
+    }
+    for kept in &paths[2..5] {
+        assert!(
+            remaining.contains(&kept.to_string_lossy().to_string()),
+            "doc-2, doc-3, doc-4 (the three most recently accessed) must survive, \
+             remaining: {remaining:?}"
+        );
+    }
+}
+
+/// RFC-059 §10 criterion 9 (Amendment 1): indexing a corpus larger than
+/// any configured extraction-cache bound leaves every file with active
+/// chunks -- no chunk job fails on a cache miss.
+///
+/// **Mutation-tested, not merely written**: with the fix in place (write-time
+/// `max_entries: None`, `OrbokCacheNamespace::default_engine_options`),
+/// this passes. Temporarily restoring a write-time
+/// `max_entries: Some(3)` for `ExtractSegments` in that same function --
+/// reproducing exactly the pre-Amendment-1 behaviour Review 213 found by
+/// execution -- made this test fail with a chunk job left `failed` and a
+/// non-zero failure count, confirming the mechanism this test guards is
+/// real; restored afterward, byte-identical (`git diff` empty).
+#[test]
+fn indexing_above_any_cache_bound_leaves_every_file_with_active_chunks() {
+    let dir = tempfile::tempdir().unwrap();
+    let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
+    let cache = CacheService::new(dir.path());
+
+    let canonical_root = std::fs::canonicalize(dir.path())
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let mut file_ids = Vec::new();
+    for i in 0..5 {
+        let name = format!("doc-{i}.md");
+        let path = dir.path().join(&name);
+        std::fs::write(&path, format!("distinct content for file number {i}")).unwrap();
+        let canonical = std::fs::canonicalize(&path)
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        file_ids.push((name, canonical));
+    }
+
+    let src = orbok_db::repo::SourceRepository::new(&catalog)
+        .insert(orbok_db::repo::NewSource {
+            source_type: orbok_core::SourceType::Directory,
+            persistence_mode: orbok_core::PersistenceMode::Persistent,
+            display_name: None,
+            original_path: canonical_root.clone(),
+            canonical_path: canonical_root,
+            index_mode: orbok_core::IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: orbok_core::HiddenFilePolicy::Exclude,
+            symlink_policy: orbok_core::SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+
+    let mut expected_file_ids = Vec::new();
+    for (name, path) in &file_ids {
+        let file = orbok_db::repo::FileRepository::new(&catalog)
+            .insert(orbok_db::repo::NewFile {
+                source_id: src.source_id.clone(),
+                original_path: path.clone(),
+                canonical_path: path.clone(),
+                display_path: name.clone(),
+                extension: Some("md".into()),
+                metadata: orbok_db::repo::ObservedMetadata {
+                    file_size_bytes: std::fs::metadata(path).unwrap().len(),
+                    modified_at: Some("2026-01-01T00:00:00Z".into()),
+                    platform_file_key: None,
+                    content_hash: Some(format!("hash-{name}")),
+                },
+                status: orbok_core::FileStatus::Discovered,
+            })
+            .unwrap();
+        orbok_db::repo::IndexJobRepository::new(&catalog)
+            .enqueue(
+                orbok_core::JobType::Extract,
+                Some(&src.source_id),
+                Some(&file.file_id),
+            )
+            .unwrap();
+        expected_file_ids.push(file.file_id);
+    }
+
+    let extractor = crate::ExtractionWorker::new(&catalog, &cache);
+    let chunker = crate::ChunkAndIndexWorker::new(&catalog, &cache);
+    // No embedding model is available in this sandbox (no .onnx file
+    // reachable, matching the established constraint for every other
+    // model-dependent test in this project -- e.g. RFC013_MODEL_DIR).
+    // `embed_worker: None` makes `run_pending` mark every Embedding job
+    // `failed` with category `model_missing` (RFC-008 §15's own named,
+    // *expected* terminal status for "no model configured" -- not a bug,
+    // and not what this criterion is testing). This test verifies the
+    // half of criterion 9 that is checkable without a real model: no
+    // Extract or Chunk job fails on a cache miss, and every file gets
+    // active chunks. The embedding half ("no embedding job completes
+    // empty") is not exercised here, disclosed rather than fabricated --
+    // the same gap RFC-058 Review Request 209 §3 left open for row 7.
+    crate::run_pending(&catalog, &extractor, &chunker, None, 50).unwrap();
+
+    // Excludes Embedding jobs' expected `model_missing` category (no model
+    // configured in this sandbox, see the comment above) -- this counts
+    // only Extract/Chunk failures, the ones a write-time entry cap caused.
+    let failed_jobs: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs \
+             WHERE status = 'failed' AND (error_category IS NULL OR error_category != 'model_missing')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        failed_jobs, 0,
+        "no Extract or Chunk job may fail on an extraction-cache miss -- \
+         the failure mode a write-time entry cap caused (RFC-059 Amendment \
+         1 §2a.2)"
+    );
+
+    for file_id in &expected_file_ids {
+        let active_chunks: i64 = catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM chunks WHERE file_id = ?1 AND chunk_status = 'active'",
+                rusqlite::params![file_id.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            active_chunks > 0,
+            "file {file_id:?} must have at least one active chunk -- \
+             every file in the corpus must be fully indexed regardless of \
+             any configured extraction-cache bound"
+        );
+    }
 }

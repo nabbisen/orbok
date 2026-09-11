@@ -1,6 +1,7 @@
-//! RFC-059 §6: the erasure invariant, both FTS tables, all four operations
+//! RFC-059 §6: the erasure invariant, both FTS tables, all five operations
 //! that can drop a `keyword_index_records` row (a re-index, a direct
-//! keyword-engine delete, `remove_replaced_stale_indexes`, and Reset).
+//! keyword-engine delete, `remove_replaced_stale_indexes`, Reset, and
+//! Remove folder).
 //!
 //! ```text
 //! count(chunk_fts) == count(keyword_index_records)
@@ -9,15 +10,20 @@
 //!
 //! **This test is the deliverable, not the fixes it exercises** (handoff
 //! §2 Slice 2). Confirmed failing on pre-fix code before any of the three
-//! fixes existed: reverting `insert_bundle`'s new pre-insert FTS delete
-//! alone made the re-index assertion fail with `chunk_fts` holding one more
-//! row than `keyword_index_records` (the orphan the RFC describes), exactly
-//! as expected -- restored afterward.
+//! original fixes existed: reverting `insert_bundle`'s new pre-insert FTS
+//! delete alone made the re-index assertion fail with `chunk_fts` holding
+//! one more row than `keyword_index_records` (the orphan the RFC
+//! describes), exactly as expected -- restored afterward. Operation 5
+//! (Remove folder) was added by RFC-059 Amendment 1 after Review 213 found,
+//! by execution, that `SourceRepository::delete_with_all_data` had exactly
+//! the same orphaning bug the other three sites had before their own
+//! fixes -- this test's own four operations could not see it, because none
+//! of them was Remove folder.
 
 use crate::{Fts5KeywordEngine, KeywordSearchEngine};
-use orbok_core::{ChunkId, CleanupAction, CleanupPlan, ExtractionId, FileId};
+use orbok_core::{ChunkId, CleanupAction, CleanupPlan, ExtractionId, FileId, SourceId};
 use orbok_db::Catalog;
-use orbok_db::repo::{ChunkRepository, ChunkSpec, CleanupExecutor};
+use orbok_db::repo::{ChunkRepository, ChunkSpec, CleanupExecutor, SourceRepository};
 use rusqlite::params;
 
 /// Idempotent: safe to call more than once for the same `file_id` (a
@@ -136,7 +142,7 @@ fn assert_erasure_invariant(catalog: &Catalog, after: &str) {
 }
 
 #[test]
-fn erasure_invariant_holds_after_all_four_operations() {
+fn erasure_invariant_holds_after_all_five_operations() {
     let catalog = Catalog::open_in_memory().unwrap();
 
     // ── Operation 1: a re-index (insert_bundle called twice for the same
@@ -293,6 +299,69 @@ fn erasure_invariant_holds_after_all_four_operations() {
         chunk_fts_trigram_count(&catalog),
         0,
         "Reset must leave chunk_fts_trigram empty -- the gap this RFC exists to close"
+    );
+
+    // ── Operation 5: Remove folder (SourceRepository::delete_with_all_data,
+    //    RFC-059 Amendment 1 §2a.1 / criterion 8 -- the fourth erasure site
+    //    Review 213 found by execution: this function's own DELETE FROM
+    //    sources cascades keyword_index_records away -- the only chunk_id
+    //    <-> FTS-rowid link -- before anything deletes the chunk_fts/
+    //    chunk_fts_trigram rows that mapping addressed, exactly the shape
+    //    the other three sites had before their own fixes. Reset above
+    //    emptied every table, so this seeds a fresh source/file rather
+    //    than reusing state from Operations 1-4. ─────────────────────────
+    let (folder_file_id, folder_extraction) = seed_source_and_file(&catalog, "folder-doc");
+    ChunkRepository::new(&catalog)
+        .insert_bundle(
+            &folder_file_id,
+            &folder_extraction,
+            &[spec("削除対象のフォルダに含まれる語句")],
+        )
+        .unwrap();
+    assert_erasure_invariant(&catalog, "seeding the folder to be removed");
+
+    let term = "削除対象のフォルダに含まれる語句";
+    let trigram_matches_before: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunk_fts_trigram WHERE chunk_fts_trigram MATCH ?1",
+            params![term],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        trigram_matches_before > 0,
+        "the seeded folder's term must be findable in the trigram index before \
+         removal, or this test proves nothing"
+    );
+
+    SourceRepository::new(&catalog)
+        .delete_with_all_data(&SourceId::from_string("s1".to_string()))
+        .unwrap();
+    assert_erasure_invariant(&catalog, "Remove folder (delete_with_all_data)");
+
+    let trigram_matches_after: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunk_fts_trigram WHERE chunk_fts_trigram MATCH ?1",
+            params![term],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        trigram_matches_after, 0,
+        "Remove folder must leave no trigram match for the removed folder's \
+         term, queried against chunk_fts_trigram directly (RFC-059 criterion 8) \
+         -- the gap Review 213 found"
+    );
+    let unicode_matches_after: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM chunk_fts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        unicode_matches_after, 0,
+        "Remove folder must also leave chunk_fts empty -- both FTS tables, \
+         per criterion 8"
     );
 }
 

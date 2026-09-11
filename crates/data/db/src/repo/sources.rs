@@ -166,13 +166,50 @@ impl<'a> SourceRepository<'a> {
     /// Remove-source option 3 (RFC-003 §10.3): delete the source row and
     /// let foreign keys cascade through files → extraction → chunks →
     /// indexes. Source files on disk are never touched.
+    ///
+    /// RFC-059 Amendment 1 §2a.1 (Review 213): the cascade cannot actually
+    /// reach the indexes on its own. Both `chunk_fts` and `chunk_fts_trigram`
+    /// are contentless, so `keyword_index_records` is the only chunk_id <->
+    /// FTS-rowid link that exists; `keyword_index_records.chunk_id` is `ON
+    /// DELETE CASCADE`, so the `sources` delete below destroys that mapping
+    /// before anything could use it if it ran first, stranding every FTS row
+    /// the removed folder ever wrote. Delete the FTS rows first, addressed
+    /// via `files -> chunks -> keyword_index_records` for this source, in
+    /// the same transaction as the `sources` delete -- the same shape as
+    /// `remove_replaced_stale_indexes`'s own fix (RFC-059 §6).
     pub fn delete_with_all_data(&self, id: &SourceId) -> OrbokResult<()> {
-        let conn = self.catalog.lock();
-        conn.execute(
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let source_chunks_subquery = "SELECT c.chunk_id FROM chunks c \
+             JOIN files f ON f.file_id = c.file_id WHERE f.source_id = ?1";
+        tx.execute(
+            &format!(
+                "DELETE FROM chunk_fts WHERE rowid IN ( \
+                     SELECT k.fts_rowid FROM keyword_index_records k \
+                     WHERE k.chunk_id IN ({source_chunks_subquery}) \
+                       AND k.fts_rowid IS NOT NULL \
+                 )"
+            ),
+            params![id.as_str()],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            &format!(
+                "DELETE FROM chunk_fts_trigram WHERE rowid IN ( \
+                     SELECT k.trigram_fts_rowid FROM keyword_index_records k \
+                     WHERE k.chunk_id IN ({source_chunks_subquery}) \
+                       AND k.trigram_fts_rowid IS NOT NULL \
+                 )"
+            ),
+            params![id.as_str()],
+        )
+        .map_err(db_err)?;
+        tx.execute(
             "DELETE FROM sources WHERE source_id = ?1",
             params![id.as_str()],
         )
         .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
         Ok(())
     }
 }

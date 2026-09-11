@@ -24,7 +24,26 @@ use std::time::Duration;
 /// 0.21.1's `EngineOptions` has no field for in the first place (only
 /// `max_entries`, a count).
 const EXTRACTION_CACHE_TTL: Duration = Duration::from_secs(90 * 24 * 60 * 60); // 90 days
-const EXTRACTION_CACHE_MAX_ENTRIES: usize = 20_000;
+
+/// RFC-059 Amendment 1 §2a.2 (Review 213 §3, Critical→High): **not** a
+/// write-time `EngineOptions.max_entries`. localcache enforces that bound
+/// on every `set()`/`batch_set()`, evicting LRU by `last_accessed_at` --
+/// but Extract and Chunk jobs share one priority (FIFO), so a scan's *N*
+/// extractions all run before any chunk job, and Embedding runs after all
+/// of those. For any corpus above the cap, a write-time bound evicts the
+/// first files' entries before their own chunk jobs read them: the chunk
+/// job hard-fails ("extraction cache miss"), and the embedding job
+/// silently succeeds with no vectors written. §7's "the cache is by
+/// definition rebuildable" is true of the data and false of the pipeline,
+/// which treats this namespace as its only source of text.
+///
+/// The bound still matters (an unbounded cache is what made "purge
+/// expired" a no-op in the first place) -- it is enforced instead at
+/// cleanup time, in `orbok_workers::cleanup_service`'s
+/// `ClearTemporaryExtraction` branch, which cannot run mid-pipeline. The
+/// value is unchanged from the original measurement; only the
+/// enforcement point moved.
+pub const EXTRACTION_CACHE_CLEANUP_ENTRY_CAP: usize = 20_000;
 
 /// The orbok cache namespaces. Embedding bundles are parameterized by
 /// model and vector format so different models never collide.
@@ -83,13 +102,31 @@ impl OrbokCacheNamespace {
     /// about what is actually configured.
     pub fn default_engine_options(&self) -> EngineOptions {
         match self {
+            // RFC-059 Amendment 1 §2a.2: `max_entries` is deliberately
+            // `None` here -- see `EXTRACTION_CACHE_CLEANUP_ENTRY_CAP`'s own
+            // doc comment for why a write-time bound broke the indexing
+            // pipeline it was meant to protect. The TTL alone is safe at
+            // write time: it only ever makes an entry *older* than 90 days
+            // expire, which cannot happen mid-run.
             Self::ExtractSegments => EngineOptions {
                 ttl: Some(EXTRACTION_CACHE_TTL),
-                max_entries: Some(EXTRACTION_CACHE_MAX_ENTRIES),
+                max_entries: None,
             },
             Self::ChunkBundle | Self::EmbeddingBundle { .. } | Self::PreviewCache => {
                 EngineOptions::default()
             }
+        }
+    }
+
+    /// The cleanup-time entry cap for this namespace, if any (RFC-059
+    /// Amendment 1 §2a.2) -- enforced only by
+    /// `orbok_workers::cleanup_service`'s `ClearTemporaryExtraction`
+    /// branch, never at write time. `None` for every namespace but
+    /// `ExtractSegments`.
+    pub fn cleanup_time_entry_cap(&self) -> Option<usize> {
+        match self {
+            Self::ExtractSegments => Some(EXTRACTION_CACHE_CLEANUP_ENTRY_CAP),
+            Self::ChunkBundle | Self::EmbeddingBundle { .. } | Self::PreviewCache => None,
         }
     }
 }
