@@ -51,6 +51,88 @@ disk.
 
 ---
 
+## 2a. Amendment 1 (2026-09-12) — what implementation found, and what review found after it
+
+Review Request 213 implemented all five handoff slices; the code that landed
+is correct and stays. Reviewing it by execution found that §6 named three
+erasure sites and there are four, that §7's cap breaks the pipeline it was
+meant to bound, and that criterion 6 as worded cannot hold once §6 is done
+right. This amendment records all three so the RFC describes what must be
+true, not what was first thought.
+
+### 2a.1 The fourth site — "Remove folder"
+
+`bootstrap::remove_source` → `SourceRepository::delete_with_all_data` →
+`DELETE FROM sources`, whose own doc comment says the cascade runs "through
+files → extraction → chunks → indexes". It cannot reach the indexes: both FTS
+tables are contentless and `keyword_index_records` — the only chunk→rowid link
+— is cascaded away first. Observed directly (probe against
+`insert_bundle` + `delete_with_all_data`, 2026-09-12):
+
+```text
+before:               fts=1  trigram=1  kir=1
+after remove folder:  fts=1  trigram=1  kir=0  chunks=0
+trigram MATCH for the removed folder's term: 1 row
+```
+
+This is the erasure action a user actually reaches for — Reset is the nuclear
+one — and it leaves the folder's full trigram index behind, permanently. §6's
+list becomes **four** sites, and the invariant test's four operations become
+**five** (criterion 8 below). The fix is the same shape as the other three:
+delete both FTS tables' rows addressed via `files → chunks →
+keyword_index_records` before the `sources` delete, in the same transaction.
+
+A fifth case is adjacent and unowned: a file that goes **missing and never
+returns** keeps its chunks `stale` (`deactivate_for_missing_files`) with FTS
+rows intact, and `remove_replaced_stale_indexes` skips it by design (no active
+sibling). Search is gated on `chunk_status`, so the content does not surface —
+but it stays on disk until Reset. No retention policy exists for missing files
+(RFC-037 has none). **Owner decision, routed, not decided here.**
+
+### 2a.2 The cap is not a bound; it is a failure mode
+
+§7 said "the TTL and cap are not optional" on the premise that the cache is by
+definition rebuildable. The *data* is; the *pipeline* treats the cache as its
+only source of text. `chunk_and_index.rs` hard-fails on a miss
+(`"extraction cache miss: run extraction first"`), and `embedding.rs` returns
+`Ok(None)` on a miss, which `EmbeddingWorker::run` turns into `Ok(())` — **the
+job succeeds with no vectors written**, and nothing retries.
+
+localcache enforces `max_entries` on every `set`, LRU by `last_accessed_at`.
+Extract and Chunk are both `NormalBackground` (FIFO within a priority), so a
+scan's *N* extractions all run before any chunk job; Embedding is
+`LowBackground` and runs after all of those. So for any corpus larger than the
+cap, the first files' entries are evicted before their chunk and embedding jobs
+run: those chunk jobs fail, those embedding jobs silently succeed empty. The
+implementation's 20,000 was measured on 110 files and could not see this; the
+handoff's third stop condition ("a cap that would evict during a normal
+indexing run") was exactly this and was not checked.
+
+**Disposition: write-time `max_entries` is withdrawn from §7.** The TTL stays
+(90 days cannot fire inside an indexing run). Bounding the namespace's size
+moves to the cleanup action — a cleanup-time cap is still a cap, and it cannot
+evict under a running pipeline. The value itself remains open question 1. The
+deeper fix — downstream jobs that do not depend on a cache — is RFC-060 §6's
+snippet question wearing different clothes, and is routed there.
+
+### 2a.3 Criterion 6, re-worded
+
+Criterion 6 asked that `Remove replaced stale indexes` "after a re-index
+reports a byte reclaim greater than zero". Once `insert_bundle` deletes the
+superseded generation's FTS rows at replace time — which §6 requires — an
+ordinary re-index leaves that action nothing to reclaim, and it correctly
+reports 0. The reclaim is real but happens earlier. The action does have work
+on one production path the implementation believed did not exist: a file that
+goes missing (chunks marked `stale`, FTS rows kept for reactivation) and then
+**returns changed** — `insert_bundle`'s delete targets `chunk_status =
+'active'` only, so the missing generation's rows survive until this action
+runs. Criterion 6 is re-worded below to name that path, and its "reduces the
+on-disk keyword-index size" clause is dropped: nothing VACUUMs the catalog, and
+the reported figure is rows × 256, a convention shared with the dashboard, not
+a measurement. It must not be shown to a user as bytes.
+
+---
+
 ## 3. Goals
 
 - Define what "erase" guarantees, in terms a user can check.
@@ -163,6 +245,12 @@ request as part of this RFC's implementation, not after** — if it lands quickl
 Whichever lands, the TTL and cap are not optional: an unbounded cache with no
 expiry is what made "purge expired" a no-op in the first place.
 
+> **Amended 2026-09-12 (§2a.2).** "Cap" here means a bound enforced by the
+> cleanup action, **not** a write-time `max_entries` on the engine. A
+> write-time LRU evicts under a running pipeline whose chunk and embedding jobs
+> read this namespace as their only source of text; the implementation's
+> 20,000-entry write-time cap is withdrawn for that reason.
+
 ## 8. Decision 4 — expose the two cleanup actions that already work
 
 `ClearTemporaryExtraction` and `RemoveReplacedStaleIndexes` are implemented in
@@ -206,10 +294,22 @@ Phrased per RFC-058 §5.
 5. With the extraction cache holding entries older than the configured TTL,
    running Clear temporary extraction from the Storage view reports a non-zero
    byte reclaim and the entries are no longer retrievable.
-6. Invoking Remove replaced stale indexes after a re-index reports a byte
-   reclaim greater than zero and reduces the on-disk keyword-index size.
+6. *(Re-worded by Amendment 1.)* After an ordinary re-index, both §6
+   invariants hold and Remove replaced stale indexes reports zero FTS rows
+   reclaimed — the reclaim happened at replace time. After a file goes missing
+   and returns with changed content, the same action reports a non-zero FTS-row
+   reclaim and both invariants hold afterwards. No reported figure is
+   presented to the user as bytes freed.
 7. The README's data-lifecycle section describes the behaviour that ships,
    verified by re-running the audit's claim check against it.
+8. *(Added by Amendment 1.)* With a folder indexed containing a distinctive
+   term, invoking Remove folder and then querying `chunk_fts_trigram` and
+   `chunk_fts` directly for that term returns no rows, and both §6 invariants
+   hold. Remove folder is the fifth operation in criterion 4's invariant test.
+9. *(Added by Amendment 1.)* Indexing a corpus larger than any configured
+   extraction-cache bound leaves every file with active chunks and, when a
+   model is configured, embeddings — no chunk job fails on a cache miss and no
+   embedding job completes empty.
 
 ---
 
