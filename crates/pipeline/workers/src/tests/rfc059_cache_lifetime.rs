@@ -255,6 +255,14 @@ fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
     for i in 0..5 {
         let path = dir.path().join(format!("doc-{i}.md"));
         std::fs::write(&path, format!("content {i}")).unwrap();
+        // Canonicalize before writing through the engine: on macOS,
+        // `dir.path()` resolves under `/var/...`, a symlink to
+        // `/private/var/...`, and localcache stores the canonical form
+        // internally. Comparing against an un-canonicalized path later
+        // (both in the raw SQL `UPDATE` below and in the final assertions)
+        // silently matches zero rows on macOS -- confirmed by CI (Linux
+        // passed, macOS failed with the update never having taken effect).
+        let path = std::fs::canonicalize(&path).unwrap();
         engine.set(&path, &b"payload".to_vec()).unwrap();
         paths.push(path);
     }
