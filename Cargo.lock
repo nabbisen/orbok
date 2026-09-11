@@ -3654,6 +3654,7 @@ version = "0.24.0"
 dependencies = [
  "dirs",
  "futures",
+ "localcache",
  "orbok-bench",
  "orbok-cache",
  "orbok-core",

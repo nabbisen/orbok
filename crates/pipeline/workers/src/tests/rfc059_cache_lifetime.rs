@@ -266,12 +266,15 @@ fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
         engine.set(&path, &b"payload".to_vec()).unwrap();
         paths.push(path);
     }
-    drop(engine);
 
-    // Stagger access times: doc-0 oldest, doc-4 newest. `last_accessed_at`
-    // is what `delete_lru_n`'s query orders by (`updated_at` only as a
-    // tiebreaker), so set both explicitly rather than relying on write
-    // order or real elapsed time.
+    // Stagger access times: doc-0 oldest, doc-4 newest. Sorting by
+    // `(last_accessed_at, updated_at)` is what eviction orders by, so set
+    // both explicitly rather than relying on write order or real elapsed
+    // time. Raw SQL here is a test-only convenience (this project's own
+    // established pattern for backdating timestamps, e.g.
+    // `clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired`
+    // above) -- Review 214 §2's objection was to *production* code coupling
+    // to localcache's private schema, not to test setup.
     {
         let raw = rusqlite::Connection::open(&cache_path).unwrap();
         for (i, path) in paths.iter().enumerate() {
@@ -285,18 +288,14 @@ fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
         }
     }
 
-    crate::cleanup_service::enforce_extract_segments_cleanup_cap(&cache_path, 3).unwrap();
+    crate::cleanup_service::enforce_extract_segments_cleanup_cap(&engine, 3).unwrap();
 
-    let remaining: Vec<String> = {
-        let raw = rusqlite::Connection::open(&cache_path).unwrap();
-        let mut stmt = raw
-            .prepare("SELECT path FROM files WHERE namespace = ?1 ORDER BY path")
-            .unwrap();
-        stmt.query_map([namespace.as_namespace()], |r| r.get(0))
-            .unwrap()
-            .map(|r| r.unwrap())
-            .collect()
-    };
+    let remaining: Vec<std::path::PathBuf> = engine
+        .list_entries()
+        .unwrap()
+        .into_iter()
+        .map(|e| e.path)
+        .collect();
     assert_eq!(
         remaining.len(),
         3,
@@ -304,14 +303,14 @@ fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
     );
     for evicted in &paths[0..2] {
         assert!(
-            !remaining.contains(&evicted.to_string_lossy().to_string()),
+            !remaining.contains(evicted),
             "doc-0 and doc-1 (the two oldest by last_accessed_at) must be evicted, \
              remaining: {remaining:?}"
         );
     }
     for kept in &paths[2..5] {
         assert!(
-            remaining.contains(&kept.to_string_lossy().to_string()),
+            remaining.contains(kept),
             "doc-2, doc-3, doc-4 (the three most recently accessed) must survive, \
              remaining: {remaining:?}"
         );
