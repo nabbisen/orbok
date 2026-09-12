@@ -8,9 +8,11 @@ record is updated]," now done; whether this record's completeness is enough
 to move it to `done/` is a review decision, not this record's own.
 **Format:** RFC-063 §6.1/§6.2 option B.
 **Implemented by:** `rfcs/handoffs/HANDOFF-059-erasure-completeness-and-cache-lifetime.md`;
-reviewed in [Review 213](../../.git-exclude/reviewed/213-rfc059-handoff-implementation-review.md)
-and [Review 214](../../.git-exclude/reviewed/214-rfc059-review213-owner-decisions-review.md)
-(neither git-tracked, RFC-063 §5). Commits: `5754b54` (original five slices),
+reviewed in Review 213 (`.git-exclude/reviewed/213-rfc059-handoff-implementation-review.md`)
+and Review 214 (`.git-exclude/reviewed/214-rfc059-review213-owner-decisions-review.md`)
+-- plain text, not links: neither is git-tracked (RFC-063 §5), so a link
+resolves to nothing on any checkout outside this working copy. Commits:
+`5754b54` (original five slices),
 `50d7763`/`d995403` (closure-record/gate follow-ups), `44ab2c9` (Review 213
 §2 Critical + §3 High fixes), `5771740` (macOS test fix), `9240145` (Review
 214 §2 required change), and the commit landing alongside this record's own
