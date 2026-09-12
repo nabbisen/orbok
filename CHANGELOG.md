@@ -776,6 +776,25 @@ next release tag.
 
 ### Fixed
 
+- **Task 045: a CI test asserted a byte cap by measuring wall-clock time —
+  time as a contaminated proxy for a count.** `no_newline_file_does_not_materialize_the_whole_file`
+  (`crates/search/engine/src/tests/task034_snippet_robustness.rs`) wrote a
+  200 MB single-line fixture and asserted `load_snippet` returned inside a
+  20ms deadline, on the theory that a correctly-bounded (64 KiB) read is
+  "microseconds" and an unbounded one is "~40ms" — comfortably separated,
+  until a shared Windows CI runner measured 41ms for the bounded read and
+  failed a test that had nothing wrong with it. The property was always
+  "reads at most 64 KiB regardless of source length"; the test measured
+  something a loaded runner can perturb instead. Split `load_snippet` at
+  its file-open boundary into a thin path wrapper and
+  `load_snippet_from(record, impl Read)`; the test now feeds an
+  **unbounded** source (`std::io::repeat`, via a counting `Read` wrapper)
+  and asserts the actual byte count against the cap directly — no clock,
+  no 200 MB write on every run. Confirmed by mutation: removing the
+  `Read::take` cap made the call hang (an unbounded source has no end),
+  which is the correct failure shape for "does not materialize the whole
+  file" and needs no deadline to detect it.
+
 - **RFC-059 Amendment 1 (Review 213/214): a fourth erasure site, a cache
   cap that broke indexing, and "Clear temporary extraction" now clears.**
   Independent review of the RFC-059 work below, verified by execution, found

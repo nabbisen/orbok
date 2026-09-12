@@ -27,14 +27,24 @@ pub fn load_snippet(record: &ChunkRecord, source_path: &str) -> Option<String> {
     // line range" from the source file returns the wrong bytes entirely. A
     // missing snippet is honest; a binary excerpt presented as document
     // text is not. Interim guard only -- RFC-060 owns the real fix
-    // (locating actual text for these formats).
+    // (locating actual text for these formats). Must run before the file
+    // is even opened -- `load_snippet_from` below has no path to guard on.
     if record.location_quality != "exact" {
         return None;
     }
 
     let path = Path::new(source_path);
     let file = std::fs::File::open(path).ok()?;
-    let reader = BufReader::new(file.take(MAX_SNIPPET_READ_BYTES));
+    load_snippet_from(record, file)
+}
+
+/// The read-and-extract half of `load_snippet`, taking any `Read` rather
+/// than a path (Task 045: split out so a test can feed an unbounded
+/// source and assert the 64 KiB cap by byte count, not by timing how long
+/// an unbounded read would take against a real multi-hundred-megabyte
+/// fixture).
+pub(crate) fn load_snippet_from(record: &ChunkRecord, source: impl Read) -> Option<String> {
+    let reader = BufReader::new(source.take(MAX_SNIPPET_READ_BYTES));
 
     let start = record.line_start.max(1) as usize;
     let end = record.line_end as usize;

@@ -4,6 +4,7 @@
 
 use orbok_core::{ChunkId, FileId};
 use orbok_db::repo::ChunkRecord;
+use std::io::Read;
 
 fn record(line_start: u32, line_end: u32, location_quality: &str) -> ChunkRecord {
     ChunkRecord {
@@ -19,35 +20,53 @@ fn record(line_start: u32, line_end: u32, location_quality: &str) -> ChunkRecord
     }
 }
 
+/// A counting wrapper around any `Read`, so a test can assert exactly how
+/// many bytes a call consumed instead of inferring it from elapsed time
+/// (Task 045: wall-clock was a contaminated proxy for a byte count -- a
+/// shared CI runner can make a correctly-bounded read take 40ms, and a
+/// fast enough disk can make an *unbounded* read finish inside any
+/// deadline this test could set). The count lives behind a shared `Cell`
+/// rather than a plain field, since `load_snippet_from` takes ownership of
+/// the reader and the test needs to read the count back afterward.
+struct Counting<R> {
+    inner: R,
+    count: std::rc::Rc<std::cell::Cell<u64>>,
+}
+
+impl<R: Read> Read for Counting<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.count.set(self.count.get() + n as u64);
+        Ok(n)
+    }
+}
+
 /// A file with no newline byte must not be read in full before the 8-line /
 /// 400-char cap is applied -- `BufRead::lines()` would otherwise allocate
 /// one `String` covering the entire file to produce that single "line".
-/// Asserted by elapsed time: a capped read (`Read::take(64 * 1024)`) is
-/// microseconds regardless of file size; an unbounded read of a 200 MB
-/// single line measured ~40ms locally (`BufReader::lines()` on the raw
-/// file, repeated, consistently 35-45ms) -- comfortably distinguishable
-/// from a 64 KiB-bounded read at any reasonable deadline. Confirmed this
-/// exceeds the deadline below against the pre-fix code before landing the
-/// fix.
+/// Asserted by the actual byte count read from an *unbounded* source
+/// (`std::io::repeat`, which never ends and has no newline), not by timing:
+/// if the 64 KiB cap (`Read::take` in `load_snippet_from`) is missing, this
+/// call hangs rather than returning slowly, which is the correct failure
+/// shape for "does not materialize the whole file" and needs no deadline to
+/// detect.
 #[test]
 fn no_newline_file_does_not_materialize_the_whole_file() {
-    use std::time::Instant;
-
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("no_newline.txt");
-    // 200 MB, single line, no newline byte anywhere.
-    std::fs::write(&file, "x".repeat(200 * 1024 * 1024)).unwrap();
-
     let rec = record(1, 1, "exact");
-    let start = Instant::now();
-    let snippet = crate::snippet::load_snippet(&rec, file.to_str().unwrap());
-    let elapsed = start.elapsed();
+    let count = std::rc::Rc::new(std::cell::Cell::new(0u64));
+    let source = Counting {
+        inner: std::io::repeat(b'x'),
+        count: count.clone(),
+    };
+
+    let snippet = crate::snippet::load_snippet_from(&rec, source);
+    let bytes_read = count.get();
 
     assert!(snippet.is_some(), "a snippet should still be produced");
     assert!(
-        elapsed.as_millis() < 20,
-        "load_snippet on a no-newline file must be bounded by the 64 KiB read \
-         cap, not file size -- took {elapsed:?}"
+        bytes_read <= 64 * 1024,
+        "load_snippet_from must read at most the 64 KiB cap regardless of \
+         source length -- read {bytes_read} bytes"
     );
 }
 
