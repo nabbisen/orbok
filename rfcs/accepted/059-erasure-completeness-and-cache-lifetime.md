@@ -133,6 +133,39 @@ a measurement. It must not be shown to a user as bytes.
 
 ---
 
+## 2b. Amendment 2 (2026-09-13) — owner decisions, and where the bound actually runs
+
+Review 214 put four questions to the owner; Review 216 records the answers.
+Recorded here so the RFC says what the program does.
+
+**"Clear extracted text" erases.** The Storage-view action erases the whole
+`ExtractSegments` namespace on press — every entry, regardless of age — not
+only entries past the TTL. The label says *clear*; §7's own argument is that
+the cache is rebuildable; and a user pressing it for privacy must not have to
+wait out ninety days. Criterion 5 is re-worded to that. The four Safe-cleanup
+actions each show their own done-notice title with one shared body, and no
+notice claims an amount of space freed (Amendment 1 §2a.3: the figure is a
+convention, not a measurement).
+
+**The size bound runs at scheduler idle, not in the cleanup action.**
+Amendment 1 §2a.2 moved the bound from write time to "the cleanup action". Once
+that action erases outright, a trim inside it runs against an empty namespace
+and is dead — Review 215 §3. The owner chose to keep the bound (option A) and
+give it the one home that is safe: **when the hosting loop's queue and the
+catalog's `index_jobs` have both drained** — no Extract, Chunk or Embedding job
+queued or running — trim `ExtractSegments` to `cleanup_time_entry_cap()`,
+least-recently-accessed first, via localcache's public `list_entries()` /
+`remove()` / `shrink_database()`. That is the only moment a trim provably
+cannot evict an entry a job still needs; it runs once per transition to idle,
+not once per poll. Criterion 10 guards it; `HANDOFF-059-slice6` builds it. The
+cap's *value* remains open question 1.
+
+**A file that goes missing and never returns** (Amendment 1 §2a.1's fifth
+case) is routed to an RFC-037 amendment as a retention rule; it is not this
+RFC's.
+
+---
+
 ## 3. Goals
 
 - Define what "erase" guarantees, in terms a user can check.
@@ -245,11 +278,14 @@ request as part of this RFC's implementation, not after** — if it lands quickl
 Whichever lands, the TTL and cap are not optional: an unbounded cache with no
 expiry is what made "purge expired" a no-op in the first place.
 
-> **Amended 2026-09-12 (§2a.2).** "Cap" here means a bound enforced by the
-> cleanup action, **not** a write-time `max_entries` on the engine. A
+> **Amended 2026-09-12 (§2a.2), corrected 2026-09-13 (§2b).** "Cap" here means
+> a bound enforced **when the indexing pipeline is idle** — not a write-time
+> `max_entries` on the engine, and not inside the cleanup action either. A
 > write-time LRU evicts under a running pipeline whose chunk and embedding jobs
-> read this namespace as their only source of text; the implementation's
-> 20,000-entry write-time cap is withdrawn for that reason.
+> read this namespace as their only source of text; the cleanup action now
+> erases outright, so a trim there has nothing to trim. The 20,000-entry
+> write-time cap is withdrawn; the value survives as `cleanup_time_entry_cap()`
+> and is applied at scheduler idle (criterion 10).
 
 ## 8. Decision 4 — expose the two cleanup actions that already work
 
@@ -291,9 +327,10 @@ Phrased per RFC-058 §5.
    to their pre-Reset state.
 4. Re-indexing one file twice leaves `count(chunk_fts_trigram)` unchanged, and
    both invariants in §6 hold after each of the four operations listed there.
-5. With the extraction cache holding entries older than the configured TTL,
-   running Clear temporary extraction from the Storage view reports a non-zero
-   byte reclaim and the entries are no longer retrievable.
+5. *(Re-worded by Amendment 2.)* With the extraction cache holding entries of
+   any age — including one written seconds ago — running Clear extracted text
+   from the Storage view leaves no entry retrievable through `CacheService`
+   and none listed by `keys(None)`. No notice reports an amount of space freed.
 6. *(Re-worded by Amendment 1.)* After an ordinary re-index, both §6
    invariants hold and Remove replaced stale indexes reports zero FTS rows
    reclaimed — the reclaim happened at replace time. After a file goes missing
@@ -310,6 +347,12 @@ Phrased per RFC-058 §5.
    extraction-cache bound leaves every file with active chunks and, when a
    model is configured, embeddings — no chunk job fails on a cache miss and no
    embedding job completes empty.
+10. *(Added by Amendment 2.)* With more than `cleanup_time_entry_cap()` entries
+    in the extraction cache and the scheduler idle (no queued or running index
+    jobs, in memory or in `index_jobs`), the namespace is trimmed to the cap,
+    least-recently-accessed first, exactly once per transition to idle. With
+    any index job queued, no entry is evicted, however many are present — and
+    that half is the one to break deliberately and watch fail.
 
 ---
 

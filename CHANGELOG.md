@@ -1614,6 +1614,18 @@ next release tag.
 
 ### Docs
 
+- **RFC-059 Amendment 2, and the Slice 6 handoff.** Owner decisions of
+  2026-09-13 recorded in the RFC: "Clear extracted text" erases the whole
+  namespace on press (criterion 5 re-worded to say so); the four Safe-cleanup
+  notices are per-action and none claims space freed; and the extraction-cache
+  size bound — a constant with no reader since Review 215 — gets its one safe
+  home, **scheduler idle**, as criterion 10 with both halves stated (trims once
+  per transition to idle; evicts nothing while any index job is queued). §7's
+  note corrected accordingly: not write-time, not in the cleanup action. The
+  handoff (`rfcs/handoffs/HANDOFF-059-slice6-idle-time-cache-bound.md`) places
+  the hook at the hosting loop's existing second-`None` branch and names the
+  test to break deliberately. RFC-059 moves to `done/` when it lands.
+
 - **RFC-060 Amendment 2: semantic search had never returned a candidate, and
   the amendment retires an audit finding.** `bootstrap/search.rs` built the
   hybrid searcher with `&config.model_name` — the compile-time constant
