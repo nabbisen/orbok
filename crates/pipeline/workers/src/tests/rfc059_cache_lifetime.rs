@@ -1,7 +1,14 @@
 //! RFC-059 §7/§10 acceptance criterion 5: the extraction cache now has a
-//! finite lifetime (TTL + entry cap), where before Slice 3 it had neither
-//! (`EngineOptions::default()` at every open site -- RFC-059 §1's own
-//! verified table: "Extraction cache opened unbounded").
+//! finite lifetime (a 90-day TTL plus an outright erase on demand), where
+//! before Slice 3 it had neither (`EngineOptions::default()` at every open
+//! site -- RFC-059 §1's own verified table: "Extraction cache opened
+//! unbounded"). "Clear temporary extraction" erases the namespace outright
+//! (Review 214 §4 Q1, owner decision 2026-09-12) rather than only expiring
+//! entries past the TTL -- the entry-cap mechanism this file's tests
+//! previously exercised directly was removed once that decision made it
+//! unreachable from this action; see `crates/pipeline/workers/src/cleanup_service.rs`'s
+//! own history and RFC-059's closure record for where the cap moves next
+//! (a scheduler-idle hook, Review 214 §3/§4 Q4, not yet built).
 
 use crate::CleanupService;
 use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
@@ -146,20 +153,21 @@ fn cleanup_expired_removes_entries_once_a_ttl_is_actually_set() {
     assert_eq!(engine.entry_count().unwrap(), 0);
 }
 
-/// End-to-end through the real cleanup action and the real (90-day)
-/// production TTL, not a short one: `CleanupService::run_safe(ClearTemporaryExtraction)`
-/// must report the reclaim and the entry must stop being retrievable,
-/// matching criterion 5's own wording. Waiting 90 real days is not a
-/// test, and `cleanup_expired` decides "expired" using the *calling*
-/// engine's own configured TTL against each row's stored `updated_at`
-/// (confirmed by reading `maintenance.rs`) -- so a short-TTL engine
-/// opened separately from `run_safe`'s own (90-day) engine would never
-/// observe what `run_safe` itself does. Backdating `updated_at` directly
-/// -- a raw SQL write against localcache's own `files` table, the exact
-/// column `cleanup_expired` reads -- lets the real 90-day engine
-/// genuinely see the entry as expired without waiting for it.
+/// End-to-end through the real cleanup action:
+/// `CleanupService::run_safe(ClearTemporaryExtraction)` must report the
+/// reclaim and the entry must stop being retrievable.
+///
+/// Owner decision 2026-09-12 (Review 214 §4 Q1): the button erases the
+/// whole namespace outright, not only entries older than the 90-day TTL --
+/// so this entry is deliberately kept **fresh** (no backdating), unlike
+/// this test's earlier form. A fresh entry surviving would be exactly the
+/// bug an expire-only implementation would reintroduce; confirmed via
+/// mutation, not assumed: reverting `run_cache_side`'s `ClearTemporaryExtraction`
+/// branch to call `cleanup_expired` instead of `erase_engine_namespace`
+/// left this fresh entry in place and failed the assertion below, restored
+/// afterward.
 #[test]
-fn clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired() {
+fn clear_temporary_extraction_erases_the_namespace_even_when_nothing_has_expired() {
     let dir = tempfile::tempdir().unwrap();
     let (catalog, cache) = setup(dir.path());
     let cache_path = dir.path().join("orbok-cache.sqlite3");
@@ -187,24 +195,6 @@ fn clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired() {
         engine.set(&path, &payload).unwrap();
     }
 
-    // Backdate the entry's `updated_at` well past the 90-day TTL.
-    let ninety_one_days_ago = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-        - 91 * 24 * 60 * 60;
-    {
-        let raw = rusqlite::Connection::open(&cache_path).unwrap();
-        raw.execute(
-            "UPDATE files SET updated_at = ?1 WHERE namespace = ?2",
-            rusqlite::params![
-                ninety_one_days_ago,
-                OrbokCacheNamespace::ExtractSegments.as_namespace()
-            ],
-        )
-        .unwrap();
-    }
-
     let svc = CleanupService::new(&catalog, &cache, &cache_path);
     let outcome = svc
         .run_safe(&CleanupPlan::for_action(
@@ -223,8 +213,8 @@ fn clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired() {
     assert_eq!(
         engine_after.entry_count().unwrap(),
         0,
-        "an entry older than the configured TTL must be gone after Clear \
-         temporary extraction (RFC-059 §10 criterion 5)"
+        "Clear temporary extraction must erase every entry, including a \
+         fresh one well within the TTL (Review 214 §4 Q1)"
     );
     assert!(
         outcome.cache_bytes_freed > 0,
@@ -232,89 +222,6 @@ fn clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired() {
          (RFC-059 §10 criterion 5) -- got {}",
         outcome.cache_bytes_freed
     );
-}
-
-/// RFC-059 Amendment 1 §2a.2 (Review 213 §3): the cleanup-time cap
-/// mechanism itself, in isolation from the real 20,000 production value
-/// (writing and evicting 20,000 real entries is not a unit test). Five
-/// entries, a cap of three, staggered `last_accessed_at`/`updated_at` via
-/// raw SQL (deterministic, not a sleep-ordered race) so eviction order is
-/// unambiguous: the two least-recently-accessed must go, the three most
-/// recent must survive.
-#[test]
-fn cleanup_time_cap_evicts_the_least_recently_accessed_entries_first() {
-    let dir = tempfile::tempdir().unwrap();
-    let (catalog, cache) = setup(dir.path());
-    let cache_path = dir.path().join("orbok-cache.sqlite3");
-    let namespace = OrbokCacheNamespace::ExtractSegments;
-
-    let engine = cache
-        .engine::<Vec<u8>>(&catalog, &namespace, namespace.default_engine_options())
-        .unwrap();
-    let mut paths = Vec::new();
-    for i in 0..5 {
-        let path = dir.path().join(format!("doc-{i}.md"));
-        std::fs::write(&path, format!("content {i}")).unwrap();
-        // Canonicalize before writing through the engine: on macOS,
-        // `dir.path()` resolves under `/var/...`, a symlink to
-        // `/private/var/...`, and localcache stores the canonical form
-        // internally. Comparing against an un-canonicalized path later
-        // (both in the raw SQL `UPDATE` below and in the final assertions)
-        // silently matches zero rows on macOS -- confirmed by CI (Linux
-        // passed, macOS failed with the update never having taken effect).
-        let path = std::fs::canonicalize(&path).unwrap();
-        engine.set(&path, &b"payload".to_vec()).unwrap();
-        paths.push(path);
-    }
-
-    // Stagger access times: doc-0 oldest, doc-4 newest. Sorting by
-    // `(last_accessed_at, updated_at)` is what eviction orders by, so set
-    // both explicitly rather than relying on write order or real elapsed
-    // time. Raw SQL here is a test-only convenience (this project's own
-    // established pattern for backdating timestamps, e.g.
-    // `clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired`
-    // above) -- Review 214 §2's objection was to *production* code coupling
-    // to localcache's private schema, not to test setup.
-    {
-        let raw = rusqlite::Connection::open(&cache_path).unwrap();
-        for (i, path) in paths.iter().enumerate() {
-            let ts = i as i64;
-            raw.execute(
-                "UPDATE files SET last_accessed_at = ?1, updated_at = ?1 \
-                 WHERE namespace = ?2 AND path = ?3",
-                rusqlite::params![ts, namespace.as_namespace(), path.to_string_lossy()],
-            )
-            .unwrap();
-        }
-    }
-
-    crate::cleanup_service::enforce_extract_segments_cleanup_cap(&engine, 3).unwrap();
-
-    let remaining: Vec<std::path::PathBuf> = engine
-        .list_entries()
-        .unwrap()
-        .into_iter()
-        .map(|e| e.path)
-        .collect();
-    assert_eq!(
-        remaining.len(),
-        3,
-        "the cap must trim the namespace to exactly 3 entries, got {remaining:?}"
-    );
-    for evicted in &paths[0..2] {
-        assert!(
-            !remaining.contains(evicted),
-            "doc-0 and doc-1 (the two oldest by last_accessed_at) must be evicted, \
-             remaining: {remaining:?}"
-        );
-    }
-    for kept in &paths[2..5] {
-        assert!(
-            remaining.contains(kept),
-            "doc-2, doc-3, doc-4 (the three most recently accessed) must survive, \
-             remaining: {remaining:?}"
-        );
-    }
 }
 
 /// RFC-059 §10 criterion 9 (Amendment 1): indexing a corpus larger than

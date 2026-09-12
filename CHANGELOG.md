@@ -776,6 +776,55 @@ next release tag.
 
 ### Fixed
 
+- **RFC-059 Amendment 1 (Review 213/214): a fourth erasure site, a cache
+  cap that broke indexing, and "Clear temporary extraction" now clears.**
+  Independent review of the RFC-059 work below, verified by execution, found
+  two more defects the implementation's own tests could not see, plus a
+  required correctness fix and three owner decisions on top of that.
+
+  **Critical**: `SourceRepository::delete_with_all_data` ("Remove folder" —
+  the erasure action a user actually reaches for, unlike Reset) had the same
+  FTS-orphaning bug the other three sites had before their own fixes — its
+  `DELETE FROM sources` cascades `keyword_index_records` away before
+  anything deletes the `chunk_fts`/`chunk_fts_trigram` rows that mapping
+  addressed. Fixed the same shape as the other three, in one transaction;
+  added as the invariant test's fifth operation.
+
+  **High**: the extraction cache's 20,000-entry write-time cap broke
+  indexing above that size. `localcache` enforces `max_entries` on every
+  `set()`, evicting LRU — but Extract and Chunk jobs share one FIFO
+  priority, so a scan's extractions all run before any chunk job reads them
+  back; above the cap, the earliest files' text was evicted before their own
+  chunk jobs could use it, hard-failing those jobs. The write-time cap is
+  withdrawn (the 90-day TTL is unaffected); the bound moves to a future
+  cleanup-time enforcement point, not yet wired to anything that runs it.
+
+  **Required correctness fix**: the cleanup-time cap's first implementation
+  ran raw SQL against `localcache`'s private `files` table — coupled to
+  internal column/table names a patch release could change without breaking
+  any public contract. Replaced with the public `list_entries()`/`remove()`
+  API before it ever shipped to a cleanup action; the entry-cap mechanism
+  itself was then removed entirely once the owner decision below made it
+  unreachable (see next paragraph) — it will be re-derived against a
+  scheduler-idle hook when that follow-up slice lands.
+
+  **Three owner decisions (2026-09-12)**: (1) "Clear temporary extraction"
+  now erases the whole extraction-cache namespace outright on press, rather
+  than only expiring entries past the 90-day TTL — the label says "clear,"
+  and the cache is rebuildable by RFC-059 §7's own argument. (2) Each of the
+  four Storage-view Safe-cleanup actions now shows its own notice title
+  (previously all four shared "Temporary previews cleared"); every notice's
+  body dropped "Freed up space," since that figure is a dashboard
+  convention, not a measurement, and is genuinely zero on the most common
+  path for "Remove old data from updated files." (3) The button label for
+  that action changed from "Remove outdated search data" to "Remove old
+  data from updated files" — the prior wording was too close to "Clear old
+  search results" to tell apart, especially in Japanese.
+
+  All fixes mutation-tested: reverting each individually reproduced the
+  exact failure found by execution or by the owner-decision's own doc
+  comment, confirmed, restored byte-identical.
+
 - **RFC-059: Reset didn't erase what it indexed, and the extraction cache
   had no lifetime at all.** Two permanent leaks. `chunk_fts_trigram` (the
   CJK trigram index) was never cleared by anything, so it survived Reset

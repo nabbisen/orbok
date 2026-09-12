@@ -118,56 +118,29 @@ impl<'a> CleanupService<'a> {
             }
             CleanupAction::ClearTemporaryExtraction
             | CleanupAction::RemoveTemporarySourceIndexes => {
-                // Purge extract-segments namespace.
+                // Owner decision 2026-09-12 (Review 214 §4 Q1): "Clear
+                // temporary extraction" erases the whole ExtractSegments
+                // namespace outright, rather than only expiring entries
+                // older than the 90-day TTL -- the label says "clear," and
+                // the cache is rebuildable by RFC-059 §7's own argument, so
+                // there is no reason to make a user wait out the TTL to get
+                // what the button promises. Superseded: this branch used to
+                // call `cleanup_expired`/`purge_stale_versions`/
+                // `cleanup_missing_files` plus a cleanup-time entry cap
+                // (RFC-059 §7 Slice 3 / §10 criterion 5's original design) --
+                // an outright erase makes all of those redundant here, since
+                // nothing survives to expire, purge, or cap. The cap's own
+                // enforcement function was removed along with them (it had
+                // no other caller and would run against an already-empty
+                // namespace on every press); Review 214 §3 routes the cap to
+                // a scheduler-idle hook in a follow-up slice, where it will
+                // need re-deriving against that call site anyway.
                 let engine = self.cache.engine::<Vec<u8>>(
                     self.catalog,
                     &OrbokCacheNamespace::ExtractSegments,
                     OrbokCacheNamespace::ExtractSegments.default_engine_options(),
                 )?;
-                // RFC-059 §7 Slice 3 / §10 criterion 5: this action is the
-                // one "Clear temporary extraction" (once Slice 4 wires it
-                // into the Storage view) actually runs -- found missing
-                // this call while testing criterion 5 for real, not by
-                // inspection: `ProfileCache::run_safe_cleanup`
-                // (`crates/app/src/runtime_storage.rs`) routes through
-                // `CleanupService::run_safe`, i.e. this exact branch, not
-                // `orbok_cache::CacheService::run_safe_cleanup` (which
-                // already calls `cleanup_expired` but has no production
-                // caller). Without it, Slice 3's new TTL was configured
-                // but never enforced by the one button meant to enforce
-                // it.
-                engine
-                    .cleanup_expired()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                engine
-                    .purge_stale_versions()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                engine
-                    .cleanup_missing_files()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                // RFC-059 Amendment 1 §2a.2 (Review 213 §3): the entry cap
-                // enforces here, not at write time -- see
-                // `OrbokCacheNamespace::EXTRACTION_CACHE_CLEANUP_ENTRY_CAP`'s
-                // own doc comment for why a write-time bound broke the
-                // indexing pipeline it was meant to protect. Review 214 §2:
-                // uses the public `list_entries()`/`remove()` API, not raw
-                // SQL against localcache's private schema -- a `"0.21"`
-                // caret range permits a patch release to rename a column
-                // out from under a query coupled to it.
-                if let Some(cap) = OrbokCacheNamespace::ExtractSegments.cleanup_time_entry_cap() {
-                    enforce_extract_segments_cleanup_cap(&engine, cap)?;
-                }
-                // Without this, deleted rows free pages inside the
-                // database file but never shrink it on disk, so
-                // size_before/size_after below would report a reclaim of
-                // 0 regardless of how many entries were actually removed
-                // -- the same gap this branch's own missing
-                // `cleanup_expired()` call was, caught by the same test.
-                // One call, after every removal above (including the cap),
-                // not one per step (Review 214 §2).
-                engine
-                    .shrink_database()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+                erase_engine_namespace(&engine)?;
             }
             CleanupAction::RemoveReplacedStaleIndexes => {
                 // Clean up chunk and embedding bundle caches. Per-namespace
@@ -231,21 +204,7 @@ impl<'a> CleanupService<'a> {
             let engine =
                 self.cache
                     .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
-            let keys = engine
-                .keys(None)
-                .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-            let mut removed: u64 = 0;
-            for key in &keys {
-                let did_remove = engine
-                    .remove(key)
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                if did_remove {
-                    removed += 1;
-                }
-            }
-            engine
-                .shrink_database()
-                .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+            let removed = erase_engine_namespace(&engine)?;
             info!(
                 namespace = ns.as_namespace(),
                 entries_removed = removed,
@@ -257,41 +216,30 @@ impl<'a> CleanupService<'a> {
     }
 }
 
-/// Trim an engine down to `cap` entries, evicting the least recently
-/// accessed first -- the same ordering `localcache` 0.21.1's own (private)
-/// `enforce_max_entries`/`repository::delete_lru_n` use at write time, but
-/// through the public API: `list_entries()` exposes `last_accessed_at`/
-/// `updated_at` per entry (`EntryInfo`), so eviction needs no raw SQL
-/// against localcache's internal schema (Review 214 §2 -- a `"0.21"` caret
-/// range permits a patch release to rename a column a private-schema query
-/// depends on; `list_entries`/`remove` are the stable contract). RFC-059
-/// Amendment 1 §2a.2: called only from the `ClearTemporaryExtraction`
-/// cleanup action, never from a write path, so it cannot evict an entry a
-/// running indexing job still needs.
-pub(crate) fn enforce_extract_segments_cleanup_cap<T: Serialize + DeserializeOwned>(
+/// Remove every entry in one engine's namespace, then reclaim the freed
+/// pages. Shared by `purge_all_cache_namespaces` (Reset, every namespace)
+/// and the `ClearTemporaryExtraction` branch (Review 214 §4 Q1, owner
+/// decision 2026-09-12: the button erases `ExtractSegments` outright,
+/// rather than only expiring entries older than the TTL -- the label says
+/// "clear", and the cache is rebuildable by RFC-059 §7's own argument).
+/// Returns the number of entries actually removed.
+fn erase_engine_namespace<T: Serialize + DeserializeOwned>(
     engine: &CacheEngine<T>,
-    cap: usize,
-) -> OrbokResult<()> {
-    let mut entries = engine
-        .list_entries()
+) -> OrbokResult<u64> {
+    let keys = engine
+        .keys(None)
         .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-    if entries.len() <= cap {
-        return Ok(());
-    }
-    entries.sort_by_key(|e| (e.last_accessed_at, e.updated_at));
-    let excess = entries.len() - cap;
-    let mut evicted = 0u64;
-    for entry in &entries[..excess] {
-        if engine
-            .remove(&entry.path)
-            .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?
-        {
-            evicted += 1;
+    let mut removed: u64 = 0;
+    for key in &keys {
+        let did_remove = engine
+            .remove(key)
+            .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+        if did_remove {
+            removed += 1;
         }
     }
-    info!(
-        entries_evicted = evicted,
-        cap, "extraction-cache cleanup-time cap enforced"
-    );
-    Ok(())
+    engine
+        .shrink_database()
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    Ok(removed)
 }

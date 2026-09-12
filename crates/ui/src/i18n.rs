@@ -273,7 +273,10 @@ message_keys! {
     NoticeSearchReadyTitle,
     NoticeSearchReadyBody,
     NoticePreviewsClearedTitle,
-    NoticePreviewsClearedBody,
+    NoticeSearchCacheClearedTitle,
+    NoticeExtractedTextClearedTitle,
+    NoticeReplacedDataRemovedTitle,
+    NoticeCleanupBody,
     NoticeActionTryAgain,
     NoticeActionChooseFolder,
     // RFC-061 §8: failures that were silently swallowed before

@@ -262,7 +262,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // process on a click of "Clear temporary previews".
                     match bootstrap::cache_service(&runtime) {
                         Ok(cache) => match bootstrap::clean_snippets(&catalog, &cache) {
-                            Ok(_) => app.update(Message::CleanupDone),
+                            Ok(_) => app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::PreviewsCleared,
+                            )),
                             Err(e) => tracing::error!("clean snippets failed: {e}"),
                         },
                         Err(e) => {
@@ -279,7 +281,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // `CleanSnippets` above.
                     match bootstrap::cache_service(&runtime) {
                         Ok(cache) => match bootstrap::clean_search_cache(&catalog, &cache) {
-                            Ok(_) => app.update(Message::CleanupDone),
+                            Ok(_) => app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::SearchCacheCleared,
+                            )),
                             Err(e) => tracing::error!("clean search cache failed: {e}"),
                         },
                         Err(e) => {
@@ -297,7 +301,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match bootstrap::cache_service(&runtime) {
                         Ok(cache) => {
                             match bootstrap::clean_temporary_extraction(&catalog, &cache) {
-                                Ok(_) => app.update(Message::CleanupDone),
+                                Ok(_) => app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::ExtractedTextCleared,
+                                )),
                                 Err(e) => tracing::error!("clean temporary extraction failed: {e}"),
                             }
                         }
@@ -318,7 +324,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match bootstrap::cache_service(&runtime) {
                         Ok(cache) => {
                             match bootstrap::remove_replaced_stale_indexes(&catalog, &cache) {
-                                Ok(_) => app.update(Message::CleanupDone),
+                                Ok(_) => app.update(Message::ShowNotice(
+                                    orbok_ui::notice::UserNotice::ReplacedDataRemoved,
+                                )),
                                 Err(e) => {
                                     tracing::error!("remove replaced stale indexes failed: {e}")
                                 }

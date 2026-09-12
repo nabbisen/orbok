@@ -22,6 +22,17 @@ pub enum UserNotice {
     FolderAdded,
     SearchReady,
     PreviewsCleared,
+    /// RFC-059 §8 Slice 4 (Review 214 §4 Q2): "Clear old search results"
+    /// finished -- its own title, not `PreviewsCleared`'s.
+    SearchCacheCleared,
+    /// "Clear extracted text" finished (RFC-059, erases the namespace
+    /// outright -- Review 214 §4 Q1).
+    ExtractedTextCleared,
+    /// "Remove old data from updated files" finished. Its own byte-reclaim
+    /// figure is commonly zero (RFC-059 Amendment 1 §2a.3: the reclaim
+    /// usually already happened at re-index time), so its body -- like
+    /// every notice here -- never claims a specific amount of space freed.
+    ReplacedDataRemoved,
     DiagnosticsFileCreated,
     // ── RFC-040: diagnostics problem ──────────────────────────────────
     DiagnosticsFileFailed,
@@ -89,7 +100,11 @@ impl UserNotice {
             // Positive confirmations.
             Self::FolderAdded | Self::SearchReady => Tone::Success,
             // Neutral/informational.
-            Self::PreviewsCleared | Self::DiagnosticsFileCreated => Tone::Info,
+            Self::PreviewsCleared
+            | Self::SearchCacheCleared
+            | Self::ExtractedTextCleared
+            | Self::ReplacedDataRemoved
+            | Self::DiagnosticsFileCreated => Tone::Info,
             Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => Tone::Info,
         }
     }
@@ -104,6 +119,9 @@ impl UserNotice {
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
             Self::SearchReady => MessageKey::NoticeSearchReadyTitle,
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedTitle,
+            Self::SearchCacheCleared => MessageKey::NoticeSearchCacheClearedTitle,
+            Self::ExtractedTextCleared => MessageKey::NoticeExtractedTextClearedTitle,
+            Self::ReplacedDataRemoved => MessageKey::NoticeReplacedDataRemovedTitle,
             Self::DiagnosticsFileCreated => MessageKey::DiagnosticsFileCreated,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
             Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
@@ -126,7 +144,10 @@ impl UserNotice {
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::SearchReady => MessageKey::NoticeSearchReadyBody,
-            Self::PreviewsCleared => MessageKey::NoticePreviewsClearedBody,
+            Self::PreviewsCleared
+            | Self::SearchCacheCleared
+            | Self::ExtractedTextCleared
+            | Self::ReplacedDataRemoved => MessageKey::NoticeCleanupBody,
             Self::DiagnosticsFileCreated => MessageKey::DiagnosticsFileCreated,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFailed,
             Self::RecentSearchesCleared => MessageKey::RecentSearchesClearedNotice,
@@ -153,6 +174,9 @@ impl UserNotice {
             Self::FolderAdded
             | Self::SearchReady
             | Self::PreviewsCleared
+            | Self::SearchCacheCleared
+            | Self::ExtractedTextCleared
+            | Self::ReplacedDataRemoved
             | Self::DiagnosticsFileCreated => return None,
             Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => return None,
             Self::DiagnosticsFileFailed => MessageKey::DiagnosticsCreateFile,

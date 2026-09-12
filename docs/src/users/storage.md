@@ -17,7 +17,8 @@ orbok does **not** copy your source files. It stores:
 
 The **Storage** view shows usage per category. Safe cleanup removes:
 - Expired snippet and search caches
-- Expired extracted-text cache entries
+- All extracted-text cache entries (rebuilt automatically the next time a
+  file needs it)
 - Superseded stale index entries
 
 Safe cleanup **never** deletes your source files or source registrations.

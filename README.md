@@ -66,9 +66,10 @@ orbok does not copy your source files. It stores derived indexes
 
 It also caches the **extracted text** of each indexed document in
 `orbok-cache.sqlite3`, so that changing the embedding model does not require
-re-parsing every PDF. That cache has a finite lifetime — a 90-day expiry and a
-20,000-entry cap (RFC-059) — and **"Reset catalog" erases it**, along with the
-keyword and vector indexes.
+re-parsing every PDF. That cache has a 90-day freshness limit — an entry older
+than that is never served, forcing a fresh extraction — and both
+**"Reset catalog"** and the Storage view's **"Clear extracted text"** erase it
+outright, on demand, regardless of age (RFC-059).
 
 Data is classified into three lifecycle layers (RFC-001):
 
@@ -78,9 +79,10 @@ Data is classified into three lifecycle layers (RFC-001):
   and rebuildable from source files at any time.
 - **Ephemeral cache** — extracted text, chunk bundles, recent snippets,
   search result cache. Rebuildable from source files. The extracted-text
-  namespace — the largest of these — is bounded by the 90-day/20,000-entry
-  cap above (RFC-059); chunk bundles and previews have neither an expiry nor
-  a size bound yet.
+  namespace — the largest of these — has the 90-day freshness limit above and
+  an on-demand full erase (RFC-059); an automatic size bound is designed but
+  not yet wired to anything that runs it. Chunk bundles and previews have
+  neither.
 
 ### Security boundary
 

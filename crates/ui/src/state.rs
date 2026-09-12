@@ -526,7 +526,6 @@ pub enum Message {
     AskResetCatalog,
     ConfirmResetCatalog,
     CancelResetCatalog,
-    CleanupDone, // backend notifies completion
     // Wizard navigation
     WizardBack,
     QueryChanged(String),
@@ -741,10 +740,12 @@ impl AppState {
             | Message::CleanSearchCache
             | Message::CleanTemporaryExtraction
             | Message::RemoveReplacedStaleIndexes => {
-                // Actual work done in orbok; state update arrives via CleanupDone.
-            }
-            Message::CleanupDone => {
-                self.notice = Some(UserNotice::PreviewsCleared);
+                // Actual work done in orbok; the per-action done-notice
+                // arrives via Message::ShowNotice (Review 214 §4 Q2, owner
+                // decision 2026-09-12: each of the four Safe-cleanup
+                // actions gets its own notice title, not one shared
+                // "CleanupDone" that could not distinguish which action
+                // just ran).
             }
             Message::WizardBack => {
                 // Return to the initial setup step.

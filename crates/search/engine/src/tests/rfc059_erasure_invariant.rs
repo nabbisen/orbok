@@ -235,12 +235,18 @@ fn erasure_invariant_holds_after_all_five_operations() {
     //    `remove_replaced_stale_indexes`'s own fix is
     //    `remove_replaced_stale_indexes_deletes_fts_rows_before_the_cascade`
     //    below, which constructs a stale chunk with intact FTS rows
-    //    directly (bypassing `insert_bundle`) -- the only way to exercise
-    //    that fix in isolation, since every *production* path to a stale
-    //    chunk with an active sibling goes through `insert_bundle` first.
-    //    Kept here anyway as defense in depth per the handoff's explicit
-    //    instruction (§6 item 3): a public cleanup function should not
-    //    assume its caller always pre-cleaned. ───────────────────────────
+    //    directly (bypassing `insert_bundle`). **Correction (Review 213
+    //    §5): this is not a synthetic-only scenario.** A file that goes
+    //    missing (`deactivate_for_missing_files` marks its chunks stale,
+    //    FTS rows kept intentionally for reactivation) and then returns
+    //    with *changed* content reaches this exact state: `insert_bundle`'s
+    //    delete targets `chunk_status = 'active'` siblings only, so the
+    //    missing generation's stale row and its intact FTS rows survive
+    //    until this cleanup runs. RFC-059 Amendment 1 §2a.3 re-words
+    //    criterion 6 around exactly that path. Kept here anyway as
+    //    defense in depth per the handoff's explicit instruction (§6 item
+    //    3): a public cleanup function should not assume its caller
+    //    always pre-cleaned. ───────────────────────────────────────────
     let stale_before: i64 = catalog
         .lock()
         .query_row(
@@ -366,12 +372,16 @@ fn erasure_invariant_holds_after_all_five_operations() {
 }
 
 /// Isolated coverage for `remove_replaced_stale_indexes`'s own FTS-pre-delete
-/// fix (RFC-059 §6 item 3), independent of `insert_bundle`'s fix (Operation 1
-/// above already cleans up before this cleanup ever sees a stale row in
-/// every *production* path -- see that operation's own comment). Constructs
-/// a stale chunk with its FTS rows still intact directly, bypassing
-/// `insert_bundle` entirely, since that is the only way to put this cleanup
-/// in the situation its fix is actually for.
+/// fix (RFC-059 §6 item 3 / Amendment 1 §2a.3, re-worded criterion 6),
+/// independent of `insert_bundle`'s fix (Operation 3's own comment above:
+/// `insert_bundle` already cleans up before this cleanup ever sees a stale
+/// row in the *re-index* path specifically). Constructs a stale chunk with
+/// its FTS rows still intact directly, bypassing `insert_bundle` -- the
+/// same state a file that goes missing and returns with changed content
+/// reaches in production (`deactivate_for_missing_files` keeps FTS rows
+/// intact for reactivation; a changed return does not go through
+/// `insert_bundle`'s active-sibling delete for that generation), exercised
+/// here directly rather than through that full pipeline.
 #[test]
 fn remove_replaced_stale_indexes_deletes_fts_rows_before_the_cascade() {
     let catalog = Catalog::open_in_memory().unwrap();
