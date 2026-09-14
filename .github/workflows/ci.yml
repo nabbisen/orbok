@@ -230,6 +230,15 @@ jobs:
       - name: audit dependencies
         run: cargo audit --deny warnings
 
+      # Task 044: an ignore whose reason expired (fix published, crate left
+      # the graph) must turn this job red. Reuses the DB the step above
+      # fetched, so it needs no network of its own.
+      - name: audit ignore-list gate (self-test)
+        run: bash scripts/check-audit-ignores.test.sh
+
+      - name: audit ignore-list gate
+        run: bash scripts/check-audit-ignores.sh
+
       - name: security unit tests
         run: cargo test -p orbok-workers security -- --test-threads=1
 

@@ -55,6 +55,11 @@ readiness track:
   versions agree.
 - Supply-chain vulnerability baseline — `cargo audit --deny warnings` passes with only
   documented waivers from `.cargo/audit.toml`.
+- Audit ignore-list integrity (Task 044) — `bash scripts/check-audit-ignores.sh`
+  fails when any waiver in `.cargo/audit.toml` no longer matches an advisory
+  reported against `Cargo.lock` (fixed, or its crate left the graph), and when
+  the CI audit step loses `--deny warnings` or `informational_warnings` is
+  narrowed. A waiver cannot outlive its reason silently.
 - Release archive checks — archive name includes version, layout is flat, and
   generated checksums accompany the archive.
 
@@ -78,6 +83,7 @@ review before a release is cut.
 | Exhaustive i18n catalog tests | `fast` job: `exhaustive i18n catalog tests`; `release` job: `workspace library tests` | Manual Japanese QA (Settings section below) covers correctness/register; the gate only covers presence. |
 | Version and lockfile coherence | `release` job: `version and lockfile coherence`, plus `--version` after release build | Tag and release-note correctness remain owner responsibilities. |
 | Supply-chain vulnerability baseline | `security` job: `audit dependencies` | Advisory `cargo deny` policy is not blocking. |
+| Audit ignore-list integrity | `security` job: self-test + gate | None. |
 | Release archive checks | `release` job: `release archive checks` | Publishing the archive and checksum remains manual. |
 
 ## Advisory / Not Yet Blocking

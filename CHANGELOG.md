@@ -533,6 +533,24 @@ next release tag.
 
 ### Changed
 
+- **Task 044 (commit 2) — an audit ignore-list gate that fails when a
+  waiver's reason stops being true.** `cargo audit --deny warnings` asks
+  whether every advisory is fixed or waived, never whether every waiver
+  still matches anything — which is how five expired waivers survived until
+  a dependency's release note pointed at them.
+  `scripts/check-audit-ignores.sh` re-audits `Cargo.lock` from an empty
+  directory (cargo-audit 0.22.2's `--json` does not report ignored
+  advisories, and `.cargo/audit.toml` is discovered only relative to the
+  working directory, so no config is edited) and fails for any waiver not
+  reported, quoting that waiver's own reason. It also fails if the CI audit
+  step loses `--deny warnings` or `informational_warnings` is narrowed —
+  an absent flag is a permissive default nobody sees. Self-tested
+  (`check-audit-ignores.test.sh`): the real list passes; a made-up id, a
+  real advisory for a crate not in the lockfile (RUSTSEC-2026-0206), a
+  `ci.yml` without `--deny warnings`, and a narrowed
+  `informational_warnings` each fail; a gutted gate turns the self-test
+  red. Both run in the `security` job right after `audit dependencies`
+  (gate 0.16 s, self-test 0.85 s locally).
 - **Task 044 (commit 1) — snora 0.46.0 → 0.49.0, and five audit waivers
   whose reasons had expired.** Version-bump-only for snora: exactly the five
   snora crates move, zero files under `crates/` touched. snora's own

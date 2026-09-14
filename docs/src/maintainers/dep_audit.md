@@ -1,5 +1,27 @@
 # Dependency Audit
 
+## 2026-09-15 Task 044: snora 0.49, five waivers retired, an ignore-list gate
+
+`snora` moved `0.46.0 → 0.49.0` (the five snora crates and nothing else). Three
+one-command updates retired waivers whose stated reasons had stopped being
+true: `wayland-scanner` `0.31.10 → 0.31.11` (removes `quick-xml` 0.39.4,
+RUSTSEC-2026-0194/0195), `memmap2` `0.9.10 → 0.9.11` (RUSTSEC-2026-0186),
+`anyhow` `1.0.102 → 1.0.104` (RUSTSEC-2026-0190). RUSTSEC-2026-0206 was waived
+for `rustybuzz`, which is not in `Cargo.lock` at all. `.cargo/audit.toml` went
+from ten ids to five; `cargo audit --deny warnings` still exits 0.
+
+Separately, RUSTSEC-2026-0285 (published 2026-09-14) was fixed by `rustls`
+`0.23.40 → 0.23.45` (`rustls-webpki` `0.103.13 → 0.103.15`), reached only
+through `reqwest`.
+
+`scripts/check-audit-ignores.sh` now fails CI when a waiver no longer matches
+an advisory reported against the lockfile, or when the audit step loses
+`--deny warnings`. Found by snora's 2026-09-12 letter, not by our own gate.
+
+Assurance facts about snora, as of its 0.47.0: all five crates hold
+`#![forbid(unsafe_code)]`, and snora publishes a threat model
+(`reference/threat-model.md` in its repository).
+
 ## 2026-08-03 Task 003 Part A: event-listener security fix
 
 `event-listener` moved `5.4.1 → 5.4.2`, resolving `RUSTSEC-2026-0221`
@@ -126,11 +148,11 @@ Active waivers:
 | RUSTSEC-2024-0436 | `paste` 1.0.15 | Transitive proc-macro helper in GUI/model-support paths; no direct orbok usage. |
 | RUSTSEC-2026-0173 | `proc-macro-error2` 2.0.1 | Retained in `Cargo.lock` through a stale `defmt-macros` branch; not present in the active all-target dependency tree. |
 | RUSTSEC-2026-0192 | `ttf-parser` 0.25.1 | Pulled by GUI/font and PDF stacks; replacement requires upstream dependency movement. |
-| RUSTSEC-2026-0190 | `anyhow` 1.0.102 | Pulled by tract/prost real embedding paths; orbok does not directly call `anyhow::Error::downcast_mut`. |
-| RUSTSEC-2026-0186 | `memmap2` 0.9.10 | Pulled by GUI/windowing/font stacks and `tract-onnx`; replacement requires upstream dependency movement. |
-| RUSTSEC-2026-0194 | `quick-xml` 0.39.4 | Pulled through `wayland-scanner` 0.31.10 in the Linux GUI stack; `wayland-scanner` still requires `quick-xml ^0.39`. |
-| RUSTSEC-2026-0195 | `quick-xml` 0.39.4 | Same `wayland-scanner` path as RUSTSEC-2026-0194. |
-| RUSTSEC-2026-0206 | `rustybuzz` 0.20.1 | Pulled through the GUI SVG/text rendering stack (`iced` → `resvg`/`usvg`); advisory is unmaintained status and `cargo info rustybuzz` reports 0.20.1 as the current crate version. |
+| RUSTSEC-2026-0253 | `lru` 0.16.4 | Through `cryoglyph` ← `iced_wgpu`; not reachable (see `.cargo/audit.toml`). Retires when a `cryoglyph` release takes `lru >= 0.18.2`. |
+
+RUSTSEC-2026-0190, 0186, 0194, 0195 and 0206 were retired 2026-09-15 (Task 044,
+above). `.cargo/audit.toml` is the authoritative list;
+`scripts/check-audit-ignores.sh` keeps it honest.
 
 ## 2026-06-20 dependency currency audit
 
