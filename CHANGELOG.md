@@ -533,6 +533,25 @@ next release tag.
 
 ### Changed
 
+- **Task 044 (commit 1) — snora 0.46.0 → 0.49.0, and five audit waivers
+  whose reasons had expired.** Version-bump-only for snora: exactly the five
+  snora crates move, zero files under `crates/` touched. snora's own
+  `CHANGELOG.md` for 0.47.0 (`#![forbid(unsafe_code)]` in all five crates,
+  advisory scanning adopted), 0.48.0 (readiness sweep; RFC-093 Q-1 rules that
+  prefab notices carry no non-colour cue — recorded in
+  `docs/src/maintainers/accessibility.md` §1.4.1) and 0.49.0 (their advisory
+  gate's `unsound` blind spot) was read in full: nothing reaches orbok's code.
+  Three one-command updates, each moving one package, retired waivers in
+  `.cargo/audit.toml` that claimed no fix was possible: `wayland-scanner`
+  0.31.10 → 0.31.11 (`quick-xml` 0.39.4 leaves the lockfile; RUSTSEC-2026-0194
+  and 0195), `memmap2` 0.9.10 → 0.9.11 (0186), `anyhow` 1.0.102 → 1.0.104
+  (0190). A fifth, RUSTSEC-2026-0206, waived `rustybuzz`, which is not in the
+  lockfile at all. The list shrinks from ten ids to five, and
+  `cargo audit --deny warnings` still exits 0. Measured, not assumed: packages
+  676 → 675 (`quick-xml` 0.39.4 left, nothing arrived);
+  `cargo tree --workspace --edges normal | wc -l` 1432 → 1432;
+  `target/release/orbok` 29,859,120 → 29,854,640 bytes (−4,480).
+  `gpu-allocator` and `wgpu-hal` still agree on `windows@0.58.0`.
 - **Task 043 — snora 0.42.0 → 0.46.0, version-bump-only, no measured
   change.** Same shape as Tasks 022/023/029/030/037 — zero files under
   `crates/` touched (`git diff --stat -- crates/`: empty). The one

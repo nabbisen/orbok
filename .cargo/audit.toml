@@ -23,28 +23,6 @@ ignore = [
     # replacement requires upstream GUI/PDF dependency movement.
     "RUSTSEC-2026-0192",
 
-    # anyhow 1.0.102 is pulled by the tract/prost real embedding backend path.
-    # The advisory is an unsound downcast_mut warning; orbok does not directly
-    # call anyhow::Error::downcast_mut.
-    "RUSTSEC-2026-0190",
-
-    # memmap2 0.9.10 is pulled by GUI/windowing/font stacks and tract-onnx.
-    # The advisory is an unsound pointer-offset warning in transitive code;
-    # replacing it requires upstream dependency movement.
-    "RUSTSEC-2026-0186",
-
-    # quick-xml 0.39.4 is pulled through wayland-scanner 0.31.10, a proc-macro
-    # dependency in the Linux GUI stack. wayland-scanner 0.31.10 is current and
-    # still requires quick-xml ^0.39, so this cannot be updated independently.
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
-
-    # rustybuzz 0.20.1 is pulled by the GUI SVG/text rendering stack
-    # (iced -> resvg/usvg). The advisory is unmaintained status; cargo info
-    # reports 0.20.1 as the current crate version, so there is no direct
-    # dependency update available in this release prep.
-    "RUSTSEC-2026-0206",
-
     # ── lru 0.16.4 — "use-after-free due to lack of panic safety in
     #    LruCache::pop()" (unsound, published 2026-05-12). Added 2026-08-12.
     #

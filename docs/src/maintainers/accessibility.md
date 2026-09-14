@@ -61,6 +61,10 @@ dialog-boundary rationale at 0.39.0 (§1.4.11 below), and now this one. snora
 withdrew the equivalent claim about its own prefab `notice`/`toast` widgets
 in 0.41.1 (RFC-089): both vary only background/accent colour by tone,
 identical text otherwise — a real WCAG 1.4.1 gap in snora's own prefabs.
+snora then **ruled at 0.48.0** (RFC-093 Q-1, in its 0.48.0 CHANGELOG) that no
+non-colour cue is coming to those prefabs: the consumer supplies the non-colour
+channel, and that division of labour is final, not deferred. Nobody here should
+wait for one.
 **orbok's own claim never rested on snora's** — this entry does not cite the
 withdrawn claim, and the test above is what makes that true rather than
 assumed. But the dependency direction still matters for whoever touches this
