@@ -1554,10 +1554,14 @@ mod tests {
         drop(catalog);
 
         let ready = temp.path().join("installer-ready");
+        // Task 046 §2: the installer holds the guard until this file exists,
+        // written only after the contenders have been observed blocked.
+        let release = temp.path().join("installer-release");
         let installer_id = ManagedGenerationId::generate();
         let executable = std::env::current_exe().unwrap();
         let mut installer = lifecycle_child_command(&executable, &root, &catalog_path, "installer")
             .env("ORBOK_RFC050_READY", &ready)
+            .env("ORBOK_RFC050_RELEASE", &release)
             .env("ORBOK_RFC050_INSTALLER_ID", installer_id.as_str())
             .spawn()
             .unwrap();
@@ -1581,34 +1585,40 @@ mod tests {
                 (action, child)
             })
             .into();
-        std::thread::sleep(Duration::from_millis(50));
-        for i in 0..contenders.len() {
-            if contenders[i].1.try_wait().unwrap().is_none() {
-                continue;
+        // Task 046 §2: two liveness samples >= 50 ms apart, not one. A single
+        // sample can land inside a contender's own startup latency; two show
+        // it is blocked on the guard rather than still starting.
+        for sample in 1..=2 {
+            std::thread::sleep(Duration::from_millis(50));
+            for i in 0..contenders.len() {
+                if contenders[i].1.try_wait().unwrap().is_none() {
+                    continue;
+                }
+                // Task 046 §1: capture before panicking, not instead of it --
+                // the elapsed time, the installer's own state, and the
+                // contender's actual exit status/output distinguish "it raced
+                // past the guard" from "it crashed at startup" (a wrong env
+                // var, a catalog-open failure), which `try_wait().is_some()`
+                // alone cannot.
+                let (role, child) = contenders.remove(i);
+                let elapsed = ready_at.elapsed();
+                let installer_state = installer.try_wait();
+                let output = child.wait_with_output().unwrap();
+                panic!(
+                    "a lifecycle contender escaped the installer's exclusive guard\n\
+                     liveness sample: {sample} of 2\n\
+                     role: {role}\n\
+                     elapsed since installer ready: {elapsed:?}\n\
+                     installer still running: {}\n\
+                     contender exit status: {:?}\n\
+                     contender stdout: {}\n\
+                     contender stderr: {}",
+                    matches!(installer_state, Ok(None)),
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr),
+                );
             }
-            // Task 046 §1: capture before panicking, not instead of it --
-            // the elapsed time, the installer's own state, and the
-            // contender's actual exit status/output distinguish "it raced
-            // past the guard" from "it crashed at startup" (a wrong env
-            // var, a catalog-open failure), which `try_wait().is_some()`
-            // alone cannot.
-            let (role, child) = contenders.remove(i);
-            let elapsed = ready_at.elapsed();
-            let installer_state = installer.try_wait();
-            let output = child.wait_with_output().unwrap();
-            panic!(
-                "a lifecycle contender escaped the installer's exclusive guard\n\
-                 role: {role}\n\
-                 elapsed since installer ready: {elapsed:?}\n\
-                 installer still running: {}\n\
-                 contender exit status: {:?}\n\
-                 contender stdout: {}\n\
-                 contender stderr: {}",
-                matches!(installer_state, Ok(None)),
-                output.status,
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr),
-            );
         }
         assert!(
             root.join(GENERATIONS_DIR)
@@ -1616,6 +1626,9 @@ mod tests {
                 .is_dir(),
             "cleanup removed the promoted pre-registration generation"
         );
+        // Task 046 §2: only now -- every contender observed blocked, twice,
+        // while the installer provably held the guard -- tell it to release.
+        std::fs::write(&release, b"release").unwrap();
         assert!(installer.wait().unwrap().success());
         for (_, contender) in &mut contenders {
             assert!(contender.wait().unwrap().success());
@@ -1762,7 +1775,23 @@ mod tests {
                         .unwrap();
                 create_generation(store.models_dir(), GENERATIONS_DIR, &id, true);
                 std::fs::write(std::env::var_os("ORBOK_RFC050_READY").unwrap(), b"ready").unwrap();
-                std::thread::sleep(Duration::from_millis(250));
+                // Task 046 §2: hold the guard until the parent has *observed*
+                // the contenders blocked and says so, not for a fixed time. A
+                // fixed sleep (250 ms here before) stood in for "the installer
+                // still holds the guard" and lost that race whenever three
+                // contender spawns on a loaded runner cost more than the
+                // margin. The 5 s ceiling is a loud hang-detector only; no
+                // duration here is load-bearing.
+                let release =
+                    std::path::PathBuf::from(std::env::var_os("ORBOK_RFC050_RELEASE").unwrap());
+                let release_deadline = Instant::now() + Duration::from_secs(5);
+                while !release.exists() {
+                    assert!(
+                        Instant::now() < release_deadline,
+                        "installer child: the parent never wrote the release file within 5 s"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
                 ManagedGenerationRepository::new(&catalog)
                     .register_inactive(&guard, id, DEFAULT_TRUSTED_MODEL.manifest_id)
                     .unwrap();

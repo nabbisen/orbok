@@ -776,6 +776,38 @@ next release tag.
 
 ### Fixed
 
+- **Task 046: a cross-process guard test used a fixed sleep as its
+  synchronisation primitive.** `separate_process_installer_recovery_rollback_and_cleanup_share_one_guard`
+  (`crates/pipeline/workers/src/model_lifecycle.rs`) had its installer child
+  hold RFC-050's exclusive model-store guard for a fixed 250 ms, while the
+  parent spawned three contender processes, slept 50 ms, and asserted all
+  three were still blocked. That assertion is only true if three process
+  spawns plus 50 ms fit inside 250 ms; on a loaded macOS runner they did not,
+  the installer legitimately released, a contender legitimately finished, and
+  the test reported "a lifecycle contender escaped the installer's exclusive
+  guard" about an escape that never happened. It also could not tell that
+  apart from a contender that simply crashed at startup — `try_wait()`
+  returning `Some` means *exited*, not *bypassed the guard*.
+
+  Two commits, in order. The first changed no timing: contenders spawn with
+  piped output, and the early-finish branch now records the role, elapsed
+  time since the installer was ready, whether the installer is still running,
+  and the contender's exit status and output before panicking. (30 runs under
+  32× `yes` CPU load could not provoke the failure locally, so there is no
+  captured field instance yet; the capture stays for the next one.) The
+  second replaced the sleep with a barrier: the installer now holds the guard
+  until the parent writes a release file, which the parent does only after
+  observing all three contenders still running at two samples 50 ms apart.
+  No duration is load-bearing except a 5 s ceiling that fails loudly.
+
+  Both directions proven by mutation. Restoring a 1 ms installer sleep in
+  place of the barrier failed 5/5 runs, every time with the same capture —
+  installer *not* running, contender exited 0: the ordering race, made
+  certain. Making the `cleanup` contender skip its guarded work failed 3/3
+  runs naming `cleanup`, with the installer *still* running and the
+  contender exited 0 — a genuine bypass, which the test still detects and
+  the capture distinguishes from the race.
+
 - **Task 045: a CI test asserted a byte cap by measuring wall-clock time —
   time as a contaminated proxy for a count.** `no_newline_file_does_not_materialize_the_whole_file`
   (`crates/search/engine/src/tests/task034_snippet_robustness.rs`) wrote a
