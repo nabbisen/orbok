@@ -38,11 +38,12 @@ const EXTRACTION_CACHE_TTL: Duration = Duration::from_secs(90 * 24 * 60 * 60); /
 /// which treats this namespace as its only source of text.
 ///
 /// The bound still matters (an unbounded cache is what made "purge
-/// expired" a no-op in the first place) -- it is enforced instead at
-/// cleanup time, in `orbok_workers::cleanup_service`'s
-/// `ClearTemporaryExtraction` branch, which cannot run mid-pipeline. The
-/// value is unchanged from the original measurement; only the
-/// enforcement point moved.
+/// expired" a no-op in the first place) -- it is enforced instead when the
+/// indexing pipeline is idle (RFC-059 Amendment 2 §2b, criterion 10): the
+/// scheduler host's idle branch trims `ExtractSegments` to this cap,
+/// least recently accessed first, once per transition to idle and only
+/// with no index job pending anywhere. The value is unchanged from the
+/// original measurement; only the enforcement point moved.
 pub const EXTRACTION_CACHE_CLEANUP_ENTRY_CAP: usize = 20_000;
 
 /// The orbok cache namespaces. Embedding bundles are parameterized by
@@ -118,10 +119,10 @@ impl OrbokCacheNamespace {
         }
     }
 
-    /// The cleanup-time entry cap for this namespace, if any (RFC-059
-    /// Amendment 1 §2a.2) -- enforced only by
-    /// `orbok_workers::cleanup_service`'s `ClearTemporaryExtraction`
-    /// branch, never at write time. `None` for every namespace but
+    /// The entry cap for this namespace, if any (RFC-059 Amendment 1
+    /// §2a.2, Amendment 2 §2b) -- applied only when the indexing pipeline
+    /// is idle, by the scheduler host's idle branch, never at write time
+    /// and not inside a cleanup action. `None` for every namespace but
     /// `ExtractSegments`.
     pub fn cleanup_time_entry_cap(&self) -> Option<usize> {
         match self {

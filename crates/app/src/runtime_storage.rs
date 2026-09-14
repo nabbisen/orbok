@@ -453,6 +453,15 @@ impl ProfileCache {
             .map(|_: FullCleanupOutcome| ())
     }
 
+    /// Trim the extraction cache to `cap` entries, least recently accessed
+    /// first (RFC-059 Amendment 2 §2b). Scheduler-idle maintenance only --
+    /// see `orbok_workers::CleanupService::trim_extraction_cache_to` for why
+    /// it must never run with an index job queued.
+    pub fn trim_extraction_cache_to(&self, catalog: &Catalog, cap: usize) -> OrbokResult<u64> {
+        orbok_workers::CleanupService::new(catalog, &self.service, &self.db_path)
+            .trim_extraction_cache_to(cap)
+    }
+
     pub fn shrink(&self, catalog: &Catalog) -> OrbokResult<()> {
         self.service.shrink(catalog)
     }

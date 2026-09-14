@@ -1,25 +1,29 @@
 # Closure Record — RFC-059: Erasure Completeness and Cache Lifetime
 
-**RFC:** [059](../accepted/059-erasure-completeness-and-cache-lifetime.md), amended
+**RFC:** [059](../done/059-erasure-completeness-and-cache-lifetime.md), amended
 2026-09-12 (Amendment 1, §2a: a fourth erasure site, the write-time cache cap
-withdrawn, criterion 6 re-worded, criteria 8/9 added). Still in `accepted/` --
-Review 214 §6: "RFC-059 stays in `accepted/` until [criteria 8/9 land and this
-record is updated]," now done; whether this record's completeness is enough
-to move it to `done/` is a review decision, not this record's own.
+withdrawn, criterion 6 re-worded, criteria 8/9 added) and 2026-09-13
+(Amendment 2, §2b: owner decisions ratified, criterion 5 re-worded, the size
+bound moved to scheduler idle, criterion 10 added). Moved to `done/` in the
+commit that adds criterion 10's evidence, per
+`rfcs/handoffs/HANDOFF-059-slice6-idle-time-cache-bound.md` §5 ("with 1–10 all
+evidenced, RFC-059 moves to `done/` in the same commit").
 **Format:** RFC-063 §6.1/§6.2 option B.
-**Implemented by:** `rfcs/handoffs/HANDOFF-059-erasure-completeness-and-cache-lifetime.md`;
-reviewed in Review 213 (`.git-exclude/reviewed/213-rfc059-handoff-implementation-review.md`)
-and Review 214 (`.git-exclude/reviewed/214-rfc059-review213-owner-decisions-review.md`)
--- plain text, not links: neither is git-tracked (RFC-063 §5), so a link
-resolves to nothing on any checkout outside this working copy. Commits:
+**Implemented by:** `rfcs/handoffs/HANDOFF-059-erasure-completeness-and-cache-lifetime.md`
+(Slices 1-5) and `rfcs/handoffs/HANDOFF-059-slice6-idle-time-cache-bound.md`
+(Slice 6); reviewed in Reviews 213, 214, 215 and 216
+(`.git-exclude/reviewed/213-...` through `216-...`) -- plain text, not links:
+none is git-tracked (RFC-063 §5), so a link resolves to nothing on any
+checkout outside this working copy. Commits:
 `5754b54` (original five slices),
 `50d7763`/`d995403` (closure-record/gate follow-ups), `44ab2c9` (Review 213
 §2 Critical + §3 High fixes), `5771740` (macOS test fix), `9240145` (Review
-214 §2 required change), and the commit landing alongside this record's own
-update (Review 214 §4 owner decisions Q1-Q3). Every "where verified" line
-below names the commit it ran against when it is not the current HEAD.
-**Transcribed, not re-derived**, from the handoff's own five-slice structure,
-Reviews 213/214's own findings, and this implementation's mutation-tested
+214 §2 required change), the Review 214 §4 owner-decision commit,
+`58076f8` (closure-record link fix), `18f804c` (Amendment 2), and the Slice 6
+commit landing this record's update. Every "where verified" line below names
+the commit it ran against when it is not the current HEAD.
+**Transcribed, not re-derived**, from the handoffs' own slice structure,
+Reviews 213-216's own findings, and this implementation's mutation-tested
 observations below.
 
 ---
@@ -101,60 +105,53 @@ cleans up before it runs in every reachable production scenario -- see
 criterion 6 below for the isolated test this produced.
 → where verified: `cargo test -p orbok-search erasure_invariant_holds_after_all_five_operations`.
 
-### 5. With the extraction cache holding entries older than the configured TTL, running Clear temporary extraction from the Storage view reports a non-zero byte reclaim and the entries are no longer retrievable.
+### 5. *(Re-worded by Amendment 2.)* With the extraction cache holding entries of any age -- including one written seconds ago -- running Clear extracted text from the Storage view leaves no entry retrievable through `CacheService` and none listed by `keys(None)`. No notice reports an amount of space freed.
 
-→ what was run, in two stages: **stage 1** (commit `5754b54`)
-`clear_temporary_extraction_reports_a_reclaim_once_entries_are_expired`
-wrote a pseudo-random 64 KB payload through the real 90-day-TTL production
-engine, backdated its `updated_at` 91 days via raw SQL, then called
-`CleanupService::run_safe(ClearTemporaryExtraction)` -- the actual
-production path (`ProfileCache::run_safe_cleanup` in
-`crates/app/src/runtime_storage.rs`), not
-`orbok_cache::CacheService::run_safe_cleanup`, which has no production
-caller. **Stage 2** (Review 214 §4 Q1, owner decision 2026-09-12,
-superseding stage 1): the button no longer only expires -- it erases the
-whole `ExtractSegments` namespace outright, so
+→ history: the original wording required entries "older than the configured
+TTL" and "a non-zero byte reclaim". Review 214 §4 Q1 (owner decision
+2026-09-12, ratified in Review 216) made the button an outright erase, and
+Amendment 1 §2a.3 had already established that the reclaim figure is a
+convention, not a measurement -- so Amendment 2 re-worded the criterion to
+both. Stage 1 (commit `5754b54`) had found and fixed two production bugs in
+`CleanupService::run_cache_side`'s `ClearTemporaryExtraction` branch
+(neither `cleanup_expired()` nor `shrink_database()` was called); the erase
+decision superseded both calls, and they were removed rather than left dead.
+
+→ what was run (erasure half): `clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service`
+(`crates/pipeline/workers/src/tests/rfc059_reset_erasure.rs`) -- indexes a
+real file through the real pipeline (so the entry is seconds old, well
+inside the 90-day TTL), confirms `CacheService::get_fresh` finds it, runs
+`CleanupService::run_safe(ClearTemporaryExtraction)` -- the path
+`ProfileCache::run_safe_cleanup` (`crates/app/src/runtime_storage.rs`) calls
+-- then asserts `get_fresh` returns `None` **and** `keys(None)` is empty,
+the criterion's two named observations exactly. The earlier
 `clear_temporary_extraction_erases_the_namespace_even_when_nothing_has_expired`
-(same file) replaced the stage-1 test, writing a **fresh** (unexpired)
-entry and asserting it is gone after the action, which the pre-Q1 code
-could not have passed.
-→ what was observed: stage 1 found and fixed two production bugs neither
-in the handoff's explicit scope: `CleanupService::run_cache_side`'s
-`ClearTemporaryExtraction | RemoveTemporarySourceIndexes` branch called
-neither `cleanup_expired()` nor `shrink_database()`, so the TTL would have
-been configured but unenforced, and `cache_bytes_freed` would always report
-0. Both fixed and confirmed via mutation. Stage 2's erase decision made
-those two calls (and a since-added, since-withdrawn cleanup-time entry
-cap -- see below) redundant in this branch, since nothing survives an
-outright erase to expire, purge, or cap; superseded code removed rather
-than left dead. Confirmed via mutation: reverting the branch to
-`cleanup_expired`-only made the fresh-entry assertion fail, restored
-byte-identical.
-→ where verified: `cargo test -p orbok-workers clear_temporary_extraction_erases_the_namespace_even_when_nothing_has_expired`.
+(`crates/pipeline/workers/src/tests/rfc059_cache_lifetime.rs`) is kept; it
+counts entries rather than going through `CacheService`.
+→ what was run (notice half): `cleanup_notices_never_claim_space_was_freed`
+(`crates/ui/src/tests/notice.rs`) -- for the four Safe-cleanup notices, in
+both locales, asserts title and body contain none of "free", "space",
+"byte", "kb", "mb", "gb", 「空き」, 「容量」, 「解放」.
+→ what was observed: both PASS. Confirmed via mutation: replacing
+`erase_engine_namespace(&engine)?` in the `ClearTemporaryExtraction` branch
+with a no-op failed the erasure test at the `get_fresh` assertion;
+restoring the pre-Q2 English body "Freed up space. Your files are
+untouched." failed the notice test (`PreviewsCleared in En claims space was
+freed`). Both files restored byte-identical.
+→ where verified: `cargo test -p orbok-workers clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service`;
+`cargo test -p orbok-ui cleanup_notices_never_claim_space_was_freed`.
 
 TTL value: `OrbokCacheNamespace::default_engine_options`
 (`crates/data/cache/src/namespace.rs`) sets `ExtractSegments` to a 90-day
 write-time TTL, still real -- `localcache`'s `get_if_fresh` treats an entry
 older than the TTL as a miss on every read regardless of any cleanup
-action, forcing fresh extraction. Measurement backing the original
-proposed cap: `measure_extraction_cache_usage_against_the_rfcs_corpus`
+action, forcing fresh extraction. Measurement backing the cap value:
+`measure_extraction_cache_usage_against_the_rfcs_corpus`
 (`crates/app/src/rfc059_cache_measurement.rs`, `#[ignore]`d, one-time) --
 this project's own `rfcs/` tree (110 real markdown files) indexed through
 the real hosted scheduler, measured via `CacheService::usage`: **110
-entries, 595,247 payload bytes, ~5,411 bytes/entry**.
-
-**The 20,000-entry cap itself moved and is not currently enforced
-anywhere** (Review 214 §3, Amendment 1 §2a.2): a write-time `max_entries`
-evicted the earliest files' cached text before their own chunk jobs could
-read it back, hard-failing those jobs above the cap (criterion 9 below).
-Withdrawn. The value (`OrbokCacheNamespace::cleanup_time_entry_cap`,
-`crates/data/cache/src/namespace.rs`) is kept as the decided number for a
-future cleanup-time enforcement point; the enforcement code itself
-(`enforce_extract_segments_cleanup_cap`, briefly present in commit
-`9240145`) was removed once Q1's erase decision made it dead in its only
-call site. Review 214 §3/§4 Q4 recommends a scheduler-idle hook as the
-real home for it -- **not built as part of this closure**; tracked as
-follow-up work below.
+entries, 595,247 payload bytes, ~5,411 bytes/entry**. The 20,000-entry cap
+is enforced at scheduler idle -- criterion 10.
 
 ### 6. *(Re-worded by Amendment 1 §2a.3.)* After an ordinary re-index, both §6 invariants hold and Remove replaced stale indexes reports zero FTS rows reclaimed. After a file goes missing and returns with changed content, the same action reports a non-zero FTS-row reclaim and both invariants hold afterwards. No reported figure is presented to the user as bytes freed.
 
@@ -208,28 +205,29 @@ permanently orphaned) is closed on both paths.
 ### 7. The README's data-lifecycle section describes the behaviour that ships, verified by re-running the audit's claim check against it.
 
 → what was run: re-read of `README.md`'s "Local-first by design" section
-against what criteria 1-6 above actually made true, and of
+against what criteria 1-6 and 10 actually made true, and of
 `docs/src/users/storage.md`'s Safe cleanup / Reset catalog sections against
 Slice 4's newly-exposed actions -- the same claim-by-claim check dev-team
 Task 034 §9 ran when it corrected these paragraphs downward on 2026-09-01
 (no automated "audit claim check" script exists; Task 034 §9 was a manual
 read against the shipped code, transcribed here as the same method applied
 to what changed).
-→ what was observed: two passes. First (commit `5754b54`): "Reset catalog
+→ what was observed: three passes. First (commit `5754b54`): "Reset catalog
 does not clear it" became "Reset catalog erases it," and "no expiry and no
 size bound" became "a 90-day expiry and a 20,000-entry cap." Second, after
-Review 214's owner decisions changed what is actually true: the
-20,000-entry cap claim was removed (it is decided but not enforced
-anywhere yet -- criterion 5 above) and replaced with the accurate
-90-day-freshness-plus-on-demand-full-erase description; `docs/src/users/storage.md`'s
-Safe-cleanup bullet changed from "Expired extracted-text cache entries" to
-"All extracted-text cache entries," matching the erase decision. The
-`Ephemeral cache` bullet keeps naming that chunk bundles and previews have
-neither an expiry nor a size bound, honestly stated rather than implied
-fixed.
-→ where verified: `mdbook build` (docs/) succeeds; `git diff README.md
-docs/src/users/storage.md` read in full against criteria 1-6 and Review
-214's own decisions, not against either paragraph's prior wording.
+Review 214's owner decisions: the 20,000-entry cap claim was removed (at
+that point nothing enforced it) and replaced with the
+90-day-freshness-plus-on-demand-full-erase description;
+`docs/src/users/storage.md`'s Safe-cleanup bullet changed from "Expired
+extracted-text cache entries" to "All extracted-text cache entries."
+Third, with Slice 6: the Ephemeral-cache bullet now states the bound and
+when it runs -- "a 20,000-entry bound applied automatically when indexing
+goes idle, least recently used first" -- which criterion 10 evidences. It
+keeps naming that chunk bundles and previews have neither a limit nor a
+bound.
+→ where verified: `mdbook build` (docs/) succeeds; `git diff README.md`
+read in full against criterion 10's tests, not against the paragraph's
+prior wording.
 
 ### 8. *(Added by Amendment 1.)* With a folder indexed containing a distinctive term, invoking Remove folder and then querying `chunk_fts_trigram` and `chunk_fts` directly for that term returns no rows, and both §6 invariants hold. Remove folder is the fifth operation in criterion 4's invariant test.
 
@@ -271,37 +269,79 @@ guard is structural, per Review 214 §1's own instruction not to overstate
 this test's reach**: `extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap`
 asserts `max_entries` registers `NULL` for `ExtractSegments`, so a write-time
 cap cannot silently be reintroduced without that assertion catching it.
-Together they are enough: the corpus test proves the pipeline behaves
-correctly today, the registration test proves it stays that way. Confirmed
-via mutation (Review 213's own execution, cited in Amendment 1 §2a.2):
-temporarily restoring `max_entries: Some(3)` in
-`OrbokCacheNamespace::default_engine_options` and re-running the corpus
-test at 5 files reproduced the failure Review 213 found (a chunk job
-hard-failed on a cache miss); restored byte-identical.
+Criterion 10's pending-job test adds the idle-time half: the trim never
+runs while a job could still need an entry. Confirmed via mutation (Review
+213's own execution, cited in Amendment 1 §2a.2): temporarily restoring
+`max_entries: Some(3)` in `OrbokCacheNamespace::default_engine_options` and
+re-running the corpus test at 5 files reproduced the failure Review 213
+found (a chunk job hard-failed on a cache miss); restored byte-identical.
 → where verified: `cargo test -p orbok-workers indexing_above_any_cache_bound_leaves_every_file_with_active_chunks
 extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap`,
 commit `44ab2c9`.
+
+### 10. *(Added by Amendment 2.)* With more than `cleanup_time_entry_cap()` entries in the extraction cache and the scheduler idle (no queued or running index jobs, in memory or in `index_jobs`), the namespace is trimmed to the cap, least-recently-accessed first, exactly once per transition to idle. With any index job queued, no entry is evicted, however many are present.
+
+→ what was built: `CleanupService::trim_extraction_cache_to` and
+`trim_engine_namespace_to` (`crates/pipeline/workers/src/cleanup_service.rs`)
+-- `list_entries()`, sort by `(last_accessed_at, updated_at)`, `remove()` the
+oldest excess, `shrink_database()` only if something was removed; no raw
+SQL, no second connection. Called from the scheduler host's idle branch
+(`crates/app/src/scheduler_host.rs`, via
+`ProfileCache::trim_extraction_cache_to`) behind a `trimmed_since_idle` flag
+that resets whenever a job is dispatched, and behind `indexing_is_idle`:
+`Scheduler::is_idle()` **and** zero `index_jobs` rows in any of Queued,
+Running, Paused, Blocked or WaitingForDependency, failing closed on a
+catalog error. `cleanup_time_entry_cap()` has one production reader, that
+idle branch.
+
+→ deviation from the handoff, disclosed: HANDOFF-059-slice6 §2 treats the
+loop's second consecutive `tick() == None` as idle. It is not always: in
+`ResourceMode::Paused` `tick()` returns `None` with jobs merely paused, and
+in UserActive/LowImpact the embedding queue is skipped, so `None` can mean
+"deferred", not "drained". The implementation uses the criterion's own
+definition (nothing pending in memory or in `index_jobs`) instead, which is
+why the guard reads the catalog.
+
+→ what was run (trim half): `idle_loop_trims_extraction_cache_to_cap_once_per_transition`
+(`crates/app/src/scheduler_host/tests.rs`) -- seeds 5 entries with distinct
+`last_accessed_at`, runs the real `run_with_context` loop with the cap
+overridden to 3 (a test-only `tokio::task_local!`, not a ninth parameter),
+waits for the namespace to reach 3 and asserts the survivors are the three
+most recently accessed; then adds a sixth entry, waits four idle polls, and
+asserts 4 remain -- no second trim without a transition.
+→ what was run (pending-job half): `pending_index_job_blocks_the_idle_trim_until_it_leaves_the_queue`
+(same file) -- seeds 5 entries, enqueues an Extract job, starts the loop with
+background indexing off (so the job sits `paused` and `tick()` returns
+`None` -- exactly the §2 premise hole above), waits five idle polls and
+asserts all 5 remain; then cancels the job and waits for the trim to 3.
+→ what was observed: both PASS. Mutations, each restored byte-identical:
+**M1** removing the `indexing_is_idle` guard failed the pending-job test
+(`left: 3, right: 5`); **M2** moving an unguarded trim above `rehydrate`
+failed it the same way; **M3** removing `trimmed_since_idle = true` failed
+the trim test on the no-second-trim assertion (`left: 3, right: 4`).
+→ measurement (handoff §6 stop condition 1):
+`measure_idle_trim_cost_at_the_cap`
+(`crates/pipeline/workers/src/tests/rfc059_cache_lifetime.rs`, `#[ignore]`d),
+release build, 20,000 synthetic entries: `list_entries()` 8.95–10.35 ms over
+five samples; a trim at exactly the cap (no removal) 9.90 ms; a trim of
+1,000 entries over the cap 29.28 ms. Well under the "few hundred
+milliseconds" stop threshold; no paging needed.
+→ where verified: `cargo test -p orbok --bin orbok idle_loop_trims_extraction_cache_to_cap_once_per_transition
+pending_index_job_blocks_the_idle_trim_until_it_leaves_the_queue`;
+`cargo test --release -p orbok-workers measure_idle_trim_cost_at_the_cap -- --ignored`.
 
 ---
 
 ## Criteria not met, and why RFC-059 closes anyway
 
-None outstanding as numbered §10 criteria. Criterion 6 was re-worded by
-Amendment 1 to match what is actually true (§2a.3) rather than left
-unmet; the version of this section that argued for the pre-Amendment
-wording no longer applies, since that wording no longer exists.
+None outstanding. Criterion 6 was re-worded by Amendment 1 and criterion 5 by
+Amendment 2 to match owner decisions and what is actually true, rather than
+left unmet. The 20,000-entry bound that the previous version of this section
+disclosed as decided-but-unenforced is now enforced (criterion 10). The cap's
+*value* stays RFC-059 §11 open question 1: it is backed by one 110-file
+measurement, not by a real large corpus.
 
-One decided-but-unenforced item, disclosed rather than hidden: the
-extraction cache's 20,000-entry size bound (criterion 5) has a value but no
-current runner anywhere in the codebase, since the write-time enforcement
-that existed briefly was withdrawn (it broke indexing above the cap,
-criterion 9) and the owner's Q1 decision to make "Clear temporary
-extraction" an outright erase removed the cleanup-time enforcement that
-briefly replaced it. Review 214 §3/§4 Q4 recommends a scheduler-idle hook
-as the real home for this bound -- **routed as follow-up work, not built
-as part of this closure.**
-
-## Slice 4 and 5 (not named as numbered §10 criteria, done as part of this handoff)
+## Slice 4, 5 and 6 (not named as numbered §10 criteria, done as part of the handoffs)
 
 - **Slice 4** ("expose the two cleanup actions that already work," RFC-059
   §8): `ClearTemporaryExtraction` and `RemoveReplacedStaleIndexes` are
@@ -322,49 +362,42 @@ as part of this closure.**
   copy ("Clear extracted text" / "Remove old data from updated files," Q3,
   owner decision 2026-09-12) resolves both.
 - **Slice 5**: README/storage.md corrections, folded into criterion 7 above.
+- **Slice 6**: the idle-time size bound, criterion 10 above.
 - **Per-action done-notices** (Review 214 §4 Q2, owner decision
-  2026-09-12, not a numbered criterion but part of this closure's scope):
-  the four Safe-cleanup buttons used to share one `UserNotice::PreviewsCleared`
-  ("Temporary previews cleared / Freed up space. Your files are
-  untouched."), including for actions whose actual reclaim can be zero.
-  Each action now shows its own notice title
+  2026-09-12): the four Safe-cleanup buttons used to share one
+  `UserNotice::PreviewsCleared` ("Temporary previews cleared / Freed up
+  space. Your files are untouched."), including for actions whose actual
+  reclaim can be zero. Each action now shows its own notice title
   (`crates/ui/src/notice.rs`: `PreviewsCleared`, `SearchCacheCleared`,
   `ExtractedTextCleared`, `ReplacedDataRemoved`); all four share one body
-  ("Your files are untouched.") with "Freed up space" dropped, since that
-  figure is a dashboard convention, not a measurement.
-  `user_notice_text_never_relies_on_colour_alone`
+  ("Your files are untouched."). `user_notice_text_never_relies_on_colour_alone`
   (`crates/ui/src/tests/notice.rs`) confirms the four notices are still
-  pairwise distinguishable by `(title, body)` despite the shared body.
+  pairwise distinguishable by `(title, body)` despite the shared body;
+  `cleanup_notices_never_claim_space_was_freed` (criterion 5) keeps "freed"
+  from coming back.
 
 ---
 
 ## Follow-up work (not part of this closure)
 
-- **A scheduler-idle hook to enforce the extraction cache's entry-cap
-  bound** (Review 214 §3/§4 Q4). The value is decided
-  (`OrbokCacheNamespace::cleanup_time_entry_cap`); no code runs it. The
-  right trigger point is when the hosting loop drains to no queued
-  Extract/Chunk/Embedding jobs -- the only moment a trim provably cannot
-  evict an entry a job still needs.
 - **A retention policy for a file that goes missing and never returns**
-  (RFC-059 Amendment 1 §2a.1, Review 214 §4 Q5). Its stale chunks and
-  intact FTS rows stay on disk indefinitely (search is gated on
-  `chunk_status`, so nothing surfaces, but nothing reclaims the space
-  either). Review 214 recommends an RFC-037 amendment naming a retention
-  rule, not a new RFC. No tracking home exists yet.
-- **The upstream `localcache` request** (RFC-059 §7 option (C)) now has two
+  (RFC-059 Amendment 1 §2a.1, Amendment 2 §2b). Its stale chunks and intact
+  FTS rows stay on disk indefinitely (search is gated on `chunk_status`, so
+  nothing surfaces, but nothing reclaims the space either). Routed to an
+  RFC-037 amendment as a retention rule.
+- **The upstream `localcache` request** (RFC-059 §7 option (C)) has two
   concrete asks -- `clear_namespace()` and a public maintenance-time LRU
-  trim -- both already composable from the public API used in this closure,
-  both better sent as one statement. Per the handoff's own instruction,
-  this implementation does not open it; Review 214 §7: the architect
-  drafts it on the owner's word.
+  trim -- both composed from the public API in this closure
+  (`erase_engine_namespace`, `trim_engine_namespace_to`), both better sent
+  as one statement. Review 214 §7: the architect drafts it on the owner's
+  word.
+- **The cap's value** (RFC-059 §11 open question 1): revisit against a real
+  large mixed corpus (PDF, code) if one is measured.
 
 ## Full gate suite, this implementation
 
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
 --all-features -- -D warnings`, `cargo test --workspace --all-features`
 (every crate, 0 failures), `mdbook build` (docs/), and every
-`scripts/check-*.sh` gate (design tokens, i18n literals -- four new
-`tracing::error!` log-message literals added to
-`scripts/i18n-literal-allowlist.txt`, migration integrity, RFC lifecycle) --
-all green as of this record.
+`scripts/check-*.sh` gate (design tokens, i18n literals, migration
+integrity, RFC lifecycle) -- all green as of this record.

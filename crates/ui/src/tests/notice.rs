@@ -95,3 +95,30 @@ fn user_notice_text_never_relies_on_colour_alone() {
         }
     }
 }
+
+/// RFC-059 §10 criterion 5 (Amendment 2): no Safe-cleanup notice reports an
+/// amount of space freed -- the reclaim figure is a convention, not a
+/// measurement.
+#[test]
+fn cleanup_notices_never_claim_space_was_freed() {
+    const CLEANUP: [UserNotice; 4] = [
+        UserNotice::PreviewsCleared,
+        UserNotice::SearchCacheCleared,
+        UserNotice::ExtractedTextCleared,
+        UserNotice::ReplacedDataRemoved,
+    ];
+    const SPACE_CLAIMS: &[&str] = &[
+        "free", "space", "byte", "kb", "mb", "gb", "空き", "容量", "解放",
+    ];
+    for &locale in Locale::ALL {
+        for notice in &CLEANUP {
+            let text = format!("{} {}", notice.title(locale), notice.body(locale)).to_lowercase();
+            for claim in SPACE_CLAIMS {
+                assert!(
+                    !text.contains(claim),
+                    "{notice:?} in {locale:?} claims space was freed ({claim:?} in {text:?})"
+                );
+            }
+        }
+    }
+}

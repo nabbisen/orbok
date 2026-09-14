@@ -1908,3 +1908,237 @@ fn should_report_health_throttles_then_recovers() {
     // zero (which would make throttling a no-op).
     assert!(HEALTH_REPORT_MIN_INTERVAL > Duration::ZERO);
 }
+
+// ── RFC-059 Amendment 2 §2b, criterion 10: the extraction-cache bound at idle ──
+
+/// Write one `ExtractSegments` entry over a real file named `name` under
+/// `temp/cached/`, returning its canonical path -- localcache stores the
+/// canonical form (macOS's `/var` is a symlink to `/private/var`).
+fn add_extraction_cache_entry(
+    temp: &Path,
+    context: &RuntimeContext,
+    catalog: &Catalog,
+    name: &str,
+) -> std::path::PathBuf {
+    let cache = bootstrap::cache_service(context).unwrap();
+    let ns = orbok_cache::OrbokCacheNamespace::ExtractSegments;
+    let engine = cache
+        .engine::<Vec<u8>>(catalog, &ns, ns.default_engine_options())
+        .unwrap();
+    let dir = temp.join("cached");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    std::fs::write(&path, format!("cached text for {name}")).unwrap();
+    let path = std::fs::canonicalize(&path).unwrap();
+    engine.set(&path, &b"payload".to_vec()).unwrap();
+    path
+}
+
+/// Seed `count` entries with staggered `last_accessed_at` (entry `i` at unix
+/// second `i + 1`), returning canonical paths oldest first. The backdating
+/// is raw SQL on the cache file -- test setup only, the same precedent as
+/// `orbok-workers`' `rfc059_cache_lifetime.rs`; the production trim uses
+/// localcache's public API (Review 214 §2). Each update is asserted to hit
+/// exactly one row, so a path mismatch fails here rather than silently
+/// leaving every entry tied.
+fn seed_extraction_cache(
+    temp: &Path,
+    context: &RuntimeContext,
+    catalog: &Catalog,
+    count: usize,
+) -> Vec<std::path::PathBuf> {
+    let paths: Vec<_> = (0..count)
+        .map(|i| add_extraction_cache_entry(temp, context, catalog, &format!("cached-{i}.md")))
+        .collect();
+    let raw = rusqlite::Connection::open(temp.join(orbok_db::CACHE_FILE_NAME)).unwrap();
+    let ns = orbok_cache::OrbokCacheNamespace::ExtractSegments.as_namespace();
+    for (i, path) in paths.iter().enumerate() {
+        let updated = raw
+            .execute(
+                "UPDATE files SET last_accessed_at = ?1 WHERE namespace = ?2 AND path = ?3",
+                rusqlite::params![(i + 1) as i64, ns, path.to_string_lossy()],
+            )
+            .unwrap();
+        assert_eq!(updated, 1, "backdating must match exactly one cache row");
+    }
+    paths
+}
+
+fn extraction_cache_paths(context: &RuntimeContext, catalog: &Catalog) -> Vec<std::path::PathBuf> {
+    let cache = bootstrap::cache_service(context).unwrap();
+    let ns = orbok_cache::OrbokCacheNamespace::ExtractSegments;
+    let engine = cache
+        .engine::<Vec<u8>>(catalog, &ns, ns.default_engine_options())
+        .unwrap();
+    let mut paths: Vec<_> = engine
+        .list_entries()
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.path)
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// RFC-059 criterion 10, first half: with more than the cap in the
+/// extraction cache and nothing indexing, the idle loop trims to the cap,
+/// least recently accessed first -- once per transition to idle, not once
+/// per poll. The second check is stronger than "a later idle poll evicts
+/// nothing" (which a re-trim at the cap would also satisfy): it grows the
+/// cache past the cap again with no job dispatched in between, and asserts
+/// several polls later that the extra entry is still there.
+#[tokio::test]
+async fn idle_loop_trims_extraction_cache_to_cap_once_per_transition() {
+    const CAP: usize = 3;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let seeded = seed_extraction_cache(temp.path(), &context, &ui_catalog, CAP + 2);
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(super::IDLE_TRIM_CAP_OVERRIDE.scope(
+        CAP,
+        run_with_context(
+            loop_catalog,
+            loop_cache,
+            None,
+            true,
+            true,
+            no_resource_signals(),
+            tx,
+            None,
+        ),
+    ));
+    drop(rx);
+
+    wait_until(
+        Duration::from_secs(10),
+        "extraction cache trimmed to the cap at idle",
+        || extraction_cache_paths(&context, &ui_catalog).len() == CAP,
+    )
+    .await;
+    let mut expected = seeded[2..].to_vec();
+    expected.sort();
+    assert_eq!(
+        extraction_cache_paths(&context, &ui_catalog),
+        expected,
+        "the two least recently accessed entries must be the ones evicted"
+    );
+
+    add_extraction_cache_entry(temp.path(), &context, &ui_catalog, "after-trim.md");
+    tokio::time::sleep(super::IDLE_POLL * 4).await;
+    assert_eq!(
+        extraction_cache_paths(&context, &ui_catalog).len(),
+        CAP + 1,
+        "no second trim without a transition: the loop must trim once per \
+         transition to idle, not on every idle poll"
+    );
+    handle.abort();
+}
+
+/// RFC-059 criterion 10, second half -- the one to break deliberately: with
+/// an index job pending, nothing is evicted however many entries are
+/// present. Background indexing starts disabled, the deterministic form of
+/// "pending": `pause` rewrites the queued job to `paused`, `tick()` returns
+/// `None` on every poll, and the loop sits in its idle branch the whole time
+/// with the job still unfinished in `index_jobs`. That is exactly the state
+/// in which HANDOFF-059 Slice 6 §2's "second `None` means idle" placement
+/// would trim. Once the job leaves the queue, the next idle poll trims.
+#[tokio::test]
+async fn pending_index_job_blocks_the_idle_trim_until_it_leaves_the_queue() {
+    use orbok_core::{
+        FileStatus, HiddenFilePolicy, IndexMode, JobType, PersistenceMode, SourceType,
+        SymlinkPolicy,
+    };
+    use orbok_db::repo::{
+        FileRepository, IndexJobRepository, NewFile, NewSource, ObservedMetadata, SourceRepository,
+    };
+    const CAP: usize = 3;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    seed_extraction_cache(temp.path(), &context, &ui_catalog, CAP + 2);
+
+    // One Extract job for a file that does not exist on disk
+    // (`index_jobs.file_id` references `files`, so the catalog row is real).
+    let missing = temp.path().join("never-written.md");
+    let source = SourceRepository::new(&ui_catalog)
+        .insert(NewSource {
+            source_type: SourceType::Directory,
+            persistence_mode: PersistenceMode::Persistent,
+            display_name: None,
+            original_path: temp.path().to_string_lossy().to_string(),
+            canonical_path: temp.path().to_string_lossy().to_string(),
+            index_mode: IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: HiddenFilePolicy::Exclude,
+            symlink_policy: SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap();
+    let file = FileRepository::new(&ui_catalog)
+        .insert(NewFile {
+            source_id: source.source_id.clone(),
+            original_path: missing.to_string_lossy().to_string(),
+            canonical_path: missing.to_string_lossy().to_string(),
+            display_path: "never-written.md".into(),
+            extension: Some("md".into()),
+            metadata: ObservedMetadata {
+                file_size_bytes: 0,
+                modified_at: None,
+                platform_file_key: None,
+                content_hash: None,
+            },
+            status: FileStatus::Discovered,
+        })
+        .unwrap();
+    let jobs = IndexJobRepository::new(&ui_catalog);
+    jobs.enqueue(
+        JobType::Extract,
+        Some(&source.source_id),
+        Some(&file.file_id),
+    )
+    .unwrap();
+    let job_id = jobs.list_queued(10).unwrap()[0].job_id.clone();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(super::IDLE_TRIM_CAP_OVERRIDE.scope(
+        CAP,
+        run_with_context(
+            loop_catalog,
+            loop_cache,
+            None,
+            false,
+            true,
+            no_resource_signals(),
+            tx,
+            None,
+        ),
+    ));
+    drop(rx);
+
+    wait_until(Duration::from_secs(10), "the queued job paused", || {
+        matches!(jobs.status_of(&job_id), Ok(Some(JobStatus::Paused)))
+    })
+    .await;
+    tokio::time::sleep(super::IDLE_POLL * 5).await;
+    assert_eq!(
+        extraction_cache_paths(&context, &ui_catalog).len(),
+        CAP + 2,
+        "with an index job pending, the idle loop must evict nothing"
+    );
+
+    jobs.set_status(&job_id, JobStatus::Canceled).unwrap();
+    wait_until(
+        Duration::from_secs(10),
+        "extraction cache trimmed once the pending job left the queue",
+        || extraction_cache_paths(&context, &ui_catalog).len() == CAP,
+    )
+    .await;
+    handle.abort();
+}

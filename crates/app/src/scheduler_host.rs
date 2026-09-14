@@ -299,6 +299,11 @@ pub(crate) async fn run_with_context(
     // accurate final health state promptly, not a stale intermediate one.
     let mut last_health_report: Option<Instant> = None;
     let mut health_report_pending = false;
+    // RFC-059 Amendment 2 §2b (criterion 10): whether this idle stretch has
+    // already had its extraction-cache trim. Cleared whenever `tick()` hands
+    // out a job, so the trim runs once per transition to idle, not once per
+    // `IDLE_POLL`.
+    let mut trimmed_since_idle = false;
 
     loop {
         // RFC-057 §4.1: drain every observation queued since the last
@@ -379,12 +384,27 @@ pub(crate) async fn run_with_context(
                             last_health_report = Some(Instant::now());
                             health_report_pending = false;
                         }
+                        // RFC-059 Amendment 2 §2b (criterion 10): bound the
+                        // extraction cache here, once per transition to
+                        // idle, and only if nothing is pending anywhere --
+                        // see `indexing_is_idle` for why this branch alone
+                        // does not guarantee that. Flag set even on error,
+                        // so a failing trim warns once, not every poll.
+                        if !trimmed_since_idle && indexing_is_idle(&scheduler, &catalog) {
+                            if let Some(cap) = idle_trim_cap()
+                                && let Err(error) = cache.trim_extraction_cache_to(&catalog, cap)
+                            {
+                                tracing::warn!(%error, "could not trim the extraction cache at idle");
+                            }
+                            trimmed_since_idle = true;
+                        }
                         tokio::time::sleep(IDLE_POLL).await;
                         continue;
                     }
                 }
             }
         };
+        trimmed_since_idle = false;
 
         // RFC-036 §12.3 (source removal cancels queued work):
         // `bootstrap::remove_source` cascade-deletes `index_jobs` rows for
@@ -610,6 +630,55 @@ fn job_is_still_queued(catalog: &Catalog, id: &JobId) -> bool {
         IndexJobRepository::new(catalog).status_of(id),
         Ok(Some(JobStatus::Queued))
     )
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    /// Test-only override of the idle-time extraction-cache cap
+    /// (HANDOFF-059 Slice 6 §4): a test cannot write 20,000 entries to
+    /// prove a trim, and `namespace.rs`'s value must not be edited to make
+    /// one small. Scoped to one spawned loop via `.scope(cap, ..)`, so tests
+    /// running concurrently never see each other's value.
+    pub(crate) static IDLE_TRIM_CAP_OVERRIDE: usize;
+}
+
+/// The extraction-cache entry cap applied at scheduler idle (RFC-059
+/// Amendment 2 §2b, criterion 10) -- the one production reader of
+/// `OrbokCacheNamespace::cleanup_time_entry_cap`.
+fn idle_trim_cap() -> Option<usize> {
+    #[cfg(test)]
+    if let Ok(cap) = IDLE_TRIM_CAP_OVERRIDE.try_with(|cap| *cap) {
+        return Some(cap);
+    }
+    orbok_cache::OrbokCacheNamespace::ExtractSegments.cleanup_time_entry_cap()
+}
+
+/// Whether indexing is idle in RFC-059 criterion 10's sense: nothing
+/// pending in memory *and* nothing unfinished in `index_jobs`.
+///
+/// `tick()` returning `None` twice -- HANDOFF-059 Slice 6 §2's definition
+/// -- is not enough on its own. It also returns `None` while paused
+/// (`tick`'s own short-circuit, after `pause` rewrote every queued row to
+/// `paused`, which `rehydrate` never reloads), and while UserActive or
+/// LowImpact skip the whole embedding queue (`QueueSet::pop_next`). In both
+/// states, pending chunk and embedding jobs will still read the extraction
+/// cache as their only source of text, so a trim then would evict what they
+/// need -- RFC-059 Amendment 1 §2a.2's failure mode, reintroduced.
+/// Fail-closed on a catalog read error, as `job_is_still_queued` is.
+fn indexing_is_idle(scheduler: &Scheduler, catalog: &Catalog) -> bool {
+    if !scheduler.is_idle() {
+        return false;
+    }
+    let jobs = IndexJobRepository::new(catalog);
+    [
+        JobStatus::Queued,
+        JobStatus::Running,
+        JobStatus::Paused,
+        JobStatus::Blocked,
+        JobStatus::WaitingForDependency,
+    ]
+    .into_iter()
+    .all(|status| matches!(jobs.count_with_status(status), Ok(0)))
 }
 
 /// The category `Scheduler::fail` (RFC-036 §20.1) matches on to decide

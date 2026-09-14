@@ -4,7 +4,7 @@
 **RFC:** 059\
 **Lifecycle stage:** Accepted 2026-09-02; open question 2 resolved by the owner 2026-09-10. Unstarted.\
 **Primary owner:** `crates/data/db/src/repo/cleanup.rs`, `.../repo/chunks.rs`, `crates/search/engine/src/{fts5,multilingual}.rs`, `crates/pipeline/workers/src/cleanup_service.rs`, `crates/data/cache/src/service.rs`\
-**RFC:** [`../accepted/059-erasure-completeness-and-cache-lifetime.md`](../accepted/059-erasure-completeness-and-cache-lifetime.md)
+**RFC:** [`../done/059-erasure-completeness-and-cache-lifetime.md`](../done/059-erasure-completeness-and-cache-lifetime.md)
 
 ---
 

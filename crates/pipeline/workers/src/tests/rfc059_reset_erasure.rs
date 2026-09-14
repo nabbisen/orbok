@@ -224,6 +224,62 @@ fn reset_clears_the_extraction_cache_through_cache_service() {
     );
 }
 
+/// Criterion 5 (re-worded by Amendment 2): with an extraction-cache entry
+/// written seconds ago, Clear extracted text leaves nothing retrievable
+/// through `CacheService` and nothing listed by `keys(None)`.
+#[test]
+fn clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let cache_path = cache_db_path(dir.path());
+    let (_file_id, source, file_canonical_path) = seed_indexed(
+        &catalog,
+        &cache,
+        dir.path(),
+        "doc.md",
+        "extracted text written seconds ago",
+    );
+    let guard = PathGuard::new(vec![GuardedSource::from_record(&source)]);
+    let validated = guard.validate(Path::new(&file_canonical_path)).unwrap();
+    let open = || {
+        cache
+            .engine::<ExtractOutput>(
+                &catalog,
+                &OrbokCacheNamespace::ExtractSegments,
+                OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+            )
+            .unwrap()
+    };
+
+    let before = open();
+    assert!(
+        CacheService::get_fresh(&before, &validated)
+            .unwrap()
+            .is_some(),
+        "the fresh entry must be retrievable before the action, or this test proves nothing"
+    );
+
+    CleanupService::new(&catalog, &cache, &cache_path)
+        .run_safe(&CleanupPlan::for_action(
+            CleanupAction::ClearTemporaryExtraction,
+            0,
+        ))
+        .unwrap();
+
+    let after = open();
+    assert!(
+        CacheService::get_fresh(&after, &validated)
+            .unwrap()
+            .is_none(),
+        "Clear extracted text must leave no entry retrievable through CacheService, \
+         however recently written (RFC-059 §10 criterion 5)"
+    );
+    assert!(
+        after.keys(None).unwrap().is_empty(),
+        "Clear extracted text must leave keys(None) empty (RFC-059 §10 criterion 5)"
+    );
+}
+
 /// Criterion 3: after Reset, `settings.json` and the installed model
 /// artifacts are byte-identical to their pre-Reset state -- a guard
 /// against *this* RFC's own fix reaching outside the cache/catalog it is

@@ -4,11 +4,12 @@
 //! site -- RFC-059 §1's own verified table: "Extraction cache opened
 //! unbounded"). "Clear temporary extraction" erases the namespace outright
 //! (Review 214 §4 Q1, owner decision 2026-09-12) rather than only expiring
-//! entries past the TTL -- the entry-cap mechanism this file's tests
-//! previously exercised directly was removed once that decision made it
-//! unreachable from this action; see `crates/pipeline/workers/src/cleanup_service.rs`'s
-//! own history and RFC-059's closure record for where the cap moves next
-//! (a scheduler-idle hook, Review 214 §3/§4 Q4, not yet built).
+//! entries past the TTL. The entry cap is enforced at scheduler idle
+//! instead (RFC-059 Amendment 2 §2b, criterion 10): the trim itself,
+//! `cleanup_service::trim_engine_namespace_to`, is measured here at the
+//! production cap (`measure_idle_trim_cost_at_the_cap`); its placement and
+//! once-per-transition behaviour are tested against the real hosting loop
+//! in `crates/app/src/scheduler_host/tests.rs`.
 
 use crate::CleanupService;
 use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
@@ -35,8 +36,8 @@ fn setup(root: &std::path::Path) -> (Catalog, CacheService) {
 /// run before any chunk job reads them back, so the earliest files' text
 /// was evicted before their own chunk jobs could use it). The entry cap
 /// still exists; it moved to `OrbokCacheNamespace::cleanup_time_entry_cap`,
-/// enforced only by the `ClearTemporaryExtraction` cleanup action, which
-/// cannot run mid-pipeline.
+/// applied only when the indexing pipeline is idle (Amendment 2 §2b),
+/// which cannot evict an entry a pending job still needs.
 #[test]
 fn extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap() {
     let dir = tempfile::tempdir().unwrap();
@@ -353,4 +354,67 @@ fn indexing_above_any_cache_bound_leaves_every_file_with_active_chunks() {
              any configured extraction-cache bound"
         );
     }
+}
+
+/// HANDOFF-059 Slice 6 §6, stop condition 1: what the idle-time trim costs
+/// at the production cap. `list_entries()` runs once per transition to
+/// idle, on the hosting task, which shares the catalog `Mutex` with the UI
+/// -- if it takes more than a few hundred milliseconds at 20,000 entries,
+/// the trim has to page and the slice changes shape. Measures
+/// `list_entries()` alone (five samples), the at-cap trim (list only,
+/// evicts nothing -- the steady-state idle path), and a trim 1,000 over.
+///
+/// `#[ignore]`d: 20,000 real files and cache entries, run deliberately:
+///
+/// ```sh
+/// cargo test -p orbok-workers --release measure_idle_trim_cost_at_the_cap \
+///   -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "one-time measurement for HANDOFF-059 Slice 6 §6 -- read the printed numbers"]
+fn measure_idle_trim_cost_at_the_cap() {
+    const N: usize = 20_000;
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let files = dir.path().join("files");
+    std::fs::create_dir(&files).unwrap();
+    let ns = OrbokCacheNamespace::ExtractSegments;
+    let engine = cache
+        .engine::<Vec<u8>>(&catalog, &ns, ns.default_engine_options())
+        .unwrap();
+
+    let fill_start = std::time::Instant::now();
+    let payload = vec![0u8; 256];
+    for i in 0..N {
+        let path = files.join(format!("doc-{i}.md"));
+        std::fs::write(&path, format!("content {i}")).unwrap();
+        engine.set(&path, &payload).unwrap();
+    }
+    let fill = fill_start.elapsed();
+
+    let mut list_samples = Vec::new();
+    for _ in 0..5 {
+        let start = std::time::Instant::now();
+        let entries = engine.list_entries().unwrap();
+        list_samples.push(start.elapsed());
+        assert_eq!(entries.len(), N);
+    }
+
+    let start = std::time::Instant::now();
+    let evicted_at_cap = crate::cleanup_service::trim_engine_namespace_to(&engine, N).unwrap();
+    let at_cap = start.elapsed();
+    assert_eq!(evicted_at_cap, 0, "at the cap, nothing is evicted");
+
+    let start = std::time::Instant::now();
+    let evicted_over =
+        crate::cleanup_service::trim_engine_namespace_to(&engine, N - 1_000).unwrap();
+    let over_cap = start.elapsed();
+    assert_eq!(evicted_over, 1_000);
+
+    println!(
+        "HANDOFF-059 Slice 6 §6 -- {N} entries (filled in {fill:?}): \
+         list_entries() samples {list_samples:?}; trim at cap (list only, \
+         0 evicted) {at_cap:?}; trim 1,000 over cap (list + 1,000 removes + \
+         shrink) {over_cap:?}"
+    );
 }

@@ -129,12 +129,9 @@ impl<'a> CleanupService<'a> {
                 // `cleanup_missing_files` plus a cleanup-time entry cap
                 // (RFC-059 §7 Slice 3 / §10 criterion 5's original design) --
                 // an outright erase makes all of those redundant here, since
-                // nothing survives to expire, purge, or cap. The cap's own
-                // enforcement function was removed along with them (it had
-                // no other caller and would run against an already-empty
-                // namespace on every press); Review 214 §3 routes the cap to
-                // a scheduler-idle hook in a follow-up slice, where it will
-                // need re-deriving against that call site anyway.
+                // nothing survives to expire, purge, or cap. The cap is
+                // enforced at scheduler idle instead (RFC-059 Amendment 2,
+                // `trim_extraction_cache_to`).
                 let engine = self.cache.engine::<Vec<u8>>(
                     self.catalog,
                     &OrbokCacheNamespace::ExtractSegments,
@@ -214,6 +211,65 @@ impl<'a> CleanupService<'a> {
         let size_after = self.cache_db_path.metadata().map(|m| m.len()).unwrap_or(0);
         Ok(size_before.saturating_sub(size_after))
     }
+
+    /// Trim the extraction cache to `cap` entries, least-recently-accessed
+    /// first (RFC-059 Amendment 2 §2b, criterion 10). Meant to be called
+    /// only when the indexing pipeline is idle -- no Extract, Chunk or
+    /// Embedding job queued or running -- because the chunk and embedding
+    /// jobs read this namespace as their only source of text; a trim with
+    /// one queued would evict what it still needs (Amendment 1 §2a.2).
+    /// The caller supplies `cap`, so the scheduler host stays the one
+    /// reader of `OrbokCacheNamespace::cleanup_time_entry_cap`.
+    pub fn trim_extraction_cache_to(&self, cap: usize) -> OrbokResult<u64> {
+        use orbok_cache::OrbokCacheNamespace;
+        let ns = OrbokCacheNamespace::ExtractSegments;
+        let engine =
+            self.cache
+                .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
+        let evicted = trim_engine_namespace_to(&engine, cap)?;
+        info!(
+            namespace = ns.as_namespace(),
+            entries_evicted = evicted,
+            cap,
+            "extraction cache trimmed at scheduler idle"
+        );
+        Ok(evicted)
+    }
+}
+
+/// Trim one engine's namespace to at most `cap` entries, evicting the
+/// least recently accessed first (`last_accessed_at`, then `updated_at`),
+/// and reclaim freed pages only if something was removed. Public
+/// `list_entries()`/`remove()`/`shrink_database()` only -- the raw-SQL
+/// version against localcache's private schema is what Review 214 §2 had
+/// removed. Returns the number of entries evicted.
+pub fn trim_engine_namespace_to<T: Serialize + DeserializeOwned>(
+    engine: &CacheEngine<T>,
+    cap: usize,
+) -> OrbokResult<u64> {
+    let mut entries = engine
+        .list_entries()
+        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    if entries.len() <= cap {
+        return Ok(0);
+    }
+    entries.sort_by_key(|e| (e.last_accessed_at, e.updated_at));
+    let excess = entries.len() - cap;
+    let mut evicted: u64 = 0;
+    for entry in &entries[..excess] {
+        let did_remove = engine
+            .remove(&entry.path)
+            .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+        if did_remove {
+            evicted += 1;
+        }
+    }
+    if evicted > 0 {
+        engine
+            .shrink_database()
+            .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    }
+    Ok(evicted)
 }
 
 /// Remove every entry in one engine's namespace, then reclaim the freed

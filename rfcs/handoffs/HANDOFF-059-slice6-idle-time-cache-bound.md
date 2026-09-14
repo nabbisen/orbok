@@ -4,7 +4,7 @@
 **RFC:** 059 — Amendment 2 §2b, criterion 10\
 **Lifecycle stage:** Accepted; Slices 1–5 shipped (`5754b54`…`58076f8`). This is the last slice before `done/`.\
 **Primary owner:** `crates/app/src/scheduler_host.rs` (the hook), `crates/pipeline/workers/src/cleanup_service.rs` (the trim)\
-**RFC:** [`../accepted/059-erasure-completeness-and-cache-lifetime.md`](../accepted/059-erasure-completeness-and-cache-lifetime.md)
+**RFC:** [`../done/059-erasure-completeness-and-cache-lifetime.md`](../done/059-erasure-completeness-and-cache-lifetime.md)
 
 ---
 

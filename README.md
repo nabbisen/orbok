@@ -79,10 +79,10 @@ Data is classified into three lifecycle layers (RFC-001):
   and rebuildable from source files at any time.
 - **Ephemeral cache** — extracted text, chunk bundles, recent snippets,
   search result cache. Rebuildable from source files. The extracted-text
-  namespace — the largest of these — has the 90-day freshness limit above and
-  an on-demand full erase (RFC-059); an automatic size bound is designed but
-  not yet wired to anything that runs it. Chunk bundles and previews have
-  neither.
+  namespace — the largest of these — has the 90-day freshness limit above, an
+  on-demand full erase, and a 20,000-entry bound applied automatically when
+  indexing goes idle, least recently used first (RFC-059). Chunk bundles and
+  previews have neither a limit nor a bound.
 
 ### Security boundary
 

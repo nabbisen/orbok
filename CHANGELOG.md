@@ -776,6 +776,30 @@ next release tag.
 
 ### Fixed
 
+- **RFC-059 Slice 6: the extraction cache's 20,000-entry bound now runs, at
+  scheduler idle.** The value was decided but, after the write-time cap broke
+  indexing above it and "Clear extracted text" became an outright erase,
+  nothing enforced it. The scheduler host's idle branch now trims
+  `ExtractSegments` to the cap, least recently accessed first, once per
+  transition to idle (`CleanupService::trim_extraction_cache_to`, public
+  `localcache` API only). It runs only when nothing is pending anywhere —
+  `Scheduler::is_idle()` and no `index_jobs` row queued, running, paused,
+  blocked or waiting — because the loop's `tick() == None` alone also happens
+  while paused or while embedding is deferred for user activity, when a trim
+  could evict text a job still needs. Measured at 20,000 entries (release):
+  `list_entries()` ~10 ms, a 1,000-entry trim ~29 ms. Both halves of criterion
+  10 proven by mutation: removing the pending-job guard, or moving the trim
+  ahead of it, let a paused job's entries be evicted; dropping the
+  once-per-transition flag trimmed on every poll. Criterion 5 is re-evidenced
+  to Amendment 2's wording (a seconds-old entry is not retrievable through
+  `CacheService` after Clear extracted text, and no cleanup notice claims
+  space freed, in either locale). RFC-059 moves to `done/` with a closure
+  record naming criteria 1–10.
+- **RUSTSEC-2026-0285: `rustls` 0.23.40 → 0.23.45** (`rustls-webpki` 0.103.13 →
+  0.103.15), lockfile only. The advisory (TLS 1.3 handshake messages accepted
+  across encryption-level boundaries) was published 2026-09-14 and turned the
+  Security gate's `cargo audit --deny warnings` red on every push; the only
+  path to `rustls` is `reqwest`, used for model downloads.
 - **Task 046: a cross-process guard test used a fixed sleep as its
   synchronisation primitive.** `separate_process_installer_recovery_rollback_and_cleanup_share_one_guard`
   (`crates/pipeline/workers/src/model_lifecycle.rs`) had its installer child
