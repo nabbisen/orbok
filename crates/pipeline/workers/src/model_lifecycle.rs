@@ -600,7 +600,8 @@ mod tests {
     use super::*;
     use orbok_models::ManagedGenerationState;
     use prost::Message as _;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
 
     fn setup() -> (tempfile::TempDir, Catalog, ManagedModelStore) {
         let temp = tempfile::tempdir().unwrap();
@@ -1565,17 +1566,48 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(ready.exists(), "installer child did not acquire the guard");
+        let ready_at = Instant::now();
 
-        let mut contenders = ["recovery", "rollback", "cleanup"].map(|action| {
-            lifecycle_child_command(&executable, &root, &catalog_path, action)
-                .spawn()
-                .unwrap()
-        });
+        // Task 046 §1: piped so a failure capture below can read what a
+        // contender that finished early actually did, rather than only
+        // that it finished.
+        let mut contenders: Vec<(&str, std::process::Child)> = ["recovery", "rollback", "cleanup"]
+            .map(|action| {
+                let child = lifecycle_child_command(&executable, &root, &catalog_path, action)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                (action, child)
+            })
+            .into();
         std::thread::sleep(Duration::from_millis(50));
-        for contender in &mut contenders {
-            assert!(
-                contender.try_wait().unwrap().is_none(),
-                "a lifecycle contender escaped the installer's exclusive guard"
+        for i in 0..contenders.len() {
+            if contenders[i].1.try_wait().unwrap().is_none() {
+                continue;
+            }
+            // Task 046 §1: capture before panicking, not instead of it --
+            // the elapsed time, the installer's own state, and the
+            // contender's actual exit status/output distinguish "it raced
+            // past the guard" from "it crashed at startup" (a wrong env
+            // var, a catalog-open failure), which `try_wait().is_some()`
+            // alone cannot.
+            let (role, child) = contenders.remove(i);
+            let elapsed = ready_at.elapsed();
+            let installer_state = installer.try_wait();
+            let output = child.wait_with_output().unwrap();
+            panic!(
+                "a lifecycle contender escaped the installer's exclusive guard\n\
+                 role: {role}\n\
+                 elapsed since installer ready: {elapsed:?}\n\
+                 installer still running: {}\n\
+                 contender exit status: {:?}\n\
+                 contender stdout: {}\n\
+                 contender stderr: {}",
+                matches!(installer_state, Ok(None)),
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
             );
         }
         assert!(
@@ -1585,7 +1617,7 @@ mod tests {
             "cleanup removed the promoted pre-registration generation"
         );
         assert!(installer.wait().unwrap().success());
-        for contender in &mut contenders {
+        for (_, contender) in &mut contenders {
             assert!(contender.wait().unwrap().success());
         }
 
