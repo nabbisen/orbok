@@ -24,6 +24,7 @@ jobs:
   fast:
     name: Fast gate (fmt + clippy + unit tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # RFC-062 §7/§9 open question 1: `check-migration-integrity.sh` below
       # needs `git describe --tags --abbrev=0` to find the last release
@@ -86,6 +87,7 @@ jobs:
   release:
     name: Release gate (full build + check + bench smoke)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     if: github.ref == 'refs/heads/main'
     needs: fast
     steps:
@@ -212,6 +214,7 @@ jobs:
   security:
     name: Security gate (audit + security tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       # Task 039: pinned -- see the `fast` job's comment above for the
@@ -260,6 +263,7 @@ jobs:
   msrv:
     name: MSRV gate (1.91)
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91
@@ -269,6 +273,7 @@ jobs:
   cross:
     name: Cross-platform smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 80
     strategy:
       # fail-fast: false lets every OS leg run to completion independently.
       # This is a platform CONFORMANCE matrix (RFC-019 §7): a failure on one

@@ -813,6 +813,19 @@ next release tag.
 
 ### Fixed
 
+- **Review 217 follow-ups: a missing snippet cap now fails in milliseconds,
+  and no CI job can hold a runner for six hours.** Task 045's byte-count test
+  read from `std::io::repeat`, so removing the 64 KiB cap made it *hang* —
+  and with no `timeout-minutes` anywhere in `ci.yml`, GitHub's 360-minute
+  default applied. The source is now a 1 MiB newline-free reader that errors
+  past its end; with the cap removed the test fails in 0.00 s at
+  `snippet.is_some()`, restored byte-identical. Every CI job now has a
+  timeout of roughly three times its measured duration (two runs,
+  2026-09-15): Fast 15 min (4 m 28 s), Release 45 min (15 m 40 s), Security
+  10 min (3 m 13 s), MSRV 6 min (1 m 56 s), Cross-platform 80 min (slowest leg
+  windows-latest, 26 m 40 s). RFC-059 §2b and its closure record now state
+  why a paused profile never trimming is safe: only Extract writes
+  `ExtractSegments`, and nothing extracts while paused.
 - **RFC-059 Slice 6: the extraction cache's 20,000-entry bound now runs, at
   scheduler idle.** The value was decided but, after the write-time cap broke
   indexing above it and "Clear extracted text" became an outright erase,

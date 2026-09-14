@@ -165,6 +165,12 @@ cannot evict an entry a job still needs; it runs once per transition to idle,
 not once per poll. Criterion 10 guards it; `HANDOFF-059-slice6` builds it. The
 cap's *value* remains open question 1.
 
+*Note (Review 217 §7.1):* a profile paused with jobs still pending never
+reaches idle, so it never trims. That is safe, not merely conservative: only
+the Extract job writes `ExtractSegments` (Chunk and Embedding only read it), and
+nothing extracts while indexing is paused, so a paused profile's cache cannot
+grow. The bound can lapse only by what was already written before the pause.
+
 **A file that goes missing and never returns** (Amendment 1 §2a.1's fifth
 case) is routed to an RFC-037 amendment as a retention rule; it is not this
 RFC's.

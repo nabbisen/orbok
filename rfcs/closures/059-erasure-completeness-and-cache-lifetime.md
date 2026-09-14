@@ -300,7 +300,13 @@ loop's second consecutive `tick() == None` as idle. It is not always: in
 in UserActive/LowImpact the embedding queue is skipped, so `None` can mean
 "deferred", not "drained". The implementation uses the criterion's own
 definition (nothing pending in memory or in `index_jobs`) instead, which is
-why the guard reads the catalog.
+why the guard reads the catalog. Ruled correct in Review 217 §2.
+
+→ paused behaviour, intended (Review 217 §7.1): a profile paused with jobs
+still pending never trims. That is safe: only the Extract job writes
+`ExtractSegments` (Chunk and Embedding only read it), and nothing extracts
+while indexing is paused, so a paused profile's cache cannot grow -- the
+bound can lapse only by what was already written before the pause.
 
 → what was run (trim half): `idle_loop_trims_extraction_cache_to_cap_once_per_transition`
 (`crates/app/src/scheduler_host/tests.rs`) -- seeds 5 entries with distinct

@@ -41,21 +41,41 @@ impl<R: Read> Read for Counting<R> {
     }
 }
 
+/// Newline-free `x` bytes up to `remaining`, then an error. With the 64 KiB
+/// cap in place the error is never reached; without it the read fails in
+/// milliseconds instead of hanging (Review 217 §3: an unbounded source made
+/// the missing-cap mutation hold a CI runner until the 360-minute default).
+struct Ceiling {
+    remaining: u64,
+}
+
+impl Read for Ceiling {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.remaining == 0 {
+            return Err(std::io::Error::other("read past the ceiling"));
+        }
+        let n = buf.len().min(self.remaining as usize);
+        buf[..n].fill(b'x');
+        self.remaining -= n as u64;
+        Ok(n)
+    }
+}
+
 /// A file with no newline byte must not be read in full before the 8-line /
 /// 400-char cap is applied -- `BufRead::lines()` would otherwise allocate
 /// one `String` covering the entire file to produce that single "line".
-/// Asserted by the actual byte count read from an *unbounded* source
-/// (`std::io::repeat`, which never ends and has no newline), not by timing:
-/// if the 64 KiB cap (`Read::take` in `load_snippet_from`) is missing, this
-/// call hangs rather than returning slowly, which is the correct failure
-/// shape for "does not materialize the whole file" and needs no deadline to
-/// detect.
+/// Asserted by the actual byte count read, not by timing, from a 1 MiB
+/// newline-free source (sixteen times the cap) that errors past its end: if
+/// the 64 KiB cap (`Read::take` in `load_snippet_from`) is missing, the
+/// read hits that error and the assertions below fail.
 #[test]
 fn no_newline_file_does_not_materialize_the_whole_file() {
     let rec = record(1, 1, "exact");
     let count = std::rc::Rc::new(std::cell::Cell::new(0u64));
     let source = Counting {
-        inner: std::io::repeat(b'x'),
+        inner: Ceiling {
+            remaining: 1024 * 1024,
+        },
         count: count.clone(),
     };
 
