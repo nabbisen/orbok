@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 057\
 **Title:** Live Resource Signals for the Indexing Scheduler\
-**Status:** Implemented (main at `1d2b234`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** indexing responsiveness\
 **Date:** 2026-08-13\
 **Accepted:** 2026-08-13 by the project owner\

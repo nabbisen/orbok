@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 055\
-**Lifecycle stage:** Implemented with RFC-055 on `main` at `9da7a4c`; release pending\
+**Lifecycle stage:** Implemented with RFC-055 in 0.25.0\
 **Primary owner:** workspace manifests; `crates/app` settings and runtime context\
 **RFC:** [`../done/055-settings-path-fail-closed.md`](../done/055-settings-path-fail-closed.md)
 

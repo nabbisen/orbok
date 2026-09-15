@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 061\
-**Lifecycle stage:** Accepted 2026-09-02; Amendment 1 (measured baseline) 2026-09-03; criterion 9 re-drafted 2026-09-04. Unstarted.\
+**Lifecycle stage:** Slices landed in 0.25.0; RFC-061 not yet closed (no closure record).\
 **Primary owner:** `crates/app/src/main.rs`, `.../bootstrap/*`, `.../scheduler_host.rs`, `crates/data/db/src/catalog.rs`\
 **RFC:** [`../accepted/061-catalog-access-and-application-boundary.md`](../accepted/061-catalog-access-and-application-boundary.md)
 

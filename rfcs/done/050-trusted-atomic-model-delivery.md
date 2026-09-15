@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 050\
 **Title:** Trusted Atomic Model Delivery\
-**Status:** Implemented (main at `902f33a`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** v1.0.0 security stabilization\
 **Date:** 2026-07-14\
 **Last revised:** 2026-07-16\

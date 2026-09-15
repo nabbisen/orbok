@@ -49,7 +49,7 @@ may start" a checked state rather than an implicit convention.
 | 034 | [Accessibility Conformance (WCAG 2.1 AA)](done/034-accessibility-conformance.md) | v0.13.0 |
 | 035 | [Inclusive Design](done/035-inclusive-design.md) | v0.14.0 |
 | 036 | [Resource-Aware Indexing Scheduler and Backpressure](done/036-resource-aware-indexing-scheduler-and-backpressure.md) | v0.17.0 |
-| 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | main at `d3f8b93`; release pending — **first RFC closed under RFC-063**, [closure record](closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) |
+| 037 | [Source Lifecycle, Refresh Policy and Change Detection UX](done/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) | 0.25.0 — **first RFC closed under RFC-063**, [closure record](closures/037-source-lifecycle-refresh-policy-and-change-detection-ux.md) |
 | 039 | [Privacy Modes and Local Data Visibility](done/039-privacy-modes-and-local-data-visibility.md) | v0.19.0 |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](done/040-safe-diagnostics-and-redacted-support-bundle.md) | v0.19.0 |
 | 043 | [Model Download Readiness and Bounded Concurrency](done/043-model-download-readiness-and-concurrency.md) | v0.19.0 |
@@ -57,16 +57,16 @@ may start" a checked state rather than an implicit convention.
 | 045 | [Search-in-Folder Flow and Friendly Folder Management](done/045-search-in-folder-flow-and-friendly-folder-management.md) | v0.20.0 |
 | 042 | [Search History and Reopen Recent Searches](done/042-search-history-and-reopen.md) | v0.21.0 |
 | 046 | [Declared Candle Embedding Backend — Status and Options](done/046-candle-embedding-backend-status.md) | v0.22.0 |
-| 049 | [Portable Runtime Data Isolation](done/049-portable-runtime-data-isolation.md) | main at `2fba6a9`; release pending |
-| 050 | [Trusted Atomic Model Delivery](done/050-trusted-atomic-model-delivery.md) | main at `902f33a`; release pending |
-| 053 | [rusqlite Line and Rust MSRV Policy](done/053-rusqlite-line-and-msrv-policy.md) | main at `6342cde`; release pending |
-| 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | main at `56d63a6`; release pending |
-| 054 | [Runtime Data Override Profile Scope](done/054-runtime-data-override-profile-scope.md) | main at `6bcedd9`; release pending |
-| 055 | [Fail-Closed Settings Path Resolution](done/055-settings-path-fail-closed.md) | main at `9da7a4c`; release pending |
-| 052 | [UI Localization and Design-Gate Compliance](done/052-ui-localization-and-design-gate-compliance.md) | main at `2204caa`; release pending |
-| 056 | [Hosting the Indexing Scheduler in the Application](done/056-hosting-the-indexing-scheduler.md) | main at `190a5a7`; release pending |
-| 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | main at `1d2b234`; release pending — §7 manual battery criterion deferred to Owner Task 003 Part C |
-| 059 | [Erasure Completeness and Cache Lifetime](done/059-erasure-completeness-and-cache-lifetime.md) | main; release pending — criteria 1–10 evidenced, [closure record](closures/059-erasure-completeness-and-cache-lifetime.md) |
+| 049 | [Portable Runtime Data Isolation](done/049-portable-runtime-data-isolation.md) | 0.25.0 |
+| 050 | [Trusted Atomic Model Delivery](done/050-trusted-atomic-model-delivery.md) | 0.25.0 |
+| 053 | [rusqlite Line and Rust MSRV Policy](done/053-rusqlite-line-and-msrv-policy.md) | 0.25.0 |
+| 051 | [Reproducible Reviewed-Source Packaging](done/051-reproducible-reviewed-source-packaging.md) | 0.25.0 |
+| 054 | [Runtime Data Override Profile Scope](done/054-runtime-data-override-profile-scope.md) | 0.25.0 |
+| 055 | [Fail-Closed Settings Path Resolution](done/055-settings-path-fail-closed.md) | 0.25.0 |
+| 052 | [UI Localization and Design-Gate Compliance](done/052-ui-localization-and-design-gate-compliance.md) | 0.25.0 |
+| 056 | [Hosting the Indexing Scheduler in the Application](done/056-hosting-the-indexing-scheduler.md) | 0.25.0 |
+| 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | 0.25.0 — §7 manual battery criterion deferred to Owner Task 003 Part C |
+| 059 | [Erasure Completeness and Cache Lifetime](done/059-erasure-completeness-and-cache-lifetime.md) | 0.25.0 — criteria 1–10 evidenced, [closure record](closures/059-erasure-completeness-and-cache-lifetime.md) |
 
 ## Accepted
 

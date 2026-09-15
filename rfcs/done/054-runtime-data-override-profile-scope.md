@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 054\
 **Title:** Runtime Data Override Profile Scope\
-**Status:** Implemented (main at `6bcedd9`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-04\
 **Accepted:** 2026-08-04 by the project owner\

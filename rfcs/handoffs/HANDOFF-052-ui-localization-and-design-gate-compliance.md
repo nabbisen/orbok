@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 052\
-**Lifecycle stage:** Implemented with RFC-052 on `main` at `2204caa`; release pending\
+**Lifecycle stage:** Implemented with RFC-052 in 0.25.0\
 **Primary owners:** `orbok-ui`, platform UI integration, CI\
 **RFC:** [`../done/052-ui-localization-and-design-gate-compliance.md`](../done/052-ui-localization-and-design-gate-compliance.md)
 

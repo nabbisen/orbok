@@ -313,10 +313,13 @@ id, name, version, and dimension.
       check each entry against the tag being cut — an entry exists because a
       migration file changed relative to the *previous* release tag; once
       the new tag ships that changed text as the as-released baseline, the
-      exemption is no longer needed. Remove any such entry **in the release
-      commit itself** (the mechanism only ever shrinks going forward — see
-      the allowlist file's own header — so this is the one point where a
-      human, not the gate, decides an entry has served its purpose)
+      exemption is no longer needed. Remove any such entry **in the first
+      commit after the release tag**, not in the release commit: until the
+      tag exists, `git describe` still names the previous release, the file
+      still differs from it, and removing the entry turns the release commit
+      red (the mechanism only ever shrinks going forward — see the allowlist
+      file's own header — so this is the one point where a human, not the
+      gate, decides an entry has served its purpose)
 
 ---
 

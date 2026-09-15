@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 053\
-**Lifecycle stage:** Implemented with RFC-053 on `main` at `6342cde`; release pending\
+**Lifecycle stage:** Implemented with RFC-053 in 0.25.0\
 **Primary owner:** workspace manifests; `orbok-db` / `orbok-cache` / `orbok-workers` / `orbok-search` build surface\
 **RFC:** [`../done/053-rusqlite-line-and-msrv-policy.md`](../done/053-rusqlite-line-and-msrv-policy.md)
 

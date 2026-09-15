@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 059\
 **Title:** Erasure Completeness and Cache Lifetime\
-**Status:** Implemented (main; release pending)\
+**Status:** Implemented (0.25.0)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** privacy correctness\
 **Date:** 2026-09-01\

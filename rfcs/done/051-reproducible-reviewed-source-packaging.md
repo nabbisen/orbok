@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 051\
 **Title:** Reproducible Reviewed-Source Packaging\
-**Status:** Implemented (main at `56d63a6`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** v1.0.0 release provenance\
 **Date:** 2026-07-14\
 **Related RFCs:** RFC-017 Packaging and Distribution; RFC-019 Test Matrix and Release Readiness\

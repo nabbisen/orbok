@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 055\
 **Title:** Fail-Closed Settings Path Resolution\
-**Status:** Implemented (main at `9da7a4c`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** v1.0.0 stabilization\
 **Date:** 2026-08-04\
 **Accepted:** 2026-08-04 by the project owner\

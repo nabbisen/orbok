@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 052\
 **Title:** UI Localization and Design-Gate Compliance\
-**Status:** Implemented (main at `2204caa`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** v1.0.0 UI compliance\
 **Date:** 2026-07-14\
 **Accepted:** 2026-08-04 by the project owner\

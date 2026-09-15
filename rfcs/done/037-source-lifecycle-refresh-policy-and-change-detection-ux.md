@@ -4,7 +4,7 @@
 **Former project name:** orbit  
 **RFC:** 037  
 **Title:** Source Lifecycle, Refresh Policy, and Change Detection UX  
-**Status:** Implemented (main at `d3f8b93`; release pending)
+**Status:** Implemented (0.25.0)
 **Target milestone:** Source management / refresh stability  
 **Date:** 2026-06-18  
 

@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 062\
-**Lifecycle stage:** Accepted 2026-09-02. Unstarted. §9 open question 2's sweep is done — §1 below is its result.\
+**Lifecycle stage:** Slices landed in 0.25.0; RFC-062 not yet closed (no closure record).\
 **Primary owner:** `crates/data/db/migrations/`, `.../src/catalog.rs`, `scripts/`, `.github/workflows/ci.yml`\
 **RFC:** [`../accepted/062-migration-integrity-and-schema-guards.md`](../accepted/062-migration-integrity-and-schema-guards.md)
 

@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 050\
-**Lifecycle stage:** Implemented with RFC-050 on `main` at `902f33a`; release pending\
+**Lifecycle stage:** Implemented with RFC-050 in 0.25.0\
 **Primary owners:** model registry/readiness, app download worker, security\
 **Last revised:** 2026-07-16\
 **RFC:** [`../done/050-trusted-atomic-model-delivery.md`](../done/050-trusted-atomic-model-delivery.md)

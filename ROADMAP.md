@@ -1,17 +1,12 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-09-01)
+## Current Status (2026-09-15)
 
-Shipped: **v0.24.0**. Latest tagged release: **0.24.0**. RFCs
-**000–046 are indexed as implemented** (see
-[`rfcs/README.md`](rfcs/README.md)) — **but nine of those entries make a
-false claim about the product**; see the Forward Plan below and RFC-063. RFC-049 (portable runtime data
-isolation), RFC-050 (trusted atomic model delivery), RFC-051
-(reproducible reviewed-source packaging), and RFC-053 (rusqlite line and
-Rust MSRV policy) are also now implemented on `main`,
-pending the next release tag — see
-[`rfcs/README.md`](rfcs/README.md) for their `Status` fields. The
-design-system program (RFC-032–035: design tokens, component primitives,
+Shipped: **0.25.0**. Latest tagged release: **0.25.0**. Each RFC's state is
+indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
+false claim about the product were dispositioned under RFC-063 on
+2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
+unmet criterion. The design-system program (RFC-032–035: design tokens, component primitives,
 WCAG 2.1 AA accessibility, inclusive design) completed across
 v0.12.0–v0.14.0; the stabilization and search-foundation programs landed
 across v0.16.0–v0.24.0:
@@ -27,12 +22,14 @@ across v0.16.0–v0.24.0:
   keyword-only benchmark p99 stabilization.
 - v0.24.0 — v1.0.0 evidence workflow, CI/release-gate alignment, real-model
   benchmark guards, model evidence, and timing diagnostics.
-- unreleased (`main`) — RFC-050 (trusted atomic model delivery), RFC-049
-  (portable runtime data isolation), RFC-051 (reproducible reviewed-source
-  packaging), and RFC-053 (rusqlite line and Rust MSRV policy); release
-  pending.
+- 0.25.0 — PDF text extraction and search by meaning fixed (RFC-060
+  amendments), Reset and Remove folder erase what they indexed (RFC-059), a
+  repaired released migration with an integrity gate (RFC-062), one catalog
+  and visible failures (RFC-061), duplicate folders refused (Task 047); eleven
+  RFCs recorded as implemented, including RFC-049, RFC-050, RFC-051 and
+  RFC-053.
 
-Stack: snora 0.39 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.49 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 

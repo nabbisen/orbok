@@ -9,9 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-RFC-050, RFC-049, RFC-051, and RFC-053 have landed on `main`; all four are
-recorded as `Implemented` in [`rfcs/README.md`](rfcs/README.md) pending the
-next release tag.
+## [0.25.0] — 2026-09-15
+
+This release closes:
+
+- **PDF text extraction returned nothing** on essentially every real PDF
+  (RFC-060 Amendment 1).
+- **Search by meaning never returned a result.** Hybrid search looked vectors
+  up under a fixed model name that never matched the stored model id, and
+  silently fell back to keyword-only (RFC-060 Amendment 2).
+- **Reset left the keyword index and extracted text behind, and Remove folder
+  left that folder's index.** Both now erase them; extracted text is never
+  served after 90 days, and is trimmed to 20,000 entries whenever indexing is
+  idle (RFC-059).
+- **A released migration had been edited in place.** It is restored, the
+  repair ships forward as migration 0007, and a CI gate now fails on any edit
+  to a released migration (RFC-062).
+- **"Add folder" could register the same folder twice** (Task 047).
+
+Eleven RFCs are recorded as implemented in this release; see
+[`rfcs/README.md`](rfcs/README.md).
 
 ### Added
 
@@ -813,6 +830,88 @@ next release tag.
 
 ### Fixed
 
+- **RFC-062: an edited released migration repaired, catalogs from a newer build
+  refused, and a gate against both** (`125ba7e`, `b85faa9`, `cd0d445`).
+  `0001_baseline.sql` had been edited in place after release: 0.17.0 widened
+  `index_jobs`'s status CHECK there with no migration, so a catalog created by
+  0.16.0 or earlier rejected `status = 'paused'` and turning background
+  indexing off silently paused nothing. `0001` is restored to its released
+  text, and **migration 0007 rebuilds `index_jobs` with the full status CHECK.
+  It runs once, when a 0.24.0 catalog is first opened by 0.25.0**; on a
+  catalog that already had the wide CHECK it changes no behaviour. A catalog
+  whose recorded schema version is newer than the build opening it is now
+  refused on open with `SchemaVersionUnsupported`, naming both versions, in
+  the GUI and in `--check`. `scripts/check-migration-integrity.sh` fails CI
+  when a migration file present at the last release tag has changed, unless
+  it is named in a shrink-only allowlist (today `0003_scheduler.sql`,
+  comment-only, and `0001_baseline.sql`, whose restored text differs from
+  0.24.0 until 0.25.0 is tagged). Both shrink-only allowlist gates — this one
+  and the RFC lifecycle gate's — now compare a commit against its parent;
+  before, CI compared a commit with itself and never caught a pushed
+  allowlist growth.
+- **RFC-061: one catalog for the process, failures that show, and a window
+  that no longer freezes** (`d1d5310`, `bb423aa`, `894e990`, `4fd24a1`).
+  - *One catalog handle.* The update loop opened a new catalog connection at
+    14 message sites, 13 of which silently ignored a failed open, and each
+    re-ran the migration probe. It now opens once, before the event loop,
+    and shares it. `busy_timeout` is set to 5 s explicitly (rusqlite already
+    defaulted to 5 s; it is now this project's own setting).
+  - *Errors returned, not swallowed.* The five bootstrap modules return
+    `OrbokResult` instead of boxed errors.
+  - *Failures show.* Scheduler catalog writes that fail are logged, and a
+    failed job-completion write no longer drops the job — the work used to be
+    redone instead of the write retried. A failed settings write, Reset,
+    Remove folder, storage handle, or background preparation start now shows
+    a notice (five new notices) instead of nothing. Five `.expect` panics
+    became error paths, and a panic hook logs any remaining panic with its
+    location.
+  - *One embedding model per process.* Search loaded the model from disk on
+    every search; it is now resolved once at startup. Consolidating onto
+    that path exposed the vector lookup-key bug described in the RFC-060
+    Amendment 2 entry, under which search by meaning never returned a
+    result.
+  - *The window stays responsive.* The add-folder picker and the three
+    search paths ran on the GUI thread; they now run as background tasks,
+    and "Searching…" appears before the search runs, not after.
+- **RFC-052: UI copy that bypassed the translation catalog now goes through
+  it, and two gates keep it there** (`ee31b33`, `034dada`, `f544661`,
+  `8585fc1`, `65c53cb`, `9c629be`, `fd4e039`, `0d2b1ad`, `c916f11`,
+  `6d0eed6`, `f98b15c`). Search-result match badges were rendered as raw
+  English enum names, and their colour was chosen by matching that English
+  text; they are now carried as a typed value to render time, labelled from
+  the catalog and toned by variant. The remaining hard-coded strings are
+  catalogued in English and Japanese: "Searching…", the snippet-unavailable
+  fallback, the Sources path placeholder and recursive-scan hint,
+  "Indexing…", both native folder-dialog titles, and the diagnostics bundle
+  preview's twelve labels. The add-folder dialog's title also read "Select
+  folder to search", describing the other dialog; it now reads "Select a
+  folder to add". Ten ad-hoc `"label: value"` concatenations share one
+  formatter. `ALL_KEYS` is generated from the same list as `MessageKey`,
+  after the hand-kept copy was found covering 257 of 273 keys. The i18n
+  literal gate now discovers every tracked file under its designated
+  directories, so a new unclassified file fails it by name, and the design
+  token gate passes with zero findings.
+- **Dependency advisories: one fixed, one accepted with a removal condition.**
+  `event-listener` 5.4.1 → 5.4.2 for RUSTSEC-2026-0221 (`!Send` tags could
+  cross a thread boundary; reached only transitively; `643ee61`).
+  RUSTSEC-2026-0253 (`lru` 0.16.4, use-after-free in `LruCache::pop()`) is
+  waived in `.cargo/audit.toml` (`1b8c503`): it reaches orbok through iced's
+  glyph cache, which never calls `pop()` and uses a `Copy` key that cannot
+  panic on drop, and it cannot be updated locally because the glyph-cache
+  crate requires `lru` 0.16. The waiver is removed when iced ships a glyph
+  cache on `lru` 0.18.2 or later.
+- **"Don't follow symlinks" was not enforced when a path was reached through
+  a symlinked parent folder** (`62c5bcb`), which is macOS's default for
+  `/var`. A symlink inside an approved folder could then be followed despite
+  the setting. Paths outside approved folders were always rejected; this was
+  the user's preference, not the boundary.
+- **The RFC lifecycle gate checked the wrong copy of files and missed links
+  from outside `rfcs/`** (`d0e7d65`, `ccea784`). It read RFC status from the
+  working tree instead of the commit being made, so a commit that moved an
+  RFC to `done/` still marked Proposed passed locally; it now reads the
+  index. It also checked links only within `rfcs/`, so a broken link into
+  `rfcs/` from CHANGELOG, README or the docs shipped unnoticed; those are now
+  checked too. Both changes are self-tested.
 - **Task 047: "Add folder" could register the same folder twice.** The real
   defect: nothing refused a duplicate. `bootstrap::add_source` canonicalised
   the path and inserted, and `sources.canonical_path` has no unique
@@ -830,7 +929,10 @@ next release tag.
   the same folder again (also written with a trailing `/` and as `dir/.`)
   registered a second source; without setting the flag, the picker test
   failed. No migration: a unique index would fail to apply on a catalog this
-  bug already duplicated.
+  bug already duplicated. A path differing only in letter case cannot reach
+  `add_source` today, because both entry points take their path from the OS
+  folder dialog; a case-variant test becomes necessary only if an entry point
+  that accepts a typed path is added (Review 220 §3).
 - **Review 217 follow-ups: a missing snippet cap now fails in milliseconds,
   and no CI job can hold a runner for six hours.** Task 045's byte-count test
   read from `std::io::repeat`, so removing the 64 KiB cap made it *hang* —

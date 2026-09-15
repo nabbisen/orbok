@@ -1,6 +1,6 @@
 # Appendix B — Default Model Trust Root
 
-**Status:** Implemented normative companion to RFC-050 on `main` at `902f33a`; release pending
+**Status:** Implemented normative companion to RFC-050 in 0.25.0
 
 **Evidence captured:** 2026-07-14
 

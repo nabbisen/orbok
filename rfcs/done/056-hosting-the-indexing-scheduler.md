@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 056\
 **Title:** Hosting the Indexing Scheduler in the Application\
-**Status:** Implemented (main at `190a5a7`; release pending)\
+**Status:** Implemented (0.25.0)\
 **Target milestone:** indexing pipeline conformance\
 **Date:** 2026-08-11\
 **Accepted:** 2026-08-11 by the project owner\

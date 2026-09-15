@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 054\
-**Lifecycle stage:** Implemented with RFC-054 on `main` at `6bcedd9`; release pending\
+**Lifecycle stage:** Implemented with RFC-054 in 0.25.0\
 **Primary owner:** `crates/app` runtime context; user and maintainer docs; CI\
 **RFC:** [`../done/054-runtime-data-override-profile-scope.md`](../done/054-runtime-data-override-profile-scope.md)
 

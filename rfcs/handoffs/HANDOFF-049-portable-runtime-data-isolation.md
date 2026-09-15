@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 049\
-**Lifecycle stage:** Implemented with RFC-049 on `main` at `2fba6a9`; release pending\
+**Lifecycle stage:** Implemented with RFC-049 in 0.25.0\
 **Primary owner:** `orbok-app` bootstrap/runtime wiring\
 **RFC:** [`../done/049-portable-runtime-data-isolation.md`](../done/049-portable-runtime-data-isolation.md)
 

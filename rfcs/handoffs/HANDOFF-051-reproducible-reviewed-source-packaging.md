@@ -2,7 +2,7 @@
 
 **Project:** orbok\
 **RFC:** 051\
-**Lifecycle stage:** Implemented with RFC-051 on `main` at `56d63a6`; release pending\
+**Lifecycle stage:** Implemented with RFC-051 in 0.25.0\
 **Primary owners:** release automation and CI\
 **RFC:** [`../done/051-reproducible-reviewed-source-packaging.md`](../done/051-reproducible-reviewed-source-packaging.md)
 
