@@ -20,6 +20,9 @@ pub enum UserNotice {
     SensitiveSourceAdded,
     // ── Confirmations ─────────────────────────────────────────────────
     FolderAdded,
+    /// "Add folder" picked a folder that is already registered (Task 047);
+    /// nothing was added.
+    FolderAlreadyAdded,
     SearchReady,
     PreviewsCleared,
     /// RFC-059 §8 Slice 4 (Review 214 §4 Q2): "Clear old search results"
@@ -105,7 +108,9 @@ impl UserNotice {
             | Self::ExtractedTextCleared
             | Self::ReplacedDataRemoved
             | Self::DiagnosticsFileCreated => Tone::Info,
-            Self::RecentSearchesCleared | Self::RecentSearchFilterDropped => Tone::Info,
+            Self::RecentSearchesCleared
+            | Self::RecentSearchFilterDropped
+            | Self::FolderAlreadyAdded => Tone::Info,
         }
     }
 
@@ -117,6 +122,7 @@ impl UserNotice {
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingTitle,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceTitle,
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
+            Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
             Self::SearchReady => MessageKey::NoticeSearchReadyTitle,
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedTitle,
             Self::SearchCacheCleared => MessageKey::NoticeSearchCacheClearedTitle,
@@ -143,6 +149,7 @@ impl UserNotice {
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingBody,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
+            Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
             Self::SearchReady => MessageKey::NoticeSearchReadyBody,
             Self::PreviewsCleared
             | Self::SearchCacheCleared
@@ -172,6 +179,7 @@ impl UserNotice {
             Self::FilesMovedOrMissing => MessageKey::NoticeActionChooseFolder,
             Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
+            | Self::FolderAlreadyAdded
             | Self::SearchReady
             | Self::PreviewsCleared
             | Self::SearchCacheCleared

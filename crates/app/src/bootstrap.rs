@@ -44,9 +44,11 @@ pub use preferences::{
 #[cfg(test)]
 pub(crate) use preferences::{persist_model_dir_with, persist_theme_with};
 pub(crate) use search::run_search;
+#[cfg(test)]
+pub(crate) use sources::add_source_expect_added;
 pub use sources::{
-    add_source, check_and_refresh_source, find_source_by_canonical_path, remove_source,
-    scan_and_index_source,
+    AddSourceOutcome, add_source, check_and_refresh_source, find_source_by_canonical_path,
+    remove_source, scan_and_index_source,
 };
 // `get_sources` re-exported since Task 035: `Message::SourceRefreshRequested`'s
 // handler in `main.rs` needs to re-fetch the sources list after a refresh

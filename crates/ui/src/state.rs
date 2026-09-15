@@ -435,6 +435,8 @@ pub struct AppState {
     pub model_flow_ids: ModelFlowIdentitySequence,
     /// Text input for the "add source" path field.
     pub source_path_input: String,
+    /// Task 047: an add-folder dialog is open, so another must not be opened.
+    pub add_source_picker_in_progress: bool,
     /// When false (default), hide technical detail. Mature users can toggle on.
     pub show_advanced: bool,
     /// Active user-facing notice (problem or confirmation), or `None`.
@@ -486,6 +488,7 @@ impl Default for AppState {
             model_download_consent: None,
             model_flow_ids: ModelFlowIdentitySequence::default(),
             source_path_input: String::new(),
+            add_source_picker_in_progress: false,
             show_advanced: false,
             notice: None,
             confirm_reset: false,
@@ -955,9 +958,12 @@ impl AppState {
             | Message::DownloadFailed(_)
             | Message::CancelDownloadInProgress => {} // handled in model_flow.rs
             Message::SourcePathChanged(p) => self.source_path_input = p.clone(),
-            Message::RequestAddSource => {} // handled in orbok
-            Message::AddSourceFolderPicked(_) => {} // handled in orbok
-            Message::AddSourceFolderPickerCancelled => {} // neutral, no state to clear
+            // Task 047: orbok opens the dialog and adds the folder; its arms
+            // return before this reducer runs, so they forward these three
+            // messages here explicitly.
+            Message::RequestAddSource => self.add_source_picker_in_progress = true,
+            Message::AddSourceFolderPicked(_) => self.add_source_picker_in_progress = false,
+            Message::AddSourceFolderPickerCancelled => self.add_source_picker_in_progress = false,
             Message::SourceAdded(card) => {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();

@@ -197,7 +197,8 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 10);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -260,7 +261,8 @@ async fn event_buffer_stays_bounded_regardless_of_work_done() {
     let file_count = 40;
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, file_count);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -329,7 +331,8 @@ async fn scan_and_index_source_returns_control_in_under_two_seconds() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 400);
-    let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
 
     let start = Instant::now();
     bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
@@ -383,7 +386,8 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 5);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -459,7 +463,8 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 5);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -522,7 +527,8 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 5);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     // Off: the queued Scan job is paused, nothing indexes.
@@ -601,7 +607,8 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 1);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -700,7 +707,8 @@ async fn low_impact_survives_a_user_activity_interleaving_through_the_app() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 1);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -801,7 +809,8 @@ async fn on_battery_does_not_defer_embedding_when_the_setting_is_disabled() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 1);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -869,7 +878,7 @@ async fn startup_rescan_extracts_and_chunks_on_battery_but_defers_embedding() {
     seed_markdown_docs(&source_dir, 1);
     // Registered, but never scanned by this test directly -- the only scan
     // this file ever gets is the one `load_initial_state` triggers below.
-    bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
 
     let model_id = register_mock_model(&ui_catalog, "mock");
     let embedding_parts = Some(EmbeddingWorkerParts::for_test(
@@ -980,7 +989,8 @@ async fn user_active_signal_does_not_override_paused() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 3);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -1053,7 +1063,8 @@ async fn user_active_does_not_resume_paused_with_work_enqueued_after_pause() {
     // `Paused` for any reason.
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 3);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     for _ in 0..10 {
@@ -1085,7 +1096,8 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 2);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -1153,7 +1165,8 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 3);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -1236,7 +1249,8 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 6);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     // Simulate a crash mid-job: force one queued job to `running`, as if
@@ -1604,7 +1618,7 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
     let doomed_dir = temp.path().join("doomed");
     seed_markdown_docs(&doomed_dir, 50);
     let (doomed_card, _) =
-        bootstrap::add_source(&ui_catalog, &doomed_dir.to_string_lossy()).unwrap();
+        bootstrap::add_source_expect_added(&ui_catalog, &doomed_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &doomed_card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
@@ -1642,7 +1656,7 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
     let survivor_dir = temp.path().join("survivor");
     seed_markdown_docs(&survivor_dir, 3);
     let (survivor_card, _) =
-        bootstrap::add_source(&ui_catalog, &survivor_dir.to_string_lossy()).unwrap();
+        bootstrap::add_source_expect_added(&ui_catalog, &survivor_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &survivor_card.source_id).unwrap();
 
     wait_until(
@@ -1710,7 +1724,8 @@ async fn background_indexing_baseline_with_no_concurrent_access() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 300);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let start = Instant::now();
@@ -1758,7 +1773,8 @@ async fn search_latency_while_background_indexing_is_running() {
 
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, 300);
-    let (card, _) = bootstrap::add_source(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();

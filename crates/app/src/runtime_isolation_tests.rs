@@ -435,7 +435,7 @@ fn exercise_later_profile_operations_with<P: orbok::runtime_context::RuntimePath
     storage.ensure_support_dir(RuntimePathKind::Temporary)?;
     let catalog = storage.open_catalog()?;
     let cache = storage.cache()?;
-    let (source, _) = bootstrap::add_source(&catalog, &source_path.to_string_lossy())?;
+    let (source, _) = bootstrap::add_source_expect_added(&catalog, &source_path.to_string_lossy())?;
     // RFC-061 §6 Slice 4: `run_search` no longer resolves its own model (a
     // caller-supplied `Option<&EmbeddingWorkerParts>` replaces the
     // `context`/`probe`-driven resolution it used to do internally), so

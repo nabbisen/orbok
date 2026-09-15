@@ -111,6 +111,29 @@ impl<'a> SourceRepository<'a> {
         }
     }
 
+    /// The non-removed source registered at `canonical_path`, newest first if
+    /// a catalog already holds more than one (Task 047: nothing prevented
+    /// duplicates before, and no unique constraint exists).
+    pub fn find_by_canonical_path(
+        &self,
+        canonical_path: &str,
+    ) -> OrbokResult<Option<SourceRecord>> {
+        let conn = self.catalog.lock();
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT {COLUMNS} FROM sources WHERE canonical_path = ?1 \
+                 AND status != 'removed' ORDER BY created_at DESC LIMIT 1"
+            ))
+            .map_err(db_err)?;
+        let mut rows = stmt
+            .query_map(params![canonical_path], row_to_record)
+            .map_err(db_err)?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(db_err)??)),
+            None => Ok(None),
+        }
+    }
+
     /// All sources except Removed, newest first.
     pub fn list(&self) -> OrbokResult<Vec<SourceRecord>> {
         self.query_records(&format!(

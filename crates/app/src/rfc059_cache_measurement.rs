@@ -41,7 +41,8 @@ async fn measure_extraction_cache_usage_against_the_rfcs_corpus() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
     let catalog = crate::bootstrap::open_catalog(&context).unwrap();
-    let (card, _) = crate::bootstrap::add_source(&catalog, &corpus.to_string_lossy()).unwrap();
+    let (card, _) =
+        crate::bootstrap::add_source_expect_added(&catalog, &corpus.to_string_lossy()).unwrap();
     crate::bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
 
     // Drain the hosted scheduler exactly the way the running app does --

@@ -226,7 +226,8 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
     // First launch.
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         drop(catalog);
         drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
@@ -284,7 +285,8 @@ async fn manual_refresh_picks_up_a_file_added_while_running() {
 
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         card.source_id
     };
@@ -339,7 +341,8 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         card.source_id
     };
@@ -430,7 +433,8 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
     }
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
@@ -483,7 +487,8 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
     }
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
@@ -550,7 +555,8 @@ async fn a_paused_source_contributes_no_search_results() {
 
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         card.source_id
     };
@@ -600,7 +606,8 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
 
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         card.source_id
     };
@@ -665,7 +672,8 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
 
     let source_id = {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         card.source_id
     };
@@ -750,7 +758,8 @@ async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
     }
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
@@ -854,7 +863,8 @@ async fn two_identical_searches_return_identical_orders() {
     let settings = bootstrap::load_runtime_settings(&context).unwrap();
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let (card, _) = bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
         // The hosted scheduler needs its own resolved model to actually run
         // `GenerateEmbedding` jobs against (RFC-008 §15's `model_missing`

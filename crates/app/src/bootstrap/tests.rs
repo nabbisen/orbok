@@ -8,3 +8,5 @@ mod managed_resolution;
 mod startup_locale;
 #[cfg(test)]
 mod task034_health_query;
+#[cfg(test)]
+mod task047_duplicate_source;

@@ -5,12 +5,22 @@ use orbok_db::Catalog;
 
 // ── Source management ─────────────────────────────────────────────────
 
-/// Add a folder or file as a new searchable source.
-/// Returns a populated `SourceCard` for immediate display in the UI.
-pub fn add_source(
-    catalog: &Catalog,
-    raw_path: &str,
-) -> OrbokResult<(orbok_ui::state::SourceCard, Option<&'static str>)> {
+/// What [`add_source`] did with a path.
+#[derive(Debug)]
+pub enum AddSourceOutcome {
+    Added {
+        card: orbok_ui::state::SourceCard,
+        sensitive: Option<&'static str>,
+    },
+    /// The canonical path is already registered (RFC-045 §19.3, Task 047):
+    /// nothing was inserted, scanned or warned about. `card` is the existing
+    /// source.
+    AlreadyRegistered { card: orbok_ui::state::SourceCard },
+}
+
+/// Add a folder or file as a new searchable source, unless its canonical
+/// path is already registered.
+pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOutcome> {
     use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
     use orbok_db::repo::{NewSource, SourceRepository};
     use std::path::Path;
@@ -38,6 +48,12 @@ pub fn add_source(
         .map_err(|e| OrbokError::PathCanonicalization(format!("cannot access '{expanded}': {e}")))?
         .to_string_lossy()
         .to_string();
+
+    if let Some(existing) = SourceRepository::new(catalog).find_by_canonical_path(&canonical)? {
+        return Ok(AddSourceOutcome::AlreadyRegistered {
+            card: source_card(catalog, existing),
+        });
+    }
 
     let source_type = if Path::new(&canonical).is_dir() {
         SourceType::Directory
@@ -69,8 +85,8 @@ pub fn add_source(
         tracing::warn!(path = %canonical, warning = w, "sensitive source added");
     }
 
-    Ok((
-        orbok_ui::state::SourceCard {
+    Ok(AddSourceOutcome::Added {
+        card: orbok_ui::state::SourceCard {
             display_name,
             display_path: canonical,
             indexed: 0,
@@ -80,7 +96,23 @@ pub fn add_source(
             source_id: src.source_id.as_str().to_string(),
         },
         sensitive,
-    ))
+    })
+}
+
+/// Test call sites that need a fresh source: panics if the path was already
+/// registered, so no test silently accepts either outcome.
+#[cfg(test)]
+pub(crate) fn add_source_expect_added(
+    catalog: &Catalog,
+    raw_path: &str,
+) -> OrbokResult<(orbok_ui::state::SourceCard, Option<&'static str>)> {
+    match add_source(catalog, raw_path)? {
+        AddSourceOutcome::Added { card, sensitive } => Ok((card, sensitive)),
+        AddSourceOutcome::AlreadyRegistered { card } => panic!(
+            "expected a new source, but {} is already registered as {}",
+            card.display_path, card.source_id
+        ),
+    }
 }
 
 /// Enqueue a source's scan, then return promptly (RFC-056 §3, §9 criterion
@@ -183,33 +215,38 @@ pub fn find_source_by_canonical_path(
     catalog: &Catalog,
     canonical_path: &str,
 ) -> Option<orbok_ui::state::SourceCard> {
-    use orbok_core::FileStatus;
-    use orbok_db::repo::{FileRepository, SourceRepository};
+    use orbok_db::repo::SourceRepository;
     SourceRepository::new(catalog)
-        .list()
-        .unwrap_or_default()
-        .into_iter()
-        .find(|src| src.canonical_path == canonical_path)
-        .map(|src| {
-            let files = FileRepository::new(catalog);
-            let indexed = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Indexed)
-                .unwrap_or(0);
-            let stale = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Stale)
-                .unwrap_or(0);
-            let failed = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Failed)
-                .unwrap_or(0);
-            let display_name = src.display_name.unwrap_or_else(|| "folder".to_string());
-            orbok_ui::state::SourceCard {
-                display_name,
-                display_path: src.canonical_path,
-                indexed,
-                stale,
-                failed,
-                status: orbok_core::SourceStatus::Active,
-                source_id: src.source_id.as_str().to_string(),
-            }
-        })
+        .find_by_canonical_path(canonical_path)
+        .ok()
+        .flatten()
+        .map(|src| source_card(catalog, src))
+}
+
+fn source_card(
+    catalog: &Catalog,
+    src: orbok_db::repo::SourceRecord,
+) -> orbok_ui::state::SourceCard {
+    use orbok_core::FileStatus;
+    use orbok_db::repo::FileRepository;
+    let files = FileRepository::new(catalog);
+    let indexed = files
+        .count_for_source_with_status(&src.source_id, FileStatus::Indexed)
+        .unwrap_or(0);
+    let stale = files
+        .count_for_source_with_status(&src.source_id, FileStatus::Stale)
+        .unwrap_or(0);
+    let failed = files
+        .count_for_source_with_status(&src.source_id, FileStatus::Failed)
+        .unwrap_or(0);
+    let display_name = src.display_name.unwrap_or_else(|| "folder".to_string());
+    orbok_ui::state::SourceCard {
+        display_name,
+        display_path: src.canonical_path,
+        indexed,
+        stale,
+        failed,
+        status: orbok_core::SourceStatus::Active,
+        source_id: src.source_id.as_str().to_string(),
+    }
 }

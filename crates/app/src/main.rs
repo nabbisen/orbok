@@ -206,6 +206,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // long as the OS dialog stayed open -- the same
                     // `AsyncFileDialog`/`Task::perform` pattern `SubmitSearch`
                     // (above) already uses for RFC-045's picker.
+                    //
+                    // Task 047: this arm returns before the reducer runs, so the
+                    // one-dialog-at-a-time flag is checked and set here.
+                    if app.state.add_source_picker_in_progress {
+                        return iced::Task::none();
+                    }
+                    app.update(message.clone());
                     let locale = app.state.locale;
                     return iced::Task::perform(
                         async move {
@@ -225,7 +232,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let path = folder.to_string_lossy().to_string();
                     app.update(Message::SourcePathChanged(path.clone()));
                     match bootstrap::add_source(&catalog, &path) {
-                        Ok((card, sensitive)) => {
+                        Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { .. }) => {
+                            app.update(Message::ShowNotice(
+                                orbok_ui::notice::UserNotice::FolderAlreadyAdded,
+                            ));
+                        }
+                        Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
                             if let Some(warning) = sensitive {
                                 tracing::warn!("sensitive source: {warning}");
                                 app.update(Message::ShowNotice(
@@ -251,9 +263,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ));
                         }
                     }
+                    // Clears the picker flag whatever the outcome.
+                    app.update(message.clone());
                     return iced::Task::none();
                 }
                 Message::AddSourceFolderPickerCancelled => {
+                    app.update(message.clone());
                     return iced::Task::none();
                 }
                 Message::CleanSnippets => {
@@ -538,7 +553,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         existing
                     } else {
                         match bootstrap::add_source(&catalog, &path_str) {
-                            Ok((card, sensitive)) => {
+                            // The lookup above normally catches this; it
+                            // differs only if `path_str` was not canonical.
+                            Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => card,
+                            Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
                                 if let Some(warning) = sensitive {
                                     tracing::warn!("sensitive source: {warning}");
                                     app.update(Message::ShowNotice(

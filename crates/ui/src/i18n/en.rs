@@ -173,6 +173,8 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeFolderAddedTitle => "Folder added",
         NoticeFolderAddedBody => "orbok is preparing your search now.",
+        NoticeFolderAlreadyAddedTitle => "Folder already added",
+        NoticeFolderAlreadyAddedBody => "This folder is already in your list.",
         NoticeSearchReadyTitle => "Search is ready",
         NoticeSearchReadyBody => "Your files are ready to search.",
         NoticePreviewsClearedTitle => "Temporary previews cleared",

@@ -128,7 +128,8 @@ fn measure_scan_and_index_blocking_time_with_a_real_model() {
     let source_dir = temp.path().join("source");
     seed_markdown_docs(&source_dir, N_DOCS);
 
-    let (card, _) = crate::bootstrap::add_source(&catalog, &source_dir.to_string_lossy()).unwrap();
+    let (card, _) =
+        crate::bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
     let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
 
     // Same resolution `bootstrap/search.rs:31-49` already does.

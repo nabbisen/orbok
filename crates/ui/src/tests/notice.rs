@@ -47,6 +47,7 @@ every_user_notice! {
     FilesMovedOrMissing,
     SensitiveSourceAdded,
     FolderAdded,
+    FolderAlreadyAdded,
     SearchReady,
     PreviewsCleared,
     SearchCacheCleared,

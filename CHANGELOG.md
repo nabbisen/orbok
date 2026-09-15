@@ -813,6 +813,24 @@ next release tag.
 
 ### Fixed
 
+- **Task 047: "Add folder" could register the same folder twice.** The real
+  defect: nothing refused a duplicate. `bootstrap::add_source` canonicalised
+  the path and inserted, and `sources.canonical_path` has no unique
+  constraint, so adding a folder already in the list — on any day, with one
+  dialog — created a second source, scanned and indexed separately. Only the
+  search-in-folder flow checked first (RFC-045 §19.3). `add_source` now looks
+  the canonical path up (`SourceRepository::find_by_canonical_path`, one
+  `SELECT`, also used by that flow instead of listing every source) and
+  returns `AddSourceOutcome::AlreadyRegistered` without inserting, scanning
+  or warning; the Sources view shows a new "Folder already added" notice.
+  The smaller half: the add-folder dialog had no in-progress flag, so a
+  double click opened two. `AppState::add_source_picker_in_progress` now
+  blocks a second dialog and disables the button and the path field's
+  submit while one is open. Both mutation-tested: without the lookup, adding
+  the same folder again (also written with a trailing `/` and as `dir/.`)
+  registered a second source; without setting the flag, the picker test
+  failed. No migration: a unique index would fail to apply on a catalog this
+  bug already duplicated.
 - **Review 217 follow-ups: a missing snippet cap now fails in milliseconds,
   and no CI job can hold a runner for six hours.** Task 045's byte-count test
   read from `std::io::repeat`, so removing the 64 KiB cap made it *hang* —

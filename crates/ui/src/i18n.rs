@@ -270,6 +270,8 @@ message_keys! {
     NoticeFilesMissingBody,
     NoticeFolderAddedTitle,
     NoticeFolderAddedBody,
+    NoticeFolderAlreadyAddedTitle,
+    NoticeFolderAlreadyAddedBody,
     NoticeSearchReadyTitle,
     NoticeSearchReadyBody,
     NoticePreviewsClearedTitle,

@@ -29,6 +29,7 @@ pub mod rfc042_history;
 pub mod rfc045_location;
 pub mod smoke_views;
 pub mod state;
+mod task047_add_source_picker;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

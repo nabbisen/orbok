@@ -423,19 +423,21 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
+    // Task 047: no second add-folder dialog while one is open.
+    let add_folder = (!state.add_source_picker_in_progress).then_some(Message::RequestAddSource);
     let add_btn = components::icon_secondary(
         tokens,
         char::from(lucide::FolderPlus),
         13.0,
         tr(locale, MessageKey::SourcesAddFolder),
-        Some(Message::RequestAddSource),
+        add_folder.clone(),
     );
     let add_input = text_input(
         tr(locale, MessageKey::SourcesPathInputPlaceholder),
         &state.source_path_input,
     )
     .on_input(Message::SourcePathChanged)
-    .on_submit(Message::RequestAddSource)
+    .on_submit_maybe(add_folder)
     .padding(tokens.spacing.sm);
 
     let mut content = column![
