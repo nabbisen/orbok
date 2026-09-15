@@ -214,7 +214,7 @@ jobs:
   security:
     name: Security gate (audit + security tests)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       # Task 039: pinned -- see the `fast` job's comment above for the

@@ -822,8 +822,13 @@ next release tag.
   `snippet.is_some()`, restored byte-identical. Every CI job now has a
   timeout of roughly three times its measured duration (two runs,
   2026-09-15): Fast 15 min (4 m 28 s), Release 45 min (15 m 40 s), Security
-  10 min (3 m 13 s), MSRV 6 min (1 m 56 s), Cross-platform 80 min (slowest leg
-  windows-latest, 26 m 40 s). RFC-059 §2b and its closure record now state
+  15 min (5 m 02 s), MSRV 6 min (1 m 56 s), Cross-platform 80 min (slowest leg
+  windows-latest, 26 m 40 s). Security was first set to 10 min from 3 m 13 s,
+  a censored measurement: in both baseline runs `audit dependencies` failed on
+  RUSTSEC-2026-0285 and the security unit tests (~1 m 47 s) were skipped.
+  Re-based on 5 m 02 s from run 34904896911, where the job succeeded
+  (Review 218 addendum 2). A timeout is sized only from a run in which that
+  job succeeded. RFC-059 §2b and its closure record now state
   why a paused profile never trimming is safe: only Extract writes
   `ExtractSegments`, and nothing extracts while paused.
 - **RFC-059 Slice 6: the extraction cache's 20,000-entry bound now runs, at
