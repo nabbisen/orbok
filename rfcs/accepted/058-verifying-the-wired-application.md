@@ -103,6 +103,55 @@ process that will review the fixes.
 
 ---
 
+## 4a. Amendment 1 (2026-09-16) — criteria that history overtook, and the benchmark's shape
+
+Task 052's closure sweep (Review 227) ran every criterion and found four that
+cannot be evidenced as worded. None of them is a missing feature; each is
+wording the project's own practice outgrew. Owner decision on the benchmark,
+2026-09-16.
+
+### 4a.1 Criteria 1 and 2 — "fails on today's `main`" is no longer observable
+
+Both ask that the reachability test be seen failing *before* fixes land.
+Several fixes landed before the assertions existed (rows 7 and 8, Task 034),
+and others landed together with their assertions. The discipline the project
+actually adopted — HANDOFF-058 onward, in every task since — is **mutation**:
+revert the fix, watch the specific assertion fail, restore. It observes the
+same property on any commit, not only on one historical `main`. Criteria 1
+and 2 are re-worded to it below.
+
+### 4a.2 Criterion 4 — the samples exist; the report does not say so
+
+The harness already takes 108 samples (`crates/bench/src/metrics.rs`, 9
+queries × 12 runs). The half of criterion 4 that cannot be observed is only
+that `LatencyMetrics` records no sample count, so a reader of the report
+cannot check it. The criterion stands; the report gains the field.
+
+### 4a.3 Criterion 6 — withdrawn
+
+It asked for a CI mechanism that fails when §6's test file is deleted or made
+to return early, "verified by pushing to a scratch branch". No such mechanism
+was built, and it is not worth building now: the defect it guards against — a
+test that stays green while checking nothing — is caught by the mutation
+requirement every task carries, and a test-count gate would bring its own
+false positives whenever a test is legitimately renamed, split or removed.
+**Withdrawn**, not deferred.
+
+### 4a.4 §7 — the benchmark measures production's shape (owner decision)
+
+§7 required model construction *inside* the timed region, reasoning that
+production resolved the model per search. That stopped being true at RFC-061
+Slice 4, which resolves the model once per process. The harness now builds
+the model per *sample* but outside `total_ms`, which matches neither.
+
+**Decision: build the model once, as production does; time each search
+through production's request path; report construction separately.**
+Construction is a once-per-process startup cost and belongs in its own field
+(`model_construction_ms`, which already exists), not smeared across every
+search sample. RFC-048's gate is amended to match.
+
+---
+
 ## 5. Decision 1 — how acceptance criteria are phrased
 
 **Rule.** Every acceptance criterion in every future RFC must be falsifiable by
@@ -258,23 +307,24 @@ genuinely shipped is archaeology with no reader.
 Written in this RFC's own required shape, since anything else would be
 self-refuting.
 
-1. Running `cargo test -p orbok --test wired_application` on today's `main`
-   fails at least six of §6's eight assertions, and the failure output names
-   which capability is unreachable.
-2. Each of §6's eight assertions has been observed to fail, and the failure
-   recorded in the implementing task's report, before its corresponding fix is
-   merged.
+1. *(Re-worded by Amendment 1.)* Each of §6's assertions, run with its fix
+   reverted, fails, and the failure output names which capability is
+   unreachable.
+2. *(Re-worded by Amendment 1.)* For each of §6's assertions, the mutation in
+   criterion 1 is recorded — the fix reverted, the failure observed, the fix
+   restored byte-identical — in the implementing task's report or the closure
+   record.
 3. After the fixes for a given assertion land, that assertion passes, and
    reverting the fix in a scratch commit makes it fail again.
 4. `cargo run -p orbok-bench --release …` produces a report whose
    `timing_ms` breakdown contains a non-zero `model_construction_ms` when run
    with a real model directory, and whose latency summary is computed from
-   ≥ 100 samples.
+   ≥ 100 samples **and states that count** *(Amendment 1)*.
 5. `latency_metrics` called with an empty query set returns an error rather
    than panicking, demonstrated by a test.
-6. The `release` CI job fails when §6's test file is deleted or made to return
+6. ~~The `release` CI job fails when §6's test file is deleted or made to return
    early — verified by pushing that change to a scratch branch, not by
-   inspection.
+   inspection.~~ **Withdrawn by Amendment 1 §4a.3.**
 7. No RFC accepted after this one contains a criterion matching §5's banned
    phrasings.
 

@@ -116,6 +116,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **RFC-058 and RFC-048 amended for the benchmark's shape; RFC-038 gets a
+  handoff.** Owner decision: the benchmark builds the embedding model once,
+  as production has since RFC-061 Slice 4, times each search through
+  production's request path, and reports construction separately. RFC-048's
+  p99 gate is measured that way, with its thresholds unchanged. RFC-058's
+  criteria 1 and 2 are re-worded to the mutation discipline every task now
+  uses, criterion 4 gains "and states that count", and criterion 6's CI
+  test-count mechanism is withdrawn. `HANDOFF-038-rendering-trust-and-recovery`
+  renders the trust badge that has been computed and never shown, and wires
+  four recovery actions; the two that open files through the operating system
+  are held back, because orbok has no way to open a file at all.
+
 - **RFC-062 and RFC-063 stamped `0.25.0`, and RFC-063's open questions marked
   resolved.** Both RFCs' implementing commits (`125ba7e`, `b85faa9`,
   `cd0d445`; `60985a6`) are contained in the `0.25.0` tag, so "release

@@ -87,6 +87,7 @@ under RFC-000.
 | 060 | HANDOFF-060-slice1-pdf-extraction-and-location-quality | Slice 1 only: PDF extraction by page number, and the chunk quality the chunker never reads |
 | 060 | HANDOFF-060-slices2-5-wiring-snippets-and-the-guard | source status at the query layer, snippets by location kind, the search request struct, and the path guard |
 | 061 | HANDOFF-061-catalog-access-and-application-boundary | one shared catalog, one model per process, failures surfaced, and the censored latency instrument |
+| 038 | HANDOFF-038-rendering-trust-and-recovery | render the trust badge, and wire the four recovery actions that stay inside orbok |
 | 059 | HANDOFF-059-erasure-completeness-and-cache-lifetime | Reset and Remove folder erase both FTS tables, the extraction cache gets an on-demand erase, and three corrections to the RFC found by reading the code |
 | 059 | HANDOFF-059-slice6-idle-time-cache-bound | Slice 6 only: the extraction-cache size bound, enforced at scheduler idle |
 | 062 | HANDOFF-062-migration-integrity-and-schema-guards | the 0007 repair, the downgrade guard, and a gate that must grandfather one comment-only edit |

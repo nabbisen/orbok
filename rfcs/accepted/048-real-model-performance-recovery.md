@@ -76,6 +76,26 @@ Out of scope:
 - Introducing ANN/HNSW before measurement shows exact scan is the bottleneck.
 - Proceeding to v1.0.0 release-candidate review while thresholds fail.
 
+## 4a. Amendment 1 (2026-09-16) — what the p99 gate measures
+
+**Owner decision, 2026-09-16.** The p99 search-latency gate (≤ 200 ms) is
+measured with the embedding model **constructed once**, before any sample, and
+each sample timed through production's search request path. Model
+construction is reported separately as `model_construction_ms` and is **not**
+part of the p99.
+
+This follows production. Until RFC-061 Slice 4, the application constructed
+the model on every search, so a gate that included construction measured
+what users paid. Since that slice it is resolved once per process; including
+it per sample would measure a cost no search pays.
+
+**The thresholds are unchanged** — p99 ≤ 200 ms, indexing ≥ 10 files/s. §6's
+rule stands: if a gate is not met, open a follow-up decision rather than
+relaxing it. Construction time is not hidden by this change; it is moved to
+the field that describes when it is paid.
+
+---
+
 ## 5. Required Measurement
 
 The benchmark report must keep the existing top-level metrics and add enough
