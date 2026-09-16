@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+
+- **RFC-060 Amendment 3: both open questions closed, and a handoff for what is
+  left.** The owner ruled that when the extraction cache holds no segments for
+  a result, the snippet is simply absent and the result is still shown — the
+  snippet path never extracts. Re-extracting on demand was rejected for two
+  reasons: it re-opens and re-parses a user's file at query time, immediately
+  after RFC-059's erase may have removed exactly that text, and it puts
+  unbounded file I/O on the search path. §8's reranker question is closed as
+  already executed rather than decided: `with_reranker` was deleted, the mock
+  is test-only, RFC-010 sits in `proposed/`, and the README says plainly that
+  no production reranker exists. Amendment 3 also records what Slice 1 and
+  Amendment 2 closed, including §10's two ranking defects, so the remaining
+  scope is not over-read. `HANDOFF-060-slices2-5` covers it: source status at
+  the query layer with the path guard, `location_kind` persisted and snippets
+  rendered by kind, the search request struct, and document-chunk
+  duplication.
+
+
 ### Changed
 
 - The edited-migration allowlist is empty: 0.25.0 ships `0001_baseline.sql`

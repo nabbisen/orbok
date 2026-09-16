@@ -256,6 +256,63 @@ downstream properties looking wrong.
 
 ---
 
+## 4c. Amendment 3 (2026-09-16) — the two open questions are closed, and what is left
+
+### 4c.1 Open question 2 — snippets when the cached segments are gone
+
+**Owner decision, 2026-09-16: no snippet; the result is still shown.** §6
+renders from the cached `ExtractOutput`; RFC-059 gives that cache a finite
+lifetime and an on-demand erase. When the segments are absent, the snippet is
+absent.
+
+The rejected alternative was re-extracting on demand. Two reasons it loses.
+It **re-opens and re-parses the user's file at query time**, immediately after
+the user may have asked for exactly that text to be gone — RFC-059's erase is
+a promise the search path must not quietly undo. And it puts file I/O of
+unbounded cost on the search path, which RFC-048's p99 gate cannot absorb.
+
+Criterion 2 already carries the right shape (*"or are empty with the result
+still shown"*). §6 gains one rule: **the snippet path never extracts.** It
+reads the cache or it returns `None`.
+
+### 4c.2 Open question 1 / §8 — already executed as (A), recorded not decided
+
+§8 called this "the decision this RFC exists to force". It has since been
+taken, in pieces, by work done for other reasons:
+
+- `HybridSearchService::with_reranker` was deleted (Task 040).
+- `MockReranker` is private to `orbok-models` and referenced only by its own
+  tests.
+- RFC-010 sits in `proposed/`, not `done/`.
+- `README.md:19-20` says a cross-encoder stage "is designed (RFC-010) and not
+  implemented; there is a trait seam and no production reranker."
+
+That is option (A) — remove the claim, keep the seam — complete. **No owner
+decision is outstanding.**
+
+One latent constraint survives and belongs to whoever revisits reranking:
+`hybrid.rs:199` calls `enrich_many(&fused, limit)`, truncating to `limit`
+*before* enrichment. A future reranker fed from that point could only reorder
+what is already visible. It is not a defect today, because nothing reranks.
+
+### 4c.3 What Amendments 1 and 2 and Slice 1 closed, and what remains
+
+Closed: PDF extraction by page number and the chunker reading
+`location_quality` (Amendment 1, Slice 1); the `model_id` mismatch that made
+the semantic half return nothing (Amendment 2); §10's two ranking defects —
+the CJK merge now fuses with `rrf_fuse_keyword_lists`
+(`multilingual.rs:127,143`) instead of comparing incomparable BM25 scores, and
+`rrf_fuse` carries a `chunk_id` tie-break (`rrf.rs:72`); §6's two robustness
+fixes (the 64 KiB read cap, saturating line arithmetic).
+
+Remaining, and the subject of `HANDOFF-060-slices2-5`: §5 (`location_kind` is
+still not persisted — no column, no migration), §6 (kind-aware snippet
+rendering), §7 (trust, filters, folder scope and source status still never
+reach `run_search`), §9 (`snippet.rs` still calls `File::open` with no
+`PathGuard`), and §10's remaining document-chunk duplication.
+
+---
+
 ## 5. Decision 1 — persist `location_kind`
 
 **Root cause of the snippet defect.** `chunk_locations.line_start/line_end` means
@@ -429,15 +486,12 @@ they must be observed failing before their fixes land.
 
 ## 12. Open questions
 
-1. **§8 — implement or remove the reranker.** Owner decision. My recommendation
-   is (A): remove the claim, keep the seam, revisit after the p99 gate is met.
-2. **Snippets for `Pages`/`Paragraphs`/`Blocks` when the extraction cache has
-   been cleared.** §6 renders from the cache; RFC-059 gives the cache a finite
-   lifetime. So a snippet can become unavailable for an old result. Options:
-   fall back to no snippet (honest, simple), or re-extract on demand (correct,
-   expensive, and re-reads a user file at query time — which has its own privacy
-   shape). Proposal: no snippet, with the result still shown. Needs a decision
-   before §6 is implemented.
+1. ~~**§8 — implement or remove the reranker.**~~ **Closed — (A) is already
+   in force; see §4c.2.** Recorded, not decided: the claim is gone and the seam
+   remains.
+2. ~~**Snippets for `Pages`/`Paragraphs`/`Blocks` when the extraction cache has
+   been cleared.**~~ **Answered 2026-09-16 — no snippet, result still shown.
+   See §4c.1.** The snippet path never extracts.
 3. ~~**Does a `NULL` `location_kind` on a backfilled row mean "unknown" or
    "lines"?**~~ **Closed 2026-09-10 — owner: orbok is not in production use, so
    no catalog carries pre-migration rows that matter.** §5's "unknown" reading
