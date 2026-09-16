@@ -4,7 +4,7 @@
 **RFC:** 062\
 **Lifecycle stage:** Slices landed in 0.25.0; RFC-062 not yet closed (no closure record).\
 **Primary owner:** `crates/data/db/migrations/`, `.../src/catalog.rs`, `scripts/`, `.github/workflows/ci.yml`\
-**RFC:** [`../accepted/062-migration-integrity-and-schema-guards.md`](../accepted/062-migration-integrity-and-schema-guards.md)
+**RFC:** [`../done/062-migration-integrity-and-schema-guards.md`](../done/062-migration-integrity-and-schema-guards.md)
 
 > **Scope rule:** Repair the format and guard it. This RFC does **not** change
 > RFC-002's migration *design* — numbered, append-only, transactional,

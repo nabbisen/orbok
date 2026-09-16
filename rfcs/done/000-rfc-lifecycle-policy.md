@@ -362,7 +362,7 @@ is silence, not incompleteness.
 
 ### Adoption note (2026-09-02): this project requires closure records
 
-[RFC-063](../accepted/063-evidence-for-the-implemented-transition.md)
+[RFC-063](../done/063-evidence-for-the-implemented-transition.md)
 adopted the closure-record option above after an external audit found
 nine RFCs in `done/` carrying a `Status: Implemented` that did not hold
 up against the running code — the exact gap this option exists to

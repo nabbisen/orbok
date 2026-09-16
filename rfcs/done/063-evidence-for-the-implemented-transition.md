@@ -3,12 +3,19 @@
 **Project:** orbok\
 **RFC:** 063\
 **Title:** Evidence for the Implemented Transition\
-**Status:** Accepted\
+**Status:** Implemented (main; release pending)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** project-record integrity\
 **Date:** 2026-09-01\
 **Supersedes in draft:** the first version of this RFC, titled *Recording Deferral in the RFC Lifecycle*, which named the wrong defect. See §9.\
 **Related RFCs:** RFC-000 RFC Lifecycle Policy (this amends its transition rules); RFC-058 Verifying the Wired Application (§5's criteria rule is a *consequence* of this RFC, not a peer); RFC-062 Migration Integrity (the same unenforced-rule pattern, in the storage layer)
+
+**Closed 2026-09-16** in the Task 052 closure sweep. All six criteria
+evidenced; criterion 3 holds through the shrink-only legacy allowlist §12 Q4
+proposes. §12's questions are still worded as open below; they are
+recorded as decided in practice in the closure record, not amended here.
+Closure record at
+[`../closures/063-evidence-for-the-implemented-transition.md`](../closures/063-evidence-for-the-implemented-transition.md).
 
 ---
 

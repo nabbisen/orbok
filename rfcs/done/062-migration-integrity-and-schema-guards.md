@@ -3,11 +3,16 @@
 **Project:** orbok\
 **RFC:** 062\
 **Title:** Migration Integrity and Schema Guards\
-**Status:** Accepted\
+**Status:** Implemented (main; release pending)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** on-disk format integrity\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-002 SQLite Catalog Schema and Migration Policy (this amends its enforcement, not its design); RFC-036 Resource-Aware Indexing Scheduler (the edit was made for it); RFC-049 Portable Runtime Data Isolation (a profile moved between machines is one way §6's guard bites)
+
+**Closed 2026-09-16** in the Task 052 closure sweep. All six criteria
+evidenced; criterion 5's two pushes went to `main` rather than scratch
+branches, as accepted in Review 212 §2. Closure record at
+[`../closures/062-migration-integrity-and-schema-guards.md`](../closures/062-migration-integrity-and-schema-guards.md).
 
 ---
 

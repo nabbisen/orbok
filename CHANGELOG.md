@@ -116,6 +116,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **Closure sweep of the seven RFCs left in `accepted/`: two close, five stay
+  open with index rows that say what is missing.** Every row was evidenced by
+  running its test, not by reading code.
+  - **RFC-062** (migration integrity) closes: all six criteria were run,
+    including the real binary refusing a catalog stamped one version ahead.
+  - **RFC-063** (closure records) closes, through the gate it defines. Its
+    criterion 1 was re-checked by removing the missing-record check and
+    watching the gate's self-test go red.
+  - **RFC-038** (trust badges) stays open: trust is computed on every result,
+    but nothing renders it.
+  - **RFC-041** (narrow, browse around) stays open: filters reach the query,
+    but no view sets them, and the browse-around actions have no handler.
+  - **RFC-058** (verifying the wired application) stays open: two criteria
+    can no longer be observed as worded, and one has no evidence mechanism.
+  - **RFC-061** (catalog access) stays open: criterion 4's notice for an
+    unopenable catalog does not exist, and the latency benchmark still
+    rebuilds the model per search, which production no longer does.
+  - **RFC-048** (real-model performance) stays open by design: its subject is
+    the real-model p99 gate. The row now names the benchmark run that would
+    close it.
+  - RFC-038's row also stops claiming every result is hardcoded `Ready`.
+    That stopped being true with RFC-060 Slice 4a.
 - **RFC-060 moves to `done/` with a closure record naming criteria 0–9.**
   Criteria 0a and 7 are evidenced only where a real embedding model is
   available: both assertions exist and are `#[ignore]`d with a documented

@@ -68,18 +68,18 @@ may start" a checked state rather than an implicit convention.
 | 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | 0.25.0 — §7 manual battery criterion deferred to Owner Task 003 Part C |
 | 059 | [Erasure Completeness and Cache Lifetime](done/059-erasure-completeness-and-cache-lifetime.md) | 0.25.0 — criteria 1–10 evidenced, [closure record](closures/059-erasure-completeness-and-cache-lifetime.md) |
 | 060 | [Search Result Integrity](done/060-search-result-integrity.md) | main; release pending — criteria 0a and 7 evidenced only where a real embedding model is available, [closure record](closures/060-search-result-integrity.md) |
+| 062 | [Migration Integrity and Schema Guards](done/062-migration-integrity-and-schema-guards.md) | main; release pending — criteria 1–6 evidenced, [closure record](closures/062-migration-integrity-and-schema-guards.md) |
+| 063 | [Evidence for the Implemented Transition](done/063-evidence-for-the-implemented-transition.md) | main; release pending — criteria 1–6 evidenced, [closure record](closures/063-evidence-for-the-implemented-transition.md) |
 
 ## Accepted
 
 | ID | Title | Status |
 |---|---|---|
-| 038 | [Result Freshness, Trust Badges and Recovery Actions](accepted/038-result-freshness-trust-badges-and-recovery-actions.md) | Accepted 2026-06-18 — §16 criteria 4/5/7 false; every result hardcoded `Ready`. Wiring is RFC-060 §7 |
-| 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — Narrow and Browse Around, two of three named subjects, do not render. Wiring is RFC-060 §7 |
-| 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
-| 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — the control that stops the unwired-feature class recurring; its end-to-end test comes before any wiring work |
-| 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — one shared catalog, one model per process, failures surfaced. Before 060 and before any parallelism |
-| 062 | [Migration Integrity and Schema Guards](accepted/062-migration-integrity-and-schema-guards.md) | Accepted 2026-09-02 — a released migration was edited; no downgrade guard |
-| 063 | [Evidence for the Implemented Transition](accepted/063-evidence-for-the-implemented-transition.md) | Accepted 2026-09-02 — `done/` may only be entered with a closure record. **No new folder or lifecycle state**; the 5-folder variant is sufficient (§8) |
+| 038 | [Result Freshness, Trust Badges and Recovery Actions](accepted/038-result-freshness-trust-badges-and-recovery-actions.md) | Accepted 2026-06-18 — open: trust is computed and carried on every result (RFC-060 Slice 4a), but nothing renders it: `result_trust_badge` has no caller, the result card never reads `trust`, no recovery action or advanced detail is reachable. §16 criteria 2, 7, 8, 9 unmet; 3, 5, 6 lack an end-to-end test (Task 052) |
+| 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — open: filters reach the query (RFC-060 Slice 4b) but no view emits `ApplySuggestedFilter`/`RemoveFilter`/`ClearFilters`/`OpenMoreWays`, the browse-around messages have no handler, and the search-mode control is ignored (`Auto` hardcoded). §25 criteria 2, 3, 5, 6, 7, 9 unmet (Task 052) |
+| 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — open: timing breakdowns exist (`crates/bench/src/report.rs` `timing_ms`); the gate itself is unevidenced. Closing needs a guarded `--expect-mode hybrid-real-model` benchmark run (1,000 documents, `--features orbok-embed/tract`, `--model-dir` pointing at multilingual-e5-small) meeting RFC-047's p99 ≤ 200 ms and indexing ≥ 10 files/s, or a later RFC changing that policy — a machine with the model installed is required; CI cannot produce it |
+| 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — open: rows written and green; §10 criteria 1–2 can no longer be observed as worded (fixes landed before assertions; HANDOFF-058 substituted mutation — needs an amendment), criterion 4's ≥ 100-sample half is not reported, criterion 6 has no scratch-branch evidence or CI count check (Task 052) |
+| 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — open: all slices landed; criteria 3, 7, 8, 9 evidenced. Criterion 4's user-visible notice does not exist for an unopenable catalog (fails before the event loop), criterion 6's benchmark still rebuilds the model per search, and 1, 2, 5 have no test (Task 052) |
 
 ## Proposed
 
