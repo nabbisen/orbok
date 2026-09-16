@@ -14,6 +14,7 @@ mod diagnostics;
 mod download;
 mod history;
 mod model_flow;
+mod result_launch;
 #[cfg(test)]
 mod rfc059_cache_measurement;
 #[cfg(test)]
@@ -269,6 +270,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
             }
             // Handle backend effects before passing message to UI state.
+            // HANDOFF-041: open a result, or show it in its folder --
+            // validated through the searchable-source guard, then launched
+            // with the path as one argument. RFC-038's `OpenAnyway` and
+            // `ShowInFolder` recovery actions are the same two operations
+            // on the same result.
+            if let Some((index, action)) = result_launch::launch_request(&message) {
+                if let Some(notice) = result_launch::launch_result(
+                    &catalog,
+                    &app.state.search_results,
+                    index,
+                    action,
+                    &result_launch::SystemLauncher,
+                ) {
+                    app.update(Message::ShowNotice(notice));
+                }
+                return iced::Task::none();
+            }
             match &message {
                 Message::WizardValidate => {
                     let path = app.state.wizard_path_input.trim().to_string();
@@ -863,6 +881,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .selected_source
                 .and_then(|i| app.state.sources.get(i))
                 .map(|card| card.source_id.clone()),
+            selected_result: (app.state.active_view == orbok_ui::state::ViewId::Search)
+                .then_some(app.state.selected_result)
+                .flatten(),
         };
         iced::Subscription::batch([
             scheduler_host::subscription(scheduler_host::SchedulerSubscriptionData {

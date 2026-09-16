@@ -34,6 +34,7 @@ fn neutral_ctx(active_view: ViewId) -> KeyboardContext {
         confirm_clear_history: false,
         wizard_kind: None,
         selected_source_id: None,
+        selected_result: None,
     }
 }
 

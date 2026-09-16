@@ -1386,3 +1386,67 @@ async fn the_selected_search_mode_reaches_the_engine() {
          nothing -- results here mean the selected mode never reached the engine"
     );
 }
+
+/// HANDOFF-041 §4 test 1: a found document can be opened -- through the
+/// real search path, the index-carrying message, and the guard, reaching
+/// the launcher once with that result's own canonical path. The rendered
+/// button sending `OpenResult(i)` is `orbok-ui`'s
+/// `the_selected_result_offers_open_and_show_in_folder`.
+#[tokio::test]
+async fn opening_a_found_result_launches_its_canonical_path_once() {
+    use crate::result_launch::{LaunchAction, launch_result, tests::RecordingLauncher};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(
+        source_dir.join("note.md"),
+        "# Note\n\nopenresultmarker here.\n",
+    )
+    .unwrap();
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "openresultmarker",
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert_eq!(results.len(), 1, "fixture: one result");
+
+    let mut state = orbok_ui::AppState::default();
+    state.update(&orbok_ui::Message::SearchResultsReady(results));
+    state.update(&orbok_ui::Message::SelectResult(0));
+    let Some(index) = state.selected_result else {
+        panic!("the result is selected")
+    };
+
+    let launcher = RecordingLauncher::default();
+    assert_eq!(
+        launch_result(
+            &catalog,
+            &state.search_results,
+            index,
+            LaunchAction::Open,
+            &launcher
+        ),
+        None
+    );
+    let expected = std::fs::canonicalize(source_dir.join("note.md")).unwrap();
+    assert_eq!(
+        launcher.0.borrow().as_slice(),
+        [(LaunchAction::Open, expected)],
+        "exactly one launch, with the found file's canonical path"
+    );
+}

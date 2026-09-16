@@ -27,6 +27,8 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         SearchRunning => "検索中…",
         SearchSnippetUnavailable => "(プレビューを利用できません)",
+        SearchResultOpenFile => "ファイルを開く",
+        SearchResultShowInFolder => "フォルダで表示",
         SourcesTitle => "フォルダー",
         SourcesEmptyTitle => "フォルダーが追加されていません",
         SourcesEmptyBody => {

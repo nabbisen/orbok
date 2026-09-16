@@ -9,6 +9,7 @@ use orbok_search::{ActiveFilter, ChangedFilter, KindFilter};
 fn make_result(path: &str) -> SearchResultDisplay {
     SearchResultDisplay {
         display_path: path.into(),
+        canonical_path: path.into(),
         title: None,
         heading_path: None,
         snippet: None,

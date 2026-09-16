@@ -131,6 +131,7 @@ fn failures_surface_notice_success_clears_it() {
     // Successful results clear the notice.
     state.update(&Message::SearchResultsReady(vec![SearchResultDisplay {
         display_path: "a.md".into(),
+        canonical_path: "a.md".into(),
         title: None,
         heading_path: None,
         snippet: None,

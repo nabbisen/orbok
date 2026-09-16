@@ -23,6 +23,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchKeywordOnlyNotice => "Search by meaning is not set up yet. Basic search still works.",
         SearchRunning => "Searching…",
         SearchSnippetUnavailable => "(preview unavailable)",
+        SearchResultOpenFile => "Open file",
+        SearchResultShowInFolder => "Show in folder",
         SourcesTitle => "Folders",
         SourcesEmptyTitle => "No folders added",
         SourcesEmptyBody => {

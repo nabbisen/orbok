@@ -42,6 +42,10 @@ pub struct KeyboardContext {
     /// selected. `None` either because nothing is selected or because the
     /// Sources view is not active.
     pub selected_source_id: Option<String>,
+    /// The search result `Enter` would open (HANDOFF-041 §3), if the Search
+    /// view has one selected. `None` either because nothing is selected or
+    /// because the Search view is not active.
+    pub selected_result: Option<usize>,
 }
 
 /// Map a key event to a [`Message`], or `None` to let iced handle it normally.
@@ -237,6 +241,12 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     }
     if ctx.active_view == ViewId::Sources {
         return ctx.selected_source_id.clone().map(Message::SourceRemoved);
+    }
+    // HANDOFF-041 §3: the same `OpenResult` the selected row's Open file
+    // button sends. Reached only when not typing -- Enter in the search box
+    // is `SubmitSearch`, above.
+    if ctx.active_view == ViewId::Search {
+        return ctx.selected_result.map(Message::OpenResult);
     }
     None
 }

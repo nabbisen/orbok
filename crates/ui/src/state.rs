@@ -103,6 +103,11 @@ pub struct SourceCard {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchResultDisplay {
     pub display_path: String,
+    /// The indexed file's canonical path -- what Open file and Show in
+    /// folder validate and launch (HANDOFF-041). Never rendered, and never
+    /// carried in a `Message`: those carry the result's index, so the path
+    /// a launch uses can only be one a search returned.
+    pub canonical_path: String,
     pub title: Option<String>,
     pub heading_path: Option<String>,
     pub snippet: Option<String>,
@@ -548,7 +553,11 @@ pub enum Message {
     SearchResultsReady(Vec<SearchResultDisplay>),
     SearchError(String),
     SelectResult(usize),
-    OpenSourceFile(String),
+    /// HANDOFF-041: open the result at this index in its default
+    /// application. An index, not a path (§1.3).
+    OpenResult(usize),
+    /// HANDOFF-041: show the result at this index in the file manager.
+    RevealResult(usize),
     SetSearchMode(SearchMode),
     // RFC-041: filter / narrow / browse-around messages
     ApplySuggestedFilter(usize),
@@ -816,7 +825,7 @@ impl AppState {
             // RFC-038: trust recovery actions
             Message::TrustRecoveryAction { .. } => {} // handled by orbok
             Message::SelectResult(idx) => self.selected_result = Some(*idx),
-            Message::OpenSourceFile(_) => {} // handled by orbok
+            Message::OpenResult(_) | Message::RevealResult(_) => {} // handled by orbok
             Message::SetSearchMode(mode) => self.search_mode = *mode,
             Message::PersistLocale(locale) | Message::SetLocale(locale) => self.locale = *locale,
             // RFC-034 keyboard navigation: FocusSearch is handled in orbok

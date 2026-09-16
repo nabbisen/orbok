@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Open a found document, or show it in its folder (HANDOFF-041).** Before
+  this, orbok could find a file but not open it: selecting a result only
+  highlighted it. The selected result now offers **Open file** and **Show in
+  folder**, and Enter opens it when you are not typing in the search box.
+  RFC-038's "Open file anyway" and "Show in folder" recovery actions use the
+  same two operations. This is the first time orbok launches anything outside
+  itself, so:
+  - the path is checked immediately beforehand against the folders you added
+    and are searching (a paused folder's files, a deleted file, or a path
+    outside every folder are refused with the existing "files may have
+    moved" notice);
+  - the system opener (`xdg-open`, `open`, `explorer.exe`) is started
+    directly, with the path as a single argument and never through a shell;
+  - a launch can only use a path a search returned, since the request carries
+    the result's position, not a path.
+  The `opener` crate was not used: on Linux it falls back to running `sh`
+  with a bundled script. A dead `OpenSourceFile(String)` message, which
+  carried a raw path, was removed. On Linux, Show in folder opens the
+  containing folder without selecting the file.
+
 ### Fixed
 
 - **Task 055: documents indexed before a model was installed never became

@@ -532,6 +532,7 @@ mod tests {
             confirm_clear_history: false,
             wizard_kind: state.wizard.as_ref().map(WizardState::kind),
             selected_source_id: None,
+            selected_result: None,
         };
         let message = orbok_ui::key_to_message(
             &iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),

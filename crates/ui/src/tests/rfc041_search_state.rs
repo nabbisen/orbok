@@ -156,6 +156,7 @@ fn search_results_ready_sets_correct_status() {
     let mut state = AppState::default();
     state.update(&Message::SearchResultsReady(vec![SearchResultDisplay {
         display_path: "docs/auth.md".into(),
+        canonical_path: "docs/auth.md".into(),
         title: Some("auth".into()),
         heading_path: None,
         snippet: None,

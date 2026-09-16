@@ -415,6 +415,25 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                         is_selected,
                         Message::SelectResult(i),
                     ));
+                    // HANDOFF-041 §3: until a preview pane exists, the
+                    // selected result carries its two file actions.
+                    if is_selected {
+                        content = content.push(
+                            row![
+                                components::secondary(
+                                    tokens,
+                                    tr(locale, MessageKey::SearchResultOpenFile),
+                                    Some(Message::OpenResult(i)),
+                                ),
+                                components::secondary(
+                                    tokens,
+                                    tr(locale, MessageKey::SearchResultShowInFolder),
+                                    Some(Message::RevealResult(i)),
+                                ),
+                            ]
+                            .spacing(tokens.spacing.sm),
+                        );
+                    }
                 }
             }
         }

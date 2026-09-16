@@ -139,6 +139,8 @@ message_keys! {
     SearchKeywordOnlyNotice,
     SearchRunning,
     SearchSnippetUnavailable,
+    SearchResultOpenFile,
+    SearchResultShowInFolder,
     // Sources view
     SourcesTitle,
     SourcesEmptyTitle,

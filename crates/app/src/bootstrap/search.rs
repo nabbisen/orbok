@@ -99,6 +99,7 @@ pub(crate) fn run_search(
     Ok(results
         .into_iter()
         .map(|r| orbok_ui::state::SearchResultDisplay {
+            canonical_path: r.canonical_path,
             display_path: r.display_path,
             title: r.title,
             heading_path: r.heading_path,

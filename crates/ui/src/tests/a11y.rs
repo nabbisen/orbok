@@ -19,6 +19,7 @@ fn ctx(text_input_focused: bool) -> KeyboardContext {
         confirm_clear_history: false,
         wizard_kind: None,
         selected_source_id: None,
+        selected_result: None,
     }
 }
 
@@ -544,6 +545,7 @@ fn result_navigation_bounds() {
 
     let make = |path: &str| SearchResultDisplay {
         display_path: path.into(),
+        canonical_path: path.into(),
         title: None,
         heading_path: None,
         snippet: None,
