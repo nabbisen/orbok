@@ -23,7 +23,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchAddSource => "フォルダーを追加",
         SearchNoResults => "結果が見つかりません",
         SearchKeywordOnlyNotice => {
-            "セマンティック検索は利用できません。キーワード検索は使用できます。"
+            "意味による検索はまだ設定されていません。基本検索は引き続き使用できます。"
         }
         SearchRunning => "検索中…",
         SearchSnippetUnavailable => "(プレビューを利用できません)",
@@ -86,13 +86,12 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchModeConceptual => "意味検索",
         SearchModeFast => "高速",
         BadgeKeyword => "キーワード",
-        BadgeSemantic => "セマンティック",
-        BadgeFused => "融合",
+        BadgeSemantic => "意味",
         BadgeReranked => "リランク済み",
         BadgeSourceStale => "更新が必要",
         DialogAddSourceTitle => "追加するフォルダーを選択",
         DialogChooseSearchFolderTitle => "検索するフォルダーを選択",
-        WizardTitleNotConfigured => "セマンティック検索の設定",
+        WizardTitleNotConfigured => "意味による検索の設定",
         WizardTitleFileMissing => "モデルが見つかりません",
         WizardTitleValidating => "モデルフォルダを確認中",
         WizardTitleReady => "意味による検索の準備完了",
@@ -130,7 +129,7 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardPreviousPathLabel => "最後の既知のパス",
         WizardValidationOk => "確認済み",
         WizardValidationFail => "見つかりません",
-        WizardReadyBody => "セマンティック検索が利用可能になりました。",
+        WizardReadyBody => "意味による検索が利用可能になりました。",
         ModelConsentTitle => "モデルのダウンロードを確認",
         ModelConsentBody => {
             "続行すると、orbok は提供元に接続し、このモデルをローカルに保存します。"

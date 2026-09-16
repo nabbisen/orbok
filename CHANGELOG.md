@@ -830,6 +830,21 @@ Eleven RFCs are recorded as implemented in this release; see
 
 ### Fixed
 
+- **Task 050: the product had two names for one feature, and the copy gate
+  had a hole the right shape for it.** The Japanese first-launch window said
+  「セマンティック検索の設定」 two lines above a body saying 「意味による検索」;
+  six Japanese strings used one name and four the other. Every sibling
+  technical term — embedding, vector, index, chunk, query, engine, backend —
+  was already forbidden in UI copy, but "semantic" and 「セマンティック」 were
+  not, so nothing caught it. Both terms are now on the forbidden lists, with
+  no exemption: the English badge reads "By meaning", the Japanese 「意味」
+  (parallel to 「キーワード」), and the wizard's ready and setup strings and
+  the keyword-only notice all say search by meaning in both locales. The
+  Japanese keyword-only notice also said the feature 「は利用できません」 —
+  cannot be used, which reads as broken — where the English says it is not
+  set up yet; it now matches that sense and points at basic search in the
+  same words the models view already uses. `BadgeFused` 「融合」, a catalog
+  key with no badge variant and no renderer, is deleted.
 - **Task 049: the first screen ran its paragraphs into spaced-out columns, and
   told a fresh install that its model folder had moved.** Four catalog strings
   (both locales' "set up search by meaning" and "model folder is no longer at

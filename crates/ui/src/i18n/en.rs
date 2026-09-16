@@ -84,8 +84,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchModeConceptual => "Conceptual",
         SearchModeFast => "Fast",
         BadgeKeyword => "Keyword",
-        BadgeSemantic => "Semantic",
-        BadgeFused => "Fused",
+        BadgeSemantic => "By meaning",
         BadgeReranked => "Reranked",
         BadgeSourceStale => "Needs update",
         DialogAddSourceTitle => "Select a folder to add",
@@ -127,7 +126,7 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardPreviousPathLabel => "Last known path",
         WizardValidationOk => "found",
         WizardValidationFail => "not found",
-        WizardReadyBody => "Semantic search is now available.",
+        WizardReadyBody => "Search by meaning is now available.",
         ModelConsentTitle => "Review model download",
         ModelConsentBody => {
             "orbok will contact the provider and save this model locally only after you continue."

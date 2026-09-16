@@ -197,10 +197,6 @@ message_keys! {
     // Match badges
     BadgeKeyword,
     BadgeSemantic,
-    // Unreferenced: no current MatchBadge variant corresponds to this key.
-    // Retained for a future hybrid-fusion result badge (RFC-009 RRF) rather
-    // than deleted (Review 134 §6.1).
-    BadgeFused,
     BadgeReranked,
     BadgeSourceStale,
     // Native dialog titles (RFC-052 §3, HANDOFF-052 §3 item 4)

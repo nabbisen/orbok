@@ -206,6 +206,10 @@ const FORBIDDEN_EN: &[&str] = &[
     "schema",
     "engine",
     "backend",
+    // Task 050: the product had two names for one feature. "semantic" is a
+    // sibling of every term above -- the gate was right about the class and
+    // missed one member of it.
+    "semantic",
     // RFC-041 §25 criterion 11 / §8.3: former project name, folded into
     // this same exhaustive scan rather than left in its own curated-array
     // test (Review 205 §3) -- `copy_uses_orbok_not_orbit` (this file) and
@@ -231,6 +235,9 @@ const FORBIDDEN_JA: &[&str] = &[
     "スキーマ",
     "エンジン",
     "バックエンド",
+    // Task 050: the katakana transliteration carries no meaning for a reader
+    // who does not already know the English term.
+    "セマンティック",
     "BM25",
     "RRF",
     // Not observed anywhere in the live catalog (verified by grep before
