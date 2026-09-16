@@ -7,7 +7,9 @@
 
 use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::{KeywordCandidate, KeywordDocument, KeywordSearchEngine};
-use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult, now_iso8601};
+use orbok_core::{
+    ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, now_iso8601,
+};
 use orbok_db::Catalog;
 use rusqlite::params;
 
@@ -39,16 +41,23 @@ impl<'a> Fts5KeywordEngine<'a> {
             return Ok(Vec::new());
         };
         let conn = self.catalog.lock();
+        // RFC-060 §5: a non-searchable source contributes no candidates,
+        // filtered in SQL rather than afterwards -- post-filtering shrinks
+        // the result set below `limit` and makes "no results" ambiguous
+        // (RFC-041 §25.5).
         let mut stmt = conn
-            .prepare(
+            .prepare(&format!(
                 "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
                  FROM chunk_fts \
                  JOIN keyword_index_records r ON r.fts_rowid = chunk_fts.rowid \
                  JOIN chunks c ON c.chunk_id = r.chunk_id \
+                 JOIN files f ON f.file_id = c.file_id \
+                 JOIN sources s ON s.source_id = f.source_id \
                  WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
                    AND c.chunk_status = 'active' \
-                 ORDER BY score LIMIT ?2",
-            )
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL} \
+                 ORDER BY score LIMIT ?2"
+            ))
             .map_err(db)?;
         let rows = stmt
             .query_map(params![match_expr, limit], |row| {

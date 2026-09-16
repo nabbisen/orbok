@@ -6,7 +6,7 @@ use crate::KeywordSearchEngine;
 use crate::multilingual::MultilingualKeywordEngine;
 use crate::rrf::{FusedCandidate, rrf_fuse};
 use crate::service::{MatchBadge, SearchResult};
-use crate::snippet::{chunk_records_for, load_snippet};
+use crate::snippet::{chunk_records_for, searchable_path_guard, snippet_or_none};
 use crate::vector::ExactVectorSearch;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
@@ -219,13 +219,14 @@ impl<'a> HybridSearchService<'a> {
             .map(|candidate| candidate.chunk_id.clone())
             .collect();
         let records = chunk_records_for(self.catalog, &chunk_ids)?;
+        let guard = searchable_path_guard(self.catalog)?;
 
         let mut results = Vec::with_capacity(top_candidates.len());
         for candidate in top_candidates {
             let Some((chunk, canonical_path)) = records.get(candidate.chunk_id.as_str()) else {
                 continue;
             };
-            let snippet = load_snippet(chunk, canonical_path);
+            let snippet = snippet_or_none(&guard, chunk, canonical_path);
             let display_path = short_display_path(canonical_path);
             let title = chunk.heading_path.clone().or_else(|| {
                 Path::new(canonical_path)

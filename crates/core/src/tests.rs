@@ -4,7 +4,9 @@
 
 use crate::data_class::{CleanupAction, CleanupPlan, DataClass, StorageCategory};
 use crate::id::{FileId, SourceId};
-use crate::status::{FileStatus, HiddenFilePolicy, SourceStatus, SymlinkPolicy};
+use crate::status::{
+    FileStatus, HiddenFilePolicy, SEARCHABLE_SOURCE_STATUS_SQL, SourceStatus, SymlinkPolicy,
+};
 use crate::timeutil::now_iso8601;
 
 // RFC-001 §12: "Cleanup functions require a target lifecycle class" /
@@ -120,6 +122,37 @@ fn source_status_vocabulary_complete() {
         "removed",
     ] {
         assert!(SourceStatus::parse(s).is_ok(), "{s}");
+    }
+}
+
+// RFC-060 §5: the SQL fragment the four retrieval joins filter on must
+// list exactly the statuses `is_searchable` admits. A literal drifting from
+// the predicate would silently widen or narrow what a search can see, in
+// four places at once, with no compiler error.
+#[test]
+fn searchable_status_sql_matches_the_enum() {
+    let every_status = [
+        SourceStatus::Active,
+        SourceStatus::Paused,
+        SourceStatus::Missing,
+        SourceStatus::PermissionDenied,
+        SourceStatus::Removed,
+    ];
+    let expected = every_status
+        .iter()
+        .filter(|status| status.is_searchable())
+        .map(|status| format!("'{}'", status.as_str()))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        SEARCHABLE_SOURCE_STATUS_SQL,
+        format!("({expected})"),
+        "the retrieval join's status list must equal the statuses is_searchable admits"
+    );
+    // Every status the catalog can hold is covered by the list above, so a
+    // new variant cannot be forgotten here: parse round-trips all five.
+    for status in every_status {
+        assert_eq!(SourceStatus::parse(status.as_str()).unwrap(), status);
     }
 }
 

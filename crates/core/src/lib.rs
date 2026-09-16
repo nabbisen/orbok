@@ -33,7 +33,7 @@ pub use id::{
 };
 pub use privacy::{DiagnosticsPolicy, LocalDataCategory, PrivacyMode, PrivacySettings};
 pub use status::{
-    FileStatus, HiddenFilePolicy, IndexMode, JobStatus, JobType, PersistenceMode, SourceStatus,
-    SourceType, SymlinkPolicy,
+    FileStatus, HiddenFilePolicy, IndexMode, JobStatus, JobType, PersistenceMode,
+    SEARCHABLE_SOURCE_STATUS_SQL, SourceStatus, SourceType, SymlinkPolicy,
 };
 pub use timeutil::{now_iso8601, system_time_iso8601};

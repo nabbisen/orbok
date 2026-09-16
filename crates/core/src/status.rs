@@ -67,6 +67,28 @@ catalog_enum!(
     }
 );
 
+impl SourceStatus {
+    /// Whether a source in this state contributes search candidates
+    /// (RFC-060 §5, §11 criterion 6).
+    ///
+    /// Mirrors `orbok_fs::source_lifecycle::SourceState::is_searchable`
+    /// for the states the catalog can actually hold: that vocabulary is
+    /// RFC-037's wider one (it adds `Preparing` and `NeedsUpdate`), while
+    /// `sources.status`'s CHECK admits only the five values above -- so a
+    /// row can never carry the two extra searchable states, and `Active`
+    /// is the whole searchable set here.
+    pub fn is_searchable(self) -> bool {
+        matches!(self, Self::Active)
+    }
+}
+
+/// Every searchable `sources.status` value as a SQL `IN` list, for the
+/// retrieval joins (RFC-060 §5). One definition rather than the literal
+/// repeated at four query sites; `searchable_status_sql_matches_the_enum`
+/// in this crate's tests keeps it equal to [`SourceStatus::is_searchable`].
+/// Built from `as_str` values, never from caller input.
+pub const SEARCHABLE_SOURCE_STATUS_SQL: &str = "('active')";
+
 catalog_enum!(
     /// `sources.index_mode` (FR-120 quality modes).
     IndexMode,

@@ -8,7 +8,9 @@
 //! logged by this module.
 
 use crate::catalog::{Catalog, db_err};
-use orbok_core::{ChunkId, EmbeddingId, FileId, ModelId, OrbokResult, now_iso8601};
+use orbok_core::{
+    ChunkId, EmbeddingId, FileId, ModelId, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, now_iso8601,
+};
 use rusqlite::params;
 
 /// Data needed to insert one embedding.
@@ -74,13 +76,18 @@ impl<'a> EmbeddingRepository<'a> {
     ) -> OrbokResult<Vec<EmbeddingRecord>> {
         let conn = self.catalog.lock();
         let mut stmt = conn
-            .prepare(
+            .prepare(&format!(
+                // RFC-060 §5: the vector half of the same source-status
+                // filter the two keyword queries apply.
                 "SELECT e.embedding_id, e.chunk_id, c.file_id, e.vector_blob \
                  FROM embeddings e \
                  JOIN chunks c ON c.chunk_id = e.chunk_id \
+                 JOIN files f ON f.file_id = c.file_id \
+                 JOIN sources s ON s.source_id = f.source_id \
                  WHERE e.model_id = ?1 AND e.dimension = ?2 \
-                   AND e.status = 'active' AND c.chunk_status = 'active'",
-            )
+                   AND e.status = 'active' AND c.chunk_status = 'active' \
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}"
+            ))
             .map_err(db_err)?;
         let rows = stmt
             .query_map(params![model_id, dimension as i64], |row| {

@@ -6,7 +6,7 @@
 
 use crate::KeywordSearchEngine;
 use crate::fts5::Fts5KeywordEngine;
-use crate::snippet::{chunk_record_for, load_snippet};
+use crate::snippet::{chunk_record_for, searchable_path_guard, snippet_or_none};
 use orbok_core::{ChunkId, FileId, OrbokResult};
 use orbok_db::Catalog;
 
@@ -52,9 +52,10 @@ impl<'a> SearchService<'a> {
         let engine = Fts5KeywordEngine::new(self.catalog);
         let candidates = engine.search(query, limit)?;
 
+        let guard = searchable_path_guard(self.catalog)?;
         let mut results = Vec::with_capacity(candidates.len());
         for candidate in candidates {
-            let enriched = self.enrich(candidate)?;
+            let enriched = self.enrich(&guard, candidate)?;
             if let Some(r) = enriched {
                 results.push(r);
             }
@@ -62,13 +63,17 @@ impl<'a> SearchService<'a> {
         Ok(results)
     }
 
-    fn enrich(&self, candidate: crate::KeywordCandidate) -> OrbokResult<Option<SearchResult>> {
+    fn enrich(
+        &self,
+        guard: &orbok_fs::PathGuard,
+        candidate: crate::KeywordCandidate,
+    ) -> OrbokResult<Option<SearchResult>> {
         let Some((chunk, canonical_path)) = chunk_record_for(self.catalog, &candidate.chunk_id)?
         else {
             return Ok(None);
         };
 
-        let snippet = load_snippet(&chunk, &canonical_path);
+        let snippet = snippet_or_none(guard, &chunk, &canonical_path);
 
         // Build a short display path (just the last two components).
         let display_path = short_display_path(&canonical_path);

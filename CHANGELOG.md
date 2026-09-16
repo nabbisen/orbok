@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **RFC-060 Slice 2: a paused folder's files were still searched, and still
+  opened from disk.** `SourceState::is_searchable` existed with no caller, so
+  nothing at the query layer knew a folder was paused, missing or
+  permission-denied: its chunks stayed in the keyword, trigram and vector
+  candidate sets, and the snippet path then opened the file to render an
+  excerpt. All four retrieval sites now join `sources` and filter on status
+  **in SQL** -- post-filtering would shrink the result set below the requested
+  limit and make "no results" ambiguous (RFC-041 §25.5). The searchable set
+  has one definition (`SourceStatus::is_searchable` and
+  `SEARCHABLE_SOURCE_STATUS_SQL` in `orbok-core`, kept in step by a test)
+  rather than a literal repeated four times.
+- **The snippet path read files without passing the source boundary.**
+  `snippet.rs` called `std::fs::File::open` on the catalog's stored path,
+  with no `PathGuard` in the module, while `path_guard.rs`'s own doc requires
+  a `ValidatedPath` before any backend read and the README claims the backend
+  never reads arbitrary paths. `load_snippet` now validates against a guard
+  built from the searchable sources, and returns an error -- not file
+  contents -- for a path outside every registered source. A rejected path is
+  logged and the result is still shown without a snippet. **The TOCTOU window
+  is recorded, not closed** (RFC-060 §9 accepts it as separate): the guard
+  canonicalises and checks membership, then the file is opened by path, so a
+  path swapped for a symlink in between still escapes.
+- **RFC-058 §6 row 5's `#[should_panic]` wrapper is removed**, by the change
+  RFC-058 named as the one that would remove it.
+  `a_paused_source_contributes_no_search_results` asserted the defect rather
+  than the fix, failing loudly on every push so it could not be forgotten;
+  it now asserts the fix directly.
+
 ### Docs
 
 - **RFC-060 Amendment 3: both open questions closed, and a handoff for what is

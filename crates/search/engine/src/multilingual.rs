@@ -17,7 +17,7 @@ use crate::fts5::Fts5KeywordEngine;
 use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::rrf::rrf_fuse_keyword_lists;
 use crate::{KeywordCandidate, KeywordSearchEngine};
-use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult};
+use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL};
 use orbok_db::Catalog;
 use rusqlite::params;
 
@@ -162,16 +162,20 @@ impl MultilingualKeywordEngine<'_> {
             return Ok(Vec::new());
         };
         let conn = self.catalog.lock();
+        // RFC-060 §5, same join as the unicode61 path in `fts5.rs`.
         let mut stmt = conn
-            .prepare(
+            .prepare(&format!(
                 "SELECT r.chunk_id, c.file_id, bm25(chunk_fts_trigram) AS score \
                  FROM chunk_fts_trigram \
                  JOIN keyword_index_records r ON r.trigram_fts_rowid = chunk_fts_trigram.rowid \
                  JOIN chunks c ON c.chunk_id = r.chunk_id \
+                 JOIN files f ON f.file_id = c.file_id \
+                 JOIN sources s ON s.source_id = f.source_id \
                  WHERE chunk_fts_trigram MATCH ?1 AND r.status = 'active' \
                    AND c.chunk_status = 'active' \
-                 ORDER BY score LIMIT ?2",
-            )
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL} \
+                 ORDER BY score LIMIT ?2"
+            ))
             .map_err(|e| OrbokError::Database(e.to_string()))?;
         let rows = stmt
             .query_map(params![match_expr, limit], |row| {

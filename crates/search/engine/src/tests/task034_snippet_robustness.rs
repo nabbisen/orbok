@@ -4,7 +4,43 @@
 
 use orbok_core::{ChunkId, FileId};
 use orbok_db::repo::ChunkRecord;
+use orbok_fs::{GuardedSource, PathGuard};
 use std::io::Read;
+
+/// A guard admitting one directory, so these tests exercise the same
+/// boundary production uses (RFC-060 §5: `load_snippet` validates before
+/// opening). Built from a `SourceRecord` because `CompiledPolicy` is only
+/// constructible that way.
+fn guard_over(root: &std::path::Path) -> PathGuard {
+    use orbok_core::{
+        HiddenFilePolicy, IndexMode, PersistenceMode, SourceId, SourceStatus, SourceType,
+        SymlinkPolicy,
+    };
+    use orbok_db::repo::SourceRecord;
+    let canonical = std::fs::canonicalize(root)
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let record = SourceRecord {
+        source_id: SourceId::from_string("s-snippet-test".to_string()),
+        source_type: SourceType::Directory,
+        persistence_mode: PersistenceMode::Persistent,
+        display_name: None,
+        original_path: canonical.clone(),
+        canonical_path: canonical,
+        status: SourceStatus::Active,
+        index_mode: IndexMode::Balanced,
+        include_patterns: vec![],
+        exclude_patterns: vec![],
+        hidden_file_policy: HiddenFilePolicy::Exclude,
+        symlink_policy: SymlinkPolicy::Ignore,
+        max_file_size_bytes: None,
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
+        last_scanned_at: None,
+    };
+    PathGuard::new(vec![GuardedSource::from_record(&record)])
+}
 
 fn record(line_start: u32, line_end: u32, location_quality: &str) -> ChunkRecord {
     ChunkRecord {
@@ -102,8 +138,10 @@ fn inverted_line_range_does_not_panic() {
 
     // line_end (2) < line_start (5): a malformed/corrupted stored range.
     let rec = record(5, 2, "exact");
-    let result =
-        std::panic::catch_unwind(|| crate::snippet::load_snippet(&rec, file.to_str().unwrap()));
+    let guard = guard_over(dir.path());
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::snippet::load_snippet(&guard, &rec, file.to_str().unwrap())
+    }));
 
     assert!(
         result.is_ok(),
@@ -124,9 +162,10 @@ fn non_exact_location_quality_yields_no_snippet() {
     let file = dir.path().join("doc.txt");
     std::fs::write(&file, "real readable text on line one\n").unwrap();
 
+    let guard = guard_over(dir.path());
     let approximate = record(1, 1, "approximate");
     assert_eq!(
-        crate::snippet::load_snippet(&approximate, file.to_str().unwrap()),
+        crate::snippet::load_snippet(&guard, &approximate, file.to_str().unwrap()).unwrap(),
         None,
         "non-exact location_quality must yield no snippet rather than the wrong bytes"
     );
@@ -135,7 +174,9 @@ fn non_exact_location_quality_yields_no_snippet() {
     // still produce a snippet -- the guard is not simply always-None.
     let exact = record(1, 1, "exact");
     assert!(
-        crate::snippet::load_snippet(&exact, file.to_str().unwrap()).is_some(),
+        crate::snippet::load_snippet(&guard, &exact, file.to_str().unwrap())
+            .unwrap()
+            .is_some(),
         "exact location_quality must still produce a snippet"
     );
 }

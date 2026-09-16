@@ -538,12 +538,13 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
 /// to arrange a precondition, and then observes the outcome through the
 /// real entry point under test, `bootstrap::run_search`.
 ///
-/// `#[should_panic]`, not `#[ignore]` (RFC-058 §6 Group B): this runs on
-/// every push and fails loudly, naming the RFC-060 criterion, if the guard
-/// disappears without anyone removing this wrapper. Remove the wrapper once
-/// RFC-060 §7 makes source status honoured at the query layer.
+/// **The `#[should_panic]` wrapper is removed by RFC-060 Slice 2**, which is
+/// the change RFC-058 §6 Group B named as the one that would remove it: all
+/// four retrieval sites (unicode61, trigram, vector scan, enrichment lookup)
+/// now join `sources` and filter on status in SQL, so a paused source
+/// contributes nothing. Until then this ran on every push and failed loudly,
+/// naming the criterion, rather than sitting `#[ignore]`d and unobserved.
 #[tokio::test]
-#[should_panic(expected = "a paused source's files must not appear in search results")]
 async fn a_paused_source_contributes_no_search_results() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());

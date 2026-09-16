@@ -4,9 +4,10 @@
 //! Privacy: no text is stored in the catalog. Snippets surface only
 //! when the source file is readable and current.
 
-use orbok_core::{OrbokError, OrbokResult};
+use orbok_core::{OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL};
 use orbok_db::Catalog;
-use orbok_db::repo::ChunkRecord;
+use orbok_db::repo::{ChunkRecord, SourceRepository};
+use orbok_fs::{GuardedSource, PathGuard};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -20,7 +21,11 @@ const MAX_SNIPPET_READ_BYTES: u64 = 64 * 1024;
 /// Load a text snippet for one chunk from its source file, using the
 /// stored line range. Returns `None` when the source file is missing
 /// or unreadable (UI should show "source unavailable").
-pub fn load_snippet(record: &ChunkRecord, source_path: &str) -> Option<String> {
+pub fn load_snippet(
+    guard: &PathGuard,
+    record: &ChunkRecord,
+    source_path: &str,
+) -> OrbokResult<Option<String>> {
     // Task 034 §5 (audit F-03): PDF/DOCX/HTML chunks store `Approximate`
     // location quality -- their `line_start`/`line_end` are paragraph or
     // page ordinals, not literal text-file line numbers, so reading "that
@@ -30,12 +35,62 @@ pub fn load_snippet(record: &ChunkRecord, source_path: &str) -> Option<String> {
     // (locating actual text for these formats). Must run before the file
     // is even opened -- `load_snippet_from` below has no path to guard on.
     if record.location_quality != "exact" {
-        return None;
+        return Ok(None);
     }
 
-    let path = Path::new(source_path);
-    let file = std::fs::File::open(path).ok()?;
-    load_snippet_from(record, file)
+    // RFC-060 §5 / §11 criterion 9. `path_guard.rs`'s own doc says "before
+    // any backend code reads a file it must obtain a `ValidatedPath`", and
+    // this module opened the catalog's stored path directly -- the one
+    // backend read outside the boundary the README claims.
+    //
+    // **TOCTOU, recorded rather than fixed** (RFC-060 §9 accepts it as
+    // separate): the guard canonicalises and checks membership, then the
+    // open below happens by path, so a path swapped for a symlink in
+    // between still escapes. "The boundary is TOCTOU" is defensible; "the
+    // boundary is not called" was not.
+    let validated = guard.validate(Path::new(source_path))?;
+    let Ok(file) = std::fs::File::open(&validated.canonical) else {
+        return Ok(None);
+    };
+    Ok(load_snippet_from(record, file))
+}
+
+/// [`load_snippet`], with a rejected path logged and rendered as "no
+/// snippet" rather than failing the search: a result whose file the
+/// boundary refuses is still a real result, and RFC-060 §6 keeps the
+/// snippet optional while the result is not.
+pub(crate) fn snippet_or_none(
+    guard: &PathGuard,
+    record: &ChunkRecord,
+    source_path: &str,
+) -> Option<String> {
+    match load_snippet(guard, record, source_path) {
+        Ok(snippet) => snippet,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                path = source_path,
+                "no snippet: the source boundary rejected this path"
+            );
+            None
+        }
+    }
+}
+
+/// A guard over exactly the sources a search may read from -- the same
+/// searchable set the retrieval queries filter on
+/// ([`orbok_core::SourceStatus::is_searchable`]), so a paused source's
+/// files cannot be opened even if a candidate reached the snippet path
+/// (RFC-060 §11 criterion 6).
+pub fn searchable_path_guard(catalog: &Catalog) -> OrbokResult<PathGuard> {
+    let sources = SourceRepository::new(catalog).list()?;
+    Ok(PathGuard::new(
+        sources
+            .iter()
+            .filter(|source| source.status.is_searchable())
+            .map(GuardedSource::from_record)
+            .collect(),
+    ))
 }
 
 /// The read-and-extract half of `load_snippet`, taking any `Read` rather
@@ -90,6 +145,9 @@ pub fn chunk_records_for(
     let placeholders = std::iter::repeat_n("?", chunk_ids.len())
         .collect::<Vec<_>>()
         .join(",");
+    // RFC-060 §5: the enrichment lookup applies the same source-status
+    // filter as retrieval, so a paused source yields no record to render
+    // and therefore no path to open.
     let sql = format!(
         "SELECT c.chunk_id, c.file_id, c.chunk_ordinal, c.heading_path, \
                 cl.line_start, cl.line_end, cl.byte_start, cl.byte_end, cl.location_quality, \
@@ -97,7 +155,9 @@ pub fn chunk_records_for(
          FROM chunks c \
          LEFT JOIN chunk_locations cl ON cl.chunk_id = c.chunk_id \
          JOIN files f ON f.file_id = c.file_id \
-         WHERE c.chunk_id IN ({placeholders}) AND c.chunk_status = 'active'"
+         JOIN sources s ON s.source_id = f.source_id \
+         WHERE c.chunk_id IN ({placeholders}) AND c.chunk_status = 'active' \
+           AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}"
     );
     let conn = catalog.lock();
 
