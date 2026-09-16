@@ -25,6 +25,7 @@ mod rfc062_acceptance_tests;
 #[cfg(test)]
 mod runtime_isolation_tests;
 mod scheduler_host;
+mod search_model;
 mod settings;
 #[cfg(test)]
 mod wired_application_tests;
@@ -103,14 +104,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // moves `run_search`'s call sites onto `iced::Task::perform`, so each
     // one needs its own cheap, owned handle to move into a `'static` async
     // block -- the same reason `catalog` above is an `Arc`.
-    let search_model = std::sync::Arc::new(
+    //
+    // Task 055 §1(c): wrapped in `SearchModel` so a model installed during
+    // the session can be swapped in; each search still takes a snapshot and
+    // never resolves one itself.
+    let search_model = std::sync::Arc::new(search_model::SearchModel::new(
         bootstrap::embedding_resolution::resolve_embedding_worker_parts(
             &runtime,
             &orbok::runtime_context::AllowRuntimePathProbe,
             &catalog,
             &search_settings,
         ),
-    );
+    ));
 
     // RFC-060 §6: the extraction cache is the only source a page, paragraph
     // or block snippet may be rendered from -- the snippet path never
@@ -201,6 +206,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             flag.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                         iced::Task::none()
+                    }
+                    model_flow::ModelFlowEffect::ActivateModel {
+                        ready_id,
+                        persistence_attempt_id,
+                    } => {
+                        // Task 055 §1(b): the indexing host re-resolves its
+                        // own model and backfills. `clone()` gives this send
+                        // its own slot beyond the channel's buffer, so it is
+                        // not dropped behind a burst of `UserActive`.
+                        if let Err(error) = resource_signal_tx
+                            .clone()
+                            .try_send(scheduler_host::ResourceObservation::EmbeddingModelChanged)
+                        {
+                            tracing::warn!(%error, "could not tell background preparation about the new model");
+                        }
+                        // Task 055 §1(c): resolve for search off the update
+                        // thread, swap it in, and only then report -- the
+                        // report is what sets `capability = Hybrid`.
+                        let activation_model = search_model.clone();
+                        let activation_runtime = runtime.clone();
+                        iced::Task::perform(
+                            async move {
+                                tokio::task::spawn_blocking(move || {
+                                    activation_model.activate(|| {
+                                        let catalog =
+                                            bootstrap::open_catalog(&activation_runtime).ok()?;
+                                        let settings =
+                                            bootstrap::load_runtime_settings(&activation_runtime)
+                                                .ok()?;
+                                        bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+                                            &activation_runtime,
+                                            &orbok::runtime_context::AllowRuntimePathProbe,
+                                            &catalog,
+                                            &settings,
+                                        )
+                                    })
+                                })
+                                .await
+                                .unwrap_or(false)
+                            },
+                            move |activated| Message::ModelActivationCompleted {
+                                ready_id,
+                                persistence_attempt_id,
+                                activated,
+                            },
+                        )
                     }
                     effect @ model_flow::ModelFlowEffect::PersistReady { .. } => {
                         let persistence_runtime = runtime.clone();
@@ -530,7 +581,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // pattern as the picker above.
                         app.update(message.clone());
                         let catalog_task = catalog.clone();
-                        let search_model_task = search_model.clone();
+                        let search_model_task = search_model.current();
                         let search_cache_task = search_cache.clone();
                         // RFC-060 §7: the kind filters and chosen folder the user
                         // actually set, resolved before the task takes ownership.
@@ -650,7 +701,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return iced::Task::none();
                     }
                     let catalog_task = catalog.clone();
-                    let search_model_task = search_model.clone();
+                    let search_model_task = search_model.current();
                     let search_cache_task = search_cache.clone();
                     // RFC-060 §7: the kind filters and chosen folder the user
                     // actually set, resolved before the task takes ownership.
@@ -722,7 +773,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return iced::Task::none();
                     }
                     let catalog_task = catalog.clone();
-                    let search_model_task = search_model.clone();
+                    let search_model_task = search_model.current();
                     let search_cache_task = search_cache.clone();
                     // RFC-060 §7: the kind filters and chosen folder the user
                     // actually set, resolved before the task takes ownership.

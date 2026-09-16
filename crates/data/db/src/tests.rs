@@ -4,6 +4,7 @@
 mod rfc042_history;
 mod rfc050_generations;
 mod rfc062_migration_integrity;
+mod task055_backfill_cost;
 
 use crate::Catalog;
 use crate::migrations;

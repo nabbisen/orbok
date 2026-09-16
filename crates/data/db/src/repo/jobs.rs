@@ -1,7 +1,7 @@
 //! Index job queue repository (RFC-002 §7.9, RFC-004 §13).
 
 use crate::catalog::{Catalog, db_err};
-use orbok_core::{FileId, JobId, JobStatus, JobType, OrbokResult, SourceId, now_iso8601};
+use orbok_core::{FileId, JobId, JobStatus, JobType, ModelId, OrbokResult, SourceId, now_iso8601};
 use rusqlite::{OptionalExtension, params};
 
 /// A queued or running index job.
@@ -13,6 +13,28 @@ pub struct JobRecord {
     pub job_type: JobType,
     pub status: JobStatus,
 }
+
+/// Task 055: files with active chunks lacking an active embedding under
+/// `?1`, and no unfinished embedding job.
+///
+/// The unary `+` on the status and model columns is load-bearing. Without it
+/// SQLite (with no ANALYZE data) looks chunks and embeddings up through their
+/// status indexes, where nearly every row matches, and the query goes
+/// quadratic: 10.5 s at 20,000 chunks when every chunk is already embedded,
+/// which is every ordinary startup. With it, both lookups use
+/// `idx_chunks_file_id` and `idx_embeddings_chunk_id` (8.7 ms). Measured by
+/// `tests::task055_backfill_cost`; the plan is pinned by
+/// `embedding_backfill_uses_the_file_and_chunk_indexes`.
+pub(crate) const EMBEDDING_BACKFILL_FILES_SQL: &str = "SELECT f.file_id, f.source_id FROM files f \
+     WHERE EXISTS (SELECT 1 FROM chunks c \
+        WHERE c.file_id = f.file_id AND +c.chunk_status = 'active' \
+        AND NOT EXISTS (SELECT 1 FROM embeddings e \
+            WHERE e.chunk_id = c.chunk_id AND +e.model_id = ?1 \
+            AND +e.status = 'active')) \
+     AND NOT EXISTS (SELECT 1 FROM index_jobs j \
+        WHERE j.file_id = f.file_id AND j.job_type = 'embedding' \
+        AND j.status IN ('queued', 'running', 'paused', 'blocked', \
+                         'waiting_for_dependency'))";
 
 pub struct IndexJobRepository<'a> {
     catalog: &'a Catalog,
@@ -47,6 +69,49 @@ impl<'a> IndexJobRepository<'a> {
         )
         .map_err(db_err)?;
         Ok(id)
+    }
+
+    /// Task 055: queue one embedding job for every file that has active
+    /// chunks with no active embedding under `model_id` -- documents indexed
+    /// before a model existed, whose own embedding job failed terminally as
+    /// `model_missing` and which nothing else ever re-queues (the scanner
+    /// only re-queues files whose content changed).
+    ///
+    /// Idempotent: a file that already has an unfinished embedding job
+    /// (queued, running, paused, blocked or waiting) is skipped, so a second
+    /// call enqueues nothing. Old `failed` rows are left as they are; the new
+    /// job supersedes them. No priority is written, so the scheduler loads
+    /// these at the embedding kind's own default priority, as it does every
+    /// other embedding job. Returns how many jobs were queued.
+    pub fn enqueue_embedding_backfill(&self, model_id: &ModelId) -> OrbokResult<usize> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let files: Vec<(String, String)> = {
+            let mut stmt = tx.prepare(EMBEDDING_BACKFILL_FILES_SQL).map_err(db_err)?;
+            stmt.query_map(params![model_id.as_str()], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .map_err(db_err)?
+            .collect::<Result<_, _>>()
+            .map_err(db_err)?
+        };
+        let now = now_iso8601();
+        for (file_id, source_id) in &files {
+            tx.execute(
+                "INSERT INTO index_jobs (job_id, source_id, file_id, job_type, status, \
+                 created_at, updated_at) VALUES (?1,?2,?3,?4,'queued',?5,?5)",
+                params![
+                    JobId::generate().as_str(),
+                    source_id,
+                    file_id,
+                    JobType::Embedding.as_str(),
+                    now,
+                ],
+            )
+            .map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(files.len())
     }
 
     /// Move a job to a new status, recording start/completion times.

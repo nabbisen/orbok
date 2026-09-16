@@ -80,7 +80,7 @@ async fn drain_scheduler_until_idle_with_embedding(
     let handle = tokio::spawn(scheduler_host::run_with_context(
         loop_catalog,
         cache,
-        embedding_parts,
+        crate::scheduler_host::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         resource_signals,

@@ -604,6 +604,15 @@ pub enum Message {
         provenance: ModelProvenance,
         result: ModelPersistenceResult,
     },
+    /// Task 055 §1(c): the saved model was resolved for search (or could not
+    /// be). Only this -- never `ModelPersistenceCompleted` -- may make
+    /// `capability` read `Hybrid`, because only this arrives after search
+    /// actually holds the model.
+    ModelActivationCompleted {
+        ready_id: ReadyId,
+        persistence_attempt_id: PersistenceAttemptId,
+        activated: bool,
+    },
     WizardSkip,
     // Source management
     SourcePathChanged(String),
@@ -931,7 +940,8 @@ impl AppState {
                 all_ok: _,
             }
             | Message::WizardAccept
-            | Message::ModelPersistenceCompleted { .. } => {}
+            | Message::ModelPersistenceCompleted { .. }
+            | Message::ModelActivationCompleted { .. } => {}
             Message::WizardSkip => self.skip_wizard(),
             Message::DownloadModel => {
                 let return_to = self

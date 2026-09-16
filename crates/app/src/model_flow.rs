@@ -22,6 +22,12 @@ pub(crate) enum ModelFlowEffect {
         model_dir: String,
         provenance: ModelProvenance,
     },
+    /// Task 055 §1(c): the model choice is saved; resolve it for search and
+    /// tell the indexing host, then report `ModelActivationCompleted`.
+    ActivateModel {
+        ready_id: ReadyId,
+        persistence_attempt_id: PersistenceAttemptId,
+    },
 }
 
 /// Apply a model-lifecycle message. `None` means the message is not owned by
@@ -113,15 +119,20 @@ pub(crate) fn reduce(state: &mut AppState, message: &Message) -> Option<ModelFlo
             model_dir,
             provenance,
             result,
+        } => Some(apply_persistence_result(
+            state,
+            *ready_id,
+            *persistence_attempt_id,
+            model_dir,
+            *provenance,
+            *result,
+        )),
+        Message::ModelActivationCompleted {
+            ready_id,
+            persistence_attempt_id,
+            activated,
         } => {
-            apply_persistence_result(
-                state,
-                *ready_id,
-                *persistence_attempt_id,
-                model_dir,
-                *provenance,
-                *result,
-            );
+            apply_activation_result(state, *ready_id, *persistence_attempt_id, *activated);
             Some(ModelFlowEffect::None)
         }
         Message::DownloadFileProgress {
@@ -253,7 +264,7 @@ fn apply_persistence_result(
     model_dir: &str,
     provenance: ModelProvenance,
     result: ModelPersistenceResult,
-) {
+) -> ModelFlowEffect {
     let matches_active = matches!(
         state.wizard.as_ref(),
         Some(WizardState::Ready {
@@ -267,20 +278,58 @@ fn apply_persistence_result(
             && *active_provenance == provenance
     );
     if !matches_active {
-        return;
+        return ModelFlowEffect::None;
     }
     match result {
-        ModelPersistenceResult::Saved => {
-            state.capability = SearchCapability::Hybrid;
-            state.active_model_provenance = Some(provenance);
-            state.wizard = None;
-            state.wizard_path_input.clear();
-        }
+        // Task 055 §1(c): saved is not yet usable. This used to set
+        // `capability = Hybrid` here, while search still held no model --
+        // the half-second in which Conceptual, enabled by `Hybrid` since
+        // Task 053, returned nothing. The wizard stays in-flight until
+        // `ModelActivationCompleted` reports that search holds the model.
+        ModelPersistenceResult::Saved => ModelFlowEffect::ActivateModel {
+            ready_id,
+            persistence_attempt_id,
+        },
         ModelPersistenceResult::Failed => {
             if let Some(WizardState::Ready { persistence, .. }) = state.wizard.as_mut() {
                 *persistence = ModelPersistenceState::Failed;
             }
+            ModelFlowEffect::None
         }
+    }
+}
+
+/// Task 055 §1(c): the one place `capability` becomes `Hybrid` during a
+/// session, reached only after the search handle holds the new model. A
+/// model that could not be resolved leaves `KeywordOnly` and puts the wizard
+/// back on its existing failure-and-retry step.
+fn apply_activation_result(
+    state: &mut AppState,
+    ready_id: ReadyId,
+    persistence_attempt_id: PersistenceAttemptId,
+    activated: bool,
+) {
+    let Some(WizardState::Ready {
+        ready_id: active_ready,
+        provenance,
+        persistence,
+        ..
+    }) = state.wizard.as_mut()
+    else {
+        return;
+    };
+    if *active_ready != ready_id
+        || *persistence != ModelPersistenceState::InFlight(persistence_attempt_id)
+    {
+        return;
+    }
+    if activated {
+        state.active_model_provenance = Some(*provenance);
+        state.capability = SearchCapability::Hybrid;
+        state.wizard = None;
+        state.wizard_path_input.clear();
+    } else {
+        *persistence = ModelPersistenceState::Failed;
     }
 }
 
@@ -648,9 +697,26 @@ mod tests {
         ));
         let store = RecordingStore(RefCell::new(Vec::new()));
         let completion = execute_persistence(&store, persistence).unwrap();
-        reduce(&mut state, &completion);
+        let activation = reduce(&mut state, &completion);
 
         assert_eq!(store.0.borrow().as_slice(), ["managed"]);
+        // Task 055 §1(c): saved, then activated for search, then Hybrid.
+        assert_eq!(state.capability, SearchCapability::KeywordOnly);
+        let Some(ModelFlowEffect::ActivateModel {
+            ready_id,
+            persistence_attempt_id,
+        }) = activation
+        else {
+            panic!("a saved model must be activated, got {activation:?}")
+        };
+        reduce(
+            &mut state,
+            &Message::ModelActivationCompleted {
+                ready_id,
+                persistence_attempt_id,
+                activated: true,
+            },
+        );
         assert_eq!(state.capability, SearchCapability::Hybrid);
         assert_eq!(
             state.active_model_provenance,
@@ -742,14 +808,52 @@ mod tests {
             assert_eq!(state.capability, SearchCapability::KeywordOnly);
         }
 
-        reduce(
-            &mut state,
-            &Message::ModelPersistenceCompleted {
+        // Task 055 §2 test 4: saved is not usable yet -- capability stays
+        // `KeywordOnly` and the wizard stays in flight until search holds
+        // the model.
+        assert_eq!(
+            reduce(
+                &mut state,
+                &Message::ModelPersistenceCompleted {
+                    ready_id,
+                    persistence_attempt_id,
+                    model_dir,
+                    provenance,
+                    result: ModelPersistenceResult::Saved,
+                },
+            ),
+            Some(ModelFlowEffect::ActivateModel {
                 ready_id,
                 persistence_attempt_id,
-                model_dir,
-                provenance,
-                result: ModelPersistenceResult::Saved,
+            })
+        );
+        assert_eq!(
+            state.capability,
+            SearchCapability::KeywordOnly,
+            "capability must not read Hybrid while search has no model"
+        );
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::Ready {
+                persistence: ModelPersistenceState::InFlight(_),
+                ..
+            })
+        ));
+        reduce(
+            &mut state,
+            &Message::ModelActivationCompleted {
+                ready_id: wrong_ready,
+                persistence_attempt_id,
+                activated: true,
+            },
+        );
+        assert_eq!(state.capability, SearchCapability::KeywordOnly);
+        reduce(
+            &mut state,
+            &Message::ModelActivationCompleted {
+                ready_id,
+                persistence_attempt_id,
+                activated: true,
             },
         );
         assert!(state.wizard.is_none());
@@ -766,6 +870,48 @@ mod tests {
             },
         );
         assert!(state.wizard.is_none(), "duplicate completion is a no-op");
+    }
+
+    /// Task 055 §1(c): a saved model that cannot be resolved for search
+    /// leaves `KeywordOnly`, and the wizard offers its existing retry.
+    #[test]
+    fn a_saved_model_that_cannot_be_activated_stays_keyword_only() {
+        let mut state = ready_state();
+        let ModelFlowEffect::PersistReady {
+            ready_id,
+            persistence_attempt_id,
+            model_dir,
+            provenance,
+        } = persistence_effect(&mut state)
+        else {
+            panic!("expected persistence effect")
+        };
+        reduce(
+            &mut state,
+            &Message::ModelPersistenceCompleted {
+                ready_id,
+                persistence_attempt_id,
+                model_dir,
+                provenance,
+                result: ModelPersistenceResult::Saved,
+            },
+        );
+        reduce(
+            &mut state,
+            &Message::ModelActivationCompleted {
+                ready_id,
+                persistence_attempt_id,
+                activated: false,
+            },
+        );
+        assert_eq!(state.capability, SearchCapability::KeywordOnly);
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::Ready {
+                persistence: ModelPersistenceState::Failed,
+                ..
+            })
+        ));
     }
 
     #[test]

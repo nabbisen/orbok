@@ -78,7 +78,7 @@ async fn measure_document_chunk_duplication_against_the_rfcs_corpus() {
     let handle = tokio::spawn(crate::scheduler_host::run_with_context(
         loop_catalog,
         cache,
-        None,
+        crate::scheduler_host::EmbeddingSource::fixed(None),
         true,
         true,
         resource_signals,

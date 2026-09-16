@@ -207,7 +207,7 @@ async fn background_loop_processes_directly_enqueued_jobs_to_indexed() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -272,7 +272,7 @@ async fn event_buffer_stays_bounded_regardless_of_work_done() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -396,7 +396,7 @@ async fn no_model_configured_embedding_jobs_fail_as_model_missing_without_unboun
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -473,7 +473,7 @@ async fn background_indexing_disabled_pauses_before_any_job_runs() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         false,
         true,
         no_resource_signals(),
@@ -539,7 +539,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
         let handle = tokio::spawn(run_with_context(
             loop_catalog,
             loop_cache,
-            None,
+            super::EmbeddingSource::fixed(None),
             false,
             true,
             no_resource_signals(),
@@ -573,7 +573,7 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -640,7 +640,7 @@ async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         signal_rx,
@@ -727,7 +727,7 @@ async fn low_impact_survives_a_user_activity_interleaving_through_the_app() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         signal_rx,
@@ -829,7 +829,7 @@ async fn on_battery_does_not_defer_embedding_when_the_setting_is_disabled() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         false, // pause_embedding_on_battery_enabled: disabled
         signal_rx,
@@ -900,7 +900,7 @@ async fn startup_rescan_extracts_and_chunks_on_battery_but_defers_embedding() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         signal_rx,
@@ -1000,7 +1000,7 @@ async fn user_active_signal_does_not_override_paused() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         false, // background_indexing off -> Paused before the loop starts
         true,
         signal_rx,
@@ -1046,7 +1046,7 @@ async fn user_active_does_not_resume_paused_with_work_enqueued_after_pause() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         false, // paused at startup
         true,
         signal_rx,
@@ -1110,7 +1110,7 @@ async fn embedding_worker_that_always_fails_is_retried_then_permanently_failed()
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         no_resource_signals(),
@@ -1180,7 +1180,7 @@ async fn embedding_worker_persists_embeddings_through_the_real_dispatch_path() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         no_resource_signals(),
@@ -1280,7 +1280,7 @@ async fn interrupted_running_job_is_recovered_and_completes_after_restart() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -1627,7 +1627,7 @@ async fn removing_a_source_mid_flight_does_not_crash_or_wedge_the_loop() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -1696,7 +1696,7 @@ async fn index_via_background_loop(
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        None,
+        super::EmbeddingSource::fixed(None),
         true,
         true,
         no_resource_signals(),
@@ -1788,7 +1788,7 @@ async fn search_latency_while_background_indexing_is_running() {
     let handle = tokio::spawn(run_with_context(
         loop_catalog,
         loop_cache,
-        embedding_parts,
+        super::EmbeddingSource::fixed(embedding_parts),
         true,
         true,
         no_resource_signals(),
@@ -2035,7 +2035,7 @@ async fn idle_loop_trims_extraction_cache_to_cap_once_per_transition() {
         run_with_context(
             loop_catalog,
             loop_cache,
-            None,
+            super::EmbeddingSource::fixed(None),
             true,
             true,
             no_resource_signals(),
@@ -2144,7 +2144,7 @@ async fn pending_index_job_blocks_the_idle_trim_until_it_leaves_the_queue() {
         run_with_context(
             loop_catalog,
             loop_cache,
-            None,
+            super::EmbeddingSource::fixed(None),
             false,
             true,
             no_resource_signals(),
@@ -2173,4 +2173,199 @@ async fn pending_index_job_blocks_the_idle_trim_until_it_leaves_the_queue() {
     )
     .await;
     handle.abort();
+}
+
+// ── Task 055: an installed model takes effect ─────────────────────────
+
+/// Active chunks with no active embedding under `model_id` -- the
+/// quantity Task 055's backfill exists to drive to zero.
+fn chunks_without_embedding(catalog: &Catalog, model_id: &ModelId) -> i64 {
+    catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunks c WHERE c.chunk_status = 'active' \
+             AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.chunk_id = c.chunk_id \
+             AND e.model_id = ?1 AND e.status = 'active')",
+            [model_id.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+/// Index `count` markdown files with **no** model, until every embedding
+/// job has failed terminally as `model_missing` -- the ordinary first run
+/// Task 055 §0 describes (folders added before the model is installed).
+async fn index_without_a_model(context: &RuntimeContext, temp: &Path, count: usize) -> Catalog {
+    let ui_catalog = bootstrap::open_catalog(context).unwrap();
+    let source_dir = temp.join("source");
+    seed_markdown_docs(&source_dir, count);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(context).unwrap(),
+        bootstrap::cache_service(context).unwrap(),
+        super::EmbeddingSource::fixed(None),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    wait_until(Duration::from_secs(20), "every file indexed", || {
+        indexed_count(&ui_catalog) == count as u64
+    })
+    .await;
+    wait_until(
+        Duration::from_secs(20),
+        "every embedding job failed as model_missing",
+        || {
+            ui_catalog
+                .lock()
+                .query_row(
+                    "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'embedding' \
+                     AND status = 'failed' AND error_category = 'model_missing'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+                == count as i64
+        },
+    )
+    .await;
+    handle.abort();
+    let _ = handle.await;
+    ui_catalog
+}
+
+/// Task 055 §2 test 1 / test 3: documents indexed before a model existed
+/// get embeddings once the host holds one -- here, a host started with a
+/// model on a catalog whose chunks have none, without any file changing.
+#[tokio::test]
+async fn a_host_started_with_a_model_embeds_documents_indexed_without_one() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = index_without_a_model(&context, temp.path(), 3).await;
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "mock");
+    assert!(
+        chunks_without_embedding(&ui_catalog, &model_id) > 0,
+        "fixture: the chunks start with no embeddings"
+    );
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        bootstrap::cache_service(&context).unwrap(),
+        super::EmbeddingSource::fixed(Some(EmbeddingWorkerParts::for_test(
+            Box::new(MockEmbeddingModel),
+            model_id.clone(),
+        ))),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    wait_until(
+        Duration::from_secs(10),
+        "every active chunk has an active embedding, with no file changed",
+        || chunks_without_embedding(&ui_catalog, &model_id) == 0,
+    )
+    .await;
+    handle.abort();
+}
+
+/// Task 055 §2 test 1, in the form §0 describes: the host starts with no
+/// model, the files are indexed, and a model is installed mid-session. Only
+/// `EmbeddingModelChanged` arrives -- no file changes, no restart -- and every
+/// active chunk must end up with an active embedding.
+#[tokio::test]
+async fn a_model_installed_mid_session_embeds_documents_indexed_before_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let model_id = register_mock_model(&ui_catalog, "mock");
+    let resolver_model_id = model_id.clone();
+    let resolver: super::EmbeddingResolver = std::sync::Arc::new(move || {
+        Some(EmbeddingWorkerParts::for_test(
+            Box::new(MockEmbeddingModel),
+            resolver_model_id.clone(),
+        ))
+    });
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(&context).unwrap(),
+        bootstrap::cache_service(&context).unwrap(),
+        super::EmbeddingSource::resolving(None, resolver),
+        true,
+        true,
+        signal_rx,
+        tx,
+        None,
+    ));
+    drop(rx);
+
+    wait_until(
+        Duration::from_secs(20),
+        "every embedding job failed as model_missing before the install",
+        || {
+            ui_catalog
+                .lock()
+                .query_row(
+                    "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'embedding' \
+                     AND status = 'failed' AND error_category = 'model_missing'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+                == 3
+        },
+    )
+    .await;
+    assert!(chunks_without_embedding(&ui_catalog, &model_id) > 0);
+
+    signal_tx
+        .try_send(ResourceObservation::EmbeddingModelChanged)
+        .unwrap();
+    wait_until(
+        Duration::from_secs(10),
+        "every active chunk has an active embedding after a mid-session install",
+        || chunks_without_embedding(&ui_catalog, &model_id) == 0,
+    )
+    .await;
+    handle.abort();
+}
+
+/// Task 055 §2 test 2: the backfill is idempotent -- a file with an
+/// unfinished embedding job is not queued again.
+#[tokio::test]
+async fn embedding_backfill_enqueues_nothing_the_second_time() {
+    use orbok_db::repo::IndexJobRepository;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = index_without_a_model(&context, temp.path(), 3).await;
+    let model_id = register_mock_model(&catalog, "mock");
+    let jobs = IndexJobRepository::new(&catalog);
+    assert_eq!(
+        jobs.enqueue_embedding_backfill(&model_id).unwrap(),
+        3,
+        "one job per file whose chunks lack embeddings"
+    );
+    assert_eq!(
+        jobs.enqueue_embedding_backfill(&model_id).unwrap(),
+        0,
+        "the queued jobs from the first run must suppress a second"
+    );
 }

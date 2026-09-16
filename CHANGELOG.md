@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 055: documents indexed before a model was installed never became
+  searchable by meaning.** Their embedding jobs failed as `model_missing`,
+  and nothing ever queued them again: not a restart, and not a rescan, which
+  only re-queues files whose content changed. So on the ordinary first run
+  (install the model, add folders), search by meaning silently covered only
+  documents added or changed after a later restart. Separately, a model
+  installed mid-session was not used by search or by indexing until orbok
+  restarted, even though the UI said search by meaning was available.
+  - Whenever background preparation holds a model (at startup, and when one
+    is installed), it now queues embeddings for every file whose chunks lack
+    them.
+  - An installed model is resolved for both search and indexing without a
+    restart, off the UI thread.
+  - Search by meaning is reported as available only once search actually
+    holds the model.
 - **Task 053: the Advanced search-mode selector did nothing.** Auto, Exact
   and Conceptual rendered and recorded the choice, but every search was
   built with a hardcoded `Auto`, so the engine's per-mode behaviour (Exact

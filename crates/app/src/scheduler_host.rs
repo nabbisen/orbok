@@ -101,6 +101,48 @@ pub(crate) enum ResourceObservation {
     /// edge, so there is no idle-timeout half to infer the way there is for
     /// activity.
     OnBattery(bool),
+    /// Task 055: the embedding model the profile uses has changed -- sent
+    /// once a model install is saved. The loop re-resolves its model off
+    /// its own thread and, on success, queues embeddings for everything
+    /// indexed without one.
+    EmbeddingModelChanged,
+}
+
+/// A resolver the host can call again whenever the model changes. `Arc`
+/// so each call can move a handle into `spawn_blocking`.
+pub(crate) type EmbeddingResolver =
+    std::sync::Arc<dyn Fn() -> Option<EmbeddingWorkerParts> + Send + Sync>;
+
+/// Where the scheduler host's embedding model comes from (Task 055): the
+/// model resolved at startup, if any, and optionally how to resolve it again
+/// when [`ResourceObservation::EmbeddingModelChanged`] arrives. Without a
+/// resolver the model is fixed for the loop's lifetime, and a change
+/// observation is logged and ignored.
+pub(crate) struct EmbeddingSource {
+    initial: Option<EmbeddingWorkerParts>,
+    resolver: Option<EmbeddingResolver>,
+}
+
+impl EmbeddingSource {
+    /// A model that never changes for this loop (or no model at all).
+    #[cfg(test)]
+    pub(crate) fn fixed(initial: Option<EmbeddingWorkerParts>) -> Self {
+        Self {
+            initial,
+            resolver: None,
+        }
+    }
+
+    /// A startup model, plus how to resolve the current one again.
+    pub(crate) fn resolving(
+        initial: Option<EmbeddingWorkerParts>,
+        resolver: EmbeddingResolver,
+    ) -> Self {
+        Self {
+            initial,
+            resolver: Some(resolver),
+        }
+    }
 }
 
 /// Resolve the active profile's sealed handles and run the loop forever.
@@ -157,6 +199,27 @@ pub async fn run(
     // `true` for `background_indexing`, `OrbokSettings::default()`'s own
     // value.
     let settings = crate::bootstrap::load_runtime_settings(&runtime).ok();
+    // Task 055: the same resolution, repeatable. It opens its own catalog
+    // connection and re-reads settings -- the install being reported has
+    // just written the new model directory there -- so it borrows nothing
+    // from the loop and runs on a blocking thread.
+    let resolver_runtime = runtime.clone();
+    let resolver: EmbeddingResolver = std::sync::Arc::new(move || {
+        let catalog = crate::bootstrap::open_catalog(&resolver_runtime)
+            .inspect_err(|error| tracing::warn!(%error, "model re-resolution: catalog unavailable"))
+            .ok()?;
+        let settings = crate::bootstrap::load_runtime_settings(&resolver_runtime)
+            .inspect_err(
+                |error| tracing::warn!(%error, "model re-resolution: settings unavailable"),
+            )
+            .ok()?;
+        crate::bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &resolver_runtime,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &settings,
+        )
+    });
     let embedding_parts = settings.as_ref().and_then(|settings| {
         crate::bootstrap::embedding_resolution::resolve_embedding_worker_parts(
             &runtime,
@@ -196,7 +259,7 @@ pub async fn run(
     run_with_context(
         catalog,
         cache,
-        embedding_parts,
+        EmbeddingSource::resolving(embedding_parts, resolver),
         background_indexing_enabled,
         pause_embedding_on_battery_enabled,
         resource_signals,
@@ -222,7 +285,7 @@ pub async fn run(
 pub(crate) async fn run_with_context(
     catalog: Catalog,
     cache: ProfileCache,
-    embedding_parts: Option<EmbeddingWorkerParts>,
+    embedding_source: EmbeddingSource,
     background_indexing_enabled: bool,
     pause_embedding_on_battery_enabled: bool,
     mut resource_signals: Receiver<ResourceObservation>,
@@ -277,9 +340,28 @@ pub(crate) async fn run_with_context(
     // returns, so nothing needs to `drop` it explicitly (the same pattern
     // `bootstrap/tests/embedding_blocking_measurement.rs` established for
     // a shorter-lived scan/index pass).
-    let embed = embedding_parts.map(|parts| {
+    let EmbeddingSource {
+        initial: embedding_parts,
+        resolver: embedding_resolver,
+    } = embedding_source;
+    // Task 055 §1(a): documents indexed while no model was available had
+    // their embedding job fail terminally, and nothing re-queues them. Every
+    // time this loop holds a model -- here at startup, and below whenever it
+    // acquires one -- queue embeddings for whatever still lacks them.
+    if let Some(parts) = &embedding_parts {
+        backfill_embeddings(&catalog, &parts.model_id);
+    }
+    let mut embed = embedding_parts.map(|parts| {
         EmbeddingWorker::with_model(&catalog, cache_service, parts.model, parts.model_id)
     });
+    // Task 055 §1(b): a model resolution in progress, off this loop's
+    // thread -- construction takes around half a second (Task 052 measured
+    // p50 532.6 ms), which the loop must not stall for.
+    // `resolve_again` records a change reported while one was already
+    // running, so the latest install always wins.
+    let mut pending_resolution: Option<tokio::task::JoinHandle<Option<EmbeddingWorkerParts>>> =
+        None;
+    let mut resolve_again = false;
     // RFC-057 §4.2: when this was last set, `USER_IDLE_TIMEOUT` since then
     // with no further `UserActive` observation means the user has stopped
     // -- producers report only that activity happened, not when it ends,
@@ -319,6 +401,45 @@ pub(crate) async fn run_with_context(
                 ResourceObservation::OnBattery(state) => {
                     on_battery = state;
                 }
+                ResourceObservation::EmbeddingModelChanged => {
+                    if embedding_resolver.is_none() {
+                        tracing::warn!("embedding model changed, but this loop cannot re-resolve");
+                    } else if pending_resolution.is_some() {
+                        resolve_again = true;
+                    } else {
+                        pending_resolution = embedding_resolver
+                            .clone()
+                            .map(|resolve| tokio::task::spawn_blocking(move || resolve()));
+                    }
+                }
+            }
+        }
+        if pending_resolution
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished)
+            && let Some(handle) = pending_resolution.take()
+        {
+            match handle.await {
+                Ok(Some(parts)) => {
+                    backfill_embeddings(&catalog, &parts.model_id);
+                    embed = Some(EmbeddingWorker::with_model(
+                        &catalog,
+                        cache_service,
+                        parts.model,
+                        parts.model_id,
+                    ));
+                }
+                Ok(None) => {
+                    tracing::warn!("embedding model changed, but it could not be resolved");
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "embedding model resolution did not complete");
+                }
+            }
+            if std::mem::take(&mut resolve_again) {
+                pending_resolution = embedding_resolver
+                    .clone()
+                    .map(|resolve| tokio::task::spawn_blocking(move || resolve()));
             }
         }
         let user_active = last_user_activity.is_some_and(|last| last.elapsed() < USER_IDLE_TIMEOUT);
@@ -491,6 +612,24 @@ pub(crate) async fn run_with_context(
             report_health(&catalog, &mut output).await;
             last_health_report = Some(Instant::now());
             health_report_pending = false;
+        }
+    }
+}
+
+/// Task 055 §1(a): queue embeddings for files whose active chunks have none
+/// under `model_id`. A failure is logged and not retried here: the next
+/// startup, or the next model change, runs it again.
+fn backfill_embeddings(catalog: &Catalog, model_id: &orbok_core::ModelId) {
+    match IndexJobRepository::new(catalog).enqueue_embedding_backfill(model_id) {
+        Ok(0) => {}
+        Ok(queued) => {
+            tracing::info!(
+                queued,
+                "queued embeddings for documents indexed without a model"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(%error, "could not queue embeddings for documents indexed without a model");
         }
     }
 }
