@@ -20,6 +20,12 @@
 # argument) is recorded in review-request 132. But it is what turned up
 # every other literal named in the Phase 1 inventory, and its self-check
 # keeps it from silently scanning nothing.
+#
+# It enumerates **tracked** files. Run over a new file that is not yet
+# tracked, it passes without having looked at that file, and the same tree
+# then fails on CI once committed -- which has cost a red run twice
+# (rfc059_cache_measurement.rs, rfc060_duplication_measurement.rs). Stage a
+# new file first (`git add -N <file>`) and a local run means something.
 set -euo pipefail
 
 fail=0

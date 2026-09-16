@@ -67,6 +67,7 @@ may start" a checked state rather than an implicit convention.
 | 056 | [Hosting the Indexing Scheduler in the Application](done/056-hosting-the-indexing-scheduler.md) | 0.25.0 |
 | 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | 0.25.0 — §7 manual battery criterion deferred to Owner Task 003 Part C |
 | 059 | [Erasure Completeness and Cache Lifetime](done/059-erasure-completeness-and-cache-lifetime.md) | 0.25.0 — criteria 1–10 evidenced, [closure record](closures/059-erasure-completeness-and-cache-lifetime.md) |
+| 060 | [Search Result Integrity](done/060-search-result-integrity.md) | main; release pending — criteria 0a and 7 evidenced only where a real embedding model is available, [closure record](closures/060-search-result-integrity.md) |
 
 ## Accepted
 
@@ -76,7 +77,6 @@ may start" a checked state rather than an implicit convention.
 | 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — Narrow and Browse Around, two of three named subjects, do not render. Wiring is RFC-060 §7 |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — measurement-first recovery sequence in progress (Owner Task 003) |
 | 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — the control that stops the unwired-feature class recurring; its end-to-end test comes before any wiring work |
-| 060 | [Search Result Integrity](accepted/060-search-result-integrity.md) | Accepted 2026-09-02 — snippets, trust, filters, folder scope, source status, reranker decision |
 | 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — one shared catalog, one model per process, failures surfaced. Before 060 and before any parallelism |
 | 062 | [Migration Integrity and Schema Guards](accepted/062-migration-integrity-and-schema-guards.md) | Accepted 2026-09-02 — a released migration was edited; no downgrade guard |
 | 063 | [Evidence for the Implemented Transition](accepted/063-evidence-for-the-implemented-transition.md) | Accepted 2026-09-02 — `done/` may only be entered with a closure record. **No new folder or lifecycle state**; the 5-folder variant is sufficient (§8) |

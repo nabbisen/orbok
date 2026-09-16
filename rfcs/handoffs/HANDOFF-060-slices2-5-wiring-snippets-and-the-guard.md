@@ -4,7 +4,7 @@
 **RFC:** 060 — §5, §6, §7, §9, §10 tail; Amendment 3 closes both open questions\
 **Lifecycle stage:** Accepted; Slice 1 shipped (`8208164`, `4aecd30`), Amendment 2's fix shipped (`894e990`). Everything below is unstarted.\
 **Primary owner:** `crates/search/engine/src/{snippet,hybrid,service,fts5,multilingual,vector}.rs`, `crates/app/src/bootstrap/search.rs`, `crates/data/db/`\
-**RFC:** [`../accepted/060-search-result-integrity.md`](../accepted/060-search-result-integrity.md)
+**RFC:** [`../done/060-search-result-integrity.md`](../done/060-search-result-integrity.md)
 
 ---
 

@@ -4,7 +4,7 @@
 **RFC:** 060 (Amendment 1 §4a only — §5/§6/§7 are a later slice)\
 **Lifecycle stage:** Accepted 2026-09-02; Amendment 1 added 2026-09-08. This slice is unstarted.\
 **Primary owner:** `crates/pipeline/extract/src/pdf.rs`, `.../chunker.rs`\
-**RFC:** [`../accepted/060-search-result-integrity.md`](../accepted/060-search-result-integrity.md)
+**RFC:** [`../done/060-search-result-integrity.md`](../done/060-search-result-integrity.md)
 
 > **Scope rule:** This slice is **two production lines and the tests that prove
 > them**. It does not touch `bootstrap/search.rs`, the `chunk_locations` schema,

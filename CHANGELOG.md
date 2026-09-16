@@ -101,6 +101,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **RFC-060 moves to `done/` with a closure record naming criteria 0–9.**
+  Criteria 0a and 7 are evidenced only where a real embedding model is
+  available: both assertions exist and are `#[ignore]`d with a documented
+  run recipe, which the record states in its own "Criteria not met"
+  section rather than leaving a reader to find. The i18n literal gate's
+  header now says it enumerates tracked files, so a new file must be staged
+  before a local run means anything -- that shape cost a red CI run twice.
 - **RFC-060 Amendment 3: both open questions closed, and a handoff for what is
   left.** The owner ruled that when the extraction cache holds no segments for
   a result, the snippet is simply absent and the result is still shown — the

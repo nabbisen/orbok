@@ -1,11 +1,11 @@
 # Closure Record — RFC-060: Search Result Integrity
 
-**RFC:** [060](../accepted/060-search-result-integrity.md), amended three
+**RFC:** [060](../done/060-search-result-integrity.md), amended three
 times: Amendment 1 (PDF extraction and `location_quality`), Amendment 2
 (the vector lookup-key bug), Amendment 3 (both open questions closed, and
 the slices 2–5 handoff).
 **Format:** RFC-063 §6.1/§6.2 option B.
-**Implemented by:** `rfcs/handoffs/HANDOFF-060-slice1-pdf-extraction.md`
+**Implemented by:** `rfcs/handoffs/HANDOFF-060-slice1-pdf-extraction-and-location-quality.md`
 (Slice 1) and `rfcs/handoffs/HANDOFF-060-slices2-5-wiring-snippets-and-the-guard.md`
 (Slices 2–5). Commits: `8208164`, `4aecd30` (Slice 1), `894e990`
 (Amendment 2's fix, landed with RFC-061 Slice 4), `3e578fd` (Slice 2),
@@ -158,6 +158,39 @@ the guard canonicalises and checks membership, then the file is opened by
 path, so a path swapped for a symlink in between still escapes. "The
 boundary is TOCTOU" is defensible; "the boundary is not called" was not.
 → where verified: `cargo test -p orbok-search rfc060`.
+
+---
+
+## Criteria not met, and why RFC-060 closes anyway
+
+Two criteria are **not evidenced in CI or in the environment this record
+was written in**, and neither is claimed:
+
+- **0a** -- a search returns at least one result carrying the `Semantic`
+  badge with a real embedding model configured.
+- **7** -- two identical searches return identical result orders over 20
+  repetitions.
+
+**Why:** both need an ONNX embedding model, and neither CI nor the sandbox
+has one. For criterion 7 the need is inherent rather than incidental: the
+tie `rrf_fuse`'s `chunk_id` tie-break exists to break only occurs when a
+keyword rank and a vector rank cross, which keyword-only fusion cannot
+produce.
+
+**Why this still closes:** both gaps are environmental, not unimplemented.
+The assertions exist -- in `two_identical_searches_return_identical_orders`
+(`crates/app/src/wired_application_tests.rs`) -- and are `#[ignore]`d for a
+stated reason, gated the way RFC-058 §11 open question 2 asks
+model-dependent assertions to be. Criterion 7's mechanism is separately
+covered by unit tests that construct the structural tie directly and pass
+without a model. That is materially different from a criterion nobody
+built, which is the case RFC-063 exists to catch (Review 225 §6).
+
+**To evidence them**, on a machine with the model at `RFC013_MODEL_DIR`:
+
+```sh
+cargo test -p orbok --bin orbok --features orbok-embed/tract --release -- --ignored
+```
 
 ---
 

@@ -3,11 +3,17 @@
 **Project:** orbok\
 **RFC:** 060\
 **Title:** Search Result Integrity\
-**Status:** Accepted\
+**Status:** Implemented (main; release pending)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** retrieval correctness\
 **Date:** 2026-09-01\
 **Related RFCs:** RFC-006 Adaptive Chunking and Location Metadata (§6 persists the field it defines); RFC-010 Optional Local Reranking (§8 decides its fate); RFC-013 Search View and Result Explanation UX; RFC-038 Result Freshness and Trust Badges (§7 makes its §16.4/5/7 true); RFC-041 Search, Narrow and Browse Around (§7); RFC-045 Search-in-Folder Flow (§7); RFC-003 Source Registration and File Access Boundary (§9 closes a bypass of its boundary)
+
+**Closed 2026-09-16.** Slice 1 by HANDOFF-060-slice1, Slices 2–5 by
+HANDOFF-060-slices2-5; reviewed in Review 225. Criteria 0a and 7 are
+evidenced only where a real embedding model is available -- both assertions
+exist and are `#[ignore]`d with a run recipe. Closure record at
+[`../closures/060-search-result-integrity.md`](../closures/060-search-result-integrity.md).
 
 ---
 
