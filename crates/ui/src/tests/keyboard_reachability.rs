@@ -31,6 +31,7 @@ fn neutral_ctx(active_view: ViewId) -> KeyboardContext {
         text_input_focused: false,
         active_view,
         confirm_reset: false,
+        confirm_remove_source: false,
         confirm_clear_history: false,
         wizard_kind: None,
         selected_source_id: None,
@@ -191,22 +192,47 @@ fn select_and_activate_a_source_by_keyboard() {
         );
     }
 
-    // Enter, with the context reflecting the now-selected source (as
-    // `main.rs`'s subscription would compute it), removes it.
+    // Task 062: Delete, with the context reflecting the now-selected source
+    // (as `main.rs`'s subscription would compute it), opens the removal
+    // confirmation -- it removes nothing yet.
     let activate_ctx = KeyboardContext {
         selected_source_id: Some("src-1".to_string()),
         ..neutral_ctx(ViewId::Sources)
     };
     press(
         &mut app,
-        Key::Named(Named::Enter),
+        Key::Named(Named::Delete),
         Modifiers::default(),
         &activate_ctx,
     );
+    assert_eq!(app.state.confirm_remove_source.as_deref(), Some("src-1"));
+    assert_eq!(
+        app.state.sources.len(),
+        1,
+        "opening the dialog removes nothing"
+    );
+
+    // Enter inside the open dialog confirms; orbok then dispatches the one
+    // existing removal path, reproduced here by hand as `press` does for keys.
+    let confirm_ctx = KeyboardContext {
+        confirm_remove_source: true,
+        ..activate_ctx
+    };
+    press(
+        &mut app,
+        Key::Named(Named::Enter),
+        Modifiers::default(),
+        &confirm_ctx,
+    );
+    let removal = app
+        .state
+        .take_confirmed_removal()
+        .expect("confirming yields the removal");
+    app.update(removal);
 
     assert!(
         app.state.sources.is_empty(),
-        "Enter on the selected source must remove it, mirroring the mouse-only remove button"
+        "Delete then Enter in the confirmation must remove the selected source"
     );
     assert_eq!(
         app.state.selected_source, None,

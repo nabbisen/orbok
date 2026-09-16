@@ -272,6 +272,11 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceActionPrepareAgain => "Prepare again",
         SourceActionChooseFolderAgain => "Choose folder again",
         SourceActionRemoveFromOrbok => "Remove from orbok",
+        SourceRemoveConfirmBody => {
+            "Your files stay where they are. orbok removes what it prepared to search \
+             this folder, and prepares it again if you add it back."
+        }
+        SourceRemoveConfirm => "Remove",
         SourceFolderNotFoundDetail => {
             "This can happen if a drive is disconnected or the folder was moved."
         }

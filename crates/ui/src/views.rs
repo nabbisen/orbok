@@ -456,6 +456,39 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
+    // Task 062: the removal confirmation, laid out like the reset one.
+    if let Some(folder) = state
+        .confirm_remove_source
+        .as_ref()
+        .and_then(|id| state.sources.iter().find(|card| &card.source_id == id))
+    {
+        let content = column![
+            text(crate::i18n::fmt_remove_source_title(
+                locale,
+                &folder.display_name
+            ))
+            .size(theme::title_s(tokens, sc)),
+            text(tr(locale, MessageKey::SourceRemoveConfirmBody))
+                .size(theme::body_s(tokens, sc))
+                .line_height(theme::body_lh(tokens)),
+            row![
+                components::ghost(
+                    tokens,
+                    tr(locale, MessageKey::Cancel),
+                    Some(Message::CancelRemoveSource)
+                ),
+                components::danger(
+                    tokens,
+                    tr(locale, MessageKey::SourceRemoveConfirm),
+                    Some(Message::ConfirmRemoveSource)
+                ),
+            ]
+            .spacing(tokens.spacing.md),
+        ]
+        .spacing(tokens.spacing.lg);
+        return page(tokens, content);
+    }
+
     // Task 047: no second add-folder dialog while one is open.
     let add_folder = (!state.add_source_picker_in_progress).then_some(Message::RequestAddSource);
     let add_btn = components::icon_secondary(
@@ -552,7 +585,9 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 detail,
                 refresh_action,
                 state.selected_source == Some(i),
-                Message::SourceRemoved(card.source_id.clone()),
+                // Task 062: the button was unlabelled, and removed directly.
+                tr(locale, MessageKey::SourceActionRemoveFromOrbok),
+                Message::AskRemoveSource(card.source_id.clone()),
             ));
         }
     }

@@ -281,6 +281,10 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceActionPrepareAgain => "再準備",
         SourceActionChooseFolderAgain => "フォルダを選び直す",
         SourceActionRemoveFromOrbok => "orbokから削除",
+        SourceRemoveConfirmBody => {
+            "ファイルはそのまま残ります。このフォルダーの検索の準備内容は削除され、もう一度追加すると準備し直します。"
+        }
+        SourceRemoveConfirm => "削除",
         SourceFolderNotFoundDetail => {
             "ドライブが切断されたか、フォルダが移動された可能性があります。"
         }

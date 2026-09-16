@@ -191,6 +191,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             // Task 060: a notice's action button dispatches the concrete retry
             // its raise site stored, after clearing the notice.
+            // Task 062: the removal confirmation was confirmed -- dispatch the
+            // one existing removal path for the folder the dialog was opened
+            // for.
+            if matches!(message, Message::ConfirmRemoveSource) {
+                return app
+                    .state
+                    .take_confirmed_removal()
+                    .map_or_else(iced::Task::none, iced::Task::done);
+            }
             if matches!(message, Message::NoticeActionPressed) {
                 return app
                     .state
@@ -499,7 +508,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Message::SourceRemoved(source_id) => {
                     if let Err(e) = bootstrap::remove_source(&catalog, source_id) {
                         tracing::error!("remove source failed: {e}");
-                        app.update(notice_retry::source_not_removed());
+                        app.update(notice_retry::source_not_removed(source_id));
                     }
                 }
                 // RFC-037 §10.2 manual refresh (Task 035): same function
@@ -883,6 +892,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             text_input_focused: app.search_focused,
             active_view: app.state.active_view,
             confirm_reset: app.state.confirm_reset,
+            confirm_remove_source: app.state.confirm_remove_source.is_some(),
             confirm_clear_history: app.state.confirm_clear_history,
             wizard_kind: app.state.wizard.as_ref().map(WizardState::kind),
             selected_source_id: app

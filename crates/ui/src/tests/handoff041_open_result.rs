@@ -87,6 +87,7 @@ fn search_ctx(text_input_focused: bool, selected_result: Option<usize>) -> Keybo
         text_input_focused,
         active_view: ViewId::Search,
         confirm_reset: false,
+        confirm_remove_source: false,
         confirm_clear_history: false,
         wizard_kind: None,
         selected_source_id: None,
@@ -120,6 +121,7 @@ fn enter_opens_the_selected_result_only_when_not_typing() {
                 none,
                 &KeyboardContext {
                     confirm_reset: true,
+                    confirm_remove_source: false,
                     ..search_ctx(false, Some(1))
                 }
             ),

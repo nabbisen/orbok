@@ -151,10 +151,30 @@ Implement the GUI §17.1 shortcut table at the shell level (`shell.rs` /
 | `Tab`/`Shift+Tab` | move through controls in logical order   |
 | Arrow keys        | move through result list when focused     |
 | `Ctrl/Cmd+,`      | open Settings                            |
+| `Delete`          | Folders view, a folder selected, not typing: open that folder's removal confirmation (added 2026-09-17, Task 062) |
 
 Shortcuts must not intercept normal text entry (§17.1). Dialogs (reset
 confirmation, add/remove source, model install) trap focus while open and
 restore focus to the triggering control on close (§17.2).
+
+> **Amended 2026-09-17 (Task 062) — destructive actions always ask first.**
+> Removing a folder had no confirmation, although this section names an
+> "add/remove source" dialog: the source card's Remove button removed it
+> directly, and `Enter` on the Folders view with a folder selected removed it
+> too, so one stray `Enter` after the arrow keys erased what orbok prepared for
+> that folder (RFC-059).
+>
+> 1. **Destructive actions** (reset, folder removal) always open a
+>    confirmation dialog first. No key or button performs them directly.
+> 2. **`Enter` confirms only inside an open confirmation.** `Enter` on a list
+>    with a selection never performs a destructive action. On Folders,
+>    `Delete` opens the removal confirmation. (`Backspace` does too: on macOS
+>    the key labelled "delete" arrives as `Backspace`.)
+> 3. **Why `Enter`, not a focused button, confirms:** iced 0.14 buttons cannot
+>    take focus (§5.4). Without `Enter`, keyboard-only users could not confirm
+>    at all. The protection that matters still holds: no single key performs a
+>    destructive action — it takes a deliberate `Delete` or click to open the
+>    dialog, then a separate confirmation.
 
 ### 5.4. Focus visibility — the iced 0.14 limitation (recorded)
 

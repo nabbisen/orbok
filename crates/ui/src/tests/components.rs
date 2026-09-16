@@ -98,7 +98,8 @@ fn component_smoke_source_card() {
             Message::SourceRefreshRequested("src-1".to_string()),
         )),
         false,
-        Message::SourceRemoved("src-1".to_string()),
+        "Remove from orbok",
+        Message::AskRemoveSource("src-1".to_string()),
     );
     // Selected, exercising the same selection_ring path as result_card's
     // selected case above -- "both cards, not one" (Task 031 §2).
@@ -111,7 +112,8 @@ fn component_smoke_source_card() {
         None,
         None,
         true,
-        Message::SourceRemoved("src-1".to_string()),
+        "Remove from orbok",
+        Message::AskRemoveSource("src-1".to_string()),
     );
     // RFC-037 §17.3 (Task 035): the Missing state's detail line.
     let _ = crate::components::source_card(
@@ -126,7 +128,8 @@ fn component_smoke_source_card() {
             Message::SourceRefreshRequested("src-2".to_string()),
         )),
         false,
-        Message::SourceRemoved("src-2".to_string()),
+        "Remove from orbok",
+        Message::AskRemoveSource("src-2".to_string()),
     );
 }
 

@@ -249,6 +249,7 @@ pub fn source_card<'a>(
     // treats a pause as covering exactly this kind of preparation work).
     refresh_action: Option<(&'a str, Message)>,
     is_selected: bool,
+    remove_label: &'a str,
     on_remove: Message,
 ) -> Element<'a, Message> {
     let mut actions =
@@ -256,7 +257,7 @@ pub fn source_card<'a>(
     if let Some((label, on_refresh)) = refresh_action {
         actions = actions.push(secondary(tokens, label, Some(on_refresh)));
     }
-    actions = actions.push(danger(tokens, "", Some(on_remove)));
+    actions = actions.push(danger(tokens, remove_label, Some(on_remove)));
 
     let mut body = column![
         text(display_name).size(theme::body(tokens)),

@@ -465,6 +465,10 @@ pub struct AppState {
     pub notice_action: Option<Box<Message>>,
     /// Awaiting user confirmation before running reset catalog.
     pub confirm_reset: bool,
+    /// Task 062: the folder whose removal confirmation is open, if any.
+    /// Removal erases what orbok prepared for it (RFC-059), so it always
+    /// asks first. At most one confirmation is open at a time.
+    pub confirm_remove_source: Option<String>,
     /// RFC-042: whether "Remember recent searches" is on (reflects the
     /// persisted setting; mirrored here so the settings toggle renders).
     pub remember_recent_searches: bool,
@@ -515,6 +519,7 @@ impl Default for AppState {
             notice: None,
             notice_action: None,
             confirm_reset: false,
+            confirm_remove_source: None,
             remember_recent_searches: true,
             confirm_clear_history: false,
             tokens: snora::design::Tokens::light(),
@@ -562,6 +567,14 @@ pub enum Message {
     /// instead of reporting rows deleted while reclaiming nothing (the
     /// RFC's own §8 ordering).
     RemoveReplacedStaleIndexes,
+    /// Task 062: open the removal confirmation for this folder (the card's
+    /// Remove button, or Delete on a selected folder).
+    AskRemoveSource(String), // source_id
+    /// Task 062: the removal confirmation's Remove (or Enter while it is
+    /// open). orbok takes the id from state and dispatches `SourceRemoved`.
+    ConfirmRemoveSource,
+    /// Task 062: the removal confirmation's Cancel.
+    CancelRemoveSource,
     AskResetCatalog,
     ConfirmResetCatalog,
     CancelResetCatalog,
@@ -779,7 +792,13 @@ pub enum Message {
 impl AppState {
     pub fn update(&mut self, message: &Message) {
         match message {
-            Message::Switch(view) => self.active_view = *view,
+            Message::Switch(view) => {
+                self.active_view = *view;
+                // Task 062: the removal dialog renders only on Folders, so
+                // it must not stay open -- and Enter-confirmable -- unseen on
+                // another view.
+                self.confirm_remove_source = None;
+            }
             Message::SwitchGroup(group) => self.active_view = ViewId::group_default(*group),
             Message::ToggleAdvanced => self.show_advanced = !self.show_advanced,
             Message::SetTheme(theme) => {
@@ -788,7 +807,16 @@ impl AppState {
             }
             Message::SetTextScale(scale) => self.text_scale = *scale,
             Message::SetReducedMotion(val) => self.reduced_motion = *val,
-            Message::AskResetCatalog => self.confirm_reset = true,
+            Message::AskResetCatalog => {
+                self.confirm_reset = true;
+                self.confirm_remove_source = None;
+            }
+            Message::AskRemoveSource(id) => {
+                self.confirm_remove_source = Some(id.clone());
+                self.confirm_reset = false;
+            }
+            Message::CancelRemoveSource => self.confirm_remove_source = None,
+            Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
             Message::CancelResetCatalog => self.confirm_reset = false,
             Message::ConfirmResetCatalog => {
                 self.confirm_reset = false;
@@ -892,7 +920,9 @@ impl AppState {
                 // same "innermost open thing closes first" shape this
                 // arm already had, just with more things now able to be
                 // open.
-                if self.confirm_reset {
+                if self.confirm_remove_source.is_some() {
+                    self.confirm_remove_source = None;
+                } else if self.confirm_reset {
                     self.confirm_reset = false;
                 } else if self.confirm_clear_history {
                     self.confirm_clear_history = false;
@@ -1200,6 +1230,15 @@ impl AppState {
     fn clear_notice(&mut self) {
         self.notice = None;
         self.notice_action = None;
+    }
+
+    /// Task 062: the removal confirmation was confirmed. Returns the removal
+    /// to dispatch -- the one existing `SourceRemoved` path -- for the folder
+    /// the dialog was opened for, and closes the dialog.
+    pub fn take_confirmed_removal(&mut self) -> Option<Message> {
+        self.confirm_remove_source
+            .take()
+            .map(Message::SourceRemoved)
     }
 
     /// Task 060: the notice's action button was pressed. Returns the concrete

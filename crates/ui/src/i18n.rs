@@ -358,6 +358,8 @@ message_keys! {
     SourceActionPrepareAgain,
     SourceActionChooseFolderAgain,
     SourceActionRemoveFromOrbok,
+    SourceRemoveConfirmBody,
+    SourceRemoveConfirm,
     SourceFolderNotFoundDetail,
     SourceFilesNotDeletedNotice,
     SourceManyFilesChanged,
@@ -687,6 +689,15 @@ pub fn fmt_storage_row(locale: Locale, category: &str, mib: f64, count: u64) -> 
 }
 
 /// Locale-aware last-query display (search view "no results" state).
+/// Task 062: the folder removal confirmation's title, with the folder's
+/// display name as its card shows it.
+pub fn fmt_remove_source_title(locale: Locale, folder: &str) -> String {
+    match locale {
+        Locale::En => format!("Remove \"{folder}\" from orbok?"),
+        Locale::Ja => format!("「{folder}」を orbok から削除しますか?"),
+    }
+}
+
 pub fn fmt_query(locale: Locale, query: &str) -> String {
     match locale {
         Locale::En => format!("Query: {query}"),

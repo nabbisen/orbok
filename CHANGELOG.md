@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Removing a folder asks first (Task 062).** Removing a folder erases
+  everything orbok prepared to search it, and it used to happen at once:
+  from the folder card's button, or even from a stray Enter on a selected
+  folder. Now the button, now labelled "Remove from orbok", and the Delete
+  key (Backspace on Mac keyboards) open a confirmation naming the folder:
+  "Your files stay where they are. orbok removes what it prepared to search
+  this folder, and prepares it again if you add it back." Enter or Remove
+  confirms, and Escape or Cancel keeps the folder. Enter on a selected folder
+  no longer does anything by itself. If a removal fails, the notice's "Try
+  again" opens this confirmation again.
+
 - **Microsoft Store packaging assets.** `packaging/windows/` holds the MSIX
   `AppxManifest.xml` (a full-trust desktop app, `mediumIL`, Windows 10 2004
   or later, x64) and its four logo assets, sized to the names the manifest

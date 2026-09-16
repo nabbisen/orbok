@@ -35,6 +35,7 @@ mod task053_search_mode;
 mod task057_model_load_failed;
 mod task059_failed_pages_way_out;
 mod task060_notice_actions;
+mod task062_folder_removal_confirmation;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

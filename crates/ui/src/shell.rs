@@ -35,6 +35,8 @@ pub struct KeyboardContext {
     pub text_input_focused: bool,
     pub active_view: ViewId,
     pub confirm_reset: bool,
+    /// Task 062: the folder removal confirmation is open.
+    pub confirm_remove_source: bool,
     pub confirm_clear_history: bool,
     /// `None` when the startup wizard is not active.
     pub wizard_kind: Option<WizardKind>,
@@ -99,16 +101,31 @@ pub fn key_to_message(
         }
         // Ctrl/Cmd + R  →  RFC-037 §10.2 manual refresh for the selected
         // source (Task 035). The conventional "refresh" key, and free:
-        // nothing else in this map binds it. `Enter` was not reused here --
-        // it already fires `Message::SourceRemoved` for the same selection
-        // (`confirm_message` below), and refresh is not a confirmation of
-        // anything, it is its own action with its own key.
+        // nothing else in this map binds it. Refresh is not a confirmation
+        // of anything, so it has its own key rather than Enter.
         Key::Character(c)
             if modifiers.command() && c.as_str() == "r" && ctx.active_view == ViewId::Sources =>
         {
             ctx.selected_source_id
                 .clone()
                 .map(Message::SourceRefreshRequested)
+        }
+        // Delete  →  Task 062: open the removal confirmation for the selected
+        // folder. Never removes by itself. Only on Folders, only when not
+        // typing (Delete in a text box deletes characters), and only with no
+        // dialog open. Backspace too: on macOS the key labelled "delete" is
+        // `Named::Backspace` (winit 0.30 maps kVK 0x33 to Backspace; only the
+        // separate forward-delete key, absent on laptop keyboards, gives
+        // `Named::Delete`).
+        Key::Named(Named::Delete | Named::Backspace)
+            if !ctx.text_input_focused
+                && ctx.active_view == ViewId::Sources
+                && !ctx.confirm_reset
+                && !ctx.confirm_remove_source
+                && !ctx.confirm_clear_history
+                && ctx.wizard_kind.is_none() =>
+        {
+            ctx.selected_source_id.clone().map(Message::AskRemoveSource)
         }
         // Tab / Shift+Tab  →  move focus among the widgets iced 0.14 can
         // focus at all: `text_input`/`text_editor` only (RFC-034 §2.1.1 /
@@ -142,8 +159,8 @@ pub fn key_to_message(
         Key::Named(Named::Enter) if ctx.text_input_focused => Some(Message::SubmitSearch),
         // Enter while NOT typing  →  whatever this screen's primary/
         // confirming action is, if any (RFC-034 §2.1.1 / Task 024 §3.4):
-        // a confirm dialog's Confirm, the active wizard page's forward
-        // action, or removing a selected source. `confirm_message` is the
+        // a confirm dialog's Confirm or the active wizard page's forward
+        // action. Never a destructive action on a list selection (Task 062). `confirm_message` is the
         // one place that decision is made, so `Enter` and a mouse click
         // on the matching button always dispatch the identical `Message`
         // -- there is no separate "keyboard version" of any of these
@@ -191,6 +208,12 @@ pub fn key_to_message(
 fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     if ctx.confirm_reset {
         return Some(Message::ConfirmResetCatalog);
+    }
+    // Task 062: Enter confirms only inside an open confirmation -- iced 0.14
+    // buttons cannot take focus, so without it keyboard-only users could not
+    // confirm at all (RFC-034 §5.3 amendment).
+    if ctx.confirm_remove_source {
+        return Some(Message::ConfirmRemoveSource);
     }
     if ctx.confirm_clear_history {
         return Some(Message::ConfirmClearRecentSearches);
@@ -240,9 +263,6 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
             // while a save is in flight has nothing to confirm either.
             WizardKind::Downloading | WizardKind::ReadyInFlight => None,
         };
-    }
-    if ctx.active_view == ViewId::Sources {
-        return ctx.selected_source_id.clone().map(Message::SourceRemoved);
     }
     // HANDOFF-041 §3: the same `OpenResult` the selected row's Open file
     // button sends. Reached only when not typing -- Enter in the search box

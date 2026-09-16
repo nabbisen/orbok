@@ -68,11 +68,14 @@ pub(crate) fn reset_failed() -> Message {
     with_action(UserNotice::CatalogResetFailed, Message::AskResetCatalog)
 }
 
-/// Removing a folder failed. There is no removal confirmation to re-open --
-/// the Remove button sends `SourceRemoved` directly -- and re-sending that
-/// would act destructively, so this notice offers dismiss alone.
-pub(crate) fn source_not_removed() -> Message {
-    Message::ShowNotice(UserNotice::SourceCouldNotBeRemoved)
+/// Removing a folder failed: "Try again" re-opens that folder's removal
+/// confirmation (Task 062) -- never `SourceRemoved` or
+/// `ConfirmRemoveSource` directly.
+pub(crate) fn source_not_removed(source_id: &str) -> Message {
+    with_action(
+        UserNotice::SourceCouldNotBeRemoved,
+        Message::AskRemoveSource(source_id.to_string()),
+    )
 }
 
 /// Starting a model download could not reach the model store. No correct

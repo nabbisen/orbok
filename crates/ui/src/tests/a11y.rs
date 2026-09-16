@@ -16,6 +16,7 @@ fn ctx(text_input_focused: bool) -> KeyboardContext {
         text_input_focused,
         active_view: ViewId::Search,
         confirm_reset: false,
+        confirm_remove_source: false,
         confirm_clear_history: false,
         wizard_kind: None,
         selected_source_id: None,
@@ -241,6 +242,7 @@ fn key_map_enter_confirms_by_context() {
                 none,
                 &KeyboardContext {
                     confirm_reset: true,
+                    confirm_remove_source: false,
                     ..ctx(false)
                 }
             ),
@@ -274,6 +276,7 @@ fn key_map_enter_confirms_by_context() {
                 none,
                 &KeyboardContext {
                     confirm_reset: true,
+                    confirm_remove_source: false,
                     wizard_kind: Some(WizardKind::Setup),
                     ..ctx(false)
                 }
@@ -335,6 +338,22 @@ fn key_map_enter_confirms_by_context() {
         );
     }
 
+    // Task 062: Enter on a selected folder no longer removes it -- no single
+    // key performs a destructive action. It confirms only inside the open
+    // removal confirmation.
+    assert!(
+        key_to_message(
+            &Key::Named(Named::Enter),
+            none,
+            &KeyboardContext {
+                active_view: ViewId::Sources,
+                selected_source_id: Some("src-1".to_string()),
+                ..ctx(false)
+            }
+        )
+        .is_none(),
+        "Enter with a source selected and no dialog open → nothing"
+    );
     assert!(
         matches!(
             key_to_message(
@@ -343,12 +362,13 @@ fn key_map_enter_confirms_by_context() {
                 &KeyboardContext {
                     active_view: ViewId::Sources,
                     selected_source_id: Some("src-1".to_string()),
+                    confirm_remove_source: true,
                     ..ctx(false)
                 }
             ),
-            Some(Message::SourceRemoved(id)) if id == "src-1"
+            Some(Message::ConfirmRemoveSource)
         ),
-        "Enter with a source selected → SourceRemoved(that source)"
+        "Enter inside the removal confirmation → ConfirmRemoveSource"
     );
 
     assert!(

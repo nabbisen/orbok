@@ -78,13 +78,20 @@ fn a_failed_reset_re_opens_the_confirmation_and_never_resets() {
     }
 }
 
-/// §4 test 2 / §2: removing a folder has no confirmation to re-open, and
-/// re-sending `SourceRemoved` would act destructively -- no button.
+/// Task 062 §2 (inverting Task 060's no-retry test): a failed removal's Try
+/// again re-opens *that* folder's confirmation and never removes directly.
 #[test]
-fn a_failed_folder_removal_offers_no_retry() {
-    let (notice, action) = raise(source_not_removed());
+fn a_failed_folder_removal_re_opens_its_confirmation() {
+    let (notice, action) = raise(source_not_removed("src-7"));
     assert_eq!(notice, Some(UserNotice::SourceCouldNotBeRemoved));
-    assert!(action.is_none(), "no retry that could remove a folder");
+    assert!(
+        matches!(&action, Some(Message::AskRemoveSource(id)) if id == "src-7"),
+        "Try again re-opens the confirmation for the same folder, got {action:?}"
+    );
+    assert!(!matches!(
+        action,
+        Some(Message::SourceRemoved(_) | Message::ConfirmRemoveSource)
+    ));
 }
 
 #[test]
