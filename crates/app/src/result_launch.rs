@@ -28,7 +28,7 @@
 //! |---|---|---|
 //! | Linux and other freedesktop Unix | `xdg-open <path>` | `xdg-open <parent directory>` |
 //! | macOS | `open -- <path>` | `open -R -- <path>` |
-//! | Windows | `explorer.exe <path>` | `explorer.exe /select,<path>` |
+//! | Windows | `ShellExecuteW` with the `open` verb | `explorer.exe /select,"<path>"` |
 //!
 //! On Linux, "show in folder" opens the containing folder without selecting
 //! the file; selecting it needs the `org.freedesktop.FileManager1` D-Bus
@@ -123,12 +123,13 @@ fn validate(catalog: &Catalog, canonical_path: &str) -> OrbokResult<ValidatedPat
     orbok_search::snippet::searchable_path_guard(catalog)?.validate(Path::new(canonical_path))
 }
 
-/// The real launcher: one process per action, path as a single argument.
+/// The real launcher: one process or shell-API call per action, the path
+/// passed whole.
 pub(crate) struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
     fn open(&self, path: &ValidatedPath) -> io::Result<()> {
-        spawn(open_command(&path.canonical))
+        open_path(&path.canonical)
     }
 
     fn reveal(&self, path: &ValidatedPath) -> io::Result<()> {
@@ -150,20 +151,69 @@ fn reveal_command(path: &Path) -> Command {
     command
 }
 
+#[cfg(not(windows))]
+fn open_path(path: &Path) -> io::Result<()> {
+    spawn(open_command(path))
+}
+
+/// Review 230 §3: `explorer.exe <path>` is not a documented way to open a
+/// file, and Explorer's command-line parser splits on commas that `Command`
+/// does not quote. `ShellExecuteW` with the `open` verb is the documented
+/// API and parses no command line at all.
 #[cfg(windows)]
-fn open_command(path: &Path) -> Command {
-    let mut command = Command::new("explorer.exe");
-    command.arg(explorer_path(path));
-    command
+fn open_path(path: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let mut file: Vec<u16> = explorer_path(path).as_os_str().encode_wide().collect();
+    if file.contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path contains a NUL character",
+        ));
+    }
+    file.push(0);
+    let verb: Vec<u16> = "open".encode_utf16().chain([0]).collect();
+    // SAFETY: `verb` and `file` are NUL-terminated and outlive the call; the
+    // window handle, parameters and directory are documented as optional.
+    let instance = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // Documented: a value greater than 32 means success.
+    if instance as usize > 32 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 #[cfg(windows)]
 fn reveal_command(path: &Path) -> Command {
-    // `/select,` must be its own argument: explorer reads the next argument
-    // as the item to select. `Command` quotes the path itself.
+    // Review 230 §3: passed raw and always quoted. `Command` quotes only
+    // arguments containing spaces or tabs, so a path with a comma reached
+    // Explorer unquoted and was split there.
+    use std::os::windows::process::CommandExt;
     let mut command = Command::new("explorer.exe");
-    command.arg("/select,").arg(explorer_path(path));
+    command.raw_arg(explorer_select_arg(path));
     command
+}
+
+/// `/select,"<path>"`, the path always double-quoted. Safe because a Windows
+/// path cannot contain `"`. Pure string handling, tested on every platform.
+#[cfg(any(windows, test))]
+fn explorer_select_arg(path: &Path) -> std::ffi::OsString {
+    let mut argument = std::ffi::OsString::from("/select,\"");
+    argument.push(explorer_path(path));
+    argument.push("\"");
+    argument
 }
 
 /// The same path without Windows' verbatim prefix: `\\?\C:\a` becomes

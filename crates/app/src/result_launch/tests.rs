@@ -2,7 +2,7 @@
 //! launches a real application.
 
 use super::{
-    LaunchAction, Launcher, explorer_path, launch_request, launch_result, open_command,
+    LaunchAction, Launcher, explorer_path, explorer_select_arg, launch_request, launch_result,
     reveal_command,
 };
 use crate::bootstrap;
@@ -169,24 +169,29 @@ fn explorer_path_removes_only_the_verbatim_prefix() {
     );
 }
 
-/// HANDOFF-041 §4 test 4: how the launcher process is built, inspected
-/// without spawning it. The program is the platform launcher itself -- never
-/// `sh`, `bash` or `cmd` -- and the path is exactly one argument, not text
-/// spliced into another.
+/// HANDOFF-041 §4 test 4: how each launcher is built, inspected without
+/// running it. The program is the platform launcher itself -- never `sh`,
+/// `bash` or `cmd` -- and the path is exactly one argument, not text spliced
+/// into another. On Windows, Open is `ShellExecuteW` (no process and no
+/// command line), so only Show in folder is a `Command` there.
 #[test]
 fn the_launcher_is_the_platform_opener_with_the_path_as_one_argument() {
     use std::ffi::OsStr;
+    use std::process::Command;
     let path = Path::new(if cfg!(windows) {
         r"C:\docs\a b; rm -rf ~\note.md"
     } else {
         "/docs/a b; rm -rf ~/note.md"
     });
-    for (command, action) in [
-        (open_command(path), "open"),
+    #[cfg(not(windows))]
+    let commands: Vec<(Command, &str)> = vec![
+        (super::open_command(path), "open"),
         (reveal_command(path), "reveal"),
-    ] {
+    ];
+    #[cfg(windows)]
+    let commands: Vec<(Command, &str)> = vec![(reveal_command(path), "reveal")];
+    for (command, action) in commands {
         let program = command.get_program();
-        let args: Vec<&OsStr> = command.get_args().collect();
         for shell in ["sh", "bash", "cmd", "cmd.exe", "powershell"] {
             assert_ne!(
                 program,
@@ -194,17 +199,21 @@ fn the_launcher_is_the_platform_opener_with_the_path_as_one_argument() {
                 "{action}: launched through a shell"
             );
         }
-        let path_args: Vec<&&OsStr> = args
-            .iter()
-            .filter(|arg| arg.to_string_lossy().contains("rm -rf"))
-            .collect();
-        assert_eq!(
-            path_args.len(),
-            1,
-            "{action}: the path must be exactly one argument, got {args:?}"
-        );
+        #[cfg(not(windows))]
+        {
+            let args: Vec<&OsStr> = command.get_args().collect();
+            let path_args = args
+                .iter()
+                .filter(|arg| arg.to_string_lossy().contains("rm -rf"))
+                .count();
+            assert_eq!(
+                path_args, 1,
+                "{action}: the path must be exactly one argument, got {args:?}"
+            );
+        }
         #[cfg(not(any(target_os = "macos", windows)))]
         {
+            let args: Vec<&OsStr> = command.get_args().collect();
             assert_eq!(program, OsStr::new("xdg-open"));
             let expected = if action == "open" {
                 path.as_os_str()
@@ -218,6 +227,22 @@ fn the_launcher_is_the_platform_opener_with_the_path_as_one_argument() {
         #[cfg(windows)]
         assert_eq!(program, OsStr::new("explorer.exe"));
     }
+}
+
+/// Review 230 §3: Explorer splits an unquoted argument at a comma, and
+/// `Command` quotes only arguments with spaces or tabs. The select argument
+/// is always one quoted token, whatever the path holds.
+#[test]
+fn the_explorer_select_argument_always_quotes_the_path() {
+    assert_eq!(
+        explorer_select_arg(Path::new(r"C:\docs\report,final.pdf")),
+        std::ffi::OsString::from(r#"/select,"C:\docs\report,final.pdf""#)
+    );
+    assert_eq!(
+        explorer_select_arg(Path::new(r"\\?\C:\docs\plain.pdf")),
+        std::ffi::OsString::from(r#"/select,"C:\docs\plain.pdf""#),
+        "the verbatim prefix is removed before quoting"
+    );
 }
 
 /// RFC-038's `OpenAnyway` and `ShowInFolder` recovery actions reach the same

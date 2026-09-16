@@ -22,8 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and are searching (a paused folder's files, a deleted file, or a path
     outside every folder are refused with the existing "files may have
     moved" notice);
-  - the system opener (`xdg-open`, `open`, `explorer.exe`) is started
-    directly, with the path as a single argument and never through a shell;
+  - the system opener is used directly and never through a shell:
+    `xdg-open` or `open` with the path as a single argument, and on Windows
+    the `ShellExecuteW` API to open and `explorer.exe /select,"<path>"`, always
+    quoted, to show in folder (an unquoted path containing a comma was split
+    by Explorer; Review 230);
   - a launch can only use a path a search returned, since the request carries
     the result's position, not a path.
   The `opener` crate was not used: on Linux it falls back to running `sh`
