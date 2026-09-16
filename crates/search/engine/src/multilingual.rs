@@ -17,9 +17,11 @@ use crate::fts5::Fts5KeywordEngine;
 use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::rrf::rrf_fuse_keyword_lists;
 use crate::{KeywordCandidate, KeywordSearchEngine};
-use orbok_core::{ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL};
+use orbok_core::{
+    ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, SearchScope,
+};
 use orbok_db::Catalog;
-use rusqlite::params;
+use orbok_db::repo::search_scope::scope_sql;
 
 /// True when the string contains any CJK unified ideograph, hiragana,
 /// katakana, or fullwidth form character (RFC-014 §9 CJK detection).
@@ -106,6 +108,51 @@ impl MultilingualKeywordEngine<'_> {
         query: &str,
         limit: u32,
     ) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_exact_terms_scoped(query, limit, &SearchScope::default())
+    }
+
+    /// [`Self::search_with_exact_terms`], restricted to a scope
+    /// (RFC-060 §7): both tables apply it, so fusing them cannot
+    /// reintroduce a candidate either one excluded.
+    pub fn search_scoped(
+        &self,
+        query: &str,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_exact_terms_scoped(query, limit, scope)
+    }
+
+    /// [`Self::search_pairs`], restricted to a scope (RFC-060 §7).
+    pub fn search_pairs_scoped(
+        &self,
+        query: &str,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        let normalized = normalize_query(query);
+        if normalized.is_empty() {
+            return Ok(Vec::new());
+        }
+        let kw = Fts5KeywordEngine::new(self.catalog);
+        let mut candidates = kw.search_pairs_scoped(&normalized, limit, scope)?;
+        if contains_cjk(&normalized) {
+            let trigram_hits = self.search_trigram_with_expr(
+                build_match_pair_expression(&normalized),
+                limit,
+                scope,
+            )?;
+            candidates = rrf_fuse_keyword_lists(&candidates, &trigram_hits, limit as usize);
+        }
+        Ok(candidates)
+    }
+
+    fn search_with_exact_terms_scoped(
+        &self,
+        query: &str,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
         let normalized = normalize_query(query);
         if normalized.is_empty() {
             return Ok(Vec::new());
@@ -113,7 +160,8 @@ impl MultilingualKeywordEngine<'_> {
 
         // Always query the unicode61 table for identifiers and exact terms.
         let kw = Fts5KeywordEngine::new(self.catalog);
-        let mut candidates = kw.search(&normalized, limit)?;
+        let mut candidates =
+            kw.search_with_expr_public(build_match_expression(&normalized), limit, scope)?;
 
         // For CJK queries, also query the trigram table and fuse (Task 034
         // §1, audit F-02/F-02b): `bm25(chunk_fts)` and
@@ -123,7 +171,7 @@ impl MultilingualKeywordEngine<'_> {
         // reversed. RRF fuses by rank within each list instead, which is
         // valid across incomparable scorers.
         if contains_cjk(&normalized) {
-            let trigram_hits = self.search_trigram(&normalized, limit)?;
+            let trigram_hits = self.search_trigram_scoped(&normalized, limit, scope)?;
             candidates = rrf_fuse_keyword_lists(&candidates, &trigram_hits, limit as usize);
         }
         Ok(candidates)
@@ -145,24 +193,39 @@ impl MultilingualKeywordEngine<'_> {
         Ok(candidates)
     }
 
-    fn search_trigram(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        self.search_trigram_with_expr(build_match_expression(query), limit)
+    /// The trigram half of the CJK path, restricted to a scope
+    /// (RFC-060 §7). There is no unscoped variant: an unrestricted search
+    /// passes `SearchScope::default()`, so no caller can forget the scope
+    /// by picking the shorter name.
+    pub(crate) fn search_trigram_scoped(
+        &self,
+        query: &str,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_trigram_with_expr(build_match_expression(query), limit, scope)
     }
 
     fn search_trigram_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        self.search_trigram_with_expr(build_match_pair_expression(query), limit)
+        self.search_trigram_with_expr(
+            build_match_pair_expression(query),
+            limit,
+            &SearchScope::default(),
+        )
     }
 
     fn search_trigram_with_expr(
         &self,
         match_expr: Option<String>,
         limit: u32,
+        scope: &SearchScope,
     ) -> OrbokResult<Vec<KeywordCandidate>> {
         let Some(match_expr) = match_expr else {
             return Ok(Vec::new());
         };
         let conn = self.catalog.lock();
-        // RFC-060 §5, same join as the unicode61 path in `fts5.rs`.
+        // RFC-060 §5/§7, same joins and scope as the unicode61 path.
+        let scope_sql = scope_sql(scope, "f", "s", 3);
         let mut stmt = conn
             .prepare(&format!(
                 "SELECT r.chunk_id, c.file_id, bm25(chunk_fts_trigram) AS score \
@@ -173,12 +236,18 @@ impl MultilingualKeywordEngine<'_> {
                  JOIN sources s ON s.source_id = f.source_id \
                  WHERE chunk_fts_trigram MATCH ?1 AND r.status = 'active' \
                    AND c.chunk_status = 'active' \
-                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL} \
-                 ORDER BY score LIMIT ?2"
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{} \
+                 ORDER BY score LIMIT ?2",
+                scope_sql.predicate
             ))
             .map_err(|e| OrbokError::Database(e.to_string()))?;
+        let mut binds: Vec<rusqlite::types::Value> = vec![
+            match_expr.into(),
+            rusqlite::types::Value::Integer(limit as i64),
+        ];
+        binds.extend(scope_sql.binds);
         let rows = stmt
-            .query_map(params![match_expr, limit], |row| {
+            .query_map(rusqlite::params_from_iter(binds), |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,

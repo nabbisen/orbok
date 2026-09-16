@@ -8,8 +8,10 @@
 //! logged by this module.
 
 use crate::catalog::{Catalog, db_err};
+use crate::repo::search_scope::scope_sql;
 use orbok_core::{
-    ChunkId, EmbeddingId, FileId, ModelId, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, now_iso8601,
+    ChunkId, EmbeddingId, FileId, ModelId, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, SearchScope,
+    now_iso8601,
 };
 use rusqlite::params;
 
@@ -73,8 +75,10 @@ impl<'a> EmbeddingRepository<'a> {
         &self,
         model_id: &str,
         dimension: u32,
+        scope: &SearchScope,
     ) -> OrbokResult<Vec<EmbeddingRecord>> {
         let conn = self.catalog.lock();
+        let scope_sql = scope_sql(scope, "f", "s", 3);
         let mut stmt = conn
             .prepare(&format!(
                 // RFC-060 §5: the vector half of the same source-status
@@ -86,11 +90,17 @@ impl<'a> EmbeddingRepository<'a> {
                  JOIN sources s ON s.source_id = f.source_id \
                  WHERE e.model_id = ?1 AND e.dimension = ?2 \
                    AND e.status = 'active' AND c.chunk_status = 'active' \
-                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}"
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{}",
+                scope_sql.predicate
             ))
             .map_err(db_err)?;
+        let mut binds: Vec<rusqlite::types::Value> = vec![
+            rusqlite::types::Value::Text(model_id.to_string()),
+            rusqlite::types::Value::Integer(dimension as i64),
+        ];
+        binds.extend(scope_sql.binds);
         let rows = stmt
-            .query_map(params![model_id, dimension as i64], |row| {
+            .query_map(rusqlite::params_from_iter(binds), |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,

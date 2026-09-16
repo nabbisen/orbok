@@ -233,8 +233,15 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
         drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "originalcontentmarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "originalcontentmarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the original content must be findable before any edit"
@@ -252,7 +259,15 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "revisedcontentmarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "revisedcontentmarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         !results.is_empty(),
         "restarting orbok must re-scan registered sources and pick up a file \
@@ -308,7 +323,15 @@ async fn manual_refresh_picks_up_a_file_added_while_running() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "newlyaddedmarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "newlyaddedmarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         !results.is_empty(),
         "manual refresh must re-scan the source and find a file added while \
@@ -351,8 +374,15 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "soontobegonemarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "soontobegonemarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -368,7 +398,15 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "soontobegonemarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "soontobegonemarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         results.is_empty(),
         "a file marked missing by refresh must stop appearing as a normal \
@@ -446,9 +484,15 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
     // from the cached extraction segments -- the search path needs the same
     // cache handle `main.rs` gives it in production.
     let cache = bootstrap::cache_service(&context).unwrap();
-    let results =
-        bootstrap::run_search(&catalog, None, Some(cache.service()), "thirdpagemarker", 20)
-            .unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        Some(cache.service()),
+        "thirdpagemarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         !results.is_empty(),
         "the PDF must be findable by text unique to its third page"
@@ -517,8 +561,15 @@ async fn docx_and_html_snippets_contain_document_text_never_markup() {
         ("htmlmarkerword", "htmlmarkerword"),
         ("docxmarkerword", "docxmarkerword"),
     ] {
-        let results =
-            bootstrap::run_search(&catalog, None, Some(cache.service()), query, 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            Some(cache.service()),
+            query,
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "{query}: the file must be findable by text unique to it"
@@ -536,6 +587,142 @@ async fn docx_and_html_snippets_contain_document_text_never_markup() {
             "{query}: snippet must contain document text or be empty, got {snippet:?}"
         );
     }
+}
+
+/// RFC-060 §11 criterion 4 (RFC-058 §6 row 3, now writable): a kind
+/// filter actually filters, at the query.
+///
+/// **Vocabulary note.** The criterion says "the Documents filter returns
+/// the `.pdf`". This codebase's `KindFilter` has a dedicated `Pdfs` kind,
+/// and `Documents` means Office documents (`docx`, `doc`, `odt`, `rtf`) --
+/// so the filter that selects a PDF here is `Pdfs`. The assertion is the
+/// criterion's: with the filter, the `.pdf` and not the `.md`; without it,
+/// both.
+#[tokio::test]
+async fn a_kind_filter_returns_only_that_kind() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_three_page_pdf(
+        &source_dir.join("doc.pdf"),
+        [
+            "kindfiltermarker on page one.",
+            "second page.",
+            "third page.",
+        ],
+    );
+    std::fs::write(
+        source_dir.join("note.md"),
+        "# Note\n\nkindfiltermarker in a markdown note.\n",
+    )
+    .unwrap();
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let paths_for = |scope: orbok_core::SearchScope| -> Vec<String> {
+        bootstrap::run_search(
+            &catalog,
+            None,
+            Some(cache.service()),
+            "kindfiltermarker",
+            20,
+            scope,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|r| r.display_path)
+        .collect()
+    };
+
+    let unfiltered = paths_for(orbok_core::SearchScope::default());
+    assert!(
+        unfiltered.iter().any(|p| p.ends_with(".pdf"))
+            && unfiltered.iter().any(|p| p.ends_with(".md")),
+        "without a filter both files must match, got {unfiltered:?}"
+    );
+
+    // Through the same conversion the UI uses, not a hand-built scope.
+    let pdfs_only = bootstrap::scope_from_ui(
+        &[orbok_search::ActiveFilter::Kind {
+            value: orbok_search::KindFilter::Pdfs,
+            label: "PDFs".to_string(),
+        }],
+        None,
+    );
+    let filtered = paths_for(pdfs_only);
+    assert!(
+        !filtered.is_empty() && filtered.iter().all(|p| p.ends_with(".pdf")),
+        "the PDFs filter must return the .pdf and not the .md, got {filtered:?}"
+    );
+}
+
+/// RFC-060 §11 criterion 5 (RFC-058 §6 row 4, now writable): a search
+/// scoped to one folder returns only that folder's file.
+#[tokio::test]
+async fn a_search_scoped_to_one_folder_excludes_the_other() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let folder_a = temp.path().join("a");
+    let folder_b = temp.path().join("b");
+    std::fs::create_dir_all(&folder_a).unwrap();
+    std::fs::create_dir_all(&folder_b).unwrap();
+    std::fs::write(folder_a.join("a.md"), "folderscopemarker in folder a\n").unwrap();
+    std::fs::write(folder_b.join("b.md"), "folderscopemarker in folder b\n").unwrap();
+
+    let source_a = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (a, _) =
+            bootstrap::add_source_expect_added(&catalog, &folder_a.to_string_lossy()).unwrap();
+        let (b, _) =
+            bootstrap::add_source_expect_added(&catalog, &folder_b.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &a.source_id).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &b.source_id).unwrap();
+        a.source_id
+    };
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let paths_for = |scope: orbok_core::SearchScope| -> Vec<String> {
+        bootstrap::run_search(
+            &catalog,
+            None,
+            Some(cache.service()),
+            "folderscopemarker",
+            20,
+            scope,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|r| r.display_path)
+        .collect()
+    };
+
+    let both = paths_for(orbok_core::SearchScope::default());
+    assert!(
+        both.iter().any(|p| p.ends_with("a.md")) && both.iter().any(|p| p.ends_with("b.md")),
+        "unscoped, a file in each folder must match, got {both:?}"
+    );
+
+    let scoped = paths_for(bootstrap::scope_from_ui(
+        &[],
+        Some(&orbok_ui::state::SearchLocation::remembered(
+            orbok_core::SourceId::from_string(source_a.clone()),
+            "a",
+        )),
+    ));
+    assert!(
+        !scoped.is_empty() && scoped.iter().all(|p| p.ends_with("a.md")),
+        "scoped to folder a, only a's file may come back, got {scoped:?}"
+    );
 }
 
 /// A minimal valid DOCX: a ZIP carrying one `word/document.xml` with two
@@ -604,8 +791,15 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "vanishingfilemarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "vanishingfilemarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -616,7 +810,15 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
     std::fs::remove_file(&doc).unwrap();
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "vanishingfilemarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "vanishingfilemarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         !results.is_empty(),
         "sanity: with no refresh run, the stale catalog entry must still surface a result \
@@ -675,8 +877,15 @@ async fn a_paused_source_contributes_no_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "pausedsourcemarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "pausedsourcemarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before its source is paused"
@@ -694,7 +903,15 @@ async fn a_paused_source_contributes_no_search_results() {
     }
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "pausedsourcemarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "pausedsourcemarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         results.is_empty(),
         "a paused source's files must not appear in search results, got {results:?}"
@@ -733,8 +950,15 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "temporarilygonemarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "temporarilygonemarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             results.is_empty(),
             "sanity: must be gone from search while missing"
@@ -751,7 +975,15 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "temporarilygonemarker", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "temporarilygonemarker",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(
         !results.is_empty(),
         "a file that reappears with unchanged content must become searchable \
@@ -793,8 +1025,15 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results =
-            bootstrap::run_search(&catalog, None, None, "unmountedfoldermarker", 20).unwrap();
+        let results = bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "unmountedfoldermarker",
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before the folder disappears"
@@ -879,7 +1118,15 @@ async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, None, "認証エラー", 20).unwrap();
+    let results = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "認証エラー",
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
     assert!(!results.is_empty(), "the corpus must be findable at all");
     // RFC-060 §10's own recorded, separate defect: the whole-file "document"
     // chunk isn't deduped from the section-level chunk, so each file can
@@ -1022,6 +1269,7 @@ async fn two_identical_searches_return_identical_orders() {
         None,
         "authentication token rotation",
         20,
+        orbok_core::SearchScope::default(),
     )
     .unwrap();
     assert!(!first.is_empty(), "the corpus must be findable at all");
@@ -1050,6 +1298,7 @@ async fn two_identical_searches_return_identical_orders() {
             None,
             "authentication token rotation",
             20,
+            orbok_core::SearchScope::default(),
         )
         .unwrap();
         let order: Vec<String> = repeat.iter().map(|r| r.display_path.clone()).collect();

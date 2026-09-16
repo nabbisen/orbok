@@ -14,6 +14,7 @@ pub mod error;
 pub mod history;
 pub mod id;
 pub mod privacy;
+mod search_scope;
 pub mod status;
 pub mod timeutil;
 pub mod versions;
@@ -32,6 +33,7 @@ pub use id::{
     ChunkId, EmbeddingId, EventId, ExtractionId, FileId, JobId, ModelId, QueryId, SourceId,
 };
 pub use privacy::{DiagnosticsPolicy, LocalDataCategory, PrivacyMode, PrivacySettings};
+pub use search_scope::{FolderScope, SearchScope};
 pub use status::{
     FileStatus, HiddenFilePolicy, IndexMode, JobStatus, JobType, PersistenceMode,
     SEARCHABLE_SOURCE_STATUS_SQL, SourceStatus, SourceType, SymlinkPolicy,

@@ -4,7 +4,7 @@
 //! ANN is deferred until benchmarks show exact scan is insufficient
 //! (RFC-008 §26: "Correctness first").
 
-use orbok_core::{ChunkId, FileId, OrbokResult};
+use orbok_core::{ChunkId, FileId, OrbokResult, SearchScope};
 use orbok_db::Catalog;
 use orbok_db::repo::EmbeddingRepository;
 use orbok_models::{VectorCandidate, cosine_similarity};
@@ -14,6 +14,10 @@ pub struct ExactVectorSearch<'a> {
     pub catalog: &'a Catalog,
     pub model_id: String,
     pub dimension: u32,
+    /// RFC-060 §7: the same kind/folder restriction the keyword queries
+    /// apply, so a scoped search cannot pick up vector candidates the
+    /// keyword half excluded.
+    pub scope: SearchScope,
 }
 
 impl ExactVectorSearch<'_> {
@@ -22,7 +26,7 @@ impl ExactVectorSearch<'_> {
             return Ok(Vec::new());
         }
         let repo = EmbeddingRepository::new(self.catalog);
-        let records = repo.list_active_for_scan(&self.model_id, self.dimension)?;
+        let records = repo.list_active_for_scan(&self.model_id, self.dimension, &self.scope)?;
 
         let mut scored: Vec<(f32, ChunkId, FileId)> = records
             .into_iter()

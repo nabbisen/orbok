@@ -515,6 +515,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let catalog_task = catalog.clone();
                         let search_model_task = search_model.clone();
                         let search_cache_task = search_cache.clone();
+                        // RFC-060 §7: the kind filters and chosen folder the user
+                        // actually set, resolved before the task takes ownership.
+                        let scope_task = bootstrap::scope_from_ui(
+                            &app.state.search_ui.active_filters,
+                            app.state.search_location.selected.as_ref(),
+                        );
                         let query_task = query.clone();
                         return iced::Task::perform(
                             async move {
@@ -527,6 +533,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .map(|cache| cache.service()),
                                     &query_task,
                                     20,
+                                    scope_task,
                                 )
                                 .map_err(|e| e.to_string())
                             },
@@ -626,6 +633,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let catalog_task = catalog.clone();
                     let search_model_task = search_model.clone();
                     let search_cache_task = search_cache.clone();
+                    // RFC-060 §7: the kind filters and chosen folder the user
+                    // actually set, resolved before the task takes ownership.
+                    let scope_task = bootstrap::scope_from_ui(
+                        &app.state.search_ui.active_filters,
+                        app.state.search_location.selected.as_ref(),
+                    );
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
@@ -637,6 +650,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .map(|cache| cache.service()),
                                 &query,
                                 20,
+                                scope_task,
                             )
                             .map_err(|e| e.to_string())
                         },
@@ -689,6 +703,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let catalog_task = catalog.clone();
                     let search_model_task = search_model.clone();
                     let search_cache_task = search_cache.clone();
+                    // RFC-060 §7: the kind filters and chosen folder the user
+                    // actually set, resolved before the task takes ownership.
+                    let scope_task = bootstrap::scope_from_ui(
+                        &app.state.search_ui.active_filters,
+                        app.state.search_location.selected.as_ref(),
+                    );
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
@@ -700,6 +720,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .map(|cache| cache.service()),
                                 &query,
                                 20,
+                                scope_task,
                             )
                             .map_err(|e| e.to_string())
                         },

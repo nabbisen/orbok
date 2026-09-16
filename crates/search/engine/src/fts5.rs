@@ -8,9 +8,11 @@
 use crate::query::{build_match_expression, build_match_pair_expression};
 use crate::{KeywordCandidate, KeywordDocument, KeywordSearchEngine};
 use orbok_core::{
-    ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, now_iso8601,
+    ChunkId, FileId, OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL, SearchScope,
+    now_iso8601,
 };
 use orbok_db::Catalog;
+use orbok_db::repo::search_scope::scope_sql;
 use rusqlite::params;
 
 /// Engine identity recorded per indexed chunk (RFC-007 §9 versioning).
@@ -29,22 +31,46 @@ impl<'a> Fts5KeywordEngine<'a> {
     }
 
     pub fn search_pairs(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        self.search_with_expr(build_match_pair_expression(query), limit)
+        self.search_pairs_scoped(query, limit, &SearchScope::default())
+    }
+
+    /// [`Self::search_pairs`], restricted to a scope (RFC-060 §7).
+    pub fn search_pairs_scoped(
+        &self,
+        query: &str,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_expr(build_match_pair_expression(query), limit, scope)
+    }
+
+    /// [`Self::search_with_expr`], for the multilingual engine's own
+    /// already-normalized expressions.
+    pub(crate) fn search_with_expr_public(
+        &self,
+        match_expr: Option<String>,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> OrbokResult<Vec<KeywordCandidate>> {
+        self.search_with_expr(match_expr, limit, scope)
     }
 
     fn search_with_expr(
         &self,
         match_expr: Option<String>,
         limit: u32,
+        scope: &SearchScope,
     ) -> OrbokResult<Vec<KeywordCandidate>> {
         let Some(match_expr) = match_expr else {
             return Ok(Vec::new());
         };
         let conn = self.catalog.lock();
-        // RFC-060 §5: a non-searchable source contributes no candidates,
-        // filtered in SQL rather than afterwards -- post-filtering shrinks
-        // the result set below `limit` and makes "no results" ambiguous
+        // RFC-060 §5/§7: a non-searchable source contributes no candidates,
+        // and the kind/folder scope applies here too -- filtered in SQL
+        // rather than afterwards, since post-filtering shrinks the result
+        // set below `limit` and makes "no results" ambiguous
         // (RFC-041 §25.5).
+        let scope_sql = scope_sql(scope, "f", "s", 3);
         let mut stmt = conn
             .prepare(&format!(
                 "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
@@ -55,12 +81,18 @@ impl<'a> Fts5KeywordEngine<'a> {
                  JOIN sources s ON s.source_id = f.source_id \
                  WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
                    AND c.chunk_status = 'active' \
-                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL} \
-                 ORDER BY score LIMIT ?2"
+                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{} \
+                 ORDER BY score LIMIT ?2",
+                scope_sql.predicate
             ))
             .map_err(db)?;
+        let mut binds: Vec<rusqlite::types::Value> = vec![
+            match_expr.into(),
+            rusqlite::types::Value::Integer(limit as i64),
+        ];
+        binds.extend(scope_sql.binds);
         let rows = stmt
-            .query_map(params![match_expr, limit], |row| {
+            .query_map(rusqlite::params_from_iter(binds), |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -153,7 +185,11 @@ impl KeywordSearchEngine for Fts5KeywordEngine<'_> {
     }
 
     fn search(&self, query: &str, limit: u32) -> OrbokResult<Vec<KeywordCandidate>> {
-        self.search_with_expr(build_match_expression(query), limit)
+        self.search_with_expr(
+            build_match_expression(query),
+            limit,
+            &SearchScope::default(),
+        )
     }
 }
 

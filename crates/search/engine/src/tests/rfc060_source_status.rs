@@ -125,7 +125,7 @@ fn candidates_at_every_site(catalog: &Catalog, chunk_id: &ChunkId) -> (usize, us
         .search("日本語", 10)
         .unwrap();
     let vectors = EmbeddingRepository::new(catalog)
-        .list_active_for_scan(MODEL_ID, 3)
+        .list_active_for_scan(MODEL_ID, 3, &orbok_core::SearchScope::default())
         .unwrap();
     let records = chunk_records_for(catalog, std::slice::from_ref(chunk_id)).unwrap();
     (keyword.len(), trigram.len(), vectors.len(), records.len())

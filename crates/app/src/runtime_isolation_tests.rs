@@ -442,7 +442,14 @@ fn exercise_later_profile_operations_with<P: orbok::runtime_context::RuntimePath
     // this profile-isolation exercise no longer needs a probe-aware
     // variant here -- `persist_model_dir_with`/`persist_theme_with` above
     // still cover this function's probe-injection responsibility.
-    let _ = bootstrap::run_search(&catalog, None, None, "isolation", 20)?;
+    let _ = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "isolation",
+        20,
+        orbok_core::SearchScope::default(),
+    )?;
     SearchHistoryRepository::new(&catalog).upsert(
         "later isolation search",
         &[],

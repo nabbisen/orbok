@@ -1,7 +1,7 @@
 //! Keyword/hybrid search execution.
 
 use super::embedding_resolution::EmbeddingWorkerParts;
-use orbok_core::OrbokResult;
+use orbok_core::{OrbokResult, SearchScope};
 use orbok_db::Catalog;
 use orbok_search::HybridSearchService;
 
@@ -25,12 +25,57 @@ use orbok_search::HybridSearchService;
 /// loading a model and embedding the query for nothing. Passing
 /// `parts.model_id` (the same registered id the write side uses) fixes
 /// this.
+/// The scope one search runs under, built from what the user actually
+/// chose: the active kind filters and the selected folder with its
+/// subfolder setting (RFC-060 §7, RFC-041 §15, RFC-045 §6.3).
+///
+/// A `Folder` filter chip stands in when no location is selected; the
+/// chosen location wins when both exist, since it is the one carrying a
+/// subfolder setting.
+pub(crate) fn scope_from_ui(
+    filters: &[orbok_search::ActiveFilter],
+    location: Option<&orbok_ui::state::SearchLocation>,
+) -> SearchScope {
+    let mut extensions: Vec<String> = Vec::new();
+    let mut folder_from_chip: Option<String> = None;
+    for filter in filters {
+        match filter {
+            orbok_search::ActiveFilter::Kind { value, .. } => extensions.extend(
+                value
+                    .extensions()
+                    .iter()
+                    .map(|ext| (*ext).to_ascii_lowercase()),
+            ),
+            orbok_search::ActiveFilter::Folder { id, .. } => {
+                folder_from_chip.get_or_insert_with(|| id.clone());
+            }
+            _ => {}
+        }
+    }
+    extensions.sort();
+    extensions.dedup();
+
+    let folder = match location.and_then(|loc| loc.source_id().map(|id| (id, loc.scope()))) {
+        Some((source_id, scope)) => Some(orbok_core::FolderScope {
+            source_id: source_id.as_str().to_string(),
+            include_subfolders: scope.includes_subfolders(),
+        }),
+        None => folder_from_chip.map(|source_id| orbok_core::FolderScope {
+            source_id,
+            include_subfolders: true,
+        }),
+    };
+
+    SearchScope { extensions, folder }
+}
+
 pub(crate) fn run_search(
     catalog: &Catalog,
     model: Option<&EmbeddingWorkerParts>,
     extraction_cache: Option<&orbok_cache::CacheService>,
     query: &str,
     limit: u32,
+    scope: SearchScope,
 ) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
     // RFC-060 §6: without this handle a PDF/DOCX/HTML result renders no
     // snippet at all, since its stored positions are pages or paragraphs
@@ -43,7 +88,10 @@ pub(crate) fn run_search(
     if let Some(cache) = extraction_cache {
         service = service.with_extraction_cache(cache);
     }
-    let results = service.search(query, orbok_search::SearchMode::Auto, limit)?;
+    let results = service.search_request(
+        &orbok_search::SearchRequest::new(query, orbok_search::SearchMode::Auto, limit)
+            .with_scope(scope),
+    )?;
     Ok(results
         .into_iter()
         .map(|r| orbok_ui::state::SearchResultDisplay {

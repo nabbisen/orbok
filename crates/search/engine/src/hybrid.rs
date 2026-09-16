@@ -2,13 +2,12 @@
 //! retrieval through RRF fusion. Degrades gracefully when either source
 //! is unavailable (RFC-009 §21).
 
-use crate::KeywordSearchEngine;
 use crate::multilingual::MultilingualKeywordEngine;
 use crate::rrf::{FusedCandidate, rrf_fuse};
 use crate::service::{MatchBadge, SearchResult};
 use crate::snippet::{SnippetSource, chunk_records_for, trust_for};
 use crate::vector::ExactVectorSearch;
-use orbok_core::OrbokResult;
+use orbok_core::{OrbokResult, SearchScope};
 use orbok_db::Catalog;
 use orbok_models::{EmbeddingModel, l2_normalize};
 use std::path::Path;
@@ -91,6 +90,37 @@ pub struct HybridSearchService<'a> {
     extraction_cache: Option<&'a orbok_cache::CacheService>,
 }
 
+/// One search, with everything that decides which results come back
+/// (RFC-060 §7). `run_search(catalog, model, query, limit)` had no
+/// parameter surface for trust, filters or folder scope, which is why
+/// RFC-058 §6's rows 3 and 4 could not be written against it.
+#[derive(Debug, Clone)]
+pub struct SearchRequest<'a> {
+    pub query: &'a str,
+    pub mode: SearchMode,
+    pub limit: u32,
+    /// Kind filter and folder restriction, applied at the query.
+    pub scope: SearchScope,
+}
+
+impl<'a> SearchRequest<'a> {
+    /// An unrestricted request, the shape the old positional call had.
+    pub fn new(query: &'a str, mode: SearchMode, limit: u32) -> Self {
+        Self {
+            query,
+            mode,
+            limit,
+            scope: SearchScope::default(),
+        }
+    }
+
+    /// Restrict this request to a scope.
+    pub fn with_scope(mut self, scope: SearchScope) -> Self {
+        self.scope = scope;
+        self
+    }
+}
+
 /// Timing breakdown for one search execution.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SearchTiming {
@@ -151,12 +181,34 @@ impl<'a> HybridSearchService<'a> {
         Ok(self.search_profile(query, mode, limit)?.results)
     }
 
+    /// Execute one [`SearchRequest`] -- the parameter surface RFC-060 §7
+    /// asks for, carrying the kind filter and folder scope the plain
+    /// `search` above cannot express.
+    pub fn search_request(&self, request: &SearchRequest<'_>) -> OrbokResult<Vec<SearchResult>> {
+        Ok(self
+            .search_profile_scoped(request.query, request.mode, request.limit, &request.scope)?
+            .results)
+    }
+
     /// Execute a search and return timing evidence for benchmark diagnostics.
     pub fn search_profile(
         &self,
         query: &str,
         mode: SearchMode,
         limit: u32,
+    ) -> OrbokResult<SearchProfile> {
+        self.search_profile_scoped(query, mode, limit, &SearchScope::default())
+    }
+
+    /// [`Self::search_profile`], restricted to a scope. Every candidate
+    /// source applies it, so fusion cannot reintroduce what one of them
+    /// excluded.
+    pub fn search_profile_scoped(
+        &self,
+        query: &str,
+        mode: SearchMode,
+        limit: u32,
+        scope: &SearchScope,
     ) -> OrbokResult<SearchProfile> {
         let total_start = Instant::now();
         let mut timing = SearchTiming::default();
@@ -168,9 +220,9 @@ impl<'a> HybridSearchService<'a> {
         let kw_candidates = if limits.keyword_k > 0 {
             let keyword_engine = MultilingualKeywordEngine::new(self.catalog);
             if mode == SearchMode::Auto && query.split_whitespace().count() >= 4 {
-                keyword_engine.search_pairs(query, limits.keyword_k)?
+                keyword_engine.search_pairs_scoped(query, limits.keyword_k, scope)?
             } else {
-                keyword_engine.search(query, limits.keyword_k)?
+                keyword_engine.search_scoped(query, limits.keyword_k, scope)?
             }
         } else {
             Vec::new()
@@ -190,6 +242,7 @@ impl<'a> HybridSearchService<'a> {
                     catalog: self.catalog,
                     model_id: model_id.clone(),
                     dimension: model.dimension(),
+                    scope: scope.clone(),
                 }
                 .search(&query_vec, limits.vector_k)
                 .inspect(|_| {

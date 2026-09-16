@@ -48,6 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path never extracts** (RFC-060 Amendment 3): with no cached entry the
   snippet is absent and the result is still shown, and rows written before
   0008 read as `unknown`, which renders nothing rather than the wrong bytes.
+- **RFC-060 Slice 4: the filter UI did not filter, and the chosen folder
+  did not scope.** `run_search(catalog, model, query, limit)` had no
+  parameter for either, which is also why RFC-058 §6's rows 3 and 4 could
+  not be written. Searches now carry a request with a scope: the active
+  kind filters expand to file extensions, and a chosen folder restricts to
+  its source, honouring "this folder only" versus "and subfolders". The
+  scope is applied **in SQL at all three candidate sources** -- unicode61
+  keyword, trigram keyword and the vector scan -- so fusion cannot
+  reintroduce what one of them excluded, and the result set is not
+  quietly trimmed below the requested limit afterwards (RFC-041 §25.5).
+  Both new tests go through the same conversion the UI uses, and rows 3
+  and 4 of RFC-058 §6 are now writable.
 - **RFC-060 Slice 4: every search result claimed to be trustworthy.**
   `bootstrap/search.rs` filled in `ResultTrustDisplay::default()` -- state
   `Ready`, no recovery actions -- on every result, whatever the file behind

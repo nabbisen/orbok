@@ -10,6 +10,7 @@ pub mod jobs;
 pub mod managed_generations;
 pub mod models;
 pub mod search_history;
+pub mod search_scope;
 pub mod settings;
 pub mod sources;
 pub mod storage;

@@ -43,7 +43,7 @@ pub use preferences::{
 // dead `pub(crate) use` outside test builds and fail the `-D warnings` gate.
 #[cfg(test)]
 pub(crate) use preferences::{persist_model_dir_with, persist_theme_with};
-pub(crate) use search::run_search;
+pub(crate) use search::{run_search, scope_from_ui};
 #[cfg(test)]
 pub(crate) use sources::add_source_expect_added;
 pub use sources::{
