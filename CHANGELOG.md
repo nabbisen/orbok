@@ -124,6 +124,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **`HANDOFF-041-opening-results`: orbok could not open a document it
+  found.** Pressing a result only selected it; nothing in the application
+  opened a file or revealed it in a file manager, although RFC-041 §10.4 and
+  RFC-038 §9.3 both specify it. The handoff sets the boundary before the
+  button: validate the result's path through the path guard immediately before
+  launching, never launch through a shell, and accept only paths that came
+  from a result. Owner priority 2 of the re-ordered list, after a model
+  installed mid-session taking effect.
+
 - **RFC-058 and RFC-048 amended for the benchmark's shape; RFC-038 gets a
   handoff.** Owner decision: the benchmark builds the embedding model once,
   as production has since RFC-061 Slice 4, times each search through
