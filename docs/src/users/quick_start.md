@@ -21,6 +21,9 @@ ORBOK_DATA_DIR=/tmp/orbok-test orbok --check
 
 # Print version
 orbok --version
+
+# List options
+orbok --help
 ```
 
 ## Data directory

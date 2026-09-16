@@ -172,6 +172,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/ui/src/lib.rs"]="crate root: module declarations and re-exports only, verified zero display text"
   ["crates/ui/src/tests.rs"]="test module router, not production UI"
   ["crates/ui/src/theme.rs"]="persisted-setting serialization identifiers only (\"system\"/\"light\"/\"dark\"/etc.), verified zero display text in full (review-request 132 §3); display text for themes already routes through MessageKey::Theme*"
+  ["crates/app/src/cli.rs"]="command-line usage and argument-error text printed to a terminal, never rendered in the GUI -- the same classification --version's \"orbok {}\" has in i18n-literal-allowlist.txt (Task 051)"
   ["crates/app/src/bootstrap.rs"]="module declarations only, verified zero display text"
   ["crates/app/src/download.rs"]="developer-facing tracing/log and panic/expect strings only, verified in full; errors reach users only via typed UserNotice variants routed through the catalog, never shown raw"
   ["crates/app/src/history.rs"]="developer-facing tracing/log strings only, verified in full"

@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 051: `orbok --help`, or a mistyped option, opened and migrated the
+  default profile.** Only `--version`, `--portable` and `--check` were
+  recognised; any other argument was ignored and startup carried on --
+  resolving the profile, opening its catalog and running pending
+  migrations. Since RFC-062 an older build refuses a catalog recorded at a
+  newer schema, so on a newer build a command meant to change nothing could
+  leave a profile the user's usual build can no longer open. It is how an
+  `orbok --help` migrated a real catalog during 0.25.0 QA. Arguments are now
+  parsed before any profile is resolved: `--help` / `-h` prints usage to
+  stdout and exits 0, and an unrecognised argument is named on stderr with
+  the usage and exits 2. Neither creates or opens anything, which the new
+  end-to-end test asserts directly -- a fresh `ORBOK_DATA_DIR` must still be
+  empty afterwards. With the old fall-through restored, both runs left
+  `settings.json`, `orbok-catalog.sqlite3` and `models` behind.
+
 - **RFC-060 Slice 2: a paused folder's files were still searched, and still
   opened from disk.** `SourceState::is_searchable` existed with no caller, so
   nothing at the query layer knew a folder was paused, missing or

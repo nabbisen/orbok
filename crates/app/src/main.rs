@@ -9,6 +9,7 @@
 //! 6. launch main GUI
 
 mod bootstrap;
+mod cli;
 mod diagnostics;
 mod download;
 mod history;
@@ -43,17 +44,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     install_panic_hook();
 
+    // Task 051: parsed before any runtime context is resolved, so neither
+    // `--help` nor an unrecognised argument can resolve, create or migrate
+    // a profile.
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("orbok {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    let portable = args.iter().any(|a| a == "--portable");
+    let (portable, check) = match cli::parse_args(&args) {
+        cli::CliCommand::Help => {
+            print!("{}", cli::USAGE);
+            return Ok(());
+        }
+        cli::CliCommand::Unknown(arg) => {
+            eprint!("{}", cli::unknown_argument_message(&arg));
+            std::process::exit(2);
+        }
+        cli::CliCommand::Version => {
+            println!("orbok {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        cli::CliCommand::Check { portable } => (portable, true),
+        cli::CliCommand::Gui { portable } => (portable, false),
+    };
     let runtime = bootstrap::resolve_runtime_context(portable)?;
     if portable {
         eprintln!("orbok: portable mode — data directory: ./orbok-data/");
     }
-    if args.iter().any(|a| a == "--check") {
+    if check {
         bootstrap::run_check(&runtime)?;
         return Ok(());
     }
