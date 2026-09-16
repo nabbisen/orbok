@@ -830,6 +830,24 @@ Eleven RFCs are recorded as implemented in this release; see
 
 ### Fixed
 
+- **Task 049: the first screen ran its paragraphs into spaced-out columns, and
+  told a fresh install that its model folder had moved.** Four catalog strings
+  (both locales' "set up search by meaning" and "model folder is no longer at
+  its expected location" bodies) carried runs of thirteen and fourteen literal
+  spaces mid-sentence -- a line-continuation backslash lost at some point
+  before 0.24.0, which turned the source indentation into content and rendered
+  each string as three separated columns. The wording is unchanged; only the
+  spaces are gone, and an exhaustive catalog test now fails if any message in
+  any locale regains a run of three spaces. On the setup page, the sentence
+  "The model folder is no longer at its expected location" was rendered
+  unconditionally, so a fresh install -- which never had a model folder -- was
+  told one had gone missing. It now appears only beside the previous path it
+  describes, and that page is titled "Model not found" only in that case,
+  which puts the previously-unrendered `WizardTitleFileMissing` to use. A
+  fresh install instead reads "Already have the model files? Point orbok at
+  the folder that contains them." After validating a folder that lacks
+  required files, the page now says exactly that, rather than claiming the
+  folder moved.
 - **RFC-062: an edited released migration repaired, catalogs from a newer build
   refused, and a gate against both** (`125ba7e`, `b85faa9`, `cd0d445`).
   `0001_baseline.sql` had been edited in place after release: 0.17.0 widened

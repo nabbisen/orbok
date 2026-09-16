@@ -213,6 +213,8 @@ message_keys! {
     WizardTitleReady,
     WizardBodyNotConfigured,
     WizardBodyFileMissing,
+    WizardBodyLocateExisting,
+    WizardBodyFilesIncomplete,
     WizardFilesNeededLabel,
     WizardDownloadHint,
     WizardPathInputPlaceholder,

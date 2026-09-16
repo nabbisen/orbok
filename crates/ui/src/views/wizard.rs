@@ -123,8 +123,15 @@ fn page_setup<'a>(
 ) -> Element<'a, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
+    // Task 049: with a previously-used folder gone this page really is
+    // "Model not found"; on a fresh install nothing is missing yet.
+    let title_key = if missing.is_some() {
+        MessageKey::WizardTitleFileMissing
+    } else {
+        MessageKey::WizardTitleNotConfigured
+    };
     let mut col = column![
-        text(tr(locale, MessageKey::WizardTitleNotConfigured)).size(theme::title_s(tokens, sc)),
+        text(tr(locale, title_key)).size(theme::title_s(tokens, sc)),
         text(tr(locale, MessageKey::WizardBodyNotConfigured))
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
@@ -167,14 +174,14 @@ fn page_setup<'a>(
     );
 
     // ── Secondary action: locate existing files ───────────────────────
-    col = col.push(
-        text(tr(locale, MessageKey::WizardBodyFileMissing))
-            .size(theme::meta_s(tokens, sc))
-            .line_height(theme::meta_lh(tokens)),
-    );
-
-    // Show previous path hint when files were missing.
+    // Task 049: the "no longer at its expected location" sentence belongs
+    // beside the path it describes, never on a fresh install.
     if let Some((prev_dir, checks)) = missing {
+        col = col.push(
+            text(tr(locale, MessageKey::WizardBodyFileMissing))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
+        );
         col = col.push(text(prev_dir).size(theme::meta_s(tokens, sc)));
         for fc in checks {
             let (icon, note) = if fc.found {
@@ -189,6 +196,12 @@ fn page_setup<'a>(
                 text(format!("{icon}  {}{note}", fc.relative_path)).size(theme::meta_s(tokens, sc)),
             );
         }
+    } else {
+        col = col.push(
+            text(tr(locale, MessageKey::WizardBodyLocateExisting))
+                .size(theme::meta_s(tokens, sc))
+                .line_height(theme::meta_lh(tokens)),
+        );
     }
 
     let path_input = text_input(
@@ -459,7 +472,7 @@ fn page_checked<'a>(
         );
     } else {
         col = col.push(
-            text(tr(locale, MessageKey::WizardBodyFileMissing))
+            text(tr(locale, MessageKey::WizardBodyFilesIncomplete))
                 .size(theme::meta_s(tokens, sc))
                 .line_height(theme::meta_lh(tokens)),
         );

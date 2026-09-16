@@ -97,11 +97,18 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardTitleValidating => "モデルフォルダを確認中",
         WizardTitleReady => "意味による検索の準備完了",
         WizardBodyNotConfigured => {
-            "キーワード検索は利用可能です。意味による検索を使用するには、             このコンピュータにローカルAIモデルが必要です。             ファイルはアップロードされません。"
+            "キーワード検索は利用可能です。意味による検索を使用するには、\
+             このコンピュータにローカルAIモデルが必要です。\
+             ファイルはアップロードされません。"
         }
         WizardBodyFileMissing => {
-            "モデルフォルダが指定された場所にありません。             ドライブが切断されたか、ファイルが移動した可能性があります。"
+            "モデルフォルダが指定された場所にありません。\
+             ドライブが切断されたか、ファイルが移動した可能性があります。"
         }
+        WizardBodyLocateExisting => {
+            "モデルファイルをすでにお持ちの場合は、そのフォルダを指定してください。"
+        }
+        WizardBodyFilesIncomplete => "そのフォルダには必要なファイルの一部がありません。",
         WizardFilesNeededLabel => "フォルダ内の必要ファイル:",
         WizardDownloadHint => {
             "ダウンロード: huggingface-cli download intfloat/multilingual-e5-small"

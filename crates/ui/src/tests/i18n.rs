@@ -16,6 +16,23 @@ fn all_messages_non_empty_in_all_locales() {
     }
 }
 
+// Task 049 §2: a stripped line-continuation backslash turns the source
+// indentation into content -- runs of literal spaces that render as widely
+// separated columns instead of a paragraph. Exhaustive over the catalog, like
+// its neighbour above, so a new string cannot reintroduce it unseen.
+#[test]
+fn no_message_contains_a_run_of_three_or_more_spaces() {
+    for locale in Locale::ALL {
+        for key in ALL_KEYS {
+            let message = tr(*locale, *key);
+            assert!(
+                !message.contains("   "),
+                "{locale:?} {key:?} contains a run of three or more spaces: {message:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn exact_model_size_localizes_the_unit_without_rounding_the_byte_count() {
     assert_eq!(

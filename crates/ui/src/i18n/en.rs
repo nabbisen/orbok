@@ -95,11 +95,19 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardTitleValidating => "Checking model folder",
         WizardTitleReady => "Search by meaning is ready",
         WizardBodyNotConfigured => {
-            "Keyword search is ready. To also search by meaning,              orbok needs a local AI model on this computer.              No files are uploaded — inference runs locally."
+            "Keyword search is ready. To also search by meaning, orbok needs \
+             a local AI model on this computer. No files are uploaded — \
+             inference runs locally."
         }
         WizardBodyFileMissing => {
-            "The model folder is no longer at its expected location.              This can happen when a drive is disconnected or files are moved."
+            "The model folder is no longer at its expected location. This can \
+             happen when a drive is disconnected or files are moved."
         }
+        WizardBodyLocateExisting => {
+            "Already have the model files? Point orbok at the folder that \
+             contains them."
+        }
+        WizardBodyFilesIncomplete => "That folder is missing some of the required files.",
         WizardFilesNeededLabel => "Required files in the folder:",
         WizardDownloadHint => "Download: huggingface-cli download intfloat/multilingual-e5-small",
         WizardPathInputPlaceholder => "Path to model folder (e.g. ~/models/multilingual-e5-small)",
