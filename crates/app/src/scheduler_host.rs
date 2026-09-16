@@ -429,11 +429,23 @@ pub(crate) async fn run_with_context(
                         parts.model_id,
                     ));
                 }
+                // Task 057: one notice per failed resolution -- this branch
+                // runs once per request, not per poll.
                 Ok(None) => {
                     tracing::warn!("embedding model changed, but it could not be resolved");
+                    let _ = output
+                        .send(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::ModelCouldNotBeLoaded,
+                        ))
+                        .await;
                 }
                 Err(error) => {
                     tracing::warn!(%error, "embedding model resolution did not complete");
+                    let _ = output
+                        .send(Message::ShowNotice(
+                            orbok_ui::notice::UserNotice::ModelCouldNotBeLoaded,
+                        ))
+                        .await;
                 }
             }
             if std::mem::take(&mut resolve_again) {

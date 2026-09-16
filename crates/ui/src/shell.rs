@@ -230,6 +230,8 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
             WizardKind::CheckedOk | WizardKind::ReadyIdle | WizardKind::ReadyFailed => {
                 Some(Message::WizardAccept)
             }
+            // Task 057: the load-failed step's "Try again".
+            WizardKind::ReadyLoadFailed => Some(Message::WizardRetryModelLoad),
             WizardKind::DownloadFailed => Some(Message::RetryModelDownload),
             // Downloading's only action is Cancel (Task 025), reachable
             // via Escape above -- not Enter, since Escape is already the

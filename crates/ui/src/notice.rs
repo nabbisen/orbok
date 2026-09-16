@@ -60,6 +60,9 @@ pub enum UserNotice {
     /// context, catalog, or cache open failure) -- orbok looks healthy
     /// but never prepares anything, for the rest of the session.
     IndexingCouldNotStart,
+    /// Task 057: background preparation could not load a model that was
+    /// saved during this session. Its action asks it to load the model again.
+    ModelCouldNotBeLoaded,
 }
 
 impl UserNotice {
@@ -79,6 +82,7 @@ impl UserNotice {
                 | Self::SourceCouldNotBeRemoved
                 | Self::StorageUnavailable
                 | Self::IndexingCouldNotStart
+                | Self::ModelCouldNotBeLoaded
         )
     }
 
@@ -97,7 +101,8 @@ impl UserNotice {
             | Self::CatalogResetFailed
             | Self::SourceCouldNotBeRemoved
             | Self::StorageUnavailable
-            | Self::IndexingCouldNotStart => Tone::Danger,
+            | Self::IndexingCouldNotStart
+            | Self::ModelCouldNotBeLoaded => Tone::Danger,
             // Cautions: action succeeded but the user should be aware.
             Self::FilesMovedOrMissing | Self::SensitiveSourceAdded => Tone::Warning,
             // Positive confirmations.
@@ -137,6 +142,9 @@ impl UserNotice {
             Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailTitle,
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
+            // Task 057: the owner approved one sentence for this failure; it
+            // serves as title and body, as `DiagnosticsFileCreated` does.
+            Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
         };
         tr(locale, key)
     }
@@ -164,6 +172,7 @@ impl UserNotice {
             Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailBody,
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableBody,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
+            Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
         };
         tr(locale, key)
     }
@@ -195,7 +204,18 @@ impl UserNotice {
             // No in-app action can restart the background task; the body
             // text names the recovery step (restart orbok) as prose instead.
             Self::IndexingCouldNotStart => return None,
+            Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadRetry,
         };
         Some(tr(locale, key))
+    }
+
+    /// The message the notice's action button sends. Every notice before
+    /// Task 057 only dismisses; `ModelCouldNotBeLoaded`'s "Try again" asks
+    /// background preparation to load the model again.
+    pub fn action_message(&self) -> crate::state::Message {
+        match self {
+            Self::ModelCouldNotBeLoaded => crate::state::Message::RetryModelLoad,
+            _ => crate::state::Message::ClearNotice,
+        }
     }
 }

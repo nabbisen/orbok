@@ -217,7 +217,7 @@ fn friendly_notice<'a>(
     let mut builder = Notice::new(tokens, notice.tone(), notice.body(locale).to_string())
         .title(notice.title(locale).to_string());
     if let Some(action_label) = notice.action(locale) {
-        builder = builder.action(action_label.to_string(), Message::ClearNotice);
+        builder = builder.action(action_label.to_string(), notice.action_message());
     } else {
         builder = builder.dismiss(Message::ClearNotice);
     }

@@ -173,6 +173,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // way -- the loop drains it fully every iteration -- and
             // typing produces many observations in quick succession, so
             // even a dropped one would change nothing observable.
+            // Task 057: the notice's "Try again" when background preparation
+            // could not load the model -- ask it to load the model again.
+            // The state update below dismisses the notice.
+            if matches!(message, Message::RetryModelLoad)
+                && let Err(error) = resource_signal_tx
+                    .clone()
+                    .try_send(scheduler_host::ResourceObservation::EmbeddingModelChanged)
+            {
+                tracing::warn!(%error, "could not ask background preparation to load the model again");
+            }
             if matches!(message, Message::QueryChanged(_) | Message::SubmitSearch) {
                 let _ = resource_signal_tx
                     .clone()

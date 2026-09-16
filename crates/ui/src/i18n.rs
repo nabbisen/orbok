@@ -259,6 +259,8 @@ message_keys! {
     ModelPersistenceSaving,
     ModelPersistenceFailed,
     ModelPersistenceRetry,
+    ModelLoadFailed,
+    ModelLoadRetry,
     // Common actions
     NoticeDownloadFailTitle,
     NoticeDownloadFailBody,

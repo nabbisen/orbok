@@ -2369,3 +2369,48 @@ async fn embedding_backfill_enqueues_nothing_the_second_time() {
         "the queued jobs from the first run must suppress a second"
     );
 }
+
+/// Task 057 §3 test 4: when the host cannot load a model after
+/// `EmbeddingModelChanged`, the UI is told exactly once.
+#[tokio::test]
+async fn a_model_the_host_cannot_load_is_reported_once() {
+    use futures::StreamExt as _;
+    use orbok_ui::notice::UserNotice;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let resolver: super::EmbeddingResolver = std::sync::Arc::new(|| None);
+    let (mut signal_tx, signal_rx) = resource_signal_channel();
+    let (tx, mut rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(&context).unwrap(),
+        bootstrap::cache_service(&context).unwrap(),
+        super::EmbeddingSource::resolving(None, resolver),
+        true,
+        true,
+        signal_rx,
+        tx,
+        None,
+    ));
+    signal_tx
+        .try_send(ResourceObservation::EmbeddingModelChanged)
+        .unwrap();
+
+    let mut notices = 0;
+    let window = tokio::time::sleep(Duration::from_secs(3));
+    tokio::pin!(window);
+    loop {
+        tokio::select! {
+            () = &mut window => break,
+            message = rx.next() => match message {
+                Some(orbok_ui::Message::ShowNotice(UserNotice::ModelCouldNotBeLoaded)) => notices += 1,
+                Some(_) => {}
+                None => break,
+            },
+        }
+    }
+    handle.abort();
+    assert_eq!(
+        notices, 1,
+        "one failed load produces one notice, not one per poll"
+    );
+}

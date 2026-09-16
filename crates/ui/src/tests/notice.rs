@@ -62,6 +62,7 @@ every_user_notice! {
     SourceCouldNotBeRemoved,
     StorageUnavailable,
     IndexingCouldNotStart,
+    ModelCouldNotBeLoaded,
 }
 
 /// The invariant `notice.rs:37` claims: every notice is distinguishable by

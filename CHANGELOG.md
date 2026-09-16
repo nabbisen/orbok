@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 057: a model that was saved but could not be loaded said "this
+  choice could not be saved".** Since Task 055 saving and loading are
+  separate steps, and a load failure reused the save failure's wording and
+  its "Try saving again" button, which saved again and did not load. The
+  wizard now says "The model was saved, but it could not be loaded." with
+  **Try again**, which loads it again. When background preparation cannot
+  load a newly installed model, it no longer only writes a log line: the same
+  message appears once as a notice, and its **Try again** asks it to load the
+  model again.
 - **Task 055: documents indexed before a model was installed never became
   searchable by meaning.** Their embedding jobs failed as `model_missing`,
   and nothing ever queued them again: not a restart, and not a rescan, which

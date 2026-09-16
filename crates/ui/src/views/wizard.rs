@@ -562,6 +562,21 @@ fn page_ready<'a>(
                     .size(theme::body_s(tokens, sc)),
             );
         }
+        ModelPersistenceState::LoadFailed(_) => {
+            col = col
+                .push(
+                    text(tr(locale, MessageKey::ModelLoadFailed))
+                        .size(theme::body_s(tokens, sc))
+                        .line_height(theme::body_lh(tokens)),
+                )
+                .push(
+                    button(
+                        text(tr(locale, MessageKey::ModelLoadRetry))
+                            .size(theme::body_s(tokens, sc)),
+                    )
+                    .on_press(Message::WizardRetryModelLoad),
+                );
+        }
         ModelPersistenceState::Failed => {
             col = col
                 .push(

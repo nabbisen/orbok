@@ -231,6 +231,9 @@ pub enum WizardKind {
     /// `Ready { persistence: InFlight(_), .. }` — nothing to confirm while
     /// a save is already running.
     ReadyInFlight,
+    /// `Ready { persistence: LoadFailed(_), .. }` (Task 057) — primary
+    /// action is `WizardRetryModelLoad` ("Try again").
+    ReadyLoadFailed,
 }
 
 impl WizardState {
@@ -254,6 +257,10 @@ impl WizardState {
                 persistence: ModelPersistenceState::InFlight(_),
                 ..
             } => WizardKind::ReadyInFlight,
+            WizardState::Ready {
+                persistence: ModelPersistenceState::LoadFailed(_),
+                ..
+            } => WizardKind::ReadyLoadFailed,
         }
     }
 }
@@ -290,6 +297,11 @@ pub enum ModelPersistenceState {
     Idle,
     InFlight(PersistenceAttemptId),
     Failed,
+    /// Task 057: the model choice **was** saved, but the model could not be
+    /// loaded for search. Distinct from `Failed`, whose copy says the choice
+    /// could not be saved; retrying re-runs loading, not saving. Carries the
+    /// attempt so the retried activation is correlated the same way.
+    LoadFailed(PersistenceAttemptId),
 }
 
 /// Closed artifact vocabulary safe for UI presentation.
@@ -622,6 +634,12 @@ pub enum Message {
         persistence_attempt_id: PersistenceAttemptId,
         activated: bool,
     },
+    /// Task 057: "Try again" on the wizard's load-failed step -- re-runs
+    /// loading the saved model, not saving it.
+    WizardRetryModelLoad,
+    /// Task 057: "Try again" on the notice that background preparation could
+    /// not load the model -- asks it to load the model again.
+    RetryModelLoad,
     WizardSkip,
     // Source management
     SourcePathChanged(String),
@@ -774,7 +792,9 @@ impl AppState {
                 self.wizard_path_input = String::new();
             }
             Message::ShowNotice(n) => self.notice = Some(n.clone()),
-            Message::ClearNotice => self.notice = None,
+            // Task 057: orbok re-sends the model change to background
+            // preparation; the notice it answers is dismissed here.
+            Message::ClearNotice | Message::RetryModelLoad => self.notice = None,
             Message::QueryChanged(query) => {
                 self.query = query.clone();
                 self.search_ui.text = query.clone();
@@ -885,7 +905,11 @@ impl AppState {
                             // one. Ready-while-saving still has no way out
                             // at all either way.
                         }
-                        Some(WizardKind::ReadyIdle | WizardKind::ReadyFailed) => {
+                        Some(
+                            WizardKind::ReadyIdle
+                            | WizardKind::ReadyFailed
+                            | WizardKind::ReadyLoadFailed,
+                        ) => {
                             // Ready has no Skip/Cancel via mouse either;
                             // same reasoning as above.
                         }
@@ -950,7 +974,8 @@ impl AppState {
             }
             | Message::WizardAccept
             | Message::ModelPersistenceCompleted { .. }
-            | Message::ModelActivationCompleted { .. } => {}
+            | Message::ModelActivationCompleted { .. }
+            | Message::WizardRetryModelLoad => {}
             Message::WizardSkip => self.skip_wizard(),
             Message::DownloadModel => {
                 let return_to = self

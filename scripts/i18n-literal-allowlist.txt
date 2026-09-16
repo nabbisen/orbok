@@ -96,6 +96,7 @@ crates/app/src/main.rs	orbok {}	--version flag output to stdout, conventional CL
 crates/app/src/main.rs	CARGO_PKG_VERSION	compile-time env var name for --version output, a technical identifier
 crates/app/src/main.rs	orbok: portable mode — data directory: ./orbok-data/	interactive startup console message (RFC-049 §4.7 minimal-disclosure text), conventional CLI/diagnostic text outside the GUI i18n boundary — flagged as a boundary question in review-request 132, not a settled classification
 crates/app/src/main.rs	could not tell background preparation about the new model	tracing::warn! log message, not rendered in the GUI (Task 055: the indexing host still backfills at the next startup)
+crates/app/src/main.rs	could not ask background preparation to load the model again	tracing::warn! log message, not rendered in the GUI (Task 057: the user already saw UserNotice::ModelCouldNotBeLoaded)
 
 # ── Dynamic technical identifiers (paths, externally-supplied metadata) ──
 # RFC-052 §3: "Dynamic technical identifiers such as filenames may remain

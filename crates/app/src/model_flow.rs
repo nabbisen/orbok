@@ -127,6 +127,7 @@ pub(crate) fn reduce(state: &mut AppState, message: &Message) -> Option<ModelFlo
             *provenance,
             *result,
         )),
+        Message::WizardRetryModelLoad => Some(retry_activation(state)),
         Message::ModelActivationCompleted {
             ready_id,
             persistence_attempt_id,
@@ -299,10 +300,33 @@ fn apply_persistence_result(
     }
 }
 
+/// Task 057: "Try again" on the load-failed step. The choice is already
+/// saved, so this re-runs activation only -- the same `ActivateModel` effect
+/// a completed save produces, under the same correlation.
+fn retry_activation(state: &mut AppState) -> ModelFlowEffect {
+    let Some(WizardState::Ready {
+        ready_id,
+        persistence,
+        ..
+    }) = state.wizard.as_mut()
+    else {
+        return ModelFlowEffect::None;
+    };
+    let ModelPersistenceState::LoadFailed(persistence_attempt_id) = *persistence else {
+        return ModelFlowEffect::None;
+    };
+    *persistence = ModelPersistenceState::InFlight(persistence_attempt_id);
+    ModelFlowEffect::ActivateModel {
+        ready_id: *ready_id,
+        persistence_attempt_id,
+    }
+}
+
 /// Task 055 §1(c): the one place `capability` becomes `Hybrid` during a
 /// session, reached only after the search handle holds the new model. A
-/// model that could not be resolved leaves `KeywordOnly` and puts the wizard
-/// back on its existing failure-and-retry step.
+/// model that could not be resolved leaves `KeywordOnly` and moves the wizard
+/// to its load-failed step (Task 057) -- not the save-failed one, because the
+/// choice was saved.
 fn apply_activation_result(
     state: &mut AppState,
     ready_id: ReadyId,
@@ -329,7 +353,7 @@ fn apply_activation_result(
         state.wizard = None;
         state.wizard_path_input.clear();
     } else {
-        *persistence = ModelPersistenceState::Failed;
+        *persistence = ModelPersistenceState::LoadFailed(persistence_attempt_id);
     }
 }
 
@@ -873,8 +897,10 @@ mod tests {
         assert!(state.wizard.is_none(), "duplicate completion is a no-op");
     }
 
-    /// Task 055 §1(c): a saved model that cannot be resolved for search
-    /// leaves `KeywordOnly`, and the wizard offers its existing retry.
+    /// Task 055 §1(c) / Task 057 §3 tests 1-2: a saved model that cannot be
+    /// resolved for search leaves `KeywordOnly`, moves the wizard to the
+    /// load-failed step (not the save-failed one), and "Try again" there
+    /// re-runs activation under the same correlation -- never persistence.
     #[test]
     fn a_saved_model_that_cannot_be_activated_stays_keyword_only() {
         let mut state = ready_state();
@@ -906,13 +932,41 @@ mod tests {
             },
         );
         assert_eq!(state.capability, SearchCapability::KeywordOnly);
+        assert_eq!(
+            state.wizard.as_ref().map(WizardState::kind),
+            Some(orbok_ui::state::WizardKind::ReadyLoadFailed),
+            "a saved model that failed to load is not a failed save"
+        );
+
+        assert_eq!(
+            reduce(&mut state, &Message::WizardRetryModelLoad),
+            Some(ModelFlowEffect::ActivateModel {
+                ready_id,
+                persistence_attempt_id,
+            }),
+            "Try again re-runs activation, not persistence"
+        );
         assert!(matches!(
             state.wizard,
             Some(WizardState::Ready {
-                persistence: ModelPersistenceState::Failed,
+                persistence: ModelPersistenceState::InFlight(attempt),
                 ..
-            })
+            }) if attempt == persistence_attempt_id
         ));
+        reduce(
+            &mut state,
+            &Message::ModelActivationCompleted {
+                ready_id,
+                persistence_attempt_id,
+                activated: true,
+            },
+        );
+        assert_eq!(state.capability, SearchCapability::Hybrid);
+        assert_eq!(
+            reduce(&mut state, &Message::WizardRetryModelLoad),
+            Some(ModelFlowEffect::None),
+            "outside the load-failed step, Try again does nothing"
+        );
     }
 
     #[test]
