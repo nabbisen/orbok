@@ -6,7 +6,8 @@
 
 use crate::KeywordSearchEngine;
 use crate::fts5::Fts5KeywordEngine;
-use crate::snippet::{SnippetSource, chunk_record_for};
+use crate::result_trust::SearchResultTrust;
+use crate::snippet::{SnippetSource, chunk_record_for, trust_for};
 use orbok_core::{ChunkId, FileId, OrbokResult};
 use orbok_db::Catalog;
 
@@ -32,6 +33,9 @@ pub struct SearchResult {
     pub heading_path: Option<String>,
     /// Dynamically loaded snippet; None when the source is unavailable.
     pub snippet: Option<String>,
+    /// How far this result can be trusted, and what the user can do about
+    /// it (RFC-038 §12, RFC-060 §11 criterion 3).
+    pub trust: SearchResultTrust,
     pub keyword_rank: u32,
     pub keyword_score: f64,
     pub badges: Vec<MatchBadge>,
@@ -79,12 +83,14 @@ impl<'a> SearchService<'a> {
         snippets: &SnippetSource<'_>,
         candidate: crate::KeywordCandidate,
     ) -> OrbokResult<Option<SearchResult>> {
-        let Some((chunk, canonical_path)) = chunk_record_for(self.catalog, &candidate.chunk_id)?
-        else {
+        let Some(lookup) = chunk_record_for(self.catalog, &candidate.chunk_id)? else {
             return Ok(None);
         };
+        let (chunk, canonical_path) = (lookup.record, lookup.canonical_path);
 
-        let snippet = snippets.snippet_or_none(&chunk, &canonical_path);
+        let rendered = snippets.render(&chunk, &canonical_path);
+        let trust = trust_for(&canonical_path, &lookup.file_status, &rendered.warnings);
+        let snippet = rendered.snippet;
 
         // Build a short display path (just the last two components).
         let display_path = short_display_path(&canonical_path);
@@ -107,6 +113,7 @@ impl<'a> SearchService<'a> {
             keyword_rank: candidate.rank,
             keyword_score: candidate.score,
             badges: vec![MatchBadge::Keyword],
+            trust,
         }))
     }
 }

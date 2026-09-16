@@ -48,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path never extracts** (RFC-060 Amendment 3): with no cached entry the
   snippet is absent and the result is still shown, and rows written before
   0008 read as `unknown`, which renders nothing rather than the wrong bytes.
+- **RFC-060 Slice 4: every search result claimed to be trustworthy.**
+  `bootstrap/search.rs` filled in `ResultTrustDisplay::default()` -- state
+  `Ready`, no recovery actions -- on every result, whatever the file behind
+  it was doing, while `SearchResultTrust::from_catalog` sat unused. Results
+  now carry a real trust state and its recovery actions: needs update,
+  still being prepared, partly prepared (from the extraction warnings in
+  the same cached payload the snippet comes from, so no extra read), cannot
+  open, or file not found. A file deleted from disk is reported as not
+  found even while the catalog still calls it indexed, which it does until
+  a rescan runs -- the window RFC-058 §6 row 2 was written to occupy. That
+  row's `#[should_panic]` wrapper is removed.
 - **RFC-058 §6 row 6's `#[should_panic]` wrapper is removed** too: a
   three-page PDF's result now contains text from the matched page and no
   object syntax. A new test covers DOCX and HTML the same way.

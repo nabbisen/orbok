@@ -6,7 +6,7 @@ use crate::KeywordSearchEngine;
 use crate::multilingual::MultilingualKeywordEngine;
 use crate::rrf::{FusedCandidate, rrf_fuse};
 use crate::service::{MatchBadge, SearchResult};
-use crate::snippet::{SnippetSource, chunk_records_for};
+use crate::snippet::{SnippetSource, chunk_records_for, trust_for};
 use crate::vector::ExactVectorSearch;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
@@ -236,10 +236,13 @@ impl<'a> HybridSearchService<'a> {
 
         let mut results = Vec::with_capacity(top_candidates.len());
         for candidate in top_candidates {
-            let Some((chunk, canonical_path)) = records.get(candidate.chunk_id.as_str()) else {
+            let Some(lookup) = records.get(candidate.chunk_id.as_str()) else {
                 continue;
             };
-            let snippet = snippets.snippet_or_none(chunk, canonical_path);
+            let (chunk, canonical_path) = (&lookup.record, &lookup.canonical_path);
+            let rendered = snippets.render(chunk, canonical_path);
+            let trust = trust_for(canonical_path, &lookup.file_status, &rendered.warnings);
+            let snippet = rendered.snippet;
             let display_path = short_display_path(canonical_path);
             let title = chunk.heading_path.clone().or_else(|| {
                 Path::new(canonical_path)
@@ -264,6 +267,7 @@ impl<'a> HybridSearchService<'a> {
                 keyword_rank: candidate.keyword_rank.unwrap_or(0),
                 keyword_score: 0.0,
                 badges,
+                trust,
             });
         }
         Ok(results)

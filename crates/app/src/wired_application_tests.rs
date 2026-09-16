@@ -581,11 +581,12 @@ fn minimal_docx(first_paragraph: &str) -> Vec<u8> {
 /// wrong regardless -- always `Ready`, never reflecting that the file
 /// backing it no longer exists.
 ///
-/// `#[should_panic]`, not `#[ignore]` (RFC-058 §6 Group B): remove the
-/// wrapper once RFC-060 §7 wires `SearchResultTrust::from_catalog` into
-/// this path.
+/// **The wrapper is removed by RFC-060 Slice 4**, which wires
+/// `SearchResultTrust::from_catalog` into this path. The catalog's own
+/// `file_status` alone would not close this window -- it still reads
+/// `indexed` until a refresh runs -- so enrichment reports a file that is
+/// no longer on disk as not found regardless of the row.
 #[tokio::test]
-#[should_panic(expected = "must not be Ready for a file deleted from disk")]
 async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());

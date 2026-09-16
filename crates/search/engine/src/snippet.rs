@@ -93,17 +93,52 @@ impl<'a> SnippetSource<'a> {
     /// rendered as "no snippet" rather than failing the whole search: a
     /// result whose file the boundary refuses is still a real result.
     pub fn snippet_or_none(&self, record: &ChunkRecord, source_path: &str) -> Option<String> {
-        match self.load(record, source_path) {
-            Ok(snippet) => snippet,
+        self.render(record, source_path).snippet
+    }
+
+    /// The snippet **and** the extraction warnings for one result, from a
+    /// single cache read: the warnings feed the result's trust state
+    /// (RFC-038 §7, RFC-060 §11 criterion 3) and come from the same
+    /// `ExtractOutput` the snippet is rendered from.
+    pub fn render(&self, record: &ChunkRecord, source_path: &str) -> RenderedResult {
+        let validated = match self.guard.validate(Path::new(source_path)) {
+            Ok(validated) => validated,
             Err(error) => {
                 tracing::warn!(
                     %error,
                     path = source_path,
                     "no snippet: the source boundary rejected this path"
                 );
-                None
+                return RenderedResult::default();
             }
-        }
+        };
+        let extraction = self.cached_extraction(&validated);
+        let warnings = extraction
+            .as_ref()
+            .map(|output| output.warnings.clone())
+            .unwrap_or_default();
+        let snippet = match LocationKind::parse(&record.location_kind) {
+            LocationKind::Lines => load_snippet_from_file(record, &validated),
+            LocationKind::Pages | LocationKind::Paragraphs | LocationKind::Blocks => extraction
+                .as_ref()
+                .and_then(|output| segment_text_for(record, output)),
+            // Including every row written before migration 0008, whose
+            // column is NULL: absence, not a guess.
+            LocationKind::Unknown => None,
+        };
+        RenderedResult { snippet, warnings }
+    }
+
+    fn cached_extraction(&self, validated: &ValidatedPath) -> Option<ExtractOutput> {
+        let (catalog, cache) = self.cached_extraction?;
+        let engine = cache
+            .engine::<ExtractOutput>(
+                catalog,
+                &OrbokCacheNamespace::ExtractSegments,
+                OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+            )
+            .ok()?;
+        CacheService::get_fresh(&engine, validated).ok().flatten()
     }
 
     /// RFC-060 §6: **only `LocationKind::Lines` reads the raw file.** For
@@ -112,54 +147,69 @@ impl<'a> SnippetSource<'a> {
     /// bytes -- PDF object syntax, DOCX XML, HTML markup. Those render
     /// from the cached extraction segments instead, and render nothing
     /// when the cache holds no entry.
+    ///
+    /// Returns `Err` for a path outside every registered source, rather
+    /// than that file's contents (RFC-060 §11 criterion 9).
     pub fn load(&self, record: &ChunkRecord, source_path: &str) -> OrbokResult<Option<String>> {
         let validated = self.guard.validate(Path::new(source_path))?;
-        match LocationKind::parse(&record.location_kind) {
-            LocationKind::Lines => Ok(load_snippet_from_file(record, &validated)),
-            LocationKind::Pages | LocationKind::Paragraphs | LocationKind::Blocks => {
-                self.cached_segment_text(record, &validated)
-            }
-            // Including every row written before migration 0008, whose
-            // column is NULL: absence, not a guess.
-            LocationKind::Unknown => Ok(None),
-        }
+        Ok(match LocationKind::parse(&record.location_kind) {
+            LocationKind::Lines => load_snippet_from_file(record, &validated),
+            LocationKind::Pages | LocationKind::Paragraphs | LocationKind::Blocks => self
+                .cached_extraction(&validated)
+                .and_then(|output| segment_text_for(record, &output)),
+            LocationKind::Unknown => None,
+        })
     }
+}
 
-    fn cached_segment_text(
-        &self,
-        record: &ChunkRecord,
-        validated: &ValidatedPath,
-    ) -> OrbokResult<Option<String>> {
-        let Some((catalog, cache)) = self.cached_extraction else {
-            return Ok(None);
-        };
-        let engine = cache.engine::<ExtractOutput>(
-            catalog,
-            &OrbokCacheNamespace::ExtractSegments,
-            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
-        )?;
-        let Some(extraction) = CacheService::get_fresh(&engine, validated)? else {
-            return Ok(None);
-        };
-        // The segments whose own position range overlaps this chunk's --
-        // the same span arithmetic `embedding.rs` uses to rebuild a
-        // chunk's text, in the same units, since both read the positions
-        // the extractor wrote.
-        let text: String = extraction
-            .segments
-            .iter()
-            .filter(|segment| {
-                segment.line_start <= record.line_end && segment.line_end >= record.line_start
-            })
-            .map(|segment| segment.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(trimmed.chars().take(MAX_SNIPPET_CHARS).collect()))
+/// The trust state for one result (RFC-038 §12, RFC-060 §11 criterion 3).
+///
+/// The catalog's own `files.file_status` is the usual source, but it can
+/// be stale in exactly the window the criterion describes: a file deleted
+/// from disk still reads `indexed` until something rescans the folder, and
+/// until then the result claimed to be `Ready`. A file that is no longer
+/// there is reported as not found regardless of what the row says --
+/// checked with one `exists()` per rendered result, not a directory walk.
+pub fn trust_for(
+    canonical_path: &str,
+    file_status: &str,
+    warnings: &[orbok_extract::ExtractWarning],
+) -> crate::result_trust::SearchResultTrust {
+    use orbok_core::FileStatus;
+    let effective_status = if Path::new(canonical_path).exists() {
+        file_status
+    } else {
+        FileStatus::Missing.as_str()
+    };
+    crate::result_trust::SearchResultTrust::from_catalog(effective_status, warnings)
+}
+
+/// What one result needs from the file layer: its snippet, and the
+/// extraction warnings its trust state is derived from.
+#[derive(Debug, Default)]
+pub struct RenderedResult {
+    pub snippet: Option<String>,
+    pub warnings: Vec<orbok_extract::ExtractWarning>,
+}
+
+/// The cached segments whose own position range overlaps this chunk's --
+/// the same span arithmetic `embedding.rs` uses to rebuild a chunk's text,
+/// in the same units, since both read the positions the extractor wrote.
+fn segment_text_for(record: &ChunkRecord, extraction: &ExtractOutput) -> Option<String> {
+    let text: String = extraction
+        .segments
+        .iter()
+        .filter(|segment| {
+            segment.line_start <= record.line_end && segment.line_end >= record.line_start
+        })
+        .map(|segment| segment.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
     }
+    Some(trimmed.chars().take(MAX_SNIPPET_CHARS).collect())
 }
 
 /// A guard over exactly the sources a search may read from -- the same
@@ -210,11 +260,20 @@ pub(crate) fn load_snippet_from(record: &ChunkRecord, source: impl Read) -> Opti
     }
 }
 
+/// One chunk's location metadata, its file's path, and the file's catalog
+/// status -- everything enrichment needs, in one query.
+#[derive(Debug, Clone)]
+pub struct ChunkLookup {
+    pub record: ChunkRecord,
+    pub canonical_path: String,
+    pub file_status: String,
+}
+
 /// Look up chunk location metadata from the catalog.
 pub fn chunk_record_for(
     catalog: &Catalog,
     chunk_id: &orbok_core::ChunkId,
-) -> OrbokResult<Option<(ChunkRecord, String)>> {
+) -> OrbokResult<Option<ChunkLookup>> {
     let mut records = chunk_records_for(catalog, std::slice::from_ref(chunk_id))?;
     Ok(records.remove(chunk_id.as_str()))
 }
@@ -223,7 +282,7 @@ pub fn chunk_record_for(
 pub fn chunk_records_for(
     catalog: &Catalog,
     chunk_ids: &[orbok_core::ChunkId],
-) -> OrbokResult<HashMap<String, (ChunkRecord, String)>> {
+) -> OrbokResult<HashMap<String, ChunkLookup>> {
     if chunk_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -236,7 +295,7 @@ pub fn chunk_records_for(
     let sql = format!(
         "SELECT c.chunk_id, c.file_id, c.chunk_ordinal, c.heading_path, \
                 cl.line_start, cl.line_end, cl.byte_start, cl.byte_end, cl.location_quality, \
-                cl.location_kind, f.canonical_path \
+                cl.location_kind, f.canonical_path, f.file_status \
          FROM chunks c \
          LEFT JOIN chunk_locations cl ON cl.chunk_id = c.chunk_id \
          JOIN files f ON f.file_id = c.file_id \
@@ -256,18 +315,15 @@ pub fn chunk_records_for(
 
     let mut records = HashMap::with_capacity(chunk_ids.len());
     for row in rows {
-        let (record, canonical_path) = row.map_err(|e| OrbokError::Database(e.to_string()))?;
-        records.insert(
-            record.chunk_id.as_str().to_string(),
-            (record, canonical_path),
-        );
+        let lookup = row.map_err(|e| OrbokError::Database(e.to_string()))?;
+        records.insert(lookup.record.chunk_id.as_str().to_string(), lookup);
     }
     Ok(records)
 }
 
-fn row_to_chunk_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ChunkRecord, String)> {
-    Ok((
-        ChunkRecord {
+fn row_to_chunk_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChunkLookup> {
+    Ok(ChunkLookup {
+        record: ChunkRecord {
             chunk_id: orbok_core::ChunkId::from_string(row.get::<_, String>(0)?),
             file_id: orbok_core::FileId::from_string(row.get::<_, String>(1)?),
             chunk_ordinal: row.get::<_, i64>(2)? as u32,
@@ -279,8 +335,9 @@ fn row_to_chunk_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ChunkRecord
             location_quality: row.get(8).unwrap_or_else(|_| "unknown".to_string()),
             location_kind: row.get(9).unwrap_or_else(|_| "unknown".to_string()),
         },
-        row.get::<_, String>(10)?,
-    ))
+        canonical_path: row.get::<_, String>(10)?,
+        file_status: row.get::<_, String>(11)?,
+    })
 }
 
 /// Sanitize a snippet for safe display in the UI (RFC-015 §18, FR-091).

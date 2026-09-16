@@ -53,7 +53,14 @@ pub(crate) fn run_search(
             snippet: r.snippet,
             keyword_rank: r.keyword_rank,
             badges: r.badges,
-            trust: orbok_ui::state::ResultTrustDisplay::default(),
+            // RFC-060 §11 criterion 3: this was
+            // `ResultTrustDisplay::default()` -- state `Ready`, no
+            // recovery actions -- on every result, whatever the file
+            // behind it was doing.
+            trust: orbok_ui::state::ResultTrustDisplay {
+                state: r.trust.state,
+                recovery_actions: r.trust.recovery_actions,
+            },
         })
         .collect())
 }
