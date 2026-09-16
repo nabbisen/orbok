@@ -226,6 +226,17 @@ pub(crate) fn reduce(state: &mut AppState, message: &Message) -> Option<ModelFlo
     }
 }
 
+/// Task 063: a managed download whose model store cannot be opened at start.
+/// By then `reduce` has already moved the wizard to `Downloading`, and no
+/// progress will ever arrive, so this is a failed download: it lands on the
+/// existing `DownloadFailed` page with its store-unavailable copy, retry,
+/// skip and Escape. `main.rs` dispatches it with `Task::done` so it passes
+/// through `reduce` like a real delivery failure -- `app.update` reaches only
+/// `AppState::update`, which does not own it.
+pub(crate) fn download_could_not_start() -> Message {
+    Message::DownloadFailed(ModelDeliveryFailure::StoreUnavailable)
+}
+
 fn begin_persistence(state: &mut AppState) -> ModelFlowEffect {
     let Some(WizardState::Ready {
         ready_id,
@@ -481,6 +492,77 @@ mod tests {
             }),
             ..AppState::default()
         }
+    }
+
+    /// Apply `message` the way `main.rs`'s `update` does: `model_flow::reduce`
+    /// first, and the plain state update when it does not own the message.
+    fn apply_as_main_does(state: &mut AppState, message: &Message) {
+        if reduce(state, message).is_none() {
+            state.update(message);
+        }
+    }
+
+    /// Task 063 §3 test 1: a download whose model store is unavailable at
+    /// start leaves Downloading for the DownloadFailed page.
+    #[test]
+    fn a_download_that_cannot_start_shows_the_failed_page() {
+        let mut state = consent_state();
+        assert_eq!(
+            reduce(&mut state, &Message::ConfirmModelDownload),
+            Some(ModelFlowEffect::StartManagedDownload)
+        );
+        assert_eq!(
+            state.wizard.as_ref().map(WizardState::kind),
+            Some(orbok_ui::state::WizardKind::Downloading)
+        );
+        apply_as_main_does(&mut state, &download_could_not_start());
+        assert!(
+            matches!(
+                state.wizard,
+                Some(WizardState::DownloadFailed {
+                    failure: ModelDeliveryFailure::StoreUnavailable,
+                    ..
+                })
+            ),
+            "a download that cannot start must not stay Downloading, got {:?}",
+            state.wizard.as_ref().map(WizardState::kind)
+        );
+    }
+
+    /// The failed page reached from a download that could not start.
+    fn start_failed_state() -> AppState {
+        let mut state = consent_state();
+        reduce(&mut state, &Message::ConfirmModelDownload);
+        apply_as_main_does(&mut state, &download_could_not_start());
+        state
+    }
+
+    /// Task 063 §3 test 2: the failed page's ways out work. Escape leaves the
+    /// wizard as the existing DownloadFailed skip does; retry returns to the
+    /// consent page (it never starts work by itself --
+    /// `delivery_failure_retains_consent_and_retry_never_starts_work`), and
+    /// confirming there starts the download again.
+    #[test]
+    fn a_download_that_could_not_start_can_be_left_or_retried() {
+        let mut state = start_failed_state();
+        apply_as_main_does(&mut state, &Message::DismissOverlay);
+        assert!(state.wizard.is_none(), "Escape leaves the failed page");
+        assert_eq!(state.capability, SearchCapability::KeywordOnly);
+
+        let mut state = start_failed_state();
+        assert_eq!(
+            reduce(&mut state, &Message::RetryModelDownload),
+            Some(ModelFlowEffect::None)
+        );
+        assert!(matches!(
+            state.wizard,
+            Some(WizardState::DownloadConsent { .. })
+        ));
+        assert_eq!(
+            reduce(&mut state, &Message::ConfirmModelDownload),
+            Some(ModelFlowEffect::StartManagedDownload),
+            "a store that became available can start again"
+        );
     }
 
     #[test]

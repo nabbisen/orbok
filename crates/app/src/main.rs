@@ -224,8 +224,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(store) => store,
                             Err(e) => {
                                 tracing::error!("model store unavailable: {e}");
-                                app.update(notice_retry::download_storage_unavailable());
-                                return iced::Task::none();
+                                // Task 063: a failed download, not a notice
+                                // over an endless "Downloading".
+                                return iced::Task::done(model_flow::download_could_not_start());
                             }
                         };
                         let (tx, rx) = iced::futures::channel::mpsc::channel::<Message>(64);

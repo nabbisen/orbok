@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 063: a model download that could not start showed "Downloading"
+  forever.** If orbok could not use the model folder when a download began,
+  the setup page stayed on "Downloading" with nothing downloading, and only
+  a notice with no way forward appeared. It now shows the download-failed
+  page ("The model store is busy or unavailable. Try again.") with its Try
+  again and Skip.
 - **Task 060: nine notice buttons only closed the notice.** "Try again",
   "Choose another folder" and "Create diagnostics file" on problem notices
   all just dismissed, whatever the label said. A notice's action button now
@@ -74,9 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **After a result could not be opened**, the button now says "Check
     folders" and goes to Sources, instead of the untrue "Choose another
     folder".
-  - **No button** after a failed folder removal (removal has no confirmation
-    to re-open, and retrying would remove directly) or a download that could
-    not reach the model store.
+  - **No button** after a failed folder removal (removal had no
+    confirmation to re-open, and retrying would remove directly). Task 062
+    has since added that confirmation, and its "Try again" opens it.
 
   The never-raised "Download did not finish" notice was removed.
 - **Task 059: a model that would not save or load left no way out of setup.**

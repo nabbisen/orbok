@@ -93,10 +93,3 @@ fn a_failed_folder_removal_re_opens_its_confirmation() {
         Some(Message::SourceRemoved(_) | Message::ConfirmRemoveSource)
     ));
 }
-
-#[test]
-fn a_download_without_a_model_store_offers_no_retry() {
-    let (notice, action) = raise(download_storage_unavailable());
-    assert_eq!(notice, Some(UserNotice::StorageUnavailable));
-    assert!(action.is_none());
-}

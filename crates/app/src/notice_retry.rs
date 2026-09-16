@@ -78,13 +78,5 @@ pub(crate) fn source_not_removed(source_id: &str) -> Message {
     )
 }
 
-/// Starting a model download could not reach the model store. No correct
-/// retry exists here: the wizard has already moved to `Downloading`, so
-/// re-sending `ConfirmModelDownload` would not match its state. Dismiss
-/// alone.
-pub(crate) fn download_storage_unavailable() -> Message {
-    Message::ShowNotice(UserNotice::StorageUnavailable)
-}
-
 #[cfg(test)]
 mod tests;
