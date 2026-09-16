@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Microsoft Store packaging assets.** `packaging/windows/` holds the MSIX
+  `AppxManifest.xml` (a full-trust desktop app, `mediumIL`, Windows 10 2004
+  or later, x64) and its four logo assets, sized to the names the manifest
+  references. These are the first binary files the repository tracks, so
+  `.gitattributes` now declares `*.png binary` explicitly rather than relying
+  on `text=auto`'s content detection, and its comment saying no binary files
+  were tracked is corrected. The manifest is committed with LF line endings,
+  as `eol=lf` requires.
+
 - **Open a found document, or show it in its folder (HANDOFF-041).** Before
   this, orbok could find a file but not open it: selecting a result only
   highlighted it. The selected result now offers **Open file** and **Show in

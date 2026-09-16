@@ -8,7 +8,11 @@
 # (six SQL migrations, one RFC appendix): the failure mode of a narrower
 # pattern is *silence* -- a CRLF file that still happens to parse -- and
 # scoping it correctly requires remembering to extend the pattern every time
-# a new `include_str!` of a text file is added. No binary files are tracked
-# in this repository (confirmed at the time this was written), so `text=auto`
-# has nothing to misclassify.
+# a new `include_str!` of a text file is added.
 * text=auto eol=lf
+
+# Binary assets are declared explicitly rather than left to `text=auto`'s
+# content detection. The Microsoft Store package icons under
+# `packaging/windows/Assets/` were the first binary files tracked here; when
+# this file was written none were, and `text=auto` had nothing to misclassify.
+*.png binary
