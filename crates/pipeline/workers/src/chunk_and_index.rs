@@ -4,7 +4,7 @@
 
 use crate::chunk_adapter::to_chunk_specs;
 use orbok_cache::{CacheService, OrbokCacheNamespace};
-use orbok_core::{ErrorCategory, ExtractionId, FileId, JobType, OrbokError, OrbokResult};
+use orbok_core::{ExtractionId, FileId, JobType, OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::{ChunkRepository, FileRepository, IndexJobRepository, SourceRepository};
 use orbok_extract::{ExtractOutput, chunk};
@@ -40,12 +40,10 @@ impl<'a> ChunkAndIndexWorker<'a> {
             &OrbokCacheNamespace::ExtractSegments,
             OrbokCacheNamespace::ExtractSegments.default_engine_options(),
         )?;
-        let output = CacheService::get_fresh(&engine, &validated)?.ok_or_else(|| {
-            OrbokError::Extraction {
-                category: ErrorCategory::ParserError,
-                message: "extraction cache miss: run extraction first".into(),
-            }
-        })?;
+        // Task 056: a miss used to be `parser_error`, which retried against a
+        // cache that would not come back and never re-extracted.
+        let output = CacheService::get_fresh(&engine, &validated)?
+            .ok_or(OrbokError::ExtractionCacheMissing)?;
 
         // Find the most recent succeeded extraction record for this file.
         let extraction_id = self.latest_extraction_id(file_id)?;

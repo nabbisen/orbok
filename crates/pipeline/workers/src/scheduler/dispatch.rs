@@ -33,7 +33,15 @@ use orbok_db::repo::IndexJobRepository;
 fn is_terminal_category(error_kind: &str) -> bool {
     matches!(
         error_kind,
-        "model_missing" | "model_invalid" | "backend_unavailable" | "input_too_long" | "canceled"
+        "model_missing"
+            | "model_invalid"
+            | "backend_unavailable"
+            | "input_too_long"
+            | "canceled"
+            // Task 056: the re-extraction a miss queues creates this job's
+            // replacement, so retrying it would only repeat the miss.
+            | "extraction_cache_missing"
+            | "extraction_cache_unavailable"
     )
 }
 

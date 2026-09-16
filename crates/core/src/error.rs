@@ -115,6 +115,14 @@ pub enum OrbokError {
         message: String,
     },
 
+    /// Task 056: a chunk or embedding job found no extracted text for its
+    /// file in the extraction cache -- erased by "Clear extracted text" or
+    /// trimmed at idle. Not a failure of the job's own work: the caller
+    /// decides whether to re-queue extraction (see
+    /// `orbok_workers::extraction_cache_miss_category`).
+    #[error("extracted text for this file is not in the extraction cache")]
+    ExtractionCacheMissing,
+
     #[error("invalid value in catalog column {column}: {value}")]
     InvalidCatalogValue { column: &'static str, value: String },
 

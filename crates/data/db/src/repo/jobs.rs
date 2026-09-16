@@ -114,6 +114,53 @@ impl<'a> IndexJobRepository<'a> {
         Ok(files.len())
     }
 
+    /// Task 056: queue an `Extract` job for `file_id` so its extracted text
+    /// is rebuilt -- unless an extract or chunk job for it is already
+    /// unfinished (queued, running, paused, blocked or waiting), which will
+    /// rebuild or need it anyway. `current_job` -- the job that found the
+    /// text missing, itself `running` -- is not counted. Returns whether a
+    /// job was queued. The file's source comes from the catalog; a file no
+    /// longer there queues nothing.
+    pub fn enqueue_extraction_unless_pending(
+        &self,
+        file_id: &FileId,
+        current_job: &JobId,
+    ) -> OrbokResult<bool> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let source_id: Option<String> = tx
+            .query_row(
+                "SELECT source_id FROM files f WHERE f.file_id = ?1 \
+                 AND NOT EXISTS (SELECT 1 FROM index_jobs j \
+                    WHERE j.file_id = f.file_id AND j.job_id != ?2 \
+                    AND j.job_type IN ('extract', 'chunk') \
+                    AND j.status IN ('queued', 'running', 'paused', 'blocked', \
+                                     'waiting_for_dependency'))",
+                params![file_id.as_str(), current_job.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_err)?;
+        let Some(source_id) = source_id else {
+            return Ok(false);
+        };
+        let now = now_iso8601();
+        tx.execute(
+            "INSERT INTO index_jobs (job_id, source_id, file_id, job_type, status, \
+             created_at, updated_at) VALUES (?1,?2,?3,?4,'queued',?5,?5)",
+            params![
+                JobId::generate().as_str(),
+                source_id,
+                file_id.as_str(),
+                JobType::Extract.as_str(),
+                now,
+            ],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        Ok(true)
+    }
+
     /// Move a job to a new status, recording start/completion times.
     pub fn set_status(&self, id: &JobId, status: JobStatus) -> OrbokResult<()> {
         let now = now_iso8601();

@@ -2425,3 +2425,339 @@ async fn a_model_the_host_cannot_load_is_reported_once() {
         "one failed load produces one notice, not one per poll"
     );
 }
+
+// ── Task 056: a job whose extracted text is gone re-extracts ───────────
+
+/// Run the host with a mock model over `context` until `done` holds.
+async fn run_host_until(
+    context: &RuntimeContext,
+    model_id: &ModelId,
+    what: &str,
+    mut done: impl FnMut() -> bool,
+) {
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(context).unwrap(),
+        bootstrap::cache_service(context).unwrap(),
+        super::EmbeddingSource::fixed(Some(EmbeddingWorkerParts::for_test(
+            Box::new(MockEmbeddingModel),
+            model_id.clone(),
+        ))),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    wait_until(Duration::from_secs(20), what, &mut done).await;
+    handle.abort();
+    let _ = handle.await;
+}
+
+/// Task 056 §3 test 1: after "Clear extracted text", documents whose
+/// embeddings are gone get them back. The backfill queues embedding jobs;
+/// each finds no extracted text and must re-queue extraction rather than
+/// succeed with nothing written.
+#[tokio::test]
+async fn documents_embed_again_after_extracted_text_was_cleared() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+    let model_id = register_mock_model(&ui_catalog, "mock");
+
+    run_host_until(
+        &context,
+        &model_id,
+        "the first indexing embeds every chunk",
+        || {
+            indexed_count(&ui_catalog) == 3
+                && chunks_without_embedding(&ui_catalog, &model_id) == 0
+                && job_counts_by_status(&ui_catalog, JobStatus::Queued) == 0
+                && job_counts_by_status(&ui_catalog, JobStatus::Running) == 0
+        },
+    )
+    .await;
+
+    // The same function the Storage view's "Clear extracted text" calls.
+    bootstrap::clean_temporary_extraction(
+        &ui_catalog,
+        &bootstrap::cache_service(&context).unwrap(),
+    )
+    .unwrap();
+    ui_catalog
+        .lock()
+        .execute("DELETE FROM embeddings", [])
+        .unwrap();
+    assert!(chunks_without_embedding(&ui_catalog, &model_id) > 0);
+
+    run_host_until(
+        &context,
+        &model_id,
+        "every active chunk is embedded again after the extracted text was cleared",
+        || chunks_without_embedding(&ui_catalog, &model_id) == 0,
+    )
+    .await;
+    // Passing for the right reason: the embedding jobs reported the miss and
+    // extraction ran again, rather than the text surviving the clear.
+    assert!(
+        failed_with_category(&ui_catalog, "embedding", "extraction_cache_missing") > 0,
+        "the backfilled embedding jobs must have failed as extraction_cache_missing"
+    );
+    assert!(
+        succeeded_extractions(&ui_catalog) > 3,
+        "extraction must have run again after the clear"
+    );
+}
+
+fn failed_with_category(catalog: &Catalog, job_type: &str, category: &str) -> i64 {
+    catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = ?1 AND status = 'failed' \
+             AND error_category = ?2",
+            [job_type, category],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn succeeded_extractions(catalog: &Catalog) -> i64 {
+    catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM extraction_records WHERE status = 'succeeded'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn nothing_unfinished(catalog: &Catalog) -> bool {
+    job_counts_by_status(catalog, JobStatus::Queued) == 0
+        && job_counts_by_status(catalog, JobStatus::Running) == 0
+        && job_counts_by_status(catalog, JobStatus::Blocked) == 0
+}
+
+/// Task 056 §3 test 2: a chunk job whose extracted text is gone leads to a
+/// re-extraction and ends with active chunks -- never `parser_error`.
+#[tokio::test]
+async fn a_chunk_job_with_its_extracted_text_gone_re_extracts() {
+    use orbok_db::repo::IndexJobRepository;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+    let model_id = register_mock_model(&ui_catalog, "mock");
+    run_host_until(
+        &context,
+        &model_id,
+        "the file is indexed and embedded",
+        || {
+            indexed_count(&ui_catalog) == 1
+                && chunks_without_embedding(&ui_catalog, &model_id) == 0
+                && nothing_unfinished(&ui_catalog)
+        },
+    )
+    .await;
+
+    bootstrap::clean_temporary_extraction(
+        &ui_catalog,
+        &bootstrap::cache_service(&context).unwrap(),
+    )
+    .unwrap();
+    let file_id: String = ui_catalog
+        .lock()
+        .query_row("SELECT file_id FROM files", [], |row| row.get(0))
+        .unwrap();
+    let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
+    IndexJobRepository::new(&ui_catalog)
+        .enqueue(
+            orbok_core::JobType::Chunk,
+            Some(&source_id),
+            Some(&orbok_core::FileId::from_string(file_id)),
+        )
+        .unwrap();
+
+    run_host_until(
+        &context,
+        &model_id,
+        "the chain re-extracts and settles",
+        || succeeded_extractions(&ui_catalog) == 2 && nothing_unfinished(&ui_catalog),
+    )
+    .await;
+    assert_eq!(
+        failed_with_category(&ui_catalog, "chunk", "parser_error"),
+        0,
+        "a missing cache entry is not a parser error"
+    );
+    assert_eq!(
+        failed_with_category(&ui_catalog, "chunk", "extraction_cache_missing"),
+        1
+    );
+    let active_chunks: i64 = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunks WHERE chunk_status = 'active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(active_chunks > 0, "the chain ends with chunks present");
+    assert_eq!(chunks_without_embedding(&ui_catalog, &model_id), 0);
+}
+
+/// Task 056 §3 test 3 (Review 232's loop guard): a cache that never keeps
+/// what extraction writes produces a bounded number of jobs -- one extra
+/// extraction -- and a terminal `extraction_cache_unavailable`.
+///
+/// **The host runs on its own thread and runtime, and this test polls
+/// synchronously.** Without the guard the chain re-queues forever with no
+/// real await, so a host sharing the test's runtime starves the timeout and
+/// the test hangs instead of failing -- observed when the guard was mutated
+/// out. On a detached thread, a regression fails at the deadline; the thread
+/// is left to the end of the test process, since a loop that never yields
+/// cannot be aborted.
+#[test]
+fn a_cache_that_keeps_nothing_stops_after_one_re_extraction() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 1);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let host_context = context.clone();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let (tx, _rx) = futures::channel::mpsc::channel(64);
+            super::ERASE_EXTRACTED_TEXT_AFTER_EXTRACTION
+                .scope(
+                    (),
+                    run_with_context(
+                        bootstrap::open_catalog(&host_context).unwrap(),
+                        bootstrap::cache_service(&host_context).unwrap(),
+                        super::EmbeddingSource::fixed(None),
+                        true,
+                        true,
+                        no_resource_signals(),
+                        tx,
+                        None,
+                    ),
+                )
+                .await;
+        });
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !(failed_with_category(&ui_catalog, "chunk", "extraction_cache_unavailable") == 1
+        && nothing_unfinished(&ui_catalog))
+    {
+        assert!(
+            Instant::now() < deadline,
+            "timed out: the chain did not end as extraction_cache_unavailable \
+             (extractions so far: {})",
+            succeeded_extractions(&ui_catalog)
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let settled = non_scan_job_count(&ui_catalog);
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(
+        non_scan_job_count(&ui_catalog),
+        settled,
+        "the job count must stop growing"
+    );
+    assert_eq!(
+        succeeded_extractions(&ui_catalog),
+        2,
+        "bounded: the original extraction plus exactly one re-extraction"
+    );
+    assert_eq!(
+        failed_with_category(&ui_catalog, "chunk", "extraction_cache_missing"),
+        1
+    );
+}
+
+/// Review 232 §2's amendment: a file repaired once is repairable again in
+/// the same session -- clear, rebuild successfully, clear again, and the
+/// second clear is repaired too rather than declared unavailable.
+#[tokio::test]
+async fn a_second_clear_in_the_same_session_is_repaired_too() {
+    use orbok_db::repo::IndexJobRepository;
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 2);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+    let model_id = register_mock_model(&ui_catalog, "mock");
+
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(&context).unwrap(),
+        bootstrap::cache_service(&context).unwrap(),
+        super::EmbeddingSource::fixed(Some(EmbeddingWorkerParts::for_test(
+            Box::new(MockEmbeddingModel),
+            model_id.clone(),
+        ))),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    let settled_and_embedded = || {
+        indexed_count(&ui_catalog) == 2
+            && chunks_without_embedding(&ui_catalog, &model_id) == 0
+            && nothing_unfinished(&ui_catalog)
+    };
+    wait_until(
+        Duration::from_secs(20),
+        "first indexing",
+        settled_and_embedded,
+    )
+    .await;
+
+    for round in 1..=2 {
+        bootstrap::clean_temporary_extraction(&ui_catalog, &cache).unwrap();
+        ui_catalog
+            .lock()
+            .execute("DELETE FROM embeddings", [])
+            .unwrap();
+        IndexJobRepository::new(&ui_catalog)
+            .enqueue_embedding_backfill(&model_id)
+            .unwrap();
+        wait_until(
+            Duration::from_secs(20),
+            &format!("clear #{round} in the same session is repaired"),
+            settled_and_embedded,
+        )
+        .await;
+    }
+    handle.abort();
+    assert_eq!(
+        failed_with_category(&ui_catalog, "embedding", "extraction_cache_unavailable"),
+        0,
+        "a legitimate second clear must not be declared unavailable"
+    );
+}

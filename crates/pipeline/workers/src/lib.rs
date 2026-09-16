@@ -63,6 +63,43 @@ use orbok_db::Catalog;
 use orbok_db::repo::IndexJobRepository;
 use tracing::warn;
 
+/// Task 056 (Review 232's ruling): what a chunk or embedding job that found
+/// no extracted text for `file_id` should fail as, after acting on it.
+///
+/// - The first miss for a file re-queues its extraction, which rebuilds the
+///   cache and chains chunking and embedding again. The job fails as
+///   `extraction_cache_missing`; the chain creates its replacement.
+/// - A second miss for a file still in `requeued` -- no successful read of
+///   its text since the re-extraction -- means the cache did not keep what
+///   extraction just wrote. It fails as `extraction_cache_unavailable` and
+///   queues nothing, so the loop is bounded at one extra extraction per chain.
+///
+/// Both categories are terminal. The caller removes a file from `requeued`
+/// when a chunk or embedding job for it succeeds, which proves a read, so a
+/// later legitimate miss (a second "Clear extracted text", an idle trim) is
+/// repaired again.
+pub fn extraction_cache_miss_category(
+    catalog: &Catalog,
+    requeued: &mut std::collections::HashSet<orbok_core::FileId>,
+    file_id: &orbok_core::FileId,
+    current_job: &orbok_core::JobId,
+) -> &'static str {
+    if requeued.contains(file_id) {
+        warn!(
+            file = file_id.as_str(),
+            "extracted text is missing again right after it was rebuilt; the extraction cache is not keeping it"
+        );
+        return "extraction_cache_unavailable";
+    }
+    requeued.insert(file_id.clone());
+    if let Err(error) =
+        IndexJobRepository::new(catalog).enqueue_extraction_unless_pending(file_id, current_job)
+    {
+        warn!(file = file_id.as_str(), %error, "could not queue extraction to rebuild missing extracted text");
+    }
+    "extraction_cache_missing"
+}
+
 /// Run all queued jobs until the queue is empty or `limit` jobs have
 /// been processed. Returns the number of jobs that succeeded.
 ///
@@ -78,6 +115,9 @@ pub fn run_pending(
 ) -> OrbokResult<u64> {
     let jobs = IndexJobRepository::new(catalog);
     let mut succeeded = 0u64;
+    // Task 056: the same once-until-a-successful-read rule the scheduler
+    // host applies, held for the duration of this call.
+    let mut requeued_for_cache_miss = std::collections::HashSet::new();
     let mut processed = 0u32;
 
     while processed < limit {
@@ -128,8 +168,25 @@ pub fn run_pending(
         };
         match result {
             Ok(()) => {
+                if matches!(
+                    job.job_type,
+                    JobType::Chunk | JobType::KeywordIndex | JobType::Embedding
+                ) && let Some(file_id) = &job.file_id
+                {
+                    requeued_for_cache_miss.remove(file_id);
+                }
                 jobs.set_status(&job.job_id, JobStatus::Succeeded)?;
                 succeeded += 1;
+            }
+            Err(orbok_core::OrbokError::ExtractionCacheMissing) if job.file_id.is_some() => {
+                let file_id = job.file_id.as_ref().expect("checked by the guard");
+                let category = extraction_cache_miss_category(
+                    catalog,
+                    &mut requeued_for_cache_miss,
+                    file_id,
+                    &job.job_id,
+                );
+                jobs.fail_with_category(&job.job_id, category, None)?;
             }
             Err(e) => {
                 warn!(job = job.job_id.as_str(), error = %e, "job failed");

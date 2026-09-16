@@ -332,6 +332,11 @@ pub(crate) async fn run_with_context(
         }
     }
     let mut known: HashSet<JobId> = HashSet::new();
+    // Task 056 (Review 232): files whose extraction this loop re-queued
+    // after a chunk or embedding job found their extracted text missing,
+    // and that have not been read successfully since. See
+    // `orbok_workers::extraction_cache_miss_category`.
+    let mut requeued_for_cache_miss: HashSet<orbok_core::FileId> = HashSet::new();
     let cache_service = cache.service();
     let extract = ExtractionWorker::new(&catalog, cache_service);
     let chunk = ChunkAndIndexWorker::new(&catalog, cache_service);
@@ -559,7 +564,19 @@ pub(crate) async fn run_with_context(
         let file_id = job.file_id.clone();
         let result = match (job.kind, &file_id) {
             (JobKind::ScanSource, _) => run_scan(&catalog, job.source_id.clone()),
-            (JobKind::ExtractFile, Some(file_id)) => extract.run(file_id),
+            (JobKind::ExtractFile, Some(file_id)) => {
+                let extracted = extract.run(file_id);
+                #[cfg(test)]
+                if extracted.is_ok()
+                    && ERASE_EXTRACTED_TEXT_AFTER_EXTRACTION
+                        .try_with(|()| ())
+                        .is_ok()
+                {
+                    crate::bootstrap::clean_temporary_extraction(&catalog, &cache)
+                        .expect("test seam: erase the extraction cache");
+                }
+                extracted
+            }
             (JobKind::ChunkFile, Some(file_id)) | (JobKind::UpdateKeywordIndex, Some(file_id)) => {
                 chunk.run(file_id)
             }
@@ -578,6 +595,15 @@ pub(crate) async fn run_with_context(
 
         match result {
             Ok(()) => {
+                // Task 056: a chunk or embedding job that succeeded read the
+                // file's extracted text, so a later miss is repairable again.
+                if matches!(
+                    job.kind,
+                    JobKind::ChunkFile | JobKind::UpdateKeywordIndex | JobKind::GenerateEmbedding
+                ) && let Some(file_id) = &file_id
+                {
+                    requeued_for_cache_miss.remove(file_id);
+                }
                 // RFC-061 §8(a): `let _ =` here was the live-lock -- it
                 // dropped the write error *and* removed the job from
                 // `known` unconditionally, so a catalog write failure
@@ -607,7 +633,17 @@ pub(crate) async fn run_with_context(
                 // which then never reappears in `list_queued`. Removing it
                 // here would risk `rehydrate` loading a second in-memory
                 // copy of a job `fail`'s own retry path already re-queued.
-                let error_kind = error_kind_for(&error);
+                let error_kind = match (&error, &file_id) {
+                    (OrbokError::ExtractionCacheMissing, Some(file_id)) => {
+                        orbok_workers::extraction_cache_miss_category(
+                            &catalog,
+                            &mut requeued_for_cache_miss,
+                            file_id,
+                            &job.id,
+                        )
+                    }
+                    _ => error_kind_for(&error),
+                };
                 if let Err(write_error) =
                     scheduler.fail(job, error_kind, Some(&error.to_string()), &catalog)
                 {
@@ -791,6 +827,17 @@ tokio::task_local! {
     /// one small. Scoped to one spawned loop via `.scope(cap, ..)`, so tests
     /// running concurrently never see each other's value.
     pub(crate) static IDLE_TRIM_CAP_OVERRIDE: usize;
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    /// Test-only (Task 056 §3 test 3): erase the extraction cache right after
+    /// every successful extraction, so a test can drive a cache that never
+    /// keeps what extraction wrote -- the case the re-extraction loop guard
+    /// exists for -- deterministically, without racing a background clearer
+    /// against the loop. Scoped to one spawned loop, like
+    /// `IDLE_TRIM_CAP_OVERRIDE`.
+    pub(crate) static ERASE_EXTRACTED_TEXT_AFTER_EXTRACTION: ();
 }
 
 /// The extraction-cache entry cap applied at scheduler idle (RFC-059

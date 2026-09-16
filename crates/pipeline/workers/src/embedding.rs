@@ -79,9 +79,9 @@ impl<'a> EmbeddingWorker<'a> {
     }
 
     /// `run`, plus this file's embedding batch statistics (RFC-048 Task
-    /// 011) — `None` when there was nothing to embed (no fresh extraction
-    /// cache yet, or no active chunks), matching `run`'s own early-return
-    /// cases. Shares `prepare_batch`/`persist` with `run` so the batching
+    /// 011) — `None` when there was nothing to embed (no active chunks),
+    /// matching `run`'s own early return. A missing extraction cache entry
+    /// is `Err(ExtractionCacheMissing)` for both (Task 056). Shares `prepare_batch`/`persist` with `run` so the batching
     /// itself is identical either way; the only difference is calling
     /// `embed_batch_with_stats` instead of `embed_batch`, which costs
     /// nothing extra for `run`'s plain path (RFC-048 Task 011 §4 --
@@ -104,10 +104,11 @@ impl<'a> EmbeddingWorker<'a> {
     }
 
     /// Fetch a file's fresh extraction output and active chunks, and build
-    /// the per-chunk embedding texts. `None` for either of `run`'s two
-    /// legitimate skip cases (no fresh extraction cache yet, or no active
-    /// chunks) -- shared so both `run` and `run_with_stats` skip on
-    /// exactly the same conditions.
+    /// the per-chunk embedding texts. `None` when the file has no active
+    /// chunks, `run`'s one legitimate skip; `Err(ExtractionCacheMissing)`
+    /// when its extracted text is not in the cache, which is not a skip
+    /// (Task 056) -- shared so both `run` and `run_with_stats` behave
+    /// exactly the same.
     fn prepare_batch(&self, file_id: &FileId) -> OrbokResult<Option<PreparedBatch>> {
         let files = FileRepository::new(self.catalog);
         let record = files.get_by_id(file_id)?.ok_or(OrbokError::FileNotFound)?;
@@ -125,8 +126,10 @@ impl<'a> EmbeddingWorker<'a> {
             &OrbokCacheNamespace::ExtractSegments,
             OrbokCacheNamespace::ExtractSegments.default_engine_options(),
         )?;
+        // Task 056: a miss used to return `Ok(None)` here, which `run` turned
+        // into success with no vectors written -- and nothing ever retried it.
         let Some(extract_output) = CacheService::get_fresh(&engine, &validated)? else {
-            return Ok(None); // No extraction cache yet — skip (will retry later).
+            return Err(OrbokError::ExtractionCacheMissing);
         };
 
         // Get active chunks for this file.

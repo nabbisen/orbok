@@ -36,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 056: after "Clear extracted text", documents could silently never
+  become searchable by meaning.** Embedding and chunking read a file's text
+  only from the extracted-text store. When it had been cleared (or trimmed at
+  idle):
+  - an embedding job reported success with nothing written;
+  - a chunk job retried as a parser error until it gave up.
+
+  Neither extracted the file again, and since Task 055 the backfill re-queued
+  those embedding jobs at every startup, to no effect. Now a job that finds
+  the text missing queues the file's extraction again, which rebuilds the
+  text and re-runs chunking and embedding, as the Storage page already
+  promised ("rebuilt automatically the next time a file needs it").
+
+  If the text is missing again before any job has read it successfully, the
+  store is not keeping what extraction writes. The job then stops as
+  `extraction_cache_unavailable` rather than re-extracting forever: at most
+  one extra extraction per file until a read succeeds (Review 232).
 - **Task 057: a model that was saved but could not be loaded said "this
   choice could not be saved".** Since Task 055 saving and loading are
   separate steps, and a load failure reused the save failure's wording and
