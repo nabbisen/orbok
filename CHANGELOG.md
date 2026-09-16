@@ -48,6 +48,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path never extracts** (RFC-060 Amendment 3): with no cached entry the
   snippet is absent and the result is still shown, and rows written before
   0008 read as `unknown`, which renders nothing rather than the wrong bytes.
+- **RFC-060 Slice 5: one file could fill most of the result list.** The
+  handoff offered two fixes -- exclude the whole-file "document" chunk from
+  retrieval, or cap results per file -- and asked for a measurement first.
+  Measured against this repository's own `rfcs/` tree (113 files, 15
+  queries, top 20 each): **174 of 300 returned slots were a repeat of a
+  file already shown**, 14 of 15 queries repeated at least one file, and
+  the worst single file took **18 of 20 slots**. Only **11 of 300** results
+  were the document chunk, so excluding it would have reclaimed 11 slots
+  and left the rest: the duplication is mostly section chunks of one file
+  competing with each other. A search now returns at most one result per
+  file, in rank order. The keyword candidate pool is fetched five times
+  wider when that cap applies, because the previous sizing assumed one
+  candidate becomes one result; without that, capping starved the list
+  (126 results across the same 15 queries instead of 209). After the
+  change: **0 duplicate slots, and 209 distinct-file results where there
+  were 126 before.** A query whose candidates come from fewer than twenty
+  files still returns fewer than twenty results, which is honest rather
+  than padded. Benchmark p99 is unchanged (~140 ms against a 200 ms
+  budget) and Recall@5 stays at 88%.
 - **RFC-060 Slice 4: the filter UI did not filter, and the chosen folder
   did not scope.** `run_search(catalog, model, query, limit)` had no
   parameter for either, which is also why RFC-058 §6's rows 3 and 4 could

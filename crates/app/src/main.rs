@@ -16,6 +16,8 @@ mod model_flow;
 #[cfg(test)]
 mod rfc059_cache_measurement;
 #[cfg(test)]
+mod rfc060_duplication_measurement;
+#[cfg(test)]
 mod rfc061_acceptance_tests;
 #[cfg(test)]
 mod rfc062_acceptance_tests;

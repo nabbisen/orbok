@@ -10,6 +10,7 @@ use crate::vector::ExactVectorSearch;
 use orbok_core::{OrbokResult, SearchScope};
 use orbok_db::Catalog;
 use orbok_models::{EmbeddingModel, l2_normalize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
@@ -72,7 +73,16 @@ impl Limits {
         if !has_embedding_model {
             // Without a vector source, RRF preserves keyword order. Avoid the
             // fixed 100-candidate query cost for small result sets.
-            let keyword_cap = requested_limit;
+            //
+            // RFC-060 §10: that saving assumed one candidate becomes one
+            // result, which the per-file cap breaks -- 20 candidates from
+            // one file now yield one result. The pool is widened so the
+            // visible `limit` can be filled from distinct files. It is
+            // headroom, not a guarantee: a query whose candidates come from
+            // fewer than `limit` files still returns fewer results, which
+            // is honest (there are not that many files matching) rather
+            // than padded with repeats of the same file.
+            let keyword_cap = requested_limit.saturating_mul(PER_FILE_CAP_HEADROOM);
             self.keyword_k = self.keyword_k.min(keyword_cap);
             self.vector_k = 0;
             self.fusion_n = self.fusion_n.min(keyword_cap as usize);
@@ -89,6 +99,16 @@ pub struct HybridSearchService<'a> {
     /// only source a page/paragraph/block snippet may be rendered from.
     extraction_cache: Option<&'a orbok_cache::CacheService>,
 }
+
+/// How many results one file may occupy (RFC-060 §10). One: a result row
+/// names a file, and a second row for the same file spends a slot a
+/// different file could have had.
+pub(crate) const MAX_RESULTS_PER_FILE: usize = 1;
+
+/// How much wider than the requested limit the keyword candidate pool is
+/// fetched when the per-file cap applies (RFC-060 §10). Measured on this
+/// repository's own `rfcs/` tree: see `rfc060_duplication_measurement.rs`.
+const PER_FILE_CAP_HEADROOM: u32 = 5;
 
 /// One search, with everything that decides which results come back
 /// (RFC-060 §7). `run_search(catalog, model, query, limit)` had no
@@ -279,7 +299,32 @@ impl<'a> HybridSearchService<'a> {
         candidates: &[FusedCandidate],
         limit: usize,
     ) -> OrbokResult<Vec<SearchResult>> {
-        let top_candidates: Vec<&FusedCandidate> = candidates.iter().take(limit).collect();
+        // RFC-060 §10 / HANDOFF-060 §4: at most one result per file, taken
+        // in rank order. Measured on this repository's own `rfcs/` tree
+        // (113 files, 15 queries): 174 of 300 returned slots were a repeat
+        // of a file already shown, 14 of 15 queries repeated at least one
+        // file, and the worst single file took 18 of 20 slots. Excluding
+        // the whole-file `"document"` chunk -- the handoff's other option --
+        // would have reclaimed 11 of those 300 slots, because the
+        // duplication is mostly *section* chunks of one file competing with
+        // each other, not the document chunk.
+        //
+        // Later candidates fill the slots the skipped ones would have
+        // taken, so a query with enough distinct files still returns
+        // `limit` results: this narrows what one file may occupy, it does
+        // not shrink the result set (RFC-041 §25.5).
+        let mut per_file: HashMap<String, usize> = HashMap::new();
+        let top_candidates: Vec<&FusedCandidate> = candidates
+            .iter()
+            .filter(|candidate| {
+                let seen = per_file
+                    .entry(candidate.file_id.as_str().to_string())
+                    .or_default();
+                *seen += 1;
+                *seen <= MAX_RESULTS_PER_FILE
+            })
+            .take(limit)
+            .collect();
         let chunk_ids: Vec<_> = top_candidates
             .iter()
             .map(|candidate| candidate.chunk_id.clone())

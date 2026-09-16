@@ -68,8 +68,19 @@ impl<'a> SearchService<'a> {
         let candidates = engine.search(query, limit)?;
 
         let snippets = SnippetSource::new(self.catalog, self.extraction_cache)?;
+        // RFC-060 §10: one result per file, as in the hybrid path -- see
+        // `HybridSearchService::enrich_many` for the measurement behind it.
+        let mut per_file: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         let mut results = Vec::with_capacity(candidates.len());
         for candidate in candidates {
+            let seen = per_file
+                .entry(candidate.file_id.as_str().to_string())
+                .or_default();
+            *seen += 1;
+            if *seen > crate::hybrid::MAX_RESULTS_PER_FILE {
+                continue;
+            }
             let enriched = self.enrich(&snippets, candidate)?;
             if let Some(r) = enriched {
                 results.push(r);
