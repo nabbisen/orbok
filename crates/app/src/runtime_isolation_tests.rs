@@ -447,6 +447,7 @@ fn exercise_later_profile_operations_with<P: orbok::runtime_context::RuntimePath
         None,
         None,
         "isolation",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )?;

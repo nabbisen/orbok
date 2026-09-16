@@ -1839,6 +1839,7 @@ async fn search_latency_while_background_indexing_is_running() {
                 None,
                 None,
                 "install",
+                orbok_search::SearchMode::Auto,
                 20,
                 orbok_core::SearchScope::default(),
             );
@@ -1882,6 +1883,7 @@ async fn search_latency_while_background_indexing_is_running() {
                 None,
                 None,
                 "install",
+                orbok_search::SearchMode::Auto,
                 20,
                 orbok_core::SearchScope::default(),
             );

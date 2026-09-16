@@ -534,6 +534,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let search_cache_task = search_cache.clone();
                         // RFC-060 §7: the kind filters and chosen folder the user
                         // actually set, resolved before the task takes ownership.
+                        let mode_task = app.state.search_mode;
                         let scope_task = bootstrap::scope_from_ui(
                             &app.state.search_ui.active_filters,
                             app.state.search_location.selected.as_ref(),
@@ -549,6 +550,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .as_ref()
                                         .map(|cache| cache.service()),
                                     &query_task,
+                                    mode_task,
                                     20,
                                     scope_task,
                                 )
@@ -652,6 +654,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let search_cache_task = search_cache.clone();
                     // RFC-060 §7: the kind filters and chosen folder the user
                     // actually set, resolved before the task takes ownership.
+                    let mode_task = app.state.search_mode;
                     let scope_task = bootstrap::scope_from_ui(
                         &app.state.search_ui.active_filters,
                         app.state.search_location.selected.as_ref(),
@@ -666,6 +669,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .as_ref()
                                     .map(|cache| cache.service()),
                                 &query,
+                                mode_task,
                                 20,
                                 scope_task,
                             )
@@ -722,6 +726,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let search_cache_task = search_cache.clone();
                     // RFC-060 §7: the kind filters and chosen folder the user
                     // actually set, resolved before the task takes ownership.
+                    let mode_task = app.state.search_mode;
                     let scope_task = bootstrap::scope_from_ui(
                         &app.state.search_ui.active_filters,
                         app.state.search_location.selected.as_ref(),
@@ -736,6 +741,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .as_ref()
                                     .map(|cache| cache.service()),
                                 &query,
+                                mode_task,
                                 20,
                                 scope_task,
                             )

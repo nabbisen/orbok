@@ -333,7 +333,13 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     text(tr(locale, MessageKey::SearchModeConceptual))
                         .size(theme::meta_s(tokens, sc))
                 )
-                .on_press(Message::SetSearchMode(orbok_search::SearchMode::Conceptual)),
+                // Task 053: Conceptual has no keyword half, so without a
+                // model it can only return nothing. Disabled rather than
+                // hidden, so all three options stay discoverable.
+                .on_press_maybe(
+                    (state.capability != SearchCapability::KeywordOnly)
+                        .then_some(Message::SetSearchMode(orbok_search::SearchMode::Conceptual)),
+                ),
             ]
             .spacing(tokens.spacing.xs),
         );

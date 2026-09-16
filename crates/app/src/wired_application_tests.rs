@@ -238,6 +238,7 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
             None,
             None,
             "originalcontentmarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -264,6 +265,7 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
         None,
         None,
         "revisedcontentmarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -328,6 +330,7 @@ async fn manual_refresh_picks_up_a_file_added_while_running() {
         None,
         None,
         "newlyaddedmarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -379,6 +382,7 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
             None,
             None,
             "soontobegonemarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -403,6 +407,7 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
         None,
         None,
         "soontobegonemarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -489,6 +494,7 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
         None,
         Some(cache.service()),
         "thirdpagemarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -566,6 +572,7 @@ async fn docx_and_html_snippets_contain_document_text_never_markup() {
             None,
             Some(cache.service()),
             query,
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -633,6 +640,7 @@ async fn a_kind_filter_returns_only_that_kind() {
             None,
             Some(cache.service()),
             "kindfiltermarker",
+            orbok_search::SearchMode::Auto,
             20,
             scope,
         )
@@ -697,6 +705,7 @@ async fn a_search_scoped_to_one_folder_excludes_the_other() {
             None,
             Some(cache.service()),
             "folderscopemarker",
+            orbok_search::SearchMode::Auto,
             20,
             scope,
         )
@@ -796,6 +805,7 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
             None,
             None,
             "vanishingfilemarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -815,6 +825,7 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
         None,
         None,
         "vanishingfilemarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -882,6 +893,7 @@ async fn a_paused_source_contributes_no_search_results() {
             None,
             None,
             "pausedsourcemarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -908,6 +920,7 @@ async fn a_paused_source_contributes_no_search_results() {
         None,
         None,
         "pausedsourcemarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -955,6 +968,7 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
             None,
             None,
             "temporarilygonemarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -980,6 +994,7 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
         None,
         None,
         "temporarilygonemarker",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -1030,6 +1045,7 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
             None,
             None,
             "unmountedfoldermarker",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -1123,6 +1139,7 @@ async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
         None,
         None,
         "認証エラー",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -1268,6 +1285,7 @@ async fn two_identical_searches_return_identical_orders() {
         Some(&model),
         None,
         "authentication token rotation",
+        orbok_search::SearchMode::Auto,
         20,
         orbok_core::SearchScope::default(),
     )
@@ -1297,6 +1315,7 @@ async fn two_identical_searches_return_identical_orders() {
             Some(&model),
             None,
             "authentication token rotation",
+            orbok_search::SearchMode::Auto,
             20,
             orbok_core::SearchScope::default(),
         )
@@ -1308,4 +1327,62 @@ async fn two_identical_searches_return_identical_orders() {
              identical searches must return identical result orders"
         );
     }
+}
+
+/// Task 053: the Advanced search-mode selector reaches the engine.
+///
+/// No model is needed, and that is the point of the fixture: on a
+/// keyword-only service, `Conceptual` disables the keyword half and has no
+/// vector half to replace it, so the only way it returns nothing for a term
+/// `Auto` finds is that the mode actually reached `HybridSearchService`.
+/// `Exact` keeps the keyword half, so it must still find the term.
+#[tokio::test]
+async fn the_selected_search_mode_reaches_the_engine() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(
+        source_dir.join("note.md"),
+        "# Note\n\nsearchmodemarker in a markdown note.\n",
+    )
+    .unwrap();
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let count_for = |mode: orbok_search::SearchMode| -> usize {
+        bootstrap::run_search(
+            &catalog,
+            None,
+            None,
+            "searchmodemarker",
+            mode,
+            20,
+            orbok_core::SearchScope::default(),
+        )
+        .unwrap()
+        .len()
+    };
+
+    assert!(
+        count_for(orbok_search::SearchMode::Auto) > 0,
+        "Auto must find the indexed term"
+    );
+    assert!(
+        count_for(orbok_search::SearchMode::Exact) > 0,
+        "Exact keeps keyword retrieval, so it must find the term too"
+    );
+    assert_eq!(
+        count_for(orbok_search::SearchMode::Conceptual),
+        0,
+        "Conceptual disables keyword retrieval; with no model it must return \
+         nothing -- results here mean the selected mode never reached the engine"
+    );
 }

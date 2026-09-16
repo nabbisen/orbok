@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 053: the Advanced search-mode selector did nothing.** Auto, Exact
+  and Conceptual rendered and recorded the choice, but every search was
+  built with a hardcoded `Auto`, so the engine's per-mode behaviour (Exact
+  without the vector half, Conceptual without the keyword half) never ran.
+  The selected mode now reaches the query. On an install with no embedding
+  model, Conceptual could only return nothing, so its button is disabled
+  there (still visible), and falling back to keyword-only search resets a
+  Conceptual selection to Auto. The search itself has no silent fallback.
 - **Task 051: `orbok --help`, or a mistyped option, opened and migrated the
   default profile.** Only `--version`, `--portable` and `--check` were
   recognised; any other argument was ignored and startup carried on --

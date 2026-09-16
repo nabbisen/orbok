@@ -74,6 +74,7 @@ pub(crate) fn run_search(
     model: Option<&EmbeddingWorkerParts>,
     extraction_cache: Option<&orbok_cache::CacheService>,
     query: &str,
+    mode: orbok_search::SearchMode,
     limit: u32,
     scope: SearchScope,
 ) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
@@ -88,10 +89,13 @@ pub(crate) fn run_search(
     if let Some(cache) = extraction_cache {
         service = service.with_extraction_cache(cache);
     }
-    let results = service.search_request(
-        &orbok_search::SearchRequest::new(query, orbok_search::SearchMode::Auto, limit)
-            .with_scope(scope),
-    )?;
+    // Task 053: `mode` is the Advanced selector's choice. This was a
+    // hardcoded `SearchMode::Auto`, so Exact and Conceptual did nothing.
+    // No fallback here: Conceptual without a model has no keyword half and
+    // returns nothing -- the view is what stops a keyword-only install
+    // from choosing it.
+    let results = service
+        .search_request(&orbok_search::SearchRequest::new(query, mode, limit).with_scope(scope))?;
     Ok(results
         .into_iter()
         .map(|r| orbok_ui::state::SearchResultDisplay {

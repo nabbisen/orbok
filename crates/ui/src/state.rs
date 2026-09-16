@@ -1109,6 +1109,11 @@ impl AppState {
     /// keyboard equivalent) so the two can never drift apart.
     fn skip_wizard(&mut self) {
         self.capability = SearchCapability::KeywordOnly;
+        // Task 053: a Conceptual selection made while a model was active
+        // would now return nothing, from a button the view has disabled.
+        if self.search_mode == SearchMode::Conceptual {
+            self.search_mode = SearchMode::Auto;
+        }
         self.active_model_provenance = None;
         self.wizard = None;
         self.wizard_path_input = String::new();
