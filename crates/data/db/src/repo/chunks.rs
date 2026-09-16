@@ -26,6 +26,10 @@ pub struct ChunkSpec {
     pub byte_start: Option<u64>,
     pub byte_end: Option<u64>,
     pub location_quality: &'static str,
+    /// What `line_start`/`line_end` mean for this chunk's format (RFC-060
+    /// §6): `"lines"`, `"pages"`, `"paragraphs"`, `"blocks"` or
+    /// `"unknown"`. Only `"lines"` may be read from the file as lines.
+    pub location_kind: &'static str,
     /// Index of the parent chunk in the same specs slice, if any.
     pub parent_idx: Option<usize>,
 }
@@ -42,6 +46,10 @@ pub struct ChunkRecord {
     pub byte_start: Option<u64>,
     pub byte_end: Option<u64>,
     pub location_quality: String,
+    /// `chunk_locations.location_kind`; `"unknown"` for a row written
+    /// before migration 0008, which yields no snippet rather than a wrong
+    /// one (RFC-060 §6).
+    pub location_kind: String,
 }
 
 pub struct ChunkRepository<'a> {
@@ -200,8 +208,8 @@ impl<'a> ChunkRepository<'a> {
             tx.execute(
                 "INSERT INTO chunk_locations \
                  (chunk_id, byte_start, byte_end, line_start, line_end, \
-                  location_quality, created_at, updated_at) \
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?7)",
+                  location_quality, location_kind, created_at, updated_at) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8)",
                 params![
                     chunk_id.as_str(),
                     spec.byte_start.map(|v| v as i64),
@@ -209,6 +217,7 @@ impl<'a> ChunkRepository<'a> {
                     spec.line_start as i64,
                     spec.line_end as i64,
                     spec.location_quality,
+                    spec.location_kind,
                     now,
                 ],
             )
@@ -224,6 +233,7 @@ impl<'a> ChunkRepository<'a> {
                 byte_start: spec.byte_start,
                 byte_end: spec.byte_end,
                 location_quality: spec.location_quality.to_string(),
+                location_kind: spec.location_kind.to_string(),
             });
         }
 
@@ -320,7 +330,8 @@ impl<'a> ChunkRepository<'a> {
         let mut stmt = conn
             .prepare(
                 "SELECT c.chunk_id, c.file_id, c.chunk_ordinal, c.heading_path, \
-                  l.line_start, l.line_end, l.byte_start, l.byte_end, l.location_quality \
+                  l.line_start, l.line_end, l.byte_start, l.byte_end, l.location_quality, \
+                  l.location_kind \
                  FROM chunks c \
                  LEFT JOIN chunk_locations l ON l.chunk_id = c.chunk_id \
                  WHERE c.file_id = ?1 AND c.chunk_status = 'active' \
@@ -339,6 +350,7 @@ impl<'a> ChunkRepository<'a> {
                     byte_start: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
                     byte_end: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
                     location_quality: row.get(8).unwrap_or_else(|_| "unknown".to_string()),
+                    location_kind: row.get(9).unwrap_or_else(|_| "unknown".to_string()),
                 })
             })
             .map_err(db_err)?;

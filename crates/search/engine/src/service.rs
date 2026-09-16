@@ -6,7 +6,7 @@
 
 use crate::KeywordSearchEngine;
 use crate::fts5::Fts5KeywordEngine;
-use crate::snippet::{chunk_record_for, searchable_path_guard, snippet_or_none};
+use crate::snippet::{SnippetSource, chunk_record_for};
 use orbok_core::{ChunkId, FileId, OrbokResult};
 use orbok_db::Catalog;
 
@@ -40,11 +40,22 @@ pub struct SearchResult {
 /// Keyword-only search service (vector fusion deferred to M8).
 pub struct SearchService<'a> {
     catalog: &'a Catalog,
+    /// See [`crate::HybridSearchService`]'s field of the same name.
+    extraction_cache: Option<&'a orbok_cache::CacheService>,
 }
 
 impl<'a> SearchService<'a> {
     pub fn new(catalog: &'a Catalog) -> Self {
-        Self { catalog }
+        Self {
+            catalog,
+            extraction_cache: None,
+        }
+    }
+
+    /// Give the service the extraction cache (RFC-060 §6).
+    pub fn with_extraction_cache(mut self, cache: &'a orbok_cache::CacheService) -> Self {
+        self.extraction_cache = Some(cache);
+        self
     }
 
     /// Execute a keyword search and return enriched results.
@@ -52,10 +63,10 @@ impl<'a> SearchService<'a> {
         let engine = Fts5KeywordEngine::new(self.catalog);
         let candidates = engine.search(query, limit)?;
 
-        let guard = searchable_path_guard(self.catalog)?;
+        let snippets = SnippetSource::new(self.catalog, self.extraction_cache)?;
         let mut results = Vec::with_capacity(candidates.len());
         for candidate in candidates {
-            let enriched = self.enrich(&guard, candidate)?;
+            let enriched = self.enrich(&snippets, candidate)?;
             if let Some(r) = enriched {
                 results.push(r);
             }
@@ -65,7 +76,7 @@ impl<'a> SearchService<'a> {
 
     fn enrich(
         &self,
-        guard: &orbok_fs::PathGuard,
+        snippets: &SnippetSource<'_>,
         candidate: crate::KeywordCandidate,
     ) -> OrbokResult<Option<SearchResult>> {
         let Some((chunk, canonical_path)) = chunk_record_for(self.catalog, &candidate.chunk_id)?
@@ -73,7 +84,7 @@ impl<'a> SearchService<'a> {
             return Ok(None);
         };
 
-        let snippet = snippet_or_none(guard, &chunk, &canonical_path);
+        let snippet = snippets.snippet_or_none(&chunk, &canonical_path);
 
         // Build a short display path (just the last two components).
         let display_path = short_display_path(&canonical_path);

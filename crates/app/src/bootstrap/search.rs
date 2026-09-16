@@ -28,20 +28,22 @@ use orbok_search::HybridSearchService;
 pub(crate) fn run_search(
     catalog: &Catalog,
     model: Option<&EmbeddingWorkerParts>,
+    extraction_cache: Option<&orbok_cache::CacheService>,
     query: &str,
     limit: u32,
 ) -> OrbokResult<Vec<orbok_ui::state::SearchResultDisplay>> {
-    let results = if let Some(parts) = model {
-        let service =
-            HybridSearchService::with_model(catalog, parts.model.as_ref(), parts.model_id.as_str());
-        service.search(query, orbok_search::SearchMode::Auto, limit)?
+    // RFC-060 §6: without this handle a PDF/DOCX/HTML result renders no
+    // snippet at all, since its stored positions are pages or paragraphs
+    // and reading "those lines" from the file returns unrelated bytes.
+    let mut service = if let Some(parts) = model {
+        HybridSearchService::with_model(catalog, parts.model.as_ref(), parts.model_id.as_str())
     } else {
-        HybridSearchService::keyword_only(catalog).search(
-            query,
-            orbok_search::SearchMode::Auto,
-            limit,
-        )?
+        HybridSearchService::keyword_only(catalog)
     };
+    if let Some(cache) = extraction_cache {
+        service = service.with_extraction_cache(cache);
+    }
+    let results = service.search(query, orbok_search::SearchMode::Auto, limit)?;
     Ok(results
         .into_iter()
         .map(|r| orbok_ui::state::SearchResultDisplay {

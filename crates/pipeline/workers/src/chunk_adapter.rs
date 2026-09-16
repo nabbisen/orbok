@@ -2,9 +2,10 @@
 //!
 //! This conversion lives in `orbok-workers` (not in `orbok-extract`)
 //! so that the extraction crate has no dependency on `orbok-db`.
-//! The `location_kind` field is carried through the pipeline but is not
-//! yet persisted to a dedicated DB column (that comes with later RFC
-//! work on result trust and snippet loading).
+//! `location_kind` reaches the catalog from here: RFC-060 §6 / migration
+//! 0008 gave `chunk_locations` a column for it, so the snippet path can
+//! tell whether a chunk's `line_start`/`line_end` are line numbers at all
+//! before reading them from the file as lines.
 
 use orbok_db::repo::ChunkSpec;
 use orbok_extract::ExtractedChunk;
@@ -22,6 +23,7 @@ pub fn to_chunk_spec(c: ExtractedChunk) -> ChunkSpec {
         byte_start: c.byte_start,
         byte_end: c.byte_end,
         location_quality: c.location_quality,
+        location_kind: c.location_kind.as_str(),
         parent_idx: c.parent_idx,
     }
 }

@@ -205,7 +205,7 @@ fn load_snippet_refuses_a_path_outside_every_registered_source() {
     let stray = outside.path().join("elsewhere.md");
     std::fs::write(&stray, "secret text outside every source\n").unwrap();
 
-    let guard = searchable_path_guard(&catalog).unwrap();
+    let snippets = crate::snippet::SnippetSource::new(&catalog, None).unwrap();
     let record = orbok_db::repo::ChunkRecord {
         chunk_id: ChunkId::generate(),
         file_id: orbok_core::FileId::generate(),
@@ -216,9 +216,10 @@ fn load_snippet_refuses_a_path_outside_every_registered_source() {
         byte_start: None,
         byte_end: None,
         location_quality: "exact".to_string(),
+        location_kind: "lines".to_string(),
     };
 
-    let result = crate::snippet::load_snippet(&guard, &record, stray.to_str().unwrap());
+    let result = snippets.load(&record, stray.to_str().unwrap());
     assert!(
         matches!(result, Err(OrbokError::PathOutsideSources)),
         "a path outside every source must be an error, never file contents -- got {result:?}"

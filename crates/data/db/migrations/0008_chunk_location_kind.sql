@@ -1,0 +1,17 @@
+-- RFC-060 §6 (Slice 3): persist the extractor's own `location_kind`.
+--
+-- `ExtractedSegment.location_kind` (orbok-extract) says what a chunk's
+-- `line_start`/`line_end` actually mean for its format: line numbers for
+-- text and Markdown, page numbers for PDF, paragraph indices for DOCX,
+-- block indices for HTML. The field existed in the pipeline and was
+-- dropped at the database boundary, so the snippet path could not tell
+-- whether "lines 3-5" meant lines at all -- and read them from the file
+-- regardless, which for a PDF is the wrong bytes entirely (RFC-060
+-- Amendment 1).
+--
+-- Added as a new nullable column rather than by editing a released
+-- migration (RFC-062 §7). Existing rows get NULL, read as "unknown",
+-- which is not `lines` and therefore yields no snippet rather than a
+-- wrong one -- Amendment 1 §2a.3's disposition of the backfill question:
+-- honest absence, and no re-extraction at query time.
+ALTER TABLE chunk_locations ADD COLUMN location_kind TEXT;

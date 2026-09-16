@@ -95,6 +95,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     );
 
+    // RFC-060 §6: the extraction cache is the only source a page, paragraph
+    // or block snippet may be rendered from -- the snippet path never
+    // extracts (Amendment 3). `Arc` for the same reason `catalog` is: each
+    // `Task::perform` closure needs its own owned handle. `None` if the
+    // cache cannot be opened; those formats then show no snippet, and the
+    // result is still shown.
+    let search_cache = std::sync::Arc::new(match bootstrap::cache_service(&runtime) {
+        Ok(cache) => Some(cache),
+        Err(error) => {
+            tracing::warn!(%error, "snippets for PDF/DOCX/HTML results are unavailable this session");
+            None
+        }
+    });
+
     // RFC-057 §4.1: the resource-observation channel. Constructed once
     // here, not inside the `.subscription(..)` closure below (which iced
     // re-evaluates every frame), so `update` can hold a stable `Sender`
@@ -500,12 +514,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.update(message.clone());
                         let catalog_task = catalog.clone();
                         let search_model_task = search_model.clone();
+                        let search_cache_task = search_cache.clone();
                         let query_task = query.clone();
                         return iced::Task::perform(
                             async move {
                                 bootstrap::run_search(
                                     &catalog_task,
                                     search_model_task.as_ref().as_ref(),
+                                    search_cache_task
+                                        .as_ref()
+                                        .as_ref()
+                                        .map(|cache| cache.service()),
                                     &query_task,
                                     20,
                                 )
@@ -606,11 +625,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let catalog_task = catalog.clone();
                     let search_model_task = search_model.clone();
+                    let search_cache_task = search_cache.clone();
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
                                 &catalog_task,
                                 search_model_task.as_ref().as_ref(),
+                                search_cache_task
+                                    .as_ref()
+                                    .as_ref()
+                                    .map(|cache| cache.service()),
                                 &query,
                                 20,
                             )
@@ -664,11 +688,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     let catalog_task = catalog.clone();
                     let search_model_task = search_model.clone();
+                    let search_cache_task = search_cache.clone();
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
                                 &catalog_task,
                                 search_model_task.as_ref().as_ref(),
+                                search_cache_task
+                                    .as_ref()
+                                    .as_ref()
+                                    .map(|cache| cache.service()),
                                 &query,
                                 20,
                             )

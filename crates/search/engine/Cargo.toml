@@ -10,6 +10,7 @@ authors.workspace       = true
 repository.workspace    = true
 
 [dependencies]
+orbok-cache                 = { workspace = true }
 orbok-core                  = { workspace = true }
 orbok-db                    = { workspace = true }
 orbok-extract               = { workspace = true }

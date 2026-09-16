@@ -26,6 +26,32 @@ pub enum LocationKind {
     Unknown,
 }
 
+impl LocationKind {
+    /// Catalog string for `chunk_locations.location_kind` (RFC-060 §6).
+    /// `parse` treats anything else -- including a `NULL` column on a row
+    /// written before migration 0008 -- as [`LocationKind::Unknown`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LocationKind::Lines => "lines",
+            LocationKind::Pages => "pages",
+            LocationKind::Paragraphs => "paragraphs",
+            LocationKind::Blocks => "blocks",
+            LocationKind::Unknown => "unknown",
+        }
+    }
+
+    /// The inverse of [`LocationKind::as_str`], total by construction.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "lines" => LocationKind::Lines,
+            "pages" => LocationKind::Pages,
+            "paragraphs" => LocationKind::Paragraphs,
+            "blocks" => LocationKind::Blocks,
+            _ => LocationKind::Unknown,
+        }
+    }
+}
+
 // ── Segment classification ──────────────────────────────────────────────
 
 /// Segment classification (RFC-005 §8; feeds RFC-006 chunking).

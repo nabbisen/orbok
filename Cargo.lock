@@ -3503,6 +3503,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]
@@ -3624,6 +3625,7 @@ dependencies = [
 name = "orbok-search"
 version = "0.25.0"
 dependencies = [
+ "orbok-cache",
  "orbok-core",
  "orbok-db",
  "orbok-extract",

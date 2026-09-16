@@ -233,7 +233,8 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
         drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "originalcontentmarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "originalcontentmarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the original content must be findable before any edit"
@@ -251,7 +252,7 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "revisedcontentmarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "revisedcontentmarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "restarting orbok must re-scan registered sources and pick up a file \
@@ -307,7 +308,7 @@ async fn manual_refresh_picks_up_a_file_added_while_running() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "newlyaddedmarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "newlyaddedmarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "manual refresh must re-scan the source and find a file added while \
@@ -350,7 +351,8 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "soontobegonemarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "soontobegonemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -366,7 +368,7 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "soontobegonemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "soontobegonemarker", 20).unwrap();
     assert!(
         results.is_empty(),
         "a file marked missing by refresh must stop appearing as a normal \
@@ -411,13 +413,13 @@ async fn deleting_a_file_marks_it_missing_and_removes_it_from_search_results() {
 /// (empty) rather than garbage -- **this is the expected next failure
 /// state, not a regression** (handoff §3.3 predicted exactly this and
 /// named it "correct behaviour, not a regression"). RFC-060 §5/§6
-/// (persisting `location_kind`, rendering non-`Lines` snippets from the
-/// extraction cache) is what makes a real snippet appear; until then this
-/// stays `#[should_panic]`, not deleted and not un-panicked, because the
-/// criterion itself -- a PDF result's snippet contains real page text --
-/// is still unmet.
+/// **The wrapper is removed by RFC-060 Slice 3**, which is what §5/§6 said
+/// would remove it: migration 0008 persists `location_kind`, so the snippet
+/// path knows a PDF chunk's positions are page numbers, and renders its
+/// snippet from the cached extraction segments instead of reading "those
+/// lines" out of the file. The criterion -- a PDF result's snippet contains
+/// real page text, and no object syntax -- is met.
 #[tokio::test]
-#[should_panic(expected = "snippet must contain real text from page 3")]
 async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
@@ -440,7 +442,13 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "thirdpagemarker", 20).unwrap();
+    // RFC-060 §6: a PDF's positions are page numbers, so its snippet comes
+    // from the cached extraction segments -- the search path needs the same
+    // cache handle `main.rs` gives it in production.
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let results =
+        bootstrap::run_search(&catalog, None, Some(cache.service()), "thirdpagemarker", 20)
+            .unwrap();
     assert!(
         !results.is_empty(),
         "the PDF must be findable by text unique to its third page"
@@ -454,6 +462,106 @@ async fn pdf_result_snippet_contains_page_text_not_raw_bytes() {
         snippet.contains("thirdpagemarker"),
         "snippet must contain real text from page 3, got {snippet:?}"
     );
+}
+
+/// RFC-060 §11 criterion 2: a DOCX and an HTML result's snippets contain
+/// document text, or are empty with the result still shown -- never raw
+/// markup or binary.
+///
+/// Both formats store *approximate* positions (paragraph and block
+/// indices, `v09_rc.rs` asserts this for the extractors themselves), so
+/// before Slice 3 the snippet path either read those numbers as file line
+/// numbers -- returning ZIP bytes for a DOCX and tag soup for an HTML
+/// file -- or, after Task 034's interim quality guard, returned nothing at
+/// all. Now `location_kind` says what the numbers mean and the text comes
+/// from the cached extraction segments.
+///
+/// The assertion is deliberately the criterion's own disjunction: text or
+/// empty. It is not "a snippet exists", because RFC-060 Amendment 3 rules
+/// that an absent cache entry means an absent snippet, and that outcome
+/// must stay passing rather than turn this red.
+#[tokio::test]
+async fn docx_and_html_snippets_contain_document_text_never_markup() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    // Multi-line on purpose: a single-line fixture cannot distinguish the
+    // fix from the defect, because reading "block 2" as line 2 of a
+    // one-line file skips past the end and yields an empty snippet, which
+    // this criterion allows. Real HTML has lines, and reading one returns
+    // markup.
+    std::fs::write(
+        source_dir.join("page.html"),
+        "<html>\n<head><title>t</title></head>\n<body>\n<h1>Guide</h1>\n\
+         <p>htmlmarkerword appears in a paragraph.</p>\n</body>\n</html>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        source_dir.join("doc.docx"),
+        minimal_docx("docxmarkerword appears in a paragraph."),
+    )
+    .unwrap();
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    for (query, marker) in [
+        ("htmlmarkerword", "htmlmarkerword"),
+        ("docxmarkerword", "docxmarkerword"),
+    ] {
+        let results =
+            bootstrap::run_search(&catalog, None, Some(cache.service()), query, 20).unwrap();
+        assert!(
+            !results.is_empty(),
+            "{query}: the file must be findable by text unique to it"
+        );
+        let snippet = results[0].snippet.as_deref().unwrap_or("");
+        for forbidden in ["<p>", "<html", "</", "PK\u{3}\u{4}", "word/document.xml"] {
+            assert!(
+                !snippet.contains(forbidden),
+                "{query}: snippet must never contain raw markup or binary, \
+                 found {forbidden:?} in {snippet:?}"
+            );
+        }
+        assert!(
+            snippet.is_empty() || snippet.contains(marker),
+            "{query}: snippet must contain document text or be empty, got {snippet:?}"
+        );
+    }
+}
+
+/// A minimal valid DOCX: a ZIP carrying one `word/document.xml` with two
+/// paragraphs. Mirrors `orbok-workers`' own `minimal_docx` fixture rather
+/// than checking a binary file into the tree.
+fn minimal_docx(first_paragraph: &str) -> Vec<u8> {
+    use std::io::Write;
+    let xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+<w:p><w:r><w:t>{first_paragraph}</w:t></w:r></w:p>
+<w:p><w:r><w:t>Second paragraph here.</w:t></w:r></w:p>
+</w:body></w:document>"#
+    );
+    let mut buf = std::io::Cursor::new(Vec::new());
+    {
+        let mut zip = zip::ZipWriter::new(&mut buf);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default();
+        zip.start_file("[Content_Types].xml", opts).unwrap();
+        zip.write_all(b"<Types/>").unwrap();
+        zip.start_file("word/document.xml", opts).unwrap();
+        zip.write_all(xml.as_bytes()).unwrap();
+        zip.finish().unwrap();
+    }
+    buf.into_inner()
 }
 
 /// RFC-058 §6 row 2 / RFC-060 §11.3 (F-06): a result's trust state must
@@ -495,7 +603,8 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "vanishingfilemarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "vanishingfilemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before it is deleted"
@@ -506,7 +615,7 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
     std::fs::remove_file(&doc).unwrap();
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "vanishingfilemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "vanishingfilemarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "sanity: with no refresh run, the stale catalog entry must still surface a result \
@@ -565,7 +674,8 @@ async fn a_paused_source_contributes_no_search_results() {
 
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "pausedsourcemarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "pausedsourcemarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before its source is paused"
@@ -583,7 +693,7 @@ async fn a_paused_source_contributes_no_search_results() {
     }
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "pausedsourcemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "pausedsourcemarker", 20).unwrap();
     assert!(
         results.is_empty(),
         "a paused source's files must not appear in search results, got {results:?}"
@@ -622,7 +732,8 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "temporarilygonemarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "temporarilygonemarker", 20).unwrap();
         assert!(
             results.is_empty(),
             "sanity: must be gone from search while missing"
@@ -639,7 +750,7 @@ async fn restoring_a_missing_file_with_unchanged_content_makes_it_searchable_aga
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "temporarilygonemarker", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "temporarilygonemarker", 20).unwrap();
     assert!(
         !results.is_empty(),
         "a file that reappears with unchanged content must become searchable \
@@ -681,7 +792,8 @@ async fn a_renamed_or_unmounted_folder_is_marked_missing_at_startup_and_nothing_
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
     {
         let catalog = bootstrap::open_catalog(&context).unwrap();
-        let results = bootstrap::run_search(&catalog, None, "unmountedfoldermarker", 20).unwrap();
+        let results =
+            bootstrap::run_search(&catalog, None, None, "unmountedfoldermarker", 20).unwrap();
         assert!(
             !results.is_empty(),
             "baseline: the file must be findable before the folder disappears"
@@ -766,7 +878,7 @@ async fn japanese_query_ranks_the_dense_relevant_chunk_first() {
     drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
 
     let catalog = bootstrap::open_catalog(&context).unwrap();
-    let results = bootstrap::run_search(&catalog, None, "認証エラー", 20).unwrap();
+    let results = bootstrap::run_search(&catalog, None, None, "認証エラー", 20).unwrap();
     assert!(!results.is_empty(), "the corpus must be findable at all");
     // RFC-060 §10's own recorded, separate defect: the whole-file "document"
     // chunk isn't deduped from the section-level chunk, so each file can
@@ -903,8 +1015,14 @@ async fn two_identical_searches_return_identical_orders() {
         &settings,
     )
     .expect("RFC013_MODEL_DIR must resolve to a loadable embedding model");
-    let first =
-        bootstrap::run_search(&catalog, Some(&model), "authentication token rotation", 20).unwrap();
+    let first = bootstrap::run_search(
+        &catalog,
+        Some(&model),
+        None,
+        "authentication token rotation",
+        20,
+    )
+    .unwrap();
     assert!(!first.is_empty(), "the corpus must be findable at all");
     // RFC-061 §6 Slice 4 mutation check: before this slice, `run_search`
     // passed `HybridSearchService::with_model` the model's constant
@@ -925,9 +1043,14 @@ async fn two_identical_searches_return_identical_orders() {
     let first_order: Vec<String> = first.iter().map(|r| r.display_path.clone()).collect();
 
     for i in 1..20 {
-        let repeat =
-            bootstrap::run_search(&catalog, Some(&model), "authentication token rotation", 20)
-                .unwrap();
+        let repeat = bootstrap::run_search(
+            &catalog,
+            Some(&model),
+            None,
+            "authentication token rotation",
+            20,
+        )
+        .unwrap();
         let order: Vec<String> = repeat.iter().map(|r| r.display_path.clone()).collect();
         assert_eq!(
             order, first_order,

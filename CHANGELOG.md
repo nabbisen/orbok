@@ -33,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is recorded, not closed** (RFC-060 §9 accepts it as separate): the guard
   canonicalises and checks membership, then the file is opened by path, so a
   path swapped for a symlink in between still escapes.
+- **RFC-060 Slice 3: PDF, DOCX and HTML results now carry a real snippet
+  instead of none.** The extractor records what a chunk's stored positions
+  mean -- line numbers for text and Markdown, page numbers for PDF,
+  paragraph indices for DOCX, block indices for HTML -- and that field was
+  dropped at the database boundary, so the snippet path read every stored
+  range as file line numbers. For a PDF that returned `%PDF-1.5` object
+  syntax; after Task 034's interim guard it returned nothing at all.
+  Migration 0008 adds `chunk_locations.location_kind` (a new column, not an
+  edit to a released migration), the pipeline carries the value through to
+  the catalog, and only `lines` now reads the file. Pages, paragraphs and
+  blocks render from the cached extraction segments, which the search path
+  reaches with the same cache handle the indexing side uses. **The snippet
+  path never extracts** (RFC-060 Amendment 3): with no cached entry the
+  snippet is absent and the result is still shown, and rows written before
+  0008 read as `unknown`, which renders nothing rather than the wrong bytes.
+- **RFC-058 §6 row 6's `#[should_panic]` wrapper is removed** too: a
+  three-page PDF's result now contains text from the matched page and no
+  object syntax. A new test covers DOCX and HTML the same way.
 - **RFC-058 §6 row 5's `#[should_panic]` wrapper is removed**, by the change
   RFC-058 named as the one that would remove it.
   `a_paused_source_contributes_no_search_results` asserted the defect rather

@@ -49,3 +49,6 @@ windows-sys                 = { workspace = true, features = ["Win32_Foundation"
 tempfile                    = { workspace = true }
 lopdf                       = { workspace = true }
 rusqlite                    = { workspace = true }
+# RFC-060 §11 criterion 2's DOCX fixture: a DOCX is a ZIP, and the test
+# builds a minimal one rather than checking a binary into the tree.
+zip                         = { workspace = true }

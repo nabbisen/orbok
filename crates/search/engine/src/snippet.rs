@@ -4,10 +4,12 @@
 //! Privacy: no text is stored in the catalog. Snippets surface only
 //! when the source file is readable and current.
 
+use orbok_cache::{CacheService, OrbokCacheNamespace};
 use orbok_core::{OrbokError, OrbokResult, SEARCHABLE_SOURCE_STATUS_SQL};
 use orbok_db::Catalog;
 use orbok_db::repo::{ChunkRecord, SourceRepository};
-use orbok_fs::{GuardedSource, PathGuard};
+use orbok_extract::{ExtractOutput, LocationKind};
+use orbok_fs::{GuardedSource, PathGuard, ValidatedPath};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -18,14 +20,15 @@ use std::path::Path;
 /// entirely in memory to produce this function's single, short snippet.
 const MAX_SNIPPET_READ_BYTES: u64 = 64 * 1024;
 
-/// Load a text snippet for one chunk from its source file, using the
-/// stored line range. Returns `None` when the source file is missing
-/// or unreadable (UI should show "source unavailable").
-pub fn load_snippet(
-    guard: &PathGuard,
-    record: &ChunkRecord,
-    source_path: &str,
-) -> OrbokResult<Option<String>> {
+/// Display cap, shared by both rendering paths (read-from-file and
+/// cached-segments) so a PDF page's snippet is no longer than a text
+/// file's.
+const MAX_SNIPPET_CHARS: usize = 400;
+
+/// Read a snippet from the file itself, for a chunk whose stored
+/// positions really are line numbers. The caller has already validated
+/// the path through the boundary.
+fn load_snippet_from_file(record: &ChunkRecord, validated: &ValidatedPath) -> Option<String> {
     // Task 034 §5 (audit F-03): PDF/DOCX/HTML chunks store `Approximate`
     // location quality -- their `line_start`/`line_end` are paragraph or
     // page ordinals, not literal text-file line numbers, so reading "that
@@ -34,46 +37,128 @@ pub fn load_snippet(
     // text is not. Interim guard only -- RFC-060 owns the real fix
     // (locating actual text for these formats). Must run before the file
     // is even opened -- `load_snippet_from` below has no path to guard on.
+    // Task 034 §5 (audit F-03) kept this quality gate in front of the file
+    // read; `location_kind` now decides which path runs at all, and this
+    // stays as the narrower guard on the read itself.
     if record.location_quality != "exact" {
-        return Ok(None);
+        return None;
     }
 
-    // RFC-060 §5 / §11 criterion 9. `path_guard.rs`'s own doc says "before
-    // any backend code reads a file it must obtain a `ValidatedPath`", and
-    // this module opened the catalog's stored path directly -- the one
-    // backend read outside the boundary the README claims.
-    //
     // **TOCTOU, recorded rather than fixed** (RFC-060 §9 accepts it as
-    // separate): the guard canonicalises and checks membership, then the
-    // open below happens by path, so a path swapped for a symlink in
-    // between still escapes. "The boundary is TOCTOU" is defensible; "the
-    // boundary is not called" was not.
-    let validated = guard.validate(Path::new(source_path))?;
-    let Ok(file) = std::fs::File::open(&validated.canonical) else {
-        return Ok(None);
-    };
-    Ok(load_snippet_from(record, file))
+    // separate): the guard canonicalised and checked membership, then this
+    // open happens by path, so a path swapped for a symlink in between
+    // still escapes. "The boundary is TOCTOU" is defensible; "the boundary
+    // is not called" was not.
+    let file = std::fs::File::open(&validated.canonical).ok()?;
+    load_snippet_from(record, file)
 }
 
-/// [`load_snippet`], with a rejected path logged and rendered as "no
-/// snippet" rather than failing the search: a result whose file the
-/// boundary refuses is still a real result, and RFC-060 §6 keeps the
-/// snippet optional while the result is not.
-pub(crate) fn snippet_or_none(
-    guard: &PathGuard,
-    record: &ChunkRecord,
-    source_path: &str,
-) -> Option<String> {
-    match load_snippet(guard, record, source_path) {
-        Ok(snippet) => snippet,
-        Err(error) => {
-            tracing::warn!(
-                %error,
-                path = source_path,
-                "no snippet: the source boundary rejected this path"
-            );
-            None
+/// Everything the snippet path is allowed to read: the source boundary,
+/// and the extraction cache for formats whose stored positions are not
+/// line numbers (RFC-060 §6).
+///
+/// **The snippet path never extracts** (RFC-060 Amendment 3, owner
+/// decision): with no cached segments for a result, the snippet is simply
+/// absent and the result is still shown. Re-parsing the user's file at
+/// query time was ruled out.
+pub struct SnippetSource<'a> {
+    guard: PathGuard,
+    /// The catalog and cache travel together: the cache engine is opened
+    /// against the catalog, so one without the other reads nothing.
+    cached_extraction: Option<(&'a Catalog, &'a CacheService)>,
+}
+
+impl<'a> SnippetSource<'a> {
+    /// `cache` is `None` for callers that have no cache handle (the
+    /// keyword-only service in tests and benchmarks); non-`Lines` chunks
+    /// then render no snippet rather than the wrong bytes.
+    pub fn new(catalog: &'a Catalog, cache: Option<&'a CacheService>) -> OrbokResult<Self> {
+        Ok(Self {
+            guard: searchable_path_guard(catalog)?,
+            cached_extraction: cache.map(|cache| (catalog, cache)),
+        })
+    }
+
+    /// A source over an explicit guard and no cache, for tests that
+    /// exercise the file-reading half without a catalog behind them.
+    #[cfg(test)]
+    pub(crate) fn from_guard(guard: PathGuard) -> Self {
+        Self {
+            guard,
+            cached_extraction: None,
         }
+    }
+
+    /// The snippet for one chunk, or `None`. A rejected path is logged and
+    /// rendered as "no snippet" rather than failing the whole search: a
+    /// result whose file the boundary refuses is still a real result.
+    pub fn snippet_or_none(&self, record: &ChunkRecord, source_path: &str) -> Option<String> {
+        match self.load(record, source_path) {
+            Ok(snippet) => snippet,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    path = source_path,
+                    "no snippet: the source boundary rejected this path"
+                );
+                None
+            }
+        }
+    }
+
+    /// RFC-060 §6: **only `LocationKind::Lines` reads the raw file.** For
+    /// pages, paragraphs and blocks the stored positions are page or
+    /// paragraph ordinals, so reading "those lines" returns unrelated
+    /// bytes -- PDF object syntax, DOCX XML, HTML markup. Those render
+    /// from the cached extraction segments instead, and render nothing
+    /// when the cache holds no entry.
+    pub fn load(&self, record: &ChunkRecord, source_path: &str) -> OrbokResult<Option<String>> {
+        let validated = self.guard.validate(Path::new(source_path))?;
+        match LocationKind::parse(&record.location_kind) {
+            LocationKind::Lines => Ok(load_snippet_from_file(record, &validated)),
+            LocationKind::Pages | LocationKind::Paragraphs | LocationKind::Blocks => {
+                self.cached_segment_text(record, &validated)
+            }
+            // Including every row written before migration 0008, whose
+            // column is NULL: absence, not a guess.
+            LocationKind::Unknown => Ok(None),
+        }
+    }
+
+    fn cached_segment_text(
+        &self,
+        record: &ChunkRecord,
+        validated: &ValidatedPath,
+    ) -> OrbokResult<Option<String>> {
+        let Some((catalog, cache)) = self.cached_extraction else {
+            return Ok(None);
+        };
+        let engine = cache.engine::<ExtractOutput>(
+            catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )?;
+        let Some(extraction) = CacheService::get_fresh(&engine, validated)? else {
+            return Ok(None);
+        };
+        // The segments whose own position range overlaps this chunk's --
+        // the same span arithmetic `embedding.rs` uses to rebuild a
+        // chunk's text, in the same units, since both read the positions
+        // the extractor wrote.
+        let text: String = extraction
+            .segments
+            .iter()
+            .filter(|segment| {
+                segment.line_start <= record.line_end && segment.line_end >= record.line_start
+            })
+            .map(|segment| segment.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(trimmed.chars().take(MAX_SNIPPET_CHARS).collect()))
     }
 }
 
@@ -121,7 +206,7 @@ pub(crate) fn load_snippet_from(record: &ChunkRecord, source: impl Read) -> Opti
     } else {
         let snippet = lines.join("\n");
         // Trim to a reasonable display length.
-        Some(snippet.chars().take(400).collect())
+        Some(snippet.chars().take(MAX_SNIPPET_CHARS).collect())
     }
 }
 
@@ -151,7 +236,7 @@ pub fn chunk_records_for(
     let sql = format!(
         "SELECT c.chunk_id, c.file_id, c.chunk_ordinal, c.heading_path, \
                 cl.line_start, cl.line_end, cl.byte_start, cl.byte_end, cl.location_quality, \
-                f.canonical_path \
+                cl.location_kind, f.canonical_path \
          FROM chunks c \
          LEFT JOIN chunk_locations cl ON cl.chunk_id = c.chunk_id \
          JOIN files f ON f.file_id = c.file_id \
@@ -192,8 +277,9 @@ fn row_to_chunk_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ChunkRecord
             byte_start: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
             byte_end: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
             location_quality: row.get(8).unwrap_or_else(|_| "unknown".to_string()),
+            location_kind: row.get(9).unwrap_or_else(|_| "unknown".to_string()),
         },
-        row.get::<_, String>(9)?,
+        row.get::<_, String>(10)?,
     ))
 }
 

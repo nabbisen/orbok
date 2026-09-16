@@ -65,6 +65,7 @@ crates/app/src/main.rs	sensitive source: {warning}	tracing::warn! log message, n
 crates/app/src/main.rs	scan failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
 crates/app/src/main.rs	add source failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
 crates/app/src/main.rs	clean snippets failed: {e}	tracing::error! log message, not rendered in the GUI
+crates/app/src/main.rs	snippets for PDF/DOCX/HTML results are unavailable this session	tracing::warn! log message, not rendered in the GUI (RFC-060 §6: the extraction cache could not be opened, so page/paragraph/block snippets render empty)
 crates/app/src/main.rs	clean search cache failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI

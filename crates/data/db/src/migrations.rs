@@ -53,6 +53,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "index_jobs_status_check",
         sql: include_str!("../migrations/0007_index_jobs_status_check.sql"),
     },
+    Migration {
+        version: 8,
+        name: "chunk_location_kind",
+        sql: include_str!("../migrations/0008_chunk_location_kind.sql"),
+    },
 ];
 
 /// Apply all pending migrations. Called from `Catalog::open` before any

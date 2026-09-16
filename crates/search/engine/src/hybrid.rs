@@ -6,7 +6,7 @@ use crate::KeywordSearchEngine;
 use crate::multilingual::MultilingualKeywordEngine;
 use crate::rrf::{FusedCandidate, rrf_fuse};
 use crate::service::{MatchBadge, SearchResult};
-use crate::snippet::{chunk_records_for, searchable_path_guard, snippet_or_none};
+use crate::snippet::{SnippetSource, chunk_records_for};
 use crate::vector::ExactVectorSearch;
 use orbok_core::OrbokResult;
 use orbok_db::Catalog;
@@ -86,6 +86,9 @@ impl Limits {
 pub struct HybridSearchService<'a> {
     catalog: &'a Catalog,
     embedding_model: Option<(&'a dyn EmbeddingModel, String)>,
+    /// The extraction cache, when the caller has one (RFC-060 §6): the
+    /// only source a page/paragraph/block snippet may be rendered from.
+    extraction_cache: Option<&'a orbok_cache::CacheService>,
 }
 
 /// Timing breakdown for one search execution.
@@ -113,7 +116,16 @@ impl<'a> HybridSearchService<'a> {
         Self {
             catalog,
             embedding_model: None,
+            extraction_cache: None,
         }
+    }
+
+    /// Give the service the extraction cache, so results whose positions
+    /// are pages, paragraphs or blocks can render a snippet from the
+    /// cached segments (RFC-060 §6). Without it those render none.
+    pub fn with_extraction_cache(mut self, cache: &'a orbok_cache::CacheService) -> Self {
+        self.extraction_cache = Some(cache);
+        self
     }
 
     /// Hybrid mode with an embedding model.
@@ -121,6 +133,7 @@ impl<'a> HybridSearchService<'a> {
         Self {
             catalog,
             embedding_model: Some((model, model_id.to_string())),
+            extraction_cache: None,
         }
     }
 
@@ -219,14 +232,14 @@ impl<'a> HybridSearchService<'a> {
             .map(|candidate| candidate.chunk_id.clone())
             .collect();
         let records = chunk_records_for(self.catalog, &chunk_ids)?;
-        let guard = searchable_path_guard(self.catalog)?;
+        let snippets = SnippetSource::new(self.catalog, self.extraction_cache)?;
 
         let mut results = Vec::with_capacity(top_candidates.len());
         for candidate in top_candidates {
             let Some((chunk, canonical_path)) = records.get(candidate.chunk_id.as_str()) else {
                 continue;
             };
-            let snippet = snippet_or_none(&guard, chunk, canonical_path);
+            let snippet = snippets.snippet_or_none(chunk, canonical_path);
             let display_path = short_display_path(canonical_path);
             let title = chunk.heading_path.clone().or_else(|| {
                 Path::new(canonical_path)

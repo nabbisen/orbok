@@ -55,6 +55,7 @@ fn spec(text: &str) -> ChunkSpec {
         byte_start: None,
         byte_end: None,
         location_quality: "exact",
+        location_kind: "lines",
         parent_idx: None,
     }
 }

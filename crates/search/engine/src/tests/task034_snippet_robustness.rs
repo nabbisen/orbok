@@ -53,6 +53,7 @@ fn record(line_start: u32, line_end: u32, location_quality: &str) -> ChunkRecord
         byte_start: None,
         byte_end: None,
         location_quality: location_quality.to_string(),
+        location_kind: "lines".to_string(),
     }
 }
 
@@ -138,9 +139,9 @@ fn inverted_line_range_does_not_panic() {
 
     // line_end (2) < line_start (5): a malformed/corrupted stored range.
     let rec = record(5, 2, "exact");
-    let guard = guard_over(dir.path());
+    let snippets = crate::snippet::SnippetSource::from_guard(guard_over(dir.path()));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::snippet::load_snippet(&guard, &rec, file.to_str().unwrap())
+        snippets.load(&rec, file.to_str().unwrap())
     }));
 
     assert!(
@@ -162,10 +163,10 @@ fn non_exact_location_quality_yields_no_snippet() {
     let file = dir.path().join("doc.txt");
     std::fs::write(&file, "real readable text on line one\n").unwrap();
 
-    let guard = guard_over(dir.path());
+    let snippets = crate::snippet::SnippetSource::from_guard(guard_over(dir.path()));
     let approximate = record(1, 1, "approximate");
     assert_eq!(
-        crate::snippet::load_snippet(&guard, &approximate, file.to_str().unwrap()).unwrap(),
+        snippets.load(&approximate, file.to_str().unwrap()).unwrap(),
         None,
         "non-exact location_quality must yield no snippet rather than the wrong bytes"
     );
@@ -174,7 +175,8 @@ fn non_exact_location_quality_yields_no_snippet() {
     // still produce a snippet -- the guard is not simply always-None.
     let exact = record(1, 1, "exact");
     assert!(
-        crate::snippet::load_snippet(&guard, &exact, file.to_str().unwrap())
+        snippets
+            .load(&exact, file.to_str().unwrap())
             .unwrap()
             .is_some(),
         "exact location_quality must still produce a snippet"
