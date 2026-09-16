@@ -6,7 +6,6 @@ use crate::i18n::{MessageKey, tr};
 use crate::notice::UserNotice;
 use crate::state::{AppState, Message};
 use crate::tests::iced_test_guard;
-use crate::views;
 use iced_test::simulator;
 
 fn failed_search(query: &str) -> Message {
@@ -25,7 +24,9 @@ fn try_again_on_a_failed_search_does_more_than_close_the_notice() {
     let _guard = iced_test_guard();
     let mut state = AppState::default();
     state.update(&failed_search("alpha"));
-    let mut ui = simulator(views::search_view(&state));
+    // Task 064: notices render in the shell, above every view.
+    let app = crate::shell::OrbokApp::with_state(state.clone());
+    let mut ui = simulator(app.view());
     let _ = ui.click(tr(state.locale, MessageKey::NoticeActionTryAgain));
     let messages: Vec<Message> = ui.into_messages().collect();
     assert!(!messages.is_empty(), "the button rendered and was pressed");
@@ -83,7 +84,9 @@ fn a_notice_without_a_retry_renders_no_action_button() {
     let _guard = iced_test_guard();
     let mut state = AppState::default();
     state.update(&Message::ShowNotice(UserNotice::SearchDidNotFinish));
-    let mut ui = simulator(views::search_view(&state));
+    // Task 064: notices render in the shell, above every view.
+    let app = crate::shell::OrbokApp::with_state(state.clone());
+    let mut ui = simulator(app.view());
     assert!(
         ui.find(tr(state.locale, MessageKey::NoticeSearchFailTitle))
             .is_ok(),

@@ -791,6 +791,18 @@ pub enum Message {
 
 impl AppState {
     pub fn update(&mut self, message: &Message) {
+        let view_before = self.active_view;
+        self.apply(message);
+        // Task 064: an info notice belongs to the view it was raised on, so a
+        // view change clears it -- compared here, once, rather than in each
+        // message that can switch views. A problem notice stays.
+        if self.active_view != view_before && self.notice.as_ref().is_some_and(|n| !n.is_problem())
+        {
+            self.clear_notice();
+        }
+    }
+
+    fn apply(&mut self, message: &Message) {
         match message {
             Message::Switch(view) => {
                 self.active_view = *view;
@@ -1223,6 +1235,12 @@ impl AppState {
     /// keyboard equivalent) so the two can never drift apart.
     /// Show `notice`, with the retry its action button sends, or none.
     fn raise_notice(&mut self, notice: UserNotice, action: Option<Box<Message>>) {
+        // Task 064: an info notice never replaces an unresolved problem; it is
+        // dropped, and the problem keeps its own action. A new problem
+        // replaces whatever is showing -- the latest failure wins.
+        if !notice.is_problem() && self.notice.as_ref().is_some_and(UserNotice::is_problem) {
+            return;
+        }
         self.notice = Some(notice);
         self.notice_action = action;
     }

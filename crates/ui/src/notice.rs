@@ -67,21 +67,15 @@ pub enum UserNotice {
 impl UserNotice {
     /// Whether this notice reports a problem (vs. a success confirmation).
     /// The view can use this to choose tone, but never relies on colour alone.
+    ///
+    /// Task 064: defined through [`Self::tone`], so the class a notice belongs
+    /// to has one source. A problem (`Danger`/`Warning`) stays until the user
+    /// dismisses it or presses its action, across view switches; an info
+    /// notice (`Success`/`Info`) is cleared when the view changes and never
+    /// replaces a problem that is showing.
     pub fn is_problem(&self) -> bool {
-        matches!(
-            self,
-            Self::SensitiveSourceAdded
-                | Self::FolderCouldNotBeAdded
-                | Self::SearchDidNotFinish
-                | Self::FilesMovedOrMissing
-                | Self::DiagnosticsFileFailed
-                | Self::SettingCouldNotBeSaved
-                | Self::CatalogResetFailed
-                | Self::SourceCouldNotBeRemoved
-                | Self::StorageUnavailable
-                | Self::IndexingCouldNotStart
-                | Self::ModelCouldNotBeLoaded
-        )
+        use snora::design::Tone;
+        matches!(self.tone(), Tone::Danger | Tone::Warning)
     }
 
     /// Map this notice to a Snora Design tone. Problem notices use Danger or

@@ -97,7 +97,9 @@ fn the_model_load_notice_try_again_asks_to_load_again() {
         notice: UserNotice::ModelCouldNotBeLoaded,
         action: Box::new(Message::RetryModelLoad),
     });
-    let mut ui = simulator(views::search_view(&state));
+    // Task 064: notices render in the shell, above every view.
+    let app = crate::shell::OrbokApp::with_state(state.clone());
+    let mut ui = simulator(app.view());
     assert!(
         ui.find(tr(state.locale, MessageKey::ModelLoadFailed))
             .is_ok()

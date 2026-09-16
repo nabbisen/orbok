@@ -317,9 +317,27 @@ impl OrbokApp {
     pub fn view(&self) -> Element<'_, Message> {
         let locale = self.state.locale;
 
+        // Task 064: the one notice region, above the wizard and above every
+        // view, so a notice is visible wherever the user acted.
+        let notice_region: Option<Element<'_, Message>> =
+            self.state.notice.as_ref().map(|notice| {
+                iced::widget::container(views::friendly_notice(
+                    &self.state.tokens,
+                    locale,
+                    notice,
+                    self.state.notice_action.is_some(),
+                ))
+                .padding(self.state.tokens.spacing.md)
+                .into()
+            });
+
         // ── Startup wizard takes priority ──────────────────────────────
         if self.state.wizard.is_some() {
-            return views::wizard_view(&self.state);
+            let wizard = views::wizard_view(&self.state);
+            return match notice_region {
+                Some(notice) => iced::widget::column![notice, wizard].into(),
+                None => wizard,
+            };
         }
 
         // ── Sidebar: three top-level groups ───────────────────────────
@@ -401,12 +419,16 @@ impl OrbokApp {
             ViewId::Settings => views::settings_view(&self.state),
         };
 
-        // Compose: tab bar (if any) stacked above the page body.
-        let body: Element<'_, Message> = if let Some(tabs) = tab_bar_el {
-            iced::widget::column![tabs, page_body].spacing(0).into()
-        } else {
-            page_body
-        };
+        // Compose: the notice region (if any), then the tab bar (if any),
+        // then the page body.
+        let mut body = iced::widget::column![].spacing(0);
+        if let Some(notice) = notice_region {
+            body = body.push(notice);
+        }
+        if let Some(tabs) = tab_bar_el {
+            body = body.push(tabs);
+        }
+        let body: Element<'_, Message> = body.push(page_body).into();
 
         render(AppLayout::new(body).side_bar(side_bar))
     }

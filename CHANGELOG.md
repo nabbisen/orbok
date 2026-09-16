@@ -56,6 +56,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 064: notices were only visible on the Search and Folders pages.** A
+  failure on Storage or Settings, or while model setup was open, showed
+  nothing where it happened; the notice appeared later, detached from its
+  cause, when the user went to Search or Folders. Notices now appear at the
+  top of every page and over model setup.
+  - **Problems** ("Folder not removed", "Setting not saved", …) stay until
+    dismissed or acted on, even when you move to another page.
+  - **Confirmations** ("Folder added", "… cleared") go away when you change
+    pages.
+  - A confirmation never hides a problem that is still showing.
 - **Task 063: a model download that could not start showed "Downloading"
   forever.** If orbok could not use the model folder when a download began,
   the setup page stayed on "Downloading" with nothing downloading, and only

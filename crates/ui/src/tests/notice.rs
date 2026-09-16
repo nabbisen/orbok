@@ -29,7 +29,7 @@ use std::collections::HashSet;
 /// here, actually closes the gap.)
 macro_rules! every_user_notice {
     ($($variant:ident),+ $(,)?) => {
-        const ALL: &[UserNotice] = &[$(UserNotice::$variant),+];
+        pub(crate) const ALL: &[UserNotice] = &[$(UserNotice::$variant),+];
 
         #[allow(dead_code)]
         fn assert_exhaustive(n: &UserNotice) {

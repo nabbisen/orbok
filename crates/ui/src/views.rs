@@ -208,7 +208,9 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
     }
 }
 
-fn friendly_notice<'a>(
+/// The one notice renderer (Task 064: called only from the shell, above
+/// every view and the wizard).
+pub(crate) fn friendly_notice<'a>(
     tokens: &'a Tokens,
     locale: Locale,
     notice: &crate::notice::UserNotice,
@@ -295,15 +297,6 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
 
     // RFC-042: Recent searches (collapsed button or expanded panel).
     content = content.push(recent_searches_panel(state));
-
-    if let Some(notice) = &state.notice {
-        content = content.push(friendly_notice(
-            tokens,
-            locale,
-            notice,
-            state.notice_action.is_some(),
-        ));
-    }
 
     // RFC-036 §14.2 (RFC-056 Slice 4): a reminder that search already
     // works on prepared files while background work continues. Shown
@@ -514,14 +507,6 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
             .line_height(theme::meta_lh(tokens)),
     ];
 
-    if let Some(notice) = &state.notice {
-        content = content.push(friendly_notice(
-            tokens,
-            locale,
-            notice,
-            state.notice_action.is_some(),
-        ));
-    }
     if state.sources.is_empty() {
         content = content.push(
             column![
