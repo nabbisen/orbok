@@ -263,8 +263,6 @@ message_keys! {
     ModelLoadFailedTitle,
     ModelLoadRetry,
     // Common actions
-    NoticeDownloadFailTitle,
-    NoticeDownloadFailBody,
     NoticeFolderFailTitle,
     NoticeFolderFailBody,
     NoticeSearchFailTitle,
@@ -284,6 +282,7 @@ message_keys! {
     NoticeCleanupBody,
     NoticeActionTryAgain,
     NoticeActionChooseFolder,
+    NoticeActionCheckFolders,
     // RFC-061 §8: failures that were silently swallowed before
     NoticeSettingSaveFailTitle,
     NoticeSettingSaveFailBody,

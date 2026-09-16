@@ -41,7 +41,6 @@ macro_rules! every_user_notice {
 }
 
 every_user_notice! {
-    DownloadDidNotFinish,
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
     FilesMovedOrMissing,

@@ -124,7 +124,10 @@ fn failures_surface_notice_success_clears_it() {
     let mut state = AppState::default();
 
     // A search error creates a notice.
-    state.update(&Message::SearchError("timeout".into()));
+    state.update(&Message::SearchError {
+        query: "q".into(),
+        error: "timeout".into(),
+    });
     assert!(state.notice.is_some(), "search error must create a notice");
     assert!(!state.search_running);
 
@@ -152,7 +155,6 @@ fn problem_notices_offer_action_confirmations_do_not() {
     for n in [
         UserNotice::SearchDidNotFinish,
         UserNotice::FolderCouldNotBeAdded,
-        UserNotice::DownloadDidNotFinish,
     ] {
         assert!(n.is_problem());
     }
@@ -273,7 +275,6 @@ fn notice_tone_mapping_is_consistent() {
     for n in [
         UserNotice::SearchDidNotFinish,
         UserNotice::FolderCouldNotBeAdded,
-        UserNotice::DownloadDidNotFinish,
     ] {
         assert_eq!(n.tone(), Tone::Danger, "{n:?} must be Danger");
     }

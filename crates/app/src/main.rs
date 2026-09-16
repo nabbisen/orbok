@@ -14,6 +14,7 @@ mod diagnostics;
 mod download;
 mod history;
 mod model_flow;
+mod notice_retry;
 mod result_launch;
 #[cfg(test)]
 mod rfc059_cache_measurement;
@@ -188,6 +189,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .clone()
                     .try_send(scheduler_host::ResourceObservation::UserActive);
             }
+            // Task 060: a notice's action button dispatches the concrete retry
+            // its raise site stored, after clearing the notice.
+            if matches!(message, Message::NoticeActionPressed) {
+                return app
+                    .state
+                    .take_notice_action()
+                    .map_or_else(iced::Task::none, iced::Task::done);
+            }
+            // Task 060: a failed search's Try again -- restore that query,
+            // then submit it through the ordinary path.
+            if let Message::RetrySearch(_) = &message {
+                app.update(message);
+                return iced::Task::done(Message::SubmitSearch);
+            }
             if let Some(effect) = model_flow::reduce(&mut app.state, &message) {
                 return match effect {
                     model_flow::ModelFlowEffect::None => iced::Task::none(),
@@ -200,9 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(store) => store,
                             Err(e) => {
                                 tracing::error!("model store unavailable: {e}");
-                                app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::StorageUnavailable,
-                                ));
+                                app.update(notice_retry::download_storage_unavailable());
                                 return iced::Task::none();
                             }
                         };
@@ -293,7 +306,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     action,
                     &result_launch::SystemLauncher,
                 ) {
-                    app.update(Message::ShowNotice(notice));
+                    let _ = notice; // always FilesMovedOrMissing
+                    app.update(notice_retry::result_not_launched());
                 }
                 return iced::Task::none();
             }
@@ -360,17 +374,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(health) => app.update(Message::HealthUpdated(health)),
                                 Err(e) => {
                                     tracing::error!("scan failed: {e}");
-                                    app.update(Message::ShowNotice(
-                                        orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
-                                    ));
+                                    app.update(notice_retry::add_folder_failed());
                                 }
                             }
                         }
                         Err(e) => {
                             tracing::error!("add source failed: {e}");
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
-                            ));
+                            app.update(notice_retry::add_folder_failed());
                         }
                     }
                     // Clears the picker flag whatever the outcome.
@@ -394,9 +404,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         Err(e) => {
                             tracing::error!("cache handle unavailable for clean snippets: {e}");
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::StorageUnavailable,
-                            ));
+                            app.update(notice_retry::cleanup_storage_unavailable(&message));
                         }
                     }
                     return iced::Task::none();
@@ -413,9 +421,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         Err(e) => {
                             tracing::error!("cache handle unavailable for clean search cache: {e}");
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::StorageUnavailable,
-                            ));
+                            app.update(notice_retry::cleanup_storage_unavailable(&message));
                         }
                     }
                     return iced::Task::none();
@@ -436,9 +442,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tracing::error!(
                                 "cache handle unavailable for clean temporary extraction: {e}"
                             );
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::StorageUnavailable,
-                            ));
+                            app.update(notice_retry::cleanup_storage_unavailable(&message));
                         }
                     }
                     return iced::Task::none();
@@ -461,9 +465,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tracing::error!(
                                 "cache handle unavailable for remove replaced stale indexes: {e}"
                             );
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::StorageUnavailable,
-                            ));
+                            app.update(notice_retry::cleanup_storage_unavailable(&message));
                         }
                     }
                     return iced::Task::none();
@@ -484,16 +486,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // cleared on disk.
                             if let Err(e) = bootstrap::reset_catalog(&catalog, &cache) {
                                 tracing::error!("reset catalog failed: {e}");
-                                app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::CatalogResetFailed,
-                                ));
+                                app.update(notice_retry::reset_failed());
                             }
                         }
                         Err(e) => {
                             tracing::error!("cache handle unavailable for reset: {e}");
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::StorageUnavailable,
-                            ));
+                            app.update(notice_retry::reset_storage_unavailable());
                         }
                     }
                     // UI state pre-cleared in AppState::update; fall through for update().
@@ -501,9 +499,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Message::SourceRemoved(source_id) => {
                     if let Err(e) = bootstrap::remove_source(&catalog, source_id) {
                         tracing::error!("remove source failed: {e}");
-                        app.update(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::SourceCouldNotBeRemoved,
-                        ));
+                        app.update(notice_retry::source_not_removed());
                     }
                 }
                 // RFC-037 §10.2 manual refresh (Task 035): same function
@@ -556,25 +552,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Message::SetTheme(theme) => {
                     if let Err(e) = bootstrap::persist_theme(&runtime, *theme) {
                         tracing::error!("persist theme failed: {e}");
-                        app.update(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
-                        ));
+                        app.update(notice_retry::setting_not_saved(&message));
                     }
                 }
                 Message::SetTextScale(scale) => {
                     if let Err(e) = bootstrap::persist_text_scale(&runtime, *scale) {
                         tracing::error!("persist text scale failed: {e}");
-                        app.update(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
-                        ));
+                        app.update(notice_retry::setting_not_saved(&message));
                     }
                 }
                 Message::SetReducedMotion(val) => {
                     if let Err(e) = bootstrap::persist_reduced_motion(&runtime, *val) {
                         tracing::error!("persist reduced motion failed: {e}");
-                        app.update(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::SettingCouldNotBeSaved,
-                        ));
+                        app.update(notice_retry::setting_not_saved(&message));
                     }
                 }
                 Message::SubmitSearch => {
@@ -661,7 +651,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             app.update(Message::HistoryLoaded(history::load_history(&catalog)));
                         }
                         Err(e) => {
-                            app.update(Message::SearchError(e.clone()));
+                            app.update(Message::SearchError {
+                                query: query.clone(),
+                                error: e.clone(),
+                            });
                         }
                     }
                     return iced::Task::none();
@@ -693,9 +686,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Err(e) => {
                                 tracing::error!("add source from search failed: {e}");
                                 app.update(Message::FolderPickerCancelled);
-                                app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::FolderCouldNotBeAdded,
-                                ));
+                                app.update(notice_retry::search_folder_failed());
                                 return iced::Task::none();
                             }
                         }
@@ -738,6 +729,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &app.state.search_ui.active_filters,
                         app.state.search_location.selected.as_ref(),
                     );
+                    let failed_query = query.clone();
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
@@ -754,9 +746,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .map_err(|e| e.to_string())
                         },
-                        |outcome| match outcome {
+                        move |outcome| match outcome {
                             Ok(results) => Message::SearchResultsReady(results),
-                            Err(e) => Message::SearchError(e),
+                            Err(error) => Message::SearchError {
+                                query: failed_query,
+                                error,
+                            },
                         },
                     );
                 }
@@ -810,6 +805,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &app.state.search_ui.active_filters,
                         app.state.search_location.selected.as_ref(),
                     );
+                    let failed_query = query.clone();
                     return iced::Task::perform(
                         async move {
                             bootstrap::run_search(
@@ -826,9 +822,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )
                             .map_err(|e| e.to_string())
                         },
-                        |outcome| match outcome {
+                        move |outcome| match outcome {
                             Ok(results) => Message::SearchResultsReady(results),
-                            Err(e) => Message::SearchError(e),
+                            Err(error) => Message::SearchError {
+                                query: failed_query,
+                                error,
+                            },
                         },
                     );
                 }

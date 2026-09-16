@@ -161,6 +161,7 @@ SCAN_FILES=(
   crates/ui/src/views/wizard.rs
   crates/app/src/diagnostics.rs
   crates/app/src/main.rs
+  crates/app/src/notice_retry.rs
 )
 
 # file → reason, one entry per non-scanned file discovery yields today.

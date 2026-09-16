@@ -36,6 +36,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 060: nine notice buttons only closed the notice.** "Try again",
+  "Choose another folder" and "Create diagnostics file" on problem notices
+  all just dismissed, whatever the label said. A notice's action button now
+  does what its label says, or is not shown:
+  - **Try again after a failed search** re-runs *that* search, even if
+    something else has been typed since.
+  - **Choose another folder** opens the picker that failed: add-folder, or
+    choose-a-folder-for-search.
+  - **Try again after a setting could not be saved** saves that setting
+    again.
+  - **Try again after a cleanup could not reach storage** runs that cleanup
+    again.
+  - **Create diagnostics file** creates it again.
+  - **Try again after a failed reset** re-opens the reset confirmation; it
+    never resets directly.
+  - **After a result could not be opened**, the button now says "Check
+    folders" and goes to Sources, instead of the untrue "Choose another
+    folder".
+  - **No button** after a failed folder removal (removal has no confirmation
+    to re-open, and retrying would remove directly) or a download that could
+    not reach the model store.
+
+  The never-raised "Download did not finish" notice was removed.
 - **Task 059: a model that would not save or load left no way out of setup.**
   Both pages offered only a retry, and Escape did nothing there, so a model
   that kept failing kept the user on that page. Both pages now also offer

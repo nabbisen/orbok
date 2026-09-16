@@ -175,10 +175,6 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelLoadFailed => "モデルは保存されましたが、読み込めませんでした。",
         ModelLoadRetry => "もう一度試す",
         ModelLoadFailedTitle => "モデルを読み込めませんでした",
-        NoticeDownloadFailTitle => "ダウンロードが完了しませんでした",
-        NoticeDownloadFailBody => {
-            "ダウンロードを完了できませんでした。接続を確認して、もう一度お試しください。"
-        }
         NoticeFolderFailTitle => "フォルダを追加できませんでした",
         NoticeFolderFailBody => {
             "そのフォルダを追加できませんでした。別のフォルダを選ぶか、開けるか確認してください。"
@@ -202,6 +198,7 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeCleanupBody => "ファイルはそのままです。",
         NoticeActionTryAgain => "もう一度試す",
         NoticeActionChooseFolder => "別のフォルダを選ぶ",
+        NoticeActionCheckFolders => "フォルダを確認",
         NoticeSettingSaveFailTitle => "設定を保存できませんでした",
         NoticeSettingSaveFailBody => {
             "変更を保存できませんでした。次回起動時に元に戻っている可能性があります。"

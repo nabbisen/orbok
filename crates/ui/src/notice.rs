@@ -12,7 +12,6 @@ use crate::i18n::{Locale, MessageKey, tr};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserNotice {
     // ── Problems ──────────────────────────────────────────────────────
-    DownloadDidNotFinish,
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
     FilesMovedOrMissing,
@@ -72,7 +71,6 @@ impl UserNotice {
         matches!(
             self,
             Self::SensitiveSourceAdded
-                | Self::DownloadDidNotFinish
                 | Self::FolderCouldNotBeAdded
                 | Self::SearchDidNotFinish
                 | Self::FilesMovedOrMissing
@@ -93,8 +91,7 @@ impl UserNotice {
         use snora::design::Tone;
         match self {
             // Hard failures the user must notice.
-            Self::DownloadDidNotFinish
-            | Self::FolderCouldNotBeAdded
+            Self::FolderCouldNotBeAdded
             | Self::SearchDidNotFinish
             | Self::DiagnosticsFileFailed
             | Self::SettingCouldNotBeSaved
@@ -121,7 +118,6 @@ impl UserNotice {
 
     pub fn title(&self, locale: Locale) -> &'static str {
         let key = match self {
-            Self::DownloadDidNotFinish => MessageKey::NoticeDownloadFailTitle,
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailTitle,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailTitle,
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingTitle,
@@ -149,7 +145,6 @@ impl UserNotice {
 
     pub fn body(&self, locale: Locale) -> &'static str {
         let key = match self {
-            Self::DownloadDidNotFinish => MessageKey::NoticeDownloadFailBody,
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailBody,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailBody,
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingBody,
@@ -175,15 +170,18 @@ impl UserNotice {
         tr(locale, key)
     }
 
-    /// Suggested next-action label, if the notice offers a recovery action.
+    /// The action button's label, if this kind of notice can offer one.
+    /// The button renders only when the raise site also stored the concrete
+    /// retry in `AppState::notice_action` (Task 060): a label with no retry
+    /// behind it is not shown.
     /// Confirmations return `None` (they are dismissed, not acted upon).
     pub fn action(&self, locale: Locale) -> Option<&'static str> {
         let key = match self {
-            Self::DownloadDidNotFinish | Self::SearchDidNotFinish => {
-                MessageKey::NoticeActionTryAgain
-            }
+            Self::SearchDidNotFinish => MessageKey::NoticeActionTryAgain,
             Self::FolderCouldNotBeAdded => MessageKey::NoticeActionChooseFolder,
-            Self::FilesMovedOrMissing => MessageKey::NoticeActionChooseFolder,
+            // Task 060: "Choose another folder" was untrue after a refused
+            // or failed open; the folder-not-found detail is on Sources.
+            Self::FilesMovedOrMissing => MessageKey::NoticeActionCheckFolders,
             Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
             | Self::FolderAlreadyAdded
@@ -205,15 +203,5 @@ impl UserNotice {
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadRetry,
         };
         Some(tr(locale, key))
-    }
-
-    /// The message the notice's action button sends. Every notice before
-    /// Task 057 only dismisses; `ModelCouldNotBeLoaded`'s "Try again" asks
-    /// background preparation to load the model again.
-    pub fn action_message(&self) -> crate::state::Message {
-        match self {
-            Self::ModelCouldNotBeLoaded => crate::state::Message::RetryModelLoad,
-            _ => crate::state::Message::ClearNotice,
-        }
     }
 }

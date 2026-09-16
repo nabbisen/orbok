@@ -2413,7 +2413,16 @@ async fn a_model_the_host_cannot_load_is_reported_once() {
         tokio::select! {
             () = &mut window => break,
             message = rx.next() => match message {
-                Some(orbok_ui::Message::ShowNotice(UserNotice::ModelCouldNotBeLoaded)) => notices += 1,
+                Some(orbok_ui::Message::ShowNoticeWithAction {
+                    notice: UserNotice::ModelCouldNotBeLoaded,
+                    action,
+                }) => {
+                    assert!(
+                        matches!(*action, orbok_ui::Message::RetryModelLoad),
+                        "Task 060: its Try again loads the model again"
+                    );
+                    notices += 1;
+                }
                 Some(_) => {}
                 None => break,
             },

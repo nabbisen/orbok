@@ -458,6 +458,11 @@ pub struct AppState {
     pub show_advanced: bool,
     /// Active user-facing notice (problem or confirmation), or `None`.
     pub notice: Option<UserNotice>,
+    /// Task 060: what the notice's action button does -- the concrete retry
+    /// its raise site knew (re-running *that* search, re-opening *that*
+    /// confirmation). `None` means the notice renders no action button, only
+    /// its dismiss control. Cleared with the notice.
+    pub notice_action: Option<Box<Message>>,
     /// Awaiting user confirmation before running reset catalog.
     pub confirm_reset: bool,
     /// RFC-042: whether "Remember recent searches" is on (reflects the
@@ -508,6 +513,7 @@ impl Default for AppState {
             add_source_picker_in_progress: false,
             show_advanced: false,
             notice: None,
+            notice_action: None,
             confirm_reset: false,
             remember_recent_searches: true,
             confirm_clear_history: false,
@@ -531,6 +537,19 @@ pub enum Message {
     /// User toggled reduced-motion preference (RFC-035).
     SetReducedMotion(bool),
     ShowNotice(UserNotice),
+    /// Task 060: show a notice whose action button sends `action` -- the
+    /// concrete retry of what failed.
+    ShowNoticeWithAction {
+        notice: UserNotice,
+        action: Box<Message>,
+    },
+    /// Task 060: the notice's action button. orbok takes
+    /// `AppState::take_notice_action`, which clears the notice, and
+    /// dispatches it.
+    NoticeActionPressed,
+    /// Task 060: retry a search that failed -- restores exactly that query
+    /// and submits it, whatever has been typed since.
+    RetrySearch(String),
     ClearNotice,
     // Storage cleanup
     CleanSnippets,
@@ -563,7 +582,12 @@ pub enum Message {
         outcome: Result<Vec<SearchResultDisplay>, String>,
     },
     SearchResultsReady(Vec<SearchResultDisplay>),
-    SearchError(String),
+    /// A search failed. Task 060: carries the query that failed, so its
+    /// notice can re-run exactly that query.
+    SearchError {
+        query: String,
+        error: String,
+    },
     SelectResult(usize),
     /// HANDOFF-041: open the result at this index in its default
     /// application. An index, not a path (§1.3).
@@ -791,10 +815,15 @@ impl AppState {
                 self.wizard = Some(crate::state::WizardState::NotConfigured);
                 self.wizard_path_input = String::new();
             }
-            Message::ShowNotice(n) => self.notice = Some(n.clone()),
+            Message::ShowNotice(n) => self.raise_notice(n.clone(), None),
+            Message::ShowNoticeWithAction { notice, action } => {
+                self.raise_notice(notice.clone(), Some(action.clone()));
+            }
+            Message::NoticeActionPressed => {} // handled by orbok
+            Message::RetrySearch(query) => self.query = query.clone(),
             // Task 057: orbok re-sends the model change to background
             // preparation; the notice it answers is dismissed here.
-            Message::ClearNotice | Message::RetryModelLoad => self.notice = None,
+            Message::ClearNotice | Message::RetryModelLoad => self.clear_notice(),
             Message::QueryChanged(query) => {
                 self.query = query.clone();
                 self.search_ui.text = query.clone();
@@ -815,7 +844,7 @@ impl AppState {
                 self.search_results = results.clone();
                 self.search_running = false;
                 self.selected_result = None;
-                self.notice = None;
+                self.clear_notice();
                 self.search_ui.results_status = if count == 0 {
                     if self.search_ui.has_active_filters() {
                         ResultsStatus::EmptyAfterFiltering
@@ -826,12 +855,16 @@ impl AppState {
                     ResultsStatus::Ready { total_count: count }
                 };
             }
-            Message::SearchError(_) => {
+            Message::SearchError { query, .. } => {
                 self.search_running = false;
                 self.search_ui.results_status = ResultsStatus::Problem {
                     friendly_message: tr(self.locale, MessageKey::NoticeSearchFailBody).to_string(),
                 };
-                self.notice = Some(UserNotice::SearchDidNotFinish);
+                // Task 060: Try again re-runs the query that failed.
+                self.raise_notice(
+                    UserNotice::SearchDidNotFinish,
+                    Some(Box::new(Message::RetrySearch(query.clone()))),
+                );
             }
             // RFC-041: filter operations
             Message::ApplySuggestedFilter(i) => self.search_ui.apply_suggested(*i),
@@ -864,7 +897,7 @@ impl AppState {
                 } else if self.confirm_clear_history {
                     self.confirm_clear_history = false;
                 } else if self.notice.is_some() {
-                    self.notice = None;
+                    self.clear_notice();
                 } else {
                     match self.wizard.as_ref().map(WizardState::kind) {
                         // Task 059: both failed Ready pages too, so neither is
@@ -1015,7 +1048,7 @@ impl AppState {
             Message::SourceAdded(card) => {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();
-                self.notice = Some(UserNotice::FolderAdded);
+                self.raise_notice(UserNotice::FolderAdded, None);
                 // RFC-034 (Task 024): the list changed shape; matches
                 // `SearchResultsReady`'s own reset of `selected_result`
                 // rather than risk a stale/misleading index.
@@ -1042,10 +1075,13 @@ impl AppState {
             // RFC-040: diagnostics
             Message::DiagnosticsCreateBundle => {} // handled by orbok
             Message::DiagnosticsBundleCreated(_) => {
-                self.notice = Some(UserNotice::DiagnosticsFileCreated);
+                self.raise_notice(UserNotice::DiagnosticsFileCreated, None);
             }
             Message::DiagnosticsBundleFailed => {
-                self.notice = Some(UserNotice::DiagnosticsFileFailed);
+                self.raise_notice(
+                    UserNotice::DiagnosticsFileFailed,
+                    Some(Box::new(Message::DiagnosticsCreateBundle)),
+                );
             }
             Message::DiagnosticsOptInChanged { .. } => {} // handled by orbok
             // RFC-045: search-in-folder flow
@@ -1155,6 +1191,26 @@ impl AppState {
     /// search. Shared by `Message::WizardSkip` (the mouse-only button)
     /// and `Message::DismissOverlay` (RFC-034 §2.1.1 / Task 024's
     /// keyboard equivalent) so the two can never drift apart.
+    /// Show `notice`, with the retry its action button sends, or none.
+    fn raise_notice(&mut self, notice: UserNotice, action: Option<Box<Message>>) {
+        self.notice = Some(notice);
+        self.notice_action = action;
+    }
+
+    fn clear_notice(&mut self) {
+        self.notice = None;
+        self.notice_action = None;
+    }
+
+    /// Task 060: the notice's action button was pressed. Returns the concrete
+    /// retry to dispatch, and clears the notice so it does not linger over
+    /// the retried action's own outcome.
+    pub fn take_notice_action(&mut self) -> Option<Message> {
+        let action = self.notice_action.take().map(|action| *action);
+        self.notice = None;
+        action
+    }
+
     fn skip_wizard(&mut self) {
         self.capability = SearchCapability::KeywordOnly;
         // Task 053: a Conceptual selection made while a model was active

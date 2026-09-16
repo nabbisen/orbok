@@ -438,19 +438,11 @@ pub(crate) async fn run_with_context(
                 // runs once per request, not per poll.
                 Ok(None) => {
                     tracing::warn!("embedding model changed, but it could not be resolved");
-                    let _ = output
-                        .send(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::ModelCouldNotBeLoaded,
-                        ))
-                        .await;
+                    let _ = output.send(model_load_failed_notice()).await;
                 }
                 Err(error) => {
                     tracing::warn!(%error, "embedding model resolution did not complete");
-                    let _ = output
-                        .send(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::ModelCouldNotBeLoaded,
-                        ))
-                        .await;
+                    let _ = output.send(model_load_failed_notice()).await;
                 }
             }
             if std::mem::take(&mut resolve_again) {
@@ -661,6 +653,15 @@ pub(crate) async fn run_with_context(
             last_health_report = Some(Instant::now());
             health_report_pending = false;
         }
+    }
+}
+
+/// Task 057/060: the notice for a model this loop could not load, whose
+/// "Try again" asks it to load the model again.
+fn model_load_failed_notice() -> Message {
+    Message::ShowNoticeWithAction {
+        notice: orbok_ui::notice::UserNotice::ModelCouldNotBeLoaded,
+        action: Box::new(Message::RetryModelLoad),
     }
 }
 

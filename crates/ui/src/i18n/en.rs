@@ -166,11 +166,6 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelLoadFailed => "The model was saved, but it could not be loaded.",
         ModelLoadRetry => "Try again",
         ModelLoadFailedTitle => "Model could not be loaded",
-        NoticeDownloadFailTitle => "Download did not finish",
-        NoticeDownloadFailBody => {
-            "We could not finish the download. Please check your \
-             connection and try again."
-        }
         NoticeFolderFailTitle => "Folder was not added",
         NoticeFolderFailBody => {
             "We could not add that folder. Please choose another folder \
@@ -196,6 +191,7 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeCleanupBody => "Your files are untouched.",
         NoticeActionTryAgain => "Try again",
         NoticeActionChooseFolder => "Choose another folder",
+        NoticeActionCheckFolders => "Check folders",
         NoticeSettingSaveFailTitle => "Setting not saved",
         NoticeSettingSaveFailBody => {
             "Your change didn't save. It may not be there next time you open orbok."

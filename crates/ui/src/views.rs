@@ -212,12 +212,15 @@ fn friendly_notice<'a>(
     tokens: &'a Tokens,
     locale: Locale,
     notice: &crate::notice::UserNotice,
+    has_action: bool,
 ) -> Element<'a, Message> {
     use snora::design::notice::Notice;
     let mut builder = Notice::new(tokens, notice.tone(), notice.body(locale).to_string())
         .title(notice.title(locale).to_string());
-    if let Some(action_label) = notice.action(locale) {
-        builder = builder.action(action_label.to_string(), notice.action_message());
+    // Task 060: a labelled action renders only when its raise site stored the
+    // concrete retry; otherwise the notice offers dismiss alone.
+    if let (Some(action_label), true) = (notice.action(locale), has_action) {
+        builder = builder.action(action_label.to_string(), Message::NoticeActionPressed);
     } else {
         builder = builder.dismiss(Message::ClearNotice);
     }
@@ -294,7 +297,12 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     content = content.push(recent_searches_panel(state));
 
     if let Some(notice) = &state.notice {
-        content = content.push(friendly_notice(tokens, locale, notice));
+        content = content.push(friendly_notice(
+            tokens,
+            locale,
+            notice,
+            state.notice_action.is_some(),
+        ));
     }
 
     // RFC-036 §14.2 (RFC-056 Slice 4): a reminder that search already
@@ -474,7 +482,12 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     ];
 
     if let Some(notice) = &state.notice {
-        content = content.push(friendly_notice(tokens, locale, notice));
+        content = content.push(friendly_notice(
+            tokens,
+            locale,
+            notice,
+            state.notice_action.is_some(),
+        ));
     }
     if state.sources.is_empty() {
         content = content.push(

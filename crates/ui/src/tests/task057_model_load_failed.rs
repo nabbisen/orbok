@@ -90,10 +90,12 @@ fn enter_on_the_load_failed_step_retries_loading() {
 #[test]
 fn the_model_load_notice_try_again_asks_to_load_again() {
     let _guard = iced_test_guard();
-    let state = AppState {
-        notice: Some(UserNotice::ModelCouldNotBeLoaded),
-        ..AppState::default()
-    };
+    // Task 060: the host raises it with its retry, as `scheduler_host` does.
+    let mut state = AppState::default();
+    state.update(&Message::ShowNoticeWithAction {
+        notice: UserNotice::ModelCouldNotBeLoaded,
+        action: Box::new(Message::RetryModelLoad),
+    });
     let mut ui = simulator(views::search_view(&state));
     assert!(
         ui.find(tr(state.locale, MessageKey::ModelLoadFailed))
@@ -102,11 +104,12 @@ fn the_model_load_notice_try_again_asks_to_load_again() {
     let _ = ui.click(tr(state.locale, MessageKey::ModelLoadRetry));
     assert!(
         ui.into_messages()
-            .any(|m| matches!(m, Message::RetryModelLoad)),
-        "the notice's Try again sends RetryModelLoad"
+            .any(|m| matches!(m, Message::NoticeActionPressed)),
+        "the notice's Try again is pressed"
     );
-
-    let mut state = state;
-    state.update(&Message::RetryModelLoad);
+    assert!(
+        matches!(state.take_notice_action(), Some(Message::RetryModelLoad)),
+        "and dispatches RetryModelLoad"
+    );
     assert_eq!(state.notice, None, "retrying dismisses the notice");
 }
