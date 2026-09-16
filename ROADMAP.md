@@ -1,6 +1,6 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-09-15)
+## Current Status (2026-09-16)
 
 Shipped: **0.25.0**. Latest tagged release: **0.25.0**. Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
