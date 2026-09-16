@@ -4,10 +4,25 @@
 **Former project name:** orbit  
 **RFC:** 040  
 **Title:** Safe Diagnostics and Redacted Support Bundle  
-**Status:** Implemented (v0.19.0)
+**Status:** Accepted
 **Target milestone:** Supportability / privacy-safe debugging  
 **Date:** 2026-06-18  
 **Related RFCs:** RFC-018 Crash Recovery, Diagnostics, and Repair Tools, RFC-044 `orbok-extract` Production Hardening and Boundary Cleanup, RFC-039 Privacy Modes and Local Data Visibility  
+
+**Returned to `accepted/` 2026-09-17 (RFC-063 §7, Review Request 236 §5.2 follow-up).** Carried
+`Implemented (v0.19.0)` while §22 criterion 1 ("User can create a local
+support file manually") was false: no view renders a Create support file
+control, nothing in `crates/app` handles `Message::DiagnosticsCreateBundle`,
+and nothing writes a support file. `crates/app/src/diagnostics.rs` holds the
+manifest, a text-redaction helper and the preview text under
+`#![allow(dead_code)]`, and its module comment has said since Review Request
+132 §2c that none of it is wired — the status was never corrected. With no
+file and no preview, criteria 1–7, 9 and 11 are unmet or unobservable;
+criterion 10 is unmet (`redact_text` has no test); 8 and 12 hold only because
+nothing exists to violate them.
+The flow is built by Task 067, which also records the design amendments it
+makes (a single readable file built from typed counts rather than redacted
+text; no opt-ins).
 
 ---
 
