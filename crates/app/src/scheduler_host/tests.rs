@@ -599,7 +599,18 @@ async fn background_indexing_off_then_on_pauses_then_resumes() {
 /// Asserted against `embeddings` table rows, not `scheduler.resource_mode()`
 /// (which this test has no access to anyway, running through the real
 /// `run_with_context` per RFC-056 §8.8, not a bare `Scheduler`).
-#[tokio::test]
+///
+/// **Multi-threaded runtime, deliberately.** On `#[tokio::test]`'s single
+/// thread, the loop's scan, extract and chunk work runs synchronously with no
+/// real await between jobs (`report_health` to a dropped receiver completes
+/// immediately), so `keep_active` below cannot run. If that stretch outlasts
+/// `USER_IDLE_TIMEOUT`, the loop sees no recent activity and dispatches
+/// embedding -- the test's producer starved, not the product's deferral. It
+/// failed that way on a Windows CI runner (run 35104129457, `left: 4`), and
+/// was reproduced by slowing extraction by 2.5 s: `left: 4` on one thread,
+/// passing on two. Real producers (the UI's `update`, the battery poller)
+/// never share the loop's thread.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn user_active_signal_defers_embedding_and_idle_resumes_it() {
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
