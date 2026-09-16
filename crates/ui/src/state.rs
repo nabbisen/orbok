@@ -884,7 +884,21 @@ impl AppState {
                 self.search_results = results.clone();
                 self.search_running = false;
                 self.selected_result = None;
-                self.clear_notice();
+                // Task 065: new results resolve a failed search, and make a
+                // launch-failure notice stale -- its Show-in-folder retry is a
+                // result index, which would now point at a different file.
+                // Other problem notices stay (Task 064).
+                if matches!(
+                    self.notice,
+                    Some(
+                        UserNotice::SearchDidNotFinish
+                            | UserNotice::FilesMovedOrMissing
+                            | UserNotice::FileCouldNotBeFound
+                            | UserNotice::FileCouldNotBeOpened
+                    )
+                ) {
+                    self.clear_notice();
+                }
                 self.search_ui.results_status = if count == 0 {
                     if self.search_ui.has_active_filters() {
                         ResultsStatus::EmptyAfterFiltering

@@ -42,11 +42,10 @@
 //! `\\?\C:\...` paths, which Explorer is not documented to accept, so the
 //! prefix is removed with [`explorer_path`] after validation.
 
-use orbok_core::OrbokResult;
+use orbok_core::{OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_fs::ValidatedPath;
 use orbok_search::ResultRecoveryAction;
-use orbok_ui::notice::UserNotice;
 use orbok_ui::state::{Message, SearchResultDisplay};
 use std::io;
 use std::path::Path;
@@ -84,24 +83,56 @@ pub(crate) trait Launcher {
     fn reveal(&self, path: &ValidatedPath) -> io::Result<()>;
 }
 
-/// Validate the result at `index` and launch it. Returns the notice to show
-/// when it is not launched: the existing "files may have moved" wording,
-/// never a raw error string. `None` means it was handed to the launcher.
+/// Why a result was not launched (Task 065). `main.rs` turns it into the
+/// user's notice through `notice_retry::result_not_launched`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LaunchFailure {
+    /// Validation refused it because the file is no longer where orbok found
+    /// it: gone from disk, or outside every folder orbok searches.
+    NotFound,
+    /// The file validated, but the launcher failed on `action`.
+    CouldNotOpen { index: usize, action: LaunchAction },
+    /// Validation refused it for a reason there is no approved copy for yet
+    /// (a policy block, permission denied, a catalog error). Reported, and
+    /// shown with the older "files may have moved" notice.
+    Unclassified,
+}
+
+/// Classify a validation refusal (Task 065 §2). A missing file fails
+/// canonicalization, but the guard flattens the io error into a string, so
+/// this checks the path itself rather than matching that message.
+pub(crate) fn classify_refusal(error: &OrbokError, path: &Path) -> LaunchFailure {
+    match error {
+        OrbokError::PathOutsideSources => LaunchFailure::NotFound,
+        OrbokError::PathCanonicalization(_)
+            if std::fs::symlink_metadata(path)
+                .is_err_and(|e| e.kind() == io::ErrorKind::NotFound) =>
+        {
+            LaunchFailure::NotFound
+        }
+        _ => LaunchFailure::Unclassified,
+    }
+}
+
+/// Validate the result at `index` and launch it. `None` means it was handed
+/// to the launcher; otherwise the reason it was not, never a raw error
+/// string.
 pub(crate) fn launch_result(
     catalog: &Catalog,
     results: &[SearchResultDisplay],
     index: usize,
     action: LaunchAction,
     launcher: &dyn Launcher,
-) -> Option<UserNotice> {
+) -> Option<LaunchFailure> {
     // An index with no result (the list changed under a stale selection)
     // launches nothing and needs no notice.
     let result = results.get(index)?;
-    let validated = match validate(catalog, &result.canonical_path) {
+    let path = Path::new(&result.canonical_path);
+    let validated = match validate(catalog, path) {
         Ok(validated) => validated,
         Err(error) => {
             tracing::warn!(%error, "a search result was not opened: it failed validation");
-            return Some(UserNotice::FilesMovedOrMissing);
+            return Some(classify_refusal(&error, path));
         }
     };
     // HANDOFF-041 §1.4: the file can change between this validation and the
@@ -114,13 +145,13 @@ pub(crate) fn launch_result(
         Ok(()) => None,
         Err(error) => {
             tracing::warn!(%error, "a search result could not be launched");
-            Some(UserNotice::FilesMovedOrMissing)
+            Some(LaunchFailure::CouldNotOpen { index, action })
         }
     }
 }
 
-fn validate(catalog: &Catalog, canonical_path: &str) -> OrbokResult<ValidatedPath> {
-    orbok_search::snippet::searchable_path_guard(catalog)?.validate(Path::new(canonical_path))
+fn validate(catalog: &Catalog, path: &Path) -> OrbokResult<ValidatedPath> {
+    orbok_search::snippet::searchable_path_guard(catalog)?.validate(path)
 }
 
 /// The real launcher: one process or shell-API call per action, the path

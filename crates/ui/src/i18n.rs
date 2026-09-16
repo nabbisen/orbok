@@ -282,7 +282,12 @@ message_keys! {
     NoticeCleanupBody,
     NoticeActionTryAgain,
     NoticeActionChooseFolder,
-    NoticeActionCheckFolders,
+    NoticeActionGoToFolders,
+    NoticeActionShowInFolder,
+    NoticeFileNotFoundTitle,
+    NoticeFileNotFoundBody,
+    NoticeFileNotOpenedTitle,
+    NoticeFileNotOpenedBody,
     // RFC-061 §8: failures that were silently swallowed before
     NoticeSettingSaveFailTitle,
     NoticeSettingSaveFailBody,

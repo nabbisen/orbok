@@ -2,14 +2,13 @@
 //! launches a real application.
 
 use super::{
-    LaunchAction, Launcher, explorer_path, explorer_select_arg, launch_request, launch_result,
-    reveal_command,
+    LaunchAction, LaunchFailure, Launcher, classify_refusal, explorer_path, explorer_select_arg,
+    launch_request, launch_result, reveal_command,
 };
 use crate::bootstrap;
 use orbok_db::Catalog;
 use orbok_db::repo::SourceRepository;
 use orbok_fs::ValidatedPath;
-use orbok_ui::notice::UserNotice;
 use orbok_ui::state::SearchResultDisplay;
 use std::cell::RefCell;
 use std::io;
@@ -96,8 +95,8 @@ fn a_result_outside_every_source_is_refused_and_never_launched() {
     for action in [LaunchAction::Open, LaunchAction::Reveal] {
         assert_eq!(
             launch_result(&catalog, &[result_for(&outside)], 0, action, &launcher),
-            Some(UserNotice::FilesMovedOrMissing),
-            "a refused launch shows the existing file-missing wording"
+            Some(LaunchFailure::NotFound),
+            "Task 065: outside every folder orbok searches is not found"
         );
     }
     assert!(
@@ -122,7 +121,8 @@ fn a_result_in_a_paused_source_is_refused_and_never_launched() {
             LaunchAction::Open,
             &launcher
         ),
-        Some(UserNotice::FilesMovedOrMissing)
+        Some(LaunchFailure::NotFound),
+        "a paused folder is not searched, so its file is not found (Folders resumes it)"
     );
     assert!(
         launcher.0.borrow().is_empty(),
@@ -144,7 +144,8 @@ fn a_deleted_file_is_refused_and_never_launched() {
             LaunchAction::Open,
             &launcher
         ),
-        Some(UserNotice::FilesMovedOrMissing)
+        Some(LaunchFailure::NotFound),
+        "Task 065: a file deleted before validation is not found"
     );
     assert!(launcher.0.borrow().is_empty());
 }
@@ -281,4 +282,116 @@ fn recovery_actions_share_the_open_and_reveal_path() {
         None
     );
     assert_eq!(launch_request(&Message::SelectResult(1)), None);
+}
+
+/// A launcher whose open and reveal both fail, as when no app handles the
+/// file.
+struct FailingLauncher;
+
+impl Launcher for FailingLauncher {
+    fn open(&self, _path: &ValidatedPath) -> io::Result<()> {
+        Err(io::Error::other("no application handled the file"))
+    }
+    fn reveal(&self, _path: &ValidatedPath) -> io::Result<()> {
+        Err(io::Error::other("no file manager"))
+    }
+}
+
+/// Task 065 §5 test 1 (red on the old API): an existing file that no app
+/// opened is not reported as "files may have moved".
+#[test]
+fn a_file_that_exists_but_would_not_open_is_not_reported_as_moved() {
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, _, _) = fixture(temp.path());
+    let got = launch_result(
+        &catalog,
+        &[result_for(&inside)],
+        0,
+        LaunchAction::Open,
+        &FailingLauncher,
+    );
+    assert_eq!(
+        got,
+        Some(LaunchFailure::CouldNotOpen {
+            index: 0,
+            action: LaunchAction::Open
+        }),
+        "the file is right there; it just would not open"
+    );
+}
+
+/// Task 065 §5 test 1: a failed reveal is "could not open" too, and names
+/// the reveal as what failed.
+#[test]
+fn a_reveal_that_failed_is_could_not_open_for_the_reveal() {
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, _, _) = fixture(temp.path());
+    assert_eq!(
+        launch_result(
+            &catalog,
+            &[result_for(&inside)],
+            0,
+            LaunchAction::Reveal,
+            &FailingLauncher
+        ),
+        Some(LaunchFailure::CouldNotOpen {
+            index: 0,
+            action: LaunchAction::Reveal
+        })
+    );
+}
+
+/// Task 065 §5 test 1: a policy refusal -- a hidden file under an
+/// exclude-hidden folder -- has no approved copy, so it stays unclassified.
+#[test]
+fn a_policy_refusal_is_unclassified() {
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, _, _) = fixture(temp.path());
+    let hidden_dir = inside.parent().unwrap().join(".hidden");
+    std::fs::create_dir_all(&hidden_dir).unwrap();
+    let hidden = hidden_dir.join("secret.md");
+    std::fs::write(&hidden, "# Secret\n").unwrap();
+    let launcher = RecordingLauncher::default();
+    assert_eq!(
+        launch_result(
+            &catalog,
+            &[result_for(&std::fs::canonicalize(&hidden).unwrap())],
+            0,
+            LaunchAction::Open,
+            &launcher
+        ),
+        Some(LaunchFailure::Unclassified)
+    );
+    assert!(launcher.0.borrow().is_empty());
+    assert_eq!(
+        classify_refusal(
+            &orbok_core::OrbokError::PolicyBlocked("file_too_large"),
+            &inside
+        ),
+        LaunchFailure::Unclassified
+    );
+}
+
+/// The classifier reads the path, not the error message: a canonicalization
+/// failure on a file that still exists (permission denied, say) is not
+/// "not found".
+#[test]
+fn a_canonicalization_failure_on_an_existing_file_is_unclassified() {
+    let temp = tempfile::tempdir().unwrap();
+    let (_, inside, _, _) = fixture(temp.path());
+    assert_eq!(
+        classify_refusal(
+            &orbok_core::OrbokError::PathCanonicalization("permission denied".into()),
+            &inside
+        ),
+        LaunchFailure::Unclassified
+    );
+    let gone = temp.path().join("gone.md");
+    assert_eq!(
+        classify_refusal(
+            &orbok_core::OrbokError::PathCanonicalization("no such file".into()),
+            &gone
+        ),
+        LaunchFailure::NotFound
+    );
 }

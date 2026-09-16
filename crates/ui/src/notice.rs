@@ -15,6 +15,12 @@ pub enum UserNotice {
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
     FilesMovedOrMissing,
+    /// Task 065: opening a result was refused because the file is no longer
+    /// where orbok found it.
+    FileCouldNotBeFound,
+    /// Task 065: the file is there, but no app opened it (or the file
+    /// manager could not show it).
+    FileCouldNotBeOpened,
     /// The added folder may contain sensitive files (SSH keys, browser profiles, etc.).
     SensitiveSourceAdded,
     // ── Confirmations ─────────────────────────────────────────────────
@@ -95,7 +101,10 @@ impl UserNotice {
             | Self::IndexingCouldNotStart
             | Self::ModelCouldNotBeLoaded => Tone::Danger,
             // Cautions: action succeeded but the user should be aware.
-            Self::FilesMovedOrMissing | Self::SensitiveSourceAdded => Tone::Warning,
+            Self::FilesMovedOrMissing
+            | Self::FileCouldNotBeFound
+            | Self::FileCouldNotBeOpened
+            | Self::SensitiveSourceAdded => Tone::Warning,
             // Positive confirmations.
             Self::FolderAdded | Self::SearchReady => Tone::Success,
             // Neutral/informational.
@@ -115,6 +124,8 @@ impl UserNotice {
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailTitle,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailTitle,
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingTitle,
+            Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundTitle,
+            Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedTitle,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceTitle,
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
@@ -142,6 +153,8 @@ impl UserNotice {
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailBody,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailBody,
             Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingBody,
+            Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundBody,
+            Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedBody,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
@@ -173,9 +186,13 @@ impl UserNotice {
         let key = match self {
             Self::SearchDidNotFinish => MessageKey::NoticeActionTryAgain,
             Self::FolderCouldNotBeAdded => MessageKey::NoticeActionChooseFolder,
-            // Task 060: "Choose another folder" was untrue after a refused
-            // or failed open; the folder-not-found detail is on Sources.
-            Self::FilesMovedOrMissing => MessageKey::NoticeActionCheckFolders,
+            // Task 065: after a refusal orbok cannot classify, there is no
+            // approved action -- dismiss only.
+            Self::FilesMovedOrMissing => return None,
+            Self::FileCouldNotBeFound => MessageKey::NoticeActionGoToFolders,
+            // Rendered only when a Show-in-folder retry was stored: an Open
+            // failure has one, a Reveal failure does not.
+            Self::FileCouldNotBeOpened => MessageKey::NoticeActionShowInFolder,
             Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
             | Self::FolderAlreadyAdded

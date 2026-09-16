@@ -4,6 +4,7 @@
 //! pressed button.
 
 use super::*;
+use crate::result_launch::{LaunchAction, LaunchFailure};
 use orbok_ui::AppState;
 use orbok_ui::Theme;
 
@@ -29,11 +30,42 @@ fn adding_a_search_folder_retries_with_the_search_folder_picker() {
     assert!(matches!(action, Some(Message::ChooseFolderRequested)));
 }
 
+/// Task 065: each launch failure's notice and button.
 #[test]
-fn a_result_not_launched_checks_folders() {
-    let (notice, action) = raise(result_not_launched());
-    assert_eq!(notice, Some(UserNotice::FilesMovedOrMissing));
+fn a_file_not_found_goes_to_folders() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::NotFound));
+    assert_eq!(notice, Some(UserNotice::FileCouldNotBeFound));
     assert!(matches!(action, Some(Message::Switch(ViewId::Sources))));
+}
+
+#[test]
+fn a_file_that_would_not_open_offers_to_show_that_same_file_in_its_folder() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::CouldNotOpen {
+        index: 3,
+        action: LaunchAction::Open,
+    }));
+    assert_eq!(notice, Some(UserNotice::FileCouldNotBeOpened));
+    assert!(matches!(action, Some(Message::RevealResult(3))));
+}
+
+#[test]
+fn a_failed_reveal_offers_no_button() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::CouldNotOpen {
+        index: 3,
+        action: LaunchAction::Reveal,
+    }));
+    assert_eq!(notice, Some(UserNotice::FileCouldNotBeOpened));
+    assert!(
+        action.is_none(),
+        "showing it in its folder is what just failed"
+    );
+}
+
+#[test]
+fn an_unclassified_refusal_keeps_the_older_notice_without_a_button() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::Unclassified));
+    assert_eq!(notice, Some(UserNotice::FilesMovedOrMissing));
+    assert!(action.is_none());
 }
 
 #[test]

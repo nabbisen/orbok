@@ -191,7 +191,14 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeCleanupBody => "Your files are untouched.",
         NoticeActionTryAgain => "Try again",
         NoticeActionChooseFolder => "Choose another folder",
-        NoticeActionCheckFolders => "Check folders",
+        NoticeActionGoToFolders => "Go to Folders",
+        NoticeActionShowInFolder => "Show in folder",
+        NoticeFileNotFoundTitle => "This file could not be found",
+        NoticeFileNotFoundBody => {
+            "It may have been moved, renamed or deleted, or its drive may be disconnected."
+        }
+        NoticeFileNotOpenedTitle => "This file could not be opened",
+        NoticeFileNotOpenedBody => "No app on this computer opened it.",
         NoticeSettingSaveFailTitle => "Setting not saved",
         NoticeSettingSaveFailBody => {
             "Your change didn't save. It may not be there next time you open orbok."

@@ -13,6 +13,7 @@
 //! A site that cannot supply a correct retry sends a plain `ShowNotice`, and
 //! the notice renders dismiss alone.
 
+use crate::result_launch::{LaunchAction, LaunchFailure};
 use orbok_ui::notice::UserNotice;
 use orbok_ui::state::{Message, ViewId};
 
@@ -38,13 +39,32 @@ pub(crate) fn search_folder_failed() -> Message {
     )
 }
 
-/// Opening a result, or showing it in its folder, was refused or failed:
-/// "Check folders" goes to Sources, where a missing folder is explained.
-pub(crate) fn result_not_launched() -> Message {
-    with_action(
-        UserNotice::FilesMovedOrMissing,
-        Message::Switch(ViewId::Sources),
-    )
+/// Opening a result, or showing it in its folder, did not happen (Task 065):
+/// - **not found** -> "Go to Folders", where a missing folder is explained;
+/// - **Open failed** -> "Show in folder" for *that same result*, re-validated
+///   by `launch_result` when pressed (a new search clears this notice, so the
+///   index cannot point at a different file);
+/// - **Reveal failed** -> no button: showing it in its folder is what failed;
+/// - **unclassified refusal** -> the older notice, dismiss only.
+pub(crate) fn result_not_launched(failure: LaunchFailure) -> Message {
+    match failure {
+        LaunchFailure::NotFound => with_action(
+            UserNotice::FileCouldNotBeFound,
+            Message::Switch(ViewId::Sources),
+        ),
+        LaunchFailure::CouldNotOpen {
+            index,
+            action: LaunchAction::Open,
+        } => with_action(
+            UserNotice::FileCouldNotBeOpened,
+            Message::RevealResult(index),
+        ),
+        LaunchFailure::CouldNotOpen {
+            action: LaunchAction::Reveal,
+            ..
+        } => Message::ShowNotice(UserNotice::FileCouldNotBeOpened),
+        LaunchFailure::Unclassified => Message::ShowNotice(UserNotice::FilesMovedOrMissing),
+    }
 }
 
 /// Saving a setting failed: "Try again" re-sends that exact setting change.

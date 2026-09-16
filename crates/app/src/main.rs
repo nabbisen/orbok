@@ -309,15 +309,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // `ShowInFolder` recovery actions are the same two operations
             // on the same result.
             if let Some((index, action)) = result_launch::launch_request(&message) {
-                if let Some(notice) = result_launch::launch_result(
+                if let Some(failure) = result_launch::launch_result(
                     &catalog,
                     &app.state.search_results,
                     index,
                     action,
                     &result_launch::SystemLauncher,
                 ) {
-                    let _ = notice; // always FilesMovedOrMissing
-                    app.update(notice_retry::result_not_launched());
+                    app.update(notice_retry::result_not_launched(failure));
                 }
                 return iced::Task::none();
             }

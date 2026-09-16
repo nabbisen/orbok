@@ -198,7 +198,14 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeCleanupBody => "ファイルはそのままです。",
         NoticeActionTryAgain => "もう一度試す",
         NoticeActionChooseFolder => "別のフォルダを選ぶ",
-        NoticeActionCheckFolders => "フォルダを確認",
+        NoticeActionGoToFolders => "フォルダー一覧へ",
+        NoticeActionShowInFolder => "フォルダーで表示",
+        NoticeFileNotFoundTitle => "このファイルが見つかりません",
+        NoticeFileNotFoundBody => {
+            "移動・名前の変更・削除されたか、ドライブが接続されていない可能性があります。"
+        }
+        NoticeFileNotOpenedTitle => "このファイルを開けませんでした",
+        NoticeFileNotOpenedBody => "このコンピューターのアプリでは開けませんでした。",
         NoticeSettingSaveFailTitle => "設定を保存できませんでした",
         NoticeSettingSaveFailBody => {
             "変更を保存できませんでした。次回起動時に元に戻っている可能性があります。"

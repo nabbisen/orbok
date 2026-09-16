@@ -44,6 +44,8 @@ every_user_notice! {
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
     FilesMovedOrMissing,
+    FileCouldNotBeFound,
+    FileCouldNotBeOpened,
     SensitiveSourceAdded,
     FolderAdded,
     FolderAlreadyAdded,

@@ -56,6 +56,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 065: after a result did not open, orbok now says why.** Both cases
+  used to say "Files may have moved", even when the file was right there and
+  simply had no app to open it.
+  - **The file is gone** (moved, renamed, deleted, or outside the folders
+    orbok searches): "This file could not be found", with **Go to Folders**.
+  - **The file is there but no app opened it:** "This file could not be
+    opened", with **Show in folder** for that same file. If showing it in
+    its folder is what failed, there is no button.
+
+  A new search clears these notices, so Show in folder can never point at a
+  different file. A new search also no longer clears unrelated problem
+  notices.
 - **Task 064: notices were only visible on the Search and Folders pages.** A
   failure on Storage or Settings, or while model setup was open, showed
   nothing where it happened; the notice appeared later, detached from its
