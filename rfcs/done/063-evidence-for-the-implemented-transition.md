@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 063\
 **Title:** Evidence for the Implemented Transition\
-**Status:** Implemented (main; release pending)\
+**Status:** Implemented (0.25.0)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** project-record integrity\
 **Date:** 2026-09-01\
@@ -405,15 +405,17 @@ Phrased per RFC-058 §5, over the repository.
 
 ## 12. Open questions
 
-1. **§6.2 — where closure records live.** A / B / C. **Owner decision;
-   recommendation is B.**
-2. **§7 — RFC-041's group.** Judgement about whether "narrow" is central to
-   *Search, Narrow and Browse Around*. **Owner decision.**
+1. ~~**§6.2 — where closure records live.**~~ **Resolved: option B**,
+   `rfcs/closures/NNN-slug.md`, adopted with this RFC's acceptance on
+   2026-09-02 and built by Task 038 (`60985a6`).
+2. ~~**§7 — RFC-041's group.**~~ **Resolved: "narrow" is central**, so RFC-041
+   returned to `accepted/` (Task 038, `60985a6`). Confirmed again by the
+   2026-09-16 closure sweep (Task 052): its filter controls are still not
+   rendered.
 
 *(A third question — whether to add a sixth lifecycle state — was withdrawn on
 2026-09-02 after the owner rejected it. See §8.)*
-4. **How far back does the backfill go?** Writing closure records for all 55
-   implemented RFCs is archaeology. Proposal: backfill only the nine in §7, and
-   require records prospectively. An RFC closed years ago whose feature demonstrably
-   works needs no reconstructed evidence. Stated so it is a decision rather than
-   a drift.
+4. ~~**How far back does the backfill go?**~~ **Resolved as proposed:** the
+   nine in §7 were dispositioned, records are required prospectively, and the
+   older `done/` files are exempt through the shrink-only
+   `rfcs/closures/LEGACY-ALLOWLIST.txt` (Task 038).

@@ -116,6 +116,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **RFC-062 and RFC-063 stamped `0.25.0`, and RFC-063's open questions marked
+  resolved.** Both RFCs' implementing commits (`125ba7e`, `b85faa9`,
+  `cd0d445`; `60985a6`) are contained in the `0.25.0` tag, so "release
+  pending" understated them. `3878420`, which emptied the migration allowlist
+  after the tag, is release housekeeping the checklist requires, not the
+  implementation of any RFC-062 criterion. RFC-063 §12's three questions were
+  settled when the RFC was accepted and built, and now say so.
+
 - **Closure sweep of the seven RFCs left in `accepted/`: two close, five stay
   open with index rows that say what is missing.** Every row was evidenced by
   running its test, not by reading code.

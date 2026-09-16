@@ -68,8 +68,8 @@ may start" a checked state rather than an implicit convention.
 | 057 | [Live Resource Signals for the Indexing Scheduler](done/057-live-resource-signals.md) | 0.25.0 — §7 manual battery criterion deferred to Owner Task 003 Part C |
 | 059 | [Erasure Completeness and Cache Lifetime](done/059-erasure-completeness-and-cache-lifetime.md) | 0.25.0 — criteria 1–10 evidenced, [closure record](closures/059-erasure-completeness-and-cache-lifetime.md) |
 | 060 | [Search Result Integrity](done/060-search-result-integrity.md) | main; release pending — criteria 0a and 7 evidenced only where a real embedding model is available, [closure record](closures/060-search-result-integrity.md) |
-| 062 | [Migration Integrity and Schema Guards](done/062-migration-integrity-and-schema-guards.md) | main; release pending — criteria 1–6 evidenced, [closure record](closures/062-migration-integrity-and-schema-guards.md) |
-| 063 | [Evidence for the Implemented Transition](done/063-evidence-for-the-implemented-transition.md) | main; release pending — criteria 1–6 evidenced, [closure record](closures/063-evidence-for-the-implemented-transition.md) |
+| 062 | [Migration Integrity and Schema Guards](done/062-migration-integrity-and-schema-guards.md) | 0.25.0 — criteria 1–6 evidenced, [closure record](closures/062-migration-integrity-and-schema-guards.md) |
+| 063 | [Evidence for the Implemented Transition](done/063-evidence-for-the-implemented-transition.md) | 0.25.0 — criteria 1–6 evidenced, [closure record](closures/063-evidence-for-the-implemented-transition.md) |
 
 ## Accepted
 

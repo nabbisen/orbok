@@ -3,7 +3,7 @@
 **Project:** orbok\
 **RFC:** 062\
 **Title:** Migration Integrity and Schema Guards\
-**Status:** Implemented (main; release pending)\
+**Status:** Implemented (0.25.0)\
 **Accepted:** 2026-09-02 by the project owner\
 **Target milestone:** on-disk format integrity\
 **Date:** 2026-09-01\
