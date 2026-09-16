@@ -28,7 +28,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchRunning => "検索中…",
         SearchSnippetUnavailable => "(プレビューを利用できません)",
         SearchResultOpenFile => "ファイルを開く",
-        SearchResultShowInFolder => "フォルダで表示",
+        SearchResultShowInFolder => "フォルダーで表示",
         SourcesTitle => "フォルダー",
         SourcesEmptyTitle => "フォルダーが追加されていません",
         SourcesEmptyBody => {
@@ -95,7 +95,7 @@ pub fn message(key: MessageKey) -> &'static str {
         DialogChooseSearchFolderTitle => "検索するフォルダーを選択",
         WizardTitleNotConfigured => "意味による検索の設定",
         WizardTitleFileMissing => "モデルが見つかりません",
-        WizardTitleValidating => "モデルフォルダを確認中",
+        WizardTitleValidating => "モデルフォルダーを確認中",
         WizardTitleReady => "意味による検索の準備完了",
         WizardBodyNotConfigured => {
             "キーワード検索は利用可能です。意味による検索を使用するには、\
@@ -103,23 +103,23 @@ pub fn message(key: MessageKey) -> &'static str {
              ファイルはアップロードされません。"
         }
         WizardBodyFileMissing => {
-            "モデルフォルダが指定された場所にありません。\
+            "モデルフォルダーが指定された場所にありません。\
              ドライブが切断されたか、ファイルが移動した可能性があります。"
         }
         WizardBodyLocateExisting => {
-            "モデルファイルをすでにお持ちの場合は、そのフォルダを指定してください。"
+            "モデルファイルをすでにお持ちの場合は、そのフォルダーを指定してください。"
         }
-        WizardBodyFilesIncomplete => "そのフォルダには必要なファイルの一部がありません。",
-        WizardFilesNeededLabel => "フォルダ内の必要ファイル:",
+        WizardBodyFilesIncomplete => "そのフォルダーには必要なファイルの一部がありません。",
+        WizardFilesNeededLabel => "フォルダー内の必要ファイル:",
         WizardDownloadHint => {
             "ダウンロード: huggingface-cli download intfloat/multilingual-e5-small"
         }
-        WizardPathInputPlaceholder => "モデルフォルダのパス (例: ~/models/multilingual-e5-small)",
-        WizardActionLocate => "モデルフォルダを選択",
+        WizardPathInputPlaceholder => "モデルフォルダーのパス (例: ~/models/multilingual-e5-small)",
+        WizardActionLocate => "モデルフォルダーを選択",
         WizardActionValidate => "検証",
         WizardActionUseModel => "このモデルを使用",
         WizardActionContinue => "orbok を開始",
-        WizardPathPlaceholder => "フォルダのパス…",
+        WizardPathPlaceholder => "フォルダーのパス…",
         WizardDownloadAction => "HuggingFaceからダウンロード",
         WizardDownloadProgress => "モデルをダウンロード中…",
         WizardActionSkip => "スキップ — キーワード検索のみ使用",
@@ -175,9 +175,9 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelLoadFailed => "モデルは保存されましたが、読み込めませんでした。",
         ModelLoadRetry => "もう一度試す",
         ModelLoadFailedTitle => "モデルを読み込めませんでした",
-        NoticeFolderFailTitle => "フォルダを追加できませんでした",
+        NoticeFolderFailTitle => "フォルダーを追加できませんでした",
         NoticeFolderFailBody => {
-            "そのフォルダを追加できませんでした。別のフォルダを選ぶか、開けるか確認してください。"
+            "そのフォルダーを追加できませんでした。別のフォルダーを選ぶか、開けるか確認してください。"
         }
         NoticeSearchFailTitle => "検索が完了しませんでした",
         NoticeSearchFailBody => "検索中に問題が発生しました。もう一度お試しください。",
@@ -185,10 +185,10 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFilesMissingBody => {
             "一部のファイルが見つかりません。ドライブが取り外されたか、ファイルが移動された可能性があります。"
         }
-        NoticeFolderAddedTitle => "フォルダを追加しました",
+        NoticeFolderAddedTitle => "フォルダーを追加しました",
         NoticeFolderAddedBody => "検索の準備をしています。",
-        NoticeFolderAlreadyAddedTitle => "フォルダは追加済みです",
-        NoticeFolderAlreadyAddedBody => "このフォルダはすでに一覧にあります。",
+        NoticeFolderAlreadyAddedTitle => "フォルダーは追加済みです",
+        NoticeFolderAlreadyAddedBody => "このフォルダーはすでに一覧にあります。",
         NoticeSearchReadyTitle => "検索の準備ができました",
         NoticeSearchReadyBody => "ファイルを検索できます。",
         NoticePreviewsClearedTitle => "一時プレビューを削除しました",
@@ -197,7 +197,7 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeReplacedDataRemovedTitle => "更新されたファイルの古いデータを削除しました",
         NoticeCleanupBody => "ファイルはそのままです。",
         NoticeActionTryAgain => "もう一度試す",
-        NoticeActionChooseFolder => "別のフォルダを選ぶ",
+        NoticeActionChooseFolder => "別のフォルダーを選ぶ",
         NoticeActionGoToFolders => "フォルダー一覧へ",
         NoticeActionShowInFolder => "フォルダーで表示",
         NoticeFileNotFoundTitle => "このファイルが見つかりません",
@@ -241,9 +241,11 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsCvdNote => {
             "ステータスカラーは常にラベルとアイコンとともに表示されるため、色覚に関わらず識別できます。"
         }
-        NoticeSensitiveSourceTitle => "このフォルダには機密ファイルが含まれている可能性があります",
+        NoticeSensitiveSourceTitle => {
+            "このフォルダーには機密ファイルが含まれている可能性があります"
+        }
         NoticeSensitiveSourceBody => {
-            "SSH鍵、ブラウザのプロフィール、またはその他の機密データが含まれている可能性があります。フォルダは追加されました。意図しない場合は削除してください。"
+            "SSH鍵、ブラウザのプロフィール、またはその他の機密データが含まれている可能性があります。フォルダーは追加されました。意図しない場合は削除してください。"
         }
         NoticeDismiss => "閉じる",
         Cancel => "キャンセル",
@@ -255,7 +257,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchClearFilters => "クリア",
         SearchNoResultsFiltered => "この条件では結果がありません",
         SearchNoResultsFilteredBody => "条件を一つ外してみてください。",
-        SearchInThisFolder => "このフォルダ内を検索",
+        SearchInThisFolder => "このフォルダー内を検索",
         SearchShowNearby => "近くのファイルを表示",
         SearchShowSimilar => "類似ファイルを表示",
         SearchResultsUpdating => "結果を更新中...",
@@ -275,28 +277,28 @@ pub fn message(key: MessageKey) -> &'static str {
         FilterChangedThisWeek => "今週",
         FilterChangedThisMonth => "今月",
         FilterChangedAnyTime => "すべての期間",
-        FilterAllFolders => "すべてのフォルダ",
+        FilterAllFolders => "すべてのフォルダー",
         // RFC-037: Source lifecycle
         SourceStateReady => "準備完了",
         SourceStatePreparing => "準備中",
         SourceStateNeedsUpdate => "更新が必要",
         SourceStatePaused => "一時停止中",
-        SourceStateFolderNotFound => "フォルダが見つかりません",
+        SourceStateFolderNotFound => "フォルダーが見つかりません",
         SourceStateCannotOpen => "開けません",
         SourceStateRemoved => "削除済み",
         SourceActionCheckAgain => "再確認",
         SourceActionPrepareAgain => "再準備",
-        SourceActionChooseFolderAgain => "フォルダを選び直す",
+        SourceActionChooseFolderAgain => "フォルダーを選び直す",
         SourceActionRemoveFromOrbok => "orbokから削除",
         SourceRemoveConfirmBody => {
             "ファイルはそのまま残ります。このフォルダーの検索の準備内容は削除され、もう一度追加すると準備し直します。"
         }
         SourceRemoveConfirm => "削除",
         SourceFolderNotFoundDetail => {
-            "ドライブが切断されたか、フォルダが移動された可能性があります。"
+            "ドライブが切断されたか、フォルダーが移動された可能性があります。"
         }
         SourceFilesNotDeletedNotice => {
-            "ファイルは削除されていません。orbokがこのフォルダを見つけられないだけです。"
+            "ファイルは削除されていません。orbokがこのフォルダーを見つけられないだけです。"
         }
         SourceManyFilesChanged => "多くのファイルが変更されました。orbokが徐々に準備します。",
         SourcePausePreparation => "準備を一時停止",
@@ -308,10 +310,10 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustPartlyPrepared => "一部のみ準備済み",
         TrustCannotOpen => "開けません",
         TrustActionPrepareAgain => "再準備",
-        TrustActionCheckFolder => "フォルダを確認",
+        TrustActionCheckFolder => "フォルダーを確認",
         TrustActionRemoveFromResults => "結果から削除",
         TrustActionOpenAnyway => "そのまま開く",
-        TrustActionShowInFolder => "フォルダで表示",
+        TrustActionShowInFolder => "フォルダーで表示",
         TrustActionViewDetails => "詳細を表示",
         TrustFileChangedDetail => "このファイルは準備後に変更されました。",
         TrustFileNotFoundDetail => {
@@ -372,8 +374,8 @@ pub fn message(key: MessageKey) -> &'static str {
         DiagnosticsPreviewTitle => "サポートファイルを作成",
         DiagnosticsIncludedLabel => "含まれる内容",
         DiagnosticsExcludedLabel => "含まれない内容",
-        DiagnosticsOptInFolderNames => "フォルダ名を含める",
-        DiagnosticsOptInFolderNamesHint => "使用しているフォルダが明らかになる可能性があります。",
+        DiagnosticsOptInFolderNames => "フォルダー名を含める",
+        DiagnosticsOptInFolderNamesHint => "使用しているフォルダーが明らかになる可能性があります。",
         DiagnosticsOptInSearchWords => "最近の検索ワードを含める",
         DiagnosticsOptInSearchWordsHint => "何を検索していたかが明らかになる可能性があります。",
         DiagnosticsFileCreated => "サポートファイルが作成されました。",

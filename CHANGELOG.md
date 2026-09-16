@@ -346,6 +346,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Japanese: "folder" is spelled one way, 「フォルダー」 (Task 066).** The
+  navigation and the Folders page already said 「フォルダー」, but 27 other
+  Japanese messages said 「フォルダ」: the model setup pages, folder notices,
+  "search in this folder", "all folders", diagnostics options and others.
+  All now say 「フォルダー」, and a test keeps the shorter spelling from
+  coming back.
+
 - The edited-migration allowlist is empty: 0.25.0 ships `0001_baseline.sql`
   and `0003_scheduler.sql` as its released baseline, so neither needs an
   exemption (RFC-062 §7).
