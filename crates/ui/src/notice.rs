@@ -142,9 +142,7 @@ impl UserNotice {
             Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailTitle,
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
-            // Task 057: the owner approved one sentence for this failure; it
-            // serves as title and body, as `DiagnosticsFileCreated` does.
-            Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
+            Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailedTitle,
         };
         tr(locale, key)
     }

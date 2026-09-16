@@ -174,6 +174,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelPersistenceRetry => "保存をもう一度試す",
         ModelLoadFailed => "モデルは保存されましたが、読み込めませんでした。",
         ModelLoadRetry => "もう一度試す",
+        ModelLoadFailedTitle => "モデルを読み込めませんでした",
         NoticeDownloadFailTitle => "ダウンロードが完了しませんでした",
         NoticeDownloadFailBody => {
             "ダウンロードを完了できませんでした。接続を確認して、もう一度お試しください。"

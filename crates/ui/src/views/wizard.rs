@@ -575,6 +575,15 @@ fn page_ready<'a>(
                             .size(theme::body_s(tokens, sc)),
                     )
                     .on_press(Message::WizardRetryModelLoad),
+                )
+                // Task 059: a way out. The model stays saved, so the next
+                // startup tries to load it again.
+                .push(
+                    button(
+                        text(tr(locale, MessageKey::WizardActionSkip))
+                            .size(theme::meta_s(tokens, sc)),
+                    )
+                    .on_press(Message::WizardSkip),
                 );
         }
         ModelPersistenceState::Failed => {
@@ -590,6 +599,14 @@ fn page_ready<'a>(
                             .size(theme::body_s(tokens, sc)),
                     )
                     .on_press(Message::WizardAccept),
+                )
+                // Task 059: a way out of a save that keeps failing.
+                .push(
+                    button(
+                        text(tr(locale, MessageKey::WizardActionSkip))
+                            .size(theme::meta_s(tokens, sc)),
+                    )
+                    .on_press(Message::WizardSkip),
                 );
         }
     }

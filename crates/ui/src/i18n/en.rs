@@ -165,6 +165,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelPersistenceRetry => "Try saving again",
         ModelLoadFailed => "The model was saved, but it could not be loaded.",
         ModelLoadRetry => "Try again",
+        ModelLoadFailedTitle => "Model could not be loaded",
         NoticeDownloadFailTitle => "Download did not finish",
         NoticeDownloadFailBody => {
             "We could not finish the download. Please check your \

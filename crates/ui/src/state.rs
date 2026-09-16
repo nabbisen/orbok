@@ -867,11 +867,19 @@ impl AppState {
                     self.notice = None;
                 } else {
                     match self.wizard.as_ref().map(WizardState::kind) {
+                        // Task 059: both failed Ready pages too, so neither is
+                        // a dead end. Skipping from the load-failed page
+                        // leaves the model *saved*, so the next startup tries
+                        // to load it again -- correct, since the failure may
+                        // have been transient, and forgetting a saved model
+                        // is not what Skip means.
                         Some(
                             WizardKind::Setup
                             | WizardKind::CheckedOk
                             | WizardKind::CheckedNotOk
-                            | WizardKind::DownloadFailed,
+                            | WizardKind::DownloadFailed
+                            | WizardKind::ReadyFailed
+                            | WizardKind::ReadyLoadFailed,
                         ) => {
                             // Same zero-confirmation fallback the
                             // mouse-only Skip button already performs on
@@ -905,11 +913,7 @@ impl AppState {
                             // one. Ready-while-saving still has no way out
                             // at all either way.
                         }
-                        Some(
-                            WizardKind::ReadyIdle
-                            | WizardKind::ReadyFailed
-                            | WizardKind::ReadyLoadFailed,
-                        ) => {
+                        Some(WizardKind::ReadyIdle) => {
                             // Ready has no Skip/Cancel via mouse either;
                             // same reasoning as above.
                         }

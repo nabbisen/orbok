@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 059: a model that would not save or load left no way out of setup.**
+  Both pages offered only a retry, and Escape did nothing there, so a model
+  that kept failing kept the user on that page. Both pages now also offer
+  "Skip — use keyword search only", and Escape does the same. A skipped
+  model that was saved stays saved, and the next start tries to load it
+  again. The "model could not be loaded" notice also gains its own title
+  ("Model could not be loaded"), instead of repeating its sentence as title
+  and body.
 - **Task 056: after "Clear extracted text", documents could silently never
   become searchable by meaning.** Embedding and chunking read a file's text
   only from the extracted-text store. When it had been cleared (or trimmed at
