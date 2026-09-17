@@ -1511,12 +1511,16 @@ mod tests {
     // back.
     //
     // Ordered by signals, not by sleeps. The flag is set only after the
-    // first chunk's progress event arrives, which `download_file` sends
-    // after writing it; the server sends the second chunk only after the
-    // flag is set. An earlier version set the flag on a 30 ms timer and
-    // failed on a slow CI runner (run 35166917848) when the first chunk had
-    // not arrived by then -- time was standing in for "the first chunk was
-    // written".
+    // first half's progress events arrive, which `download_file` sends
+    // after `write_all` returns; the server sends the second half only
+    // after the flag is set.
+    //
+    // What is asserted is that **no byte of the second half reaches the
+    // file** -- not that the first half does. `tokio::fs::File::write_all`
+    // returns once the bytes are handed to a background write, and a
+    // cancelled download drops its unflushed file, so the first half may or
+    // may not have landed; the partial file is discarded either way. CI
+    // runs 35166917848 and 35171714847 both found it empty.
     #[tokio::test]
     async fn cancelling_mid_transfer_stops_before_the_next_chunk_is_written() {
         let body = b"trusted-bytes-that-arrive-in-two-separate-chunks";
@@ -1586,10 +1590,10 @@ mod tests {
 
         assert!(matches!(result, Err(ModelDeliveryError::Cancelled)));
         let partial = std::fs::read(file.temp_path(temp.path())).unwrap();
-        assert_eq!(
-            partial,
-            &body[..split],
-            "only the chunk written before cancellation was seen may be on disk"
+        assert!(
+            partial.len() <= split && body[..split].starts_with(&partial),
+            "nothing past the chunk seen before cancellation may be on disk, got {} bytes: {partial:?}",
+            partial.len()
         );
     }
 
