@@ -416,5 +416,13 @@ pub fn message(key: MessageKey) -> &'static str {
         DiagnosticsIncludedHeading => "含まれるもの:",
         DiagnosticsNotIncludedHeading => "含まれないもの:",
         DiagnosticsFolderNamesOptedIn => "フォルダー名（オプトインした場合）",
+        StartupFailedTitle => "orbok を起動できませんでした",
+        StartupFailedNewerDataBody => {
+            "このデータは新しいバージョンの orbok で作成されています。orbok を更新してから、もう一度起動してください。"
+        }
+        StartupFailedOtherBody => {
+            "orbok のデータを開けませんでした。もう一度起動してみてください。"
+        }
+        StartupFailedClose => "閉じる",
     }
 }

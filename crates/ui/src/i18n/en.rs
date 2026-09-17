@@ -405,5 +405,11 @@ pub fn message(key: MessageKey) -> &'static str {
         DiagnosticsIncludedHeading => "Included:",
         DiagnosticsNotIncludedHeading => "Not included:",
         DiagnosticsFolderNamesOptedIn => "Folder names (opted in)",
+        StartupFailedTitle => "orbok could not start",
+        StartupFailedNewerDataBody => {
+            "This data was created by a newer version of orbok. Update orbok, then start it again."
+        }
+        StartupFailedOtherBody => "orbok could not open its data. Try starting it again.",
+        StartupFailedClose => "Close",
     }
 }

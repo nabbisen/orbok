@@ -78,6 +78,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 071: when orbok could not start, nothing appeared.** If its data
+  folder could not be used (for example, on a disconnected drive), or its
+  data was created by a newer version, orbok printed the reason only to a
+  terminal, which a desktop launch never shows; on Windows the app simply
+  did not appear. Now a small window says "orbok could not start" with the
+  reason:
+  - the data folder could not be used, naming the folder, so you can check
+    the drive;
+  - the data was created by a newer version of orbok, so update orbok;
+  - otherwise, that orbok could not open its data.
+
+  Close or Escape exits. `orbok --check` still reports the problem as text
+  and opens no window.
+
 - **Task 070: two failure messages said something untrue.**
   - **A failed model download** was headed "Download did not finish. Please
     check your connection and try again." for every failure, including ones

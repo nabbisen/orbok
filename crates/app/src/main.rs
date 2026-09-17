@@ -36,6 +36,7 @@ mod scheduler_host;
 mod search_flow;
 mod search_model;
 mod settings;
+mod startup_failure;
 #[cfg(test)]
 mod wired_application_tests;
 
@@ -84,7 +85,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::CliCommand::Check { portable } => (portable, true),
         cli::CliCommand::Gui { portable } => (portable, false),
     };
-    let runtime = bootstrap::resolve_runtime_context(portable)?;
+    // Task 071: `--check` keeps reporting a failure as text. A GUI launch
+    // shows it in a window instead, since a desktop launch has no terminal.
+    let runtime = match bootstrap::resolve_runtime_context(portable) {
+        Ok(runtime) => runtime,
+        Err(error) if check => return Err(error),
+        // Resolving touches no folder: these are configuration conflicts
+        // (portable with ORBOK_DATA_DIR, overlapping profiles, no platform
+        // settings directory), with no data folder yet to name.
+        Err(error) => show_startup_failure(FailedStartup {
+            failure: startup_failure::StartupFailure::other(error),
+            stored_locale: None,
+        }),
+    };
     if portable {
         eprintln!("orbok: portable mode — data directory: ./orbok-data/");
     }
@@ -93,7 +106,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let state = bootstrap::load_initial_state(&runtime)?;
+    let (state, catalog) = match start_gui(&runtime) {
+        Ok(started) => started,
+        Err(failed) => show_startup_failure(failed),
+    };
 
     // RFC-061 §5 Slice 1: one `Catalog` for the whole `update` closure's
     // lifetime, opened once here rather than once per message. This is a
@@ -106,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // for. `Arc` rather than a bare reference: several branches below hand
     // it to a spawned task (`tokio::spawn`/`iced::Task::perform`) that must
     // outlive this synchronous closure invocation.
-    let catalog = std::sync::Arc::new(bootstrap::open_catalog(&runtime)?);
+    let catalog = std::sync::Arc::new(catalog);
 
     // RFC-061 §6 Slice 4: resolve the embedding model once for the whole
     // process, the same way `scheduler_host::run` already resolves its own
@@ -890,6 +906,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .run()?;
     Ok(())
+}
+
+/// Task 071: a GUI startup that failed, and the locale to explain it in.
+struct FailedStartup {
+    failure: startup_failure::StartupFailure,
+    /// The stored UI language, when startup got far enough to load it.
+    stored_locale: Option<orbok_ui::i18n::Locale>,
+}
+
+/// Task 071: the one GUI startup path -- the initial state, then the
+/// process-lifetime catalog (RFC-061 §5 Slice 1, see its comment in `main`).
+fn start_gui(
+    runtime: &orbok::runtime_context::RuntimeContext,
+) -> Result<(orbok_ui::AppState, orbok_db::Catalog), FailedStartup> {
+    let state = bootstrap::load_initial_state(runtime).map_err(|failure| FailedStartup {
+        failure,
+        stored_locale: None,
+    })?;
+    let catalog = bootstrap::open_catalog_staged(runtime).map_err(|error| FailedStartup {
+        failure: startup_failure::StartupFailure::from_catalog_open(runtime, error),
+        stored_locale: Some(state.locale),
+    })?;
+    Ok((state, catalog))
+}
+
+/// Task 071: log and print the failure as before, then show it in a small
+/// window until the user closes it, and exit 1. The window has no catalog,
+/// no scheduler and no retry: starting again means relaunching.
+///
+/// The locale is the stored setting when it loaded; otherwise the system
+/// locale, as a first run chooses it (`Locale::from_env`, then the
+/// default) -- the settings file may be what failed.
+fn show_startup_failure(failed: FailedStartup) -> ! {
+    use orbok_ui::views::startup_failure::{
+        StartupFailureMessage, StartupFailureScreen, startup_failure_key,
+    };
+
+    let source = failed.failure.source();
+    tracing::error!(error = ?source, "orbok could not start");
+    eprintln!("Error: {source:?}");
+
+    let locale = failed
+        .stored_locale
+        .or_else(orbok_ui::i18n::Locale::from_env)
+        .unwrap_or_default();
+    let theme = orbok_ui::Theme::from_env().unwrap_or(orbok_ui::Theme::Light);
+    let screen = StartupFailureScreen {
+        cause: failed.failure.cause(),
+        locale,
+        theme,
+        tokens: theme.tokens(),
+    };
+    let shown = iced::application(
+        move || screen.clone(),
+        |_: &mut StartupFailureScreen, message: StartupFailureMessage| match message {
+            StartupFailureMessage::Close => iced::exit(),
+        },
+        StartupFailureScreen::view,
+    )
+    .title(StartupFailureScreen::title)
+    .theme(StartupFailureScreen::iced_theme)
+    .font(orbok_ui::LUCIDE_FONT_BYTES)
+    .window_size((560.0, 260.0))
+    .subscription(|_: &StartupFailureScreen| {
+        iced::keyboard::listen().filter_map(|event| match event {
+            iced::keyboard::Event::KeyPressed { key, .. } => startup_failure_key(&key),
+            _ => None,
+        })
+    })
+    .run();
+    if let Err(error) = shown {
+        tracing::error!(%error, "the startup-failure window could not be shown");
+    }
+    std::process::exit(1);
 }
 
 /// RFC-061 §8(d): before this, there was no `std::panic::set_hook` anywhere

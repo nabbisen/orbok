@@ -68,9 +68,18 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
     }
 
     pub fn open_catalog(&self) -> OrbokResult<Catalog> {
-        let path = self.path(RuntimePathKind::Catalog)?;
-        std::fs::create_dir_all(self.context.data_dir())?;
-        Catalog::open(path)
+        self.open_catalog_staged().map_err(Into::into)
+    }
+
+    /// Task 071: [`Self::open_catalog`], keeping which stage failed --
+    /// authorising and creating the data folder, or opening the catalog
+    /// file in it -- so startup can say which one the user should check.
+    pub fn open_catalog_staged(&self) -> Result<Catalog, CatalogOpenError> {
+        let path = self
+            .path(RuntimePathKind::Catalog)
+            .map_err(CatalogOpenError::DataFolder)?;
+        std::fs::create_dir_all(self.context.data_dir()).map_err(CatalogOpenError::DataFolder)?;
+        Catalog::open(path).map_err(CatalogOpenError::Catalog)
     }
 
     /// Authorize and construct the sealed cache handle for the active
@@ -148,6 +157,29 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
         // `model_store()`; nothing here re-resolves or re-authorizes it.
         orbok_workers::run_managed_model_startup(catalog, &model_store.store)
     }
+}
+
+/// Task 071: which stage of opening the catalog failed.
+#[derive(Debug)]
+pub enum CatalogOpenError {
+    /// The data folder could not be authorised or created.
+    DataFolder(io::Error),
+    /// The folder was usable, but the catalog file in it could not be
+    /// opened, migrated, or was written by a newer orbok.
+    Catalog(orbok_core::OrbokError),
+}
+
+impl From<CatalogOpenError> for orbok_core::OrbokError {
+    fn from(error: CatalogOpenError) -> Self {
+        match error {
+            CatalogOpenError::DataFolder(error) => Self::Io(error),
+            CatalogOpenError::Catalog(error) => error,
+        }
+    }
+}
+
+pub fn open_catalog_staged(context: &RuntimeContext) -> Result<Catalog, CatalogOpenError> {
+    RuntimeStorage::new(context, &AllowRuntimePathProbe).open_catalog_staged()
 }
 
 pub fn open_catalog(context: &RuntimeContext) -> OrbokResult<Catalog> {

@@ -470,21 +470,27 @@ impl OrbokApp {
     /// `iced::Theme::Custom` accepts an `iced::theme::Palette` with six roles.
     /// We map the snora palette's semantic roles to those six fields.
     pub fn iced_theme(&self) -> iced::Theme {
-        use snora::design::style::color::to_iced_color;
-        let p = &self.state.tokens.palette;
-        let is_dark = matches!(
-            self.state.theme,
-            crate::theme::Theme::Dark | crate::theme::Theme::HighContrastDark
-        );
-        let palette = iced::theme::Palette {
-            background: to_iced_color(p.background),
-            text: to_iced_color(p.text_primary),
-            primary: to_iced_color(p.accent),
-            success: to_iced_color(p.success),
-            warning: to_iced_color(p.warning),
-            danger: to_iced_color(p.danger),
-        };
-        let name = if is_dark { "orbok-dark" } else { "orbok-light" };
-        iced::Theme::custom(name, palette)
+        iced_theme_for(self.state.theme, &self.state.tokens)
     }
+}
+
+/// The `iced::Theme` for a snora token palette. Shared by the main window
+/// and the startup-failure window (Task 071), which has no `AppState`.
+pub fn iced_theme_for(theme: crate::theme::Theme, tokens: &snora::design::Tokens) -> iced::Theme {
+    use snora::design::style::color::to_iced_color;
+    let p = &tokens.palette;
+    let is_dark = matches!(
+        theme,
+        crate::theme::Theme::Dark | crate::theme::Theme::HighContrastDark
+    );
+    let palette = iced::theme::Palette {
+        background: to_iced_color(p.background),
+        text: to_iced_color(p.text_primary),
+        primary: to_iced_color(p.accent),
+        success: to_iced_color(p.success),
+        warning: to_iced_color(p.warning),
+        danger: to_iced_color(p.danger),
+    };
+    let name = if is_dark { "orbok-dark" } else { "orbok-light" };
+    iced::Theme::custom(name, palette)
 }

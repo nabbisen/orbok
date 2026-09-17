@@ -7,6 +7,7 @@
 //!
 //! Formatting (RFC-035): user-facing numbers and sizes via [`crate::i18n`].
 
+pub mod startup_failure;
 pub mod wizard;
 pub use wizard::wizard_view;
 

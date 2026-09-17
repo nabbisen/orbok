@@ -81,3 +81,50 @@ fn an_unknown_argument_names_itself_exits_two_and_touches_no_profile() {
         "nothing on stdout for a usage error"
     );
 }
+
+/// Task 071 §4 test 4: `--check` still reports a startup failure as text and
+/// exits non-zero -- it never reaches the startup-failure window. The data
+/// folder is a regular file. With the display variables removed, a window
+/// attempt would fail differently and log the window's own line; the run
+/// must also end on its own, not at the timeout.
+#[test]
+fn check_reports_an_unusable_data_folder_as_text_and_opens_no_window() {
+    let temp = tempfile::tempdir().unwrap();
+    let data_file = temp.path().join("not-a-folder");
+    std::fs::write(&data_file, "x").unwrap();
+    let started = Instant::now();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_orbok"))
+        .arg("--check")
+        .env("ORBOK_DATA_DIR", &data_file)
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("DISPLAY")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = started + Duration::from_secs(60);
+    let mut killed = false;
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            child.kill().unwrap();
+            killed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!killed, "--check must end on its own");
+    assert_eq!(output.status.code(), Some(1), "a failed --check exits 1");
+    assert!(
+        stderr.contains("Error: "),
+        "the error is printed to stderr, got {stderr:?}"
+    );
+    for (name, text) in [("stdout", &stdout), ("stderr", &stderr)] {
+        assert!(
+            !text.contains("could not start"),
+            "--check must not reach the startup-failure window; {name}: {text:?}"
+        );
+    }
+}

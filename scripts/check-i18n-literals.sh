@@ -158,12 +158,14 @@ SCAN_FILES=(
   crates/ui/src/state/model_consent.rs
   crates/ui/src/state/search.rs
   crates/ui/src/views.rs
+  crates/ui/src/views/startup_failure.rs
   crates/ui/src/views/wizard.rs
   crates/app/src/diagnostics.rs
   crates/app/src/main.rs
   crates/app/src/notice_retry.rs
   crates/app/src/platform_host.rs
   crates/app/src/search_flow.rs
+  crates/app/src/startup_failure.rs
 )
 
 # file → reason, one entry per non-scanned file discovery yields today.

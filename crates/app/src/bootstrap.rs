@@ -100,7 +100,7 @@ pub fn resolve_runtime_context(
 // `OrbokSettings`-typed wrappers around that generic API for this file's
 // call sites.
 pub use orbok::runtime_storage::cache as cache_service;
-pub use orbok::runtime_storage::{model_store, open_catalog};
+pub use orbok::runtime_storage::{model_store, open_catalog, open_catalog_staged};
 
 pub fn load_runtime_settings(context: &RuntimeContext) -> OrbokResult<OrbokSettings> {
     runtime_settings_with(context, &AllowRuntimePathProbe)

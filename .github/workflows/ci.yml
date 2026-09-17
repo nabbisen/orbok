@@ -324,6 +324,15 @@ jobs:
       - name: orbok library tests (runtime_context, cross-platform)
         run: cargo test -p orbok --lib --locked
 
+      # Review 242 §3.1, Task 071: the only tests that run the real `orbok`
+      # binary with piped output -- the Windows console-attach guard's case,
+      # and `--check` reporting a startup failure as text rather than
+      # opening the startup-failure window. No other job runs this
+      # integration-test target (`fast` excludes `orbok`, `release` runs
+      # `--lib`), so it runs on all three legs, not only Windows.
+      - name: orbok command-line tests (cross-platform)
+        run: cargo test -p orbok --test cli_touches_no_profile --locked
+
       # Task 032: orbok-cache joins this step (was previously untested off
       # Linux) rather than getting its own -- same shape as orbok-core/db/fs,
       # a small foundational crate with no GUI/bin surface of its own.

@@ -488,6 +488,12 @@ message_keys! {
     DiagnosticsIncludedHeading,
     DiagnosticsNotIncludedHeading,
     DiagnosticsFolderNamesOptedIn,
+    // Task 071: the window shown when orbok cannot start. The data-folder
+    // body names a path, so it is `startup_failed_data_folder_body`.
+    StartupFailedTitle,
+    StartupFailedNewerDataBody,
+    StartupFailedOtherBody,
+    StartupFailedClose,
 }
 
 /// Translate a fixed message. The per-locale functions are exhaustive
@@ -600,6 +606,22 @@ pub fn files_ready_for_search(locale: Locale, ready: u64) -> String {
     match locale {
         Locale::En => format!("{ready} files ready. You can search now."),
         Locale::Ja => format!("{ready} 件のファイルが準備完了。今すぐ検索できます。"),
+    }
+}
+
+/// Task 071: the startup-failure body when the data folder could not be
+/// used. `path` is the resolved data folder, shown in full: it is on the
+/// user's own machine, and it is what they need to check.
+pub fn startup_failed_data_folder_body(locale: Locale, path: &str) -> String {
+    match locale {
+        Locale::En => format!(
+            "orbok could not use its data folder: {path}. Check that the drive is connected \
+             and that you can open the folder, then start orbok again."
+        ),
+        Locale::Ja => format!(
+            "orbok のデータフォルダーを使用できませんでした: {path}。ドライブが接続されていて、\
+             フォルダーを開けることを確認してから、もう一度起動してください。"
+        ),
     }
 }
 

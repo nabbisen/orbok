@@ -41,6 +41,7 @@ mod task064_notices_on_every_view;
 mod task065_why_a_result_did_not_open;
 mod task069_confirm_only_what_is_on_screen;
 mod task070_truthful_failure_copy;
+mod task071_startup_failure;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

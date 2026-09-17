@@ -452,3 +452,11 @@ Phrased per RFC-058 §5.
    catalog exists for the process lifetime. The remaining question is what
    happens when the *first* open fails at startup — currently `load_initial_state`
    handles it. Not a design question; flag it if implementation finds otherwise.
+
+   **Answered by Task 071 (2026-09-17).** A failed first open no longer ends
+   the process with only a line on stderr. For a GUI launch, `main` shows a
+   small window that says why orbok could not start -- an unusable data
+   folder (naming it), data from a newer orbok, or anything else -- and exits
+   1 when closed. `--check` still reports as text. Criterion 4 in §10 (a
+   notice while the UI runs and indexing cannot start) is a different case
+   and is not claimed by this.

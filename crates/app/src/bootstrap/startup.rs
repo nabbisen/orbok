@@ -3,6 +3,7 @@
 
 use super::model_resolution::{ResolvedModelDir, resolve_model_dir};
 use crate::settings::OrbokSettings;
+use crate::startup_failure::StartupFailure;
 use orbok::runtime_context::{AllowRuntimePathProbe, RuntimeContext, RuntimePathProbe};
 use orbok::runtime_storage::RuntimeStorage;
 use orbok_core::OrbokResult;
@@ -16,20 +17,31 @@ use orbok_workers::verify_embedding_model;
 /// Build the initial `AppState` from persisted settings and startup
 /// model verification. Activates the wizard when any required model
 /// file is missing or not yet configured.
-pub fn load_initial_state(context: &RuntimeContext) -> OrbokResult<AppState> {
+///
+/// Task 071: a failure is a typed [`StartupFailure`], built at the step that
+/// failed, so the window can say what to check.
+pub fn load_initial_state(context: &RuntimeContext) -> Result<AppState, StartupFailure> {
     load_initial_state_with(context, &AllowRuntimePathProbe)
 }
 
 pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     context: &RuntimeContext,
     probe: &P,
-) -> OrbokResult<AppState> {
+) -> Result<AppState, StartupFailure> {
     let storage = RuntimeStorage::new(context, probe);
-    let model_store = storage.model_store()?;
-    let catalog = storage.open_catalog()?;
+    // Authorises and creates `<data>/models`: the first step that touches
+    // the data folder.
+    let model_store = storage
+        .model_store()
+        .map_err(|error| StartupFailure::data_folder(context, error))?;
+    let catalog = storage
+        .open_catalog_staged()
+        .map_err(|error| StartupFailure::from_catalog_open(context, error))?;
 
     // RFC-018: reset any jobs left running from a crashed session.
-    let recovery = storage.run_startup_recovery(&catalog)?;
+    let recovery = storage
+        .run_startup_recovery(&catalog)
+        .map_err(StartupFailure::other)?;
     if recovery.jobs_reset > 0 {
         tracing::warn!(
             reset = recovery.jobs_reset,
@@ -66,7 +78,12 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
 
     // RFC-050: epoch advancement, staged-generation recovery, and real
     // later-startup load validation precede any managed runtime resolution.
-    let model_recovery = storage.run_managed_model_startup(&catalog, &model_store)?;
+    // A missing or invalid model is not an error here: an invalid generation
+    // is quarantined or rolled back and the wizard opens. What fails is the
+    // store itself (unavailable, busy, filesystem, catalog).
+    let model_recovery = storage
+        .run_managed_model_startup(&catalog, &model_store)
+        .map_err(StartupFailure::other)?;
     tracing::info!(
         startup_epoch = model_recovery.startup_epoch,
         recovered_inactive = model_recovery.recovered_inactive,
@@ -76,8 +93,13 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         "managed model startup recovery completed"
     );
 
-    // Load persisted OrbokSettings (app-json-settings).
-    let settings = storage.load_settings::<OrbokSettings>()?;
+    // Load persisted OrbokSettings (app-json-settings). Only authorising the
+    // path or writing a first default can fail (an unreadable or malformed
+    // file falls back to defaults), and the settings file can live outside
+    // the data folder, whose path the window names -- so this is Other.
+    let settings = storage
+        .load_settings::<OrbokSettings>()
+        .map_err(StartupFailure::other)?;
 
     let catalog_locale = SettingsRepository::new(&catalog)
         .get::<String>("ui.locale")
