@@ -165,6 +165,7 @@ SCAN_FILES=(
   crates/app/src/notice_retry.rs
   crates/app/src/platform_host.rs
   crates/app/src/search_flow.rs
+  crates/app/src/source_removal.rs
   crates/app/src/startup_failure.rs
 )
 

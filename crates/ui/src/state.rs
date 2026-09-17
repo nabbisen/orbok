@@ -712,7 +712,13 @@ pub enum Message {
     /// The "Add source" folder picker was cancelled -- neutral, no error.
     AddSourceFolderPickerCancelled,
     SourceAdded(SourceCard),
+    /// Task 073: a request to remove this folder, sent once its
+    /// confirmation is confirmed. Changes no state: `orbok` removes it from
+    /// the catalog, then sends `SourceRemovalSucceeded` or raises
+    /// `SourceCouldNotBeRemoved`.
     SourceRemoved(String), // source_id
+    /// Task 073: the catalog removed this folder; the list now drops it.
+    SourceRemovalSucceeded(String), // source_id
     /// RFC-037 §10.2 manual refresh (Task 035): "[Check again]" for a
     /// missing/permission-denied source, "[Prepare again]" for an active
     /// one — same message either way, `orbok`'s handler calls the same
@@ -848,8 +854,12 @@ impl AppState {
                 self.confirm_remove_source = None;
             }
             Message::AskRemoveSource(id) => {
-                self.confirm_remove_source = Some(id.clone());
-                self.confirm_reset = false;
+                // Task 073: only a folder in the list can be asked about --
+                // otherwise there is no dialog to show, and nothing opens.
+                if self.sources.iter().any(|card| &card.source_id == id) {
+                    self.confirm_remove_source = Some(id.clone());
+                    self.confirm_reset = false;
+                }
             }
             Message::CancelRemoveSource => self.confirm_remove_source = None,
             Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
@@ -1138,9 +1148,18 @@ impl AppState {
                 // rather than risk a stale/misleading index.
                 self.selected_source = None;
             }
-            Message::SourceRemoved(id) => {
+            // Task 073: the list changes only after the catalog does.
+            Message::SourceRemoved(_) => {} // handled by orbok: source_removal::remove
+            Message::SourceRemovalSucceeded(id) => {
                 self.sources.retain(|s| s.source_id != *id);
                 self.selected_source = None;
+                // The removal the notice reported as failed has now
+                // happened; "Folder not removed" would be untrue. Other
+                // problem notices stay (Task 064), as `SearchResultsReady`
+                // clears only the failures it resolves (Task 065).
+                if self.notice == Some(UserNotice::SourceCouldNotBeRemoved) {
+                    self.clear_notice();
+                }
             }
             Message::SourceRefreshRequested(_) => {} // handled by orbok; result arrives via SourcesLoaded/HealthUpdated
             Message::HealthUpdated(health) => {
@@ -1291,6 +1310,15 @@ impl AppState {
         self.notice_action = None;
     }
 
+    /// Task 073: the folder the removal confirmation is for -- its card in
+    /// the list, or `None` when no confirmation is open or its folder is not
+    /// listed. The one lookup behind both the dialog `sources_view` renders
+    /// and `visible_confirmation`, so the two can never disagree.
+    pub fn removal_target(&self) -> Option<&SourceCard> {
+        let id = self.confirm_remove_source.as_ref()?;
+        self.sources.iter().find(|card| &card.source_id == id)
+    }
+
     /// Task 069: the confirmation the user can actually see -- its flag set,
     /// its own view active, and no wizard replacing the view. Both the views
     /// and the keyboard context use this, so Enter can never confirm
@@ -1301,10 +1329,9 @@ impl AppState {
         }
         [
             (self.confirm_reset, Confirmation::ResetCatalog),
-            (
-                self.confirm_remove_source.is_some(),
-                Confirmation::RemoveSource,
-            ),
+            // Task 073: visible only when its folder's card, which the
+            // dialog renders, is in the list.
+            (self.removal_target().is_some(), Confirmation::RemoveSource),
             (
                 self.confirm_clear_history,
                 Confirmation::ClearRecentSearches,

@@ -474,11 +474,11 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
 
     // Task 062: the removal confirmation, laid out like the reset one.
+    // Task 073: the same `removal_target` lookup `visible_confirmation` uses.
     if let Some(folder) = (state.visible_confirmation()
         == Some(crate::state::Confirmation::RemoveSource))
-    .then_some(state.confirm_remove_source.as_ref())
+    .then(|| state.removal_target())
     .flatten()
-    .and_then(|id| state.sources.iter().find(|card| &card.source_id == id))
     {
         let content = column![
             text(crate::i18n::fmt_remove_source_title(

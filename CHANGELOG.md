@@ -78,6 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 073: a folder that could not be removed disappeared from the list.**
+  If removing a folder failed, the notice said "Folder not removed" while the
+  Folders page said "No folders added"; pressing Try again then opened a
+  confirmation that was not on screen, which Enter could still confirm. The
+  list now changes only after the folder is really removed: on failure it
+  stays listed and selected, and Try again or Delete opens its confirmation
+  as usual. Once a retried removal succeeds, the "Folder not removed" notice
+  goes away.
 - **Task 071: when orbok could not start, nothing appeared.** If its data
   folder could not be used (for example, on a disconnected drive), or its
   data was created by a newer version, orbok printed the reason only to a

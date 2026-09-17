@@ -645,7 +645,7 @@ fn selected_source_removed_by_source_removed_message() {
     state.update(&Message::SelectNextSource);
     assert_eq!(state.selected_source, Some(0));
 
-    state.update(&Message::SourceRemoved("src-1".into()));
+    state.update(&Message::SourceRemovalSucceeded("src-1".into()));
     assert!(state.sources.is_empty());
     assert_eq!(
         state.selected_source, None,

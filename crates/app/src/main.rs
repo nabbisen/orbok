@@ -36,6 +36,7 @@ mod scheduler_host;
 mod search_flow;
 mod search_model;
 mod settings;
+mod source_removal;
 mod startup_failure;
 #[cfg(test)]
 mod wired_application_tests;
@@ -539,10 +540,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // UI state pre-cleared in AppState::update; fall through for update().
                 }
                 Message::SourceRemoved(source_id) => {
-                    if let Err(e) = bootstrap::remove_source(&catalog, source_id) {
-                        tracing::error!("remove source failed: {e}");
-                        app.update(notice_retry::source_not_removed(source_id));
-                    }
+                    source_removal::remove(&catalog, &mut app.state, source_id);
+                    return iced::Task::none();
                 }
                 // RFC-037 §10.2 manual refresh (Task 035): same function
                 // the startup check calls (bootstrap/startup.rs), invoked

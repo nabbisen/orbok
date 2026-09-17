@@ -43,6 +43,7 @@ mod task069_confirm_only_what_is_on_screen;
 mod task070_truthful_failure_copy;
 mod task071_startup_failure;
 mod task072_align_icons_and_labels;
+mod task073_removal_confirmation_matches_the_list;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

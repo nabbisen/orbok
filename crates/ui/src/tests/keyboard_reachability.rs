@@ -214,6 +214,9 @@ fn select_and_activate_a_source_by_keyboard() {
 
     // Enter inside the open dialog confirms; orbok then dispatches the one
     // existing removal path, reproduced here by hand as `press` does for keys.
+    // Task 073: that path removes the folder from the catalog first and
+    // reports success with `SourceRemovalSucceeded`; `SourceRemoved` itself
+    // is only the request.
     let confirm_ctx = KeyboardContext {
         confirm_remove_source: true,
         ..activate_ctx
@@ -228,7 +231,14 @@ fn select_and_activate_a_source_by_keyboard() {
         .state
         .take_confirmed_removal()
         .expect("confirming yields the removal");
+    assert!(matches!(&removal, Message::SourceRemoved(id) if id == "src-1"));
     app.update(removal);
+    assert_eq!(
+        app.state.sources.len(),
+        1,
+        "the request alone removes nothing"
+    );
+    app.update(Message::SourceRemovalSucceeded("src-1".into()));
 
     assert!(
         app.state.sources.is_empty(),
