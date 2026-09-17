@@ -46,7 +46,7 @@ every_user_notice! {
     FileCouldNotBeFound,
     FileCouldNotBeOpened,
     FileNotAllowed,
-    FileBusy,
+    FileCheckFailed,
     SensitiveSourceAdded,
     FolderAdded,
     FolderAlreadyAdded,

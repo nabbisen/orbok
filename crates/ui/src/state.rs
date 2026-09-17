@@ -932,7 +932,7 @@ impl AppState {
                             | UserNotice::FileCouldNotBeFound
                             | UserNotice::FileCouldNotBeOpened
                             | UserNotice::FileNotAllowed
-                            | UserNotice::FileBusy
+                            | UserNotice::FileCheckFailed
                     )
                 ) {
                     self.clear_notice();

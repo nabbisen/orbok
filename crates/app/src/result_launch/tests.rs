@@ -412,10 +412,10 @@ fn a_dangling_link_is_not_found() {
 }
 
 /// Task 070 §B.2's named arm: a variant `PathGuard::validate` never returns
-/// is Not found when it comes from the path stage -- never Busy, whose Try
-/// again would repeat an error that comes back the same. (From the catalog
-/// stage, the same `Database` error is Busy: see
-/// `a_catalog_that_cannot_be_read_is_busy`.)
+/// is Not found when it comes from the path stage -- never CheckFailed, whose
+/// Try again would repeat an error that comes back the same. (From the
+/// catalog stage, the same `Database` error is CheckFailed: see
+/// `a_catalog_that_cannot_be_read_means_the_file_could_not_be_checked`.)
 #[test]
 fn an_error_validation_never_returns_is_not_found() {
     let temp = tempfile::tempdir().unwrap();
@@ -432,7 +432,7 @@ fn an_error_validation_never_returns_is_not_found() {
 // ── Task 070 Part B: every refused open gets a truthful notice ─────────
 
 /// A catalog on disk with one registered source holding `note.md`, and a
-/// short busy timeout so a locked catalog fails fast.
+/// short SQLite lock timeout (`busy_timeout`) so a locked catalog fails fast.
 fn file_fixture(temp: &Path) -> (Catalog, PathBuf, PathBuf) {
     let source = temp.join("source");
     std::fs::create_dir_all(&source).unwrap();
@@ -449,12 +449,13 @@ fn file_fixture(temp: &Path) -> (Catalog, PathBuf, PathBuf) {
 }
 
 /// Task 070 §B.4 test 1 (catalog stage): a catalog that cannot be read for
-/// the folder list is Busy. A second connection cannot lock a WAL catalog
-/// against readers while orbok's own connection is open (taking exclusive
-/// locking mode is itself refused as busy), so the read is made to fail by
+/// the folder list means the file could not be checked (Task 074). A second
+/// connection cannot lock a WAL catalog against readers while orbok's own
+/// connection is open (taking exclusive locking mode is itself refused), so
+/// the read is made to fail by
 /// moving the folder table aside for the duration of the open.
 #[test]
-fn a_catalog_that_cannot_be_read_is_busy() {
+fn a_catalog_that_cannot_be_read_means_the_file_could_not_be_checked() {
     let temp = tempfile::tempdir().unwrap();
     let (catalog, inside, db) = file_fixture(temp.path());
     let locker = rusqlite::Connection::open(&db).unwrap();
@@ -473,11 +474,11 @@ fn a_catalog_that_cannot_be_read_is_busy() {
         .unwrap();
     assert_eq!(
         got,
-        Some(LaunchFailure::Busy {
+        Some(LaunchFailure::CheckFailed {
             index: 0,
             action: LaunchAction::Open
         }),
-        "a catalog that cannot be read is busy"
+        "a catalog that cannot be read means the file could not be checked"
     );
 }
 

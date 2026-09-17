@@ -112,9 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **orbok may not open it** (a folder rule, or no permission): "This
       file could not be opened. orbok isn't allowed to open it.", with no
       button.
-    - **orbok could not check it** (its data was busy): "This file could not
-      be opened. orbok was busy. Try again in a moment.", with **Try again**
-      repeating the same open or show-in-folder.
+    - **orbok could not check it** (its data could not be read): "This file
+      could not be opened. orbok could not check this file just now. Try again
+      in a moment.", with **Try again** repeating the same open or
+      show-in-folder.
 
     "Files may have moved" is gone. A new search clears both notices, like
     the other open failures.

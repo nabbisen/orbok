@@ -287,7 +287,7 @@ message_keys! {
     NoticeFileNotOpenedTitle,
     NoticeFileNotOpenedBody,
     NoticeFileNotAllowedBody,
-    NoticeFileBusyBody,
+    NoticeFileCheckFailedBody,
     // RFC-061 §8: failures that were silently swallowed before
     NoticeSettingSaveFailTitle,
     NoticeSettingSaveFailBody,

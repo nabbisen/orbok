@@ -70,18 +70,18 @@ fn a_file_not_allowed_offers_no_button() {
 }
 
 #[test]
-fn busy_retries_the_same_action_on_the_same_result() {
-    let (notice, action) = raise(result_not_launched(LaunchFailure::Busy {
+fn check_failed_retries_the_same_action_on_the_same_result() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::CheckFailed {
         index: 2,
         action: LaunchAction::Open,
     }));
-    assert_eq!(notice, Some(UserNotice::FileBusy));
+    assert_eq!(notice, Some(UserNotice::FileCheckFailed));
     assert!(matches!(action, Some(Message::OpenResult(2))), "{action:?}");
-    let (notice, action) = raise(result_not_launched(LaunchFailure::Busy {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::CheckFailed {
         index: 2,
         action: LaunchAction::Reveal,
     }));
-    assert_eq!(notice, Some(UserNotice::FileBusy));
+    assert_eq!(notice, Some(UserNotice::FileCheckFailed));
     assert!(
         matches!(action, Some(Message::RevealResult(2))),
         "a failed reveal retries the reveal, got {action:?}"

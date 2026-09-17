@@ -96,7 +96,7 @@ pub(crate) enum LaunchFailure {
     NotAllowed,
     /// The folder list could not be read to validate it. Retrying repeats
     /// `action` on the same result.
-    Busy { index: usize, action: LaunchAction },
+    CheckFailed { index: usize, action: LaunchAction },
     /// The file validated, but the launcher failed on `action`.
     CouldNotOpen { index: usize, action: LaunchAction },
 }
@@ -126,9 +126,9 @@ pub(crate) fn classify_refusal(error: &OrbokError, path: &Path) -> LaunchFailure
         }
         // `PathGuard::validate` returns none of these: it reads no catalog,
         // cache, model or queue. Were one to arrive from the path stage, it
-        // would come back the same on every retry, so it is not Busy (whose
-        // Try again would repeat it forever). Not found's Go to Folders is
-        // the one way out that stays useful. A catalog error never reaches
+        // would come back the same on every retry, so it is not CheckFailed
+        // (whose Try again would repeat it forever). Not found's Go to
+        // Folders is the one way out that stays useful. A catalog error never reaches
         // this arm: the catalog stage is classified before it.
         OrbokError::Database(_)
         | OrbokError::MigrationFailed { .. }
@@ -162,12 +162,14 @@ pub(crate) fn launch_result(
     let path = Path::new(&result.canonical_path);
     // Task 070 §B.2: classified by the stage that failed. The catalog stage
     // reads the folder list; the startup check has already refused an
-    // unusable catalog, so a failure here is a lock or busy condition.
+    // unusable catalog, and under WAL no other connection can block this
+    // read while orbok runs (Review Request 246 §3), so what reaches this is
+    // a damaged catalog or a disk error (Task 074).
     let guard = match orbok_search::snippet::searchable_path_guard(catalog) {
         Ok(guard) => guard,
         Err(error) => {
             tracing::warn!(%error, "a search result was not opened: the folder list could not be read");
-            return Some(LaunchFailure::Busy { index, action });
+            return Some(LaunchFailure::CheckFailed { index, action });
         }
     };
     let validated = match guard.validate(path) {

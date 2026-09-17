@@ -25,7 +25,7 @@ pub enum UserNotice {
     FileNotAllowed,
     /// Task 070: the folder list could not be read to check the file; the
     /// same action can be tried again.
-    FileBusy,
+    FileCheckFailed,
     /// The added folder may contain sensitive files (SSH keys, browser profiles, etc.).
     SensitiveSourceAdded,
     // ── Confirmations ─────────────────────────────────────────────────
@@ -109,7 +109,7 @@ impl UserNotice {
             Self::FileCouldNotBeFound
             | Self::FileCouldNotBeOpened
             | Self::FileNotAllowed
-            | Self::FileBusy
+            | Self::FileCheckFailed
             | Self::SensitiveSourceAdded => Tone::Warning,
             // Positive confirmations.
             Self::FolderAdded | Self::SearchReady => Tone::Success,
@@ -130,7 +130,7 @@ impl UserNotice {
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailTitle,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailTitle,
             Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundTitle,
-            Self::FileCouldNotBeOpened | Self::FileNotAllowed | Self::FileBusy => {
+            Self::FileCouldNotBeOpened | Self::FileNotAllowed | Self::FileCheckFailed => {
                 MessageKey::NoticeFileNotOpenedTitle
             }
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceTitle,
@@ -162,7 +162,7 @@ impl UserNotice {
             Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundBody,
             Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedBody,
             Self::FileNotAllowed => MessageKey::NoticeFileNotAllowedBody,
-            Self::FileBusy => MessageKey::NoticeFileBusyBody,
+            Self::FileCheckFailed => MessageKey::NoticeFileCheckFailedBody,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
@@ -201,7 +201,7 @@ impl UserNotice {
             // Task 070: retrying cannot change a permission.
             Self::FileNotAllowed => return None,
             // The same action on the same result.
-            Self::FileBusy => MessageKey::NoticeActionTryAgain,
+            Self::FileCheckFailed => MessageKey::NoticeActionTryAgain,
             Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
             | Self::FolderAlreadyAdded

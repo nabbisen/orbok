@@ -203,7 +203,9 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFileNotOpenedTitle => "このファイルを開けませんでした",
         NoticeFileNotOpenedBody => "このコンピューターのアプリでは開けませんでした。",
         NoticeFileNotAllowedBody => "orbok にはこのファイルを開く権限がありません。",
-        NoticeFileBusyBody => "orbok が処理中でした。少し待ってからもう一度お試しください。",
+        NoticeFileCheckFailedBody => {
+            "orbok がこのファイルを確認できませんでした。少し待ってからもう一度お試しください。"
+        }
         NoticeSettingSaveFailTitle => "設定を保存できませんでした",
         NoticeSettingSaveFailBody => {
             "変更を保存できませんでした。次回起動時に元に戻っている可能性があります。"

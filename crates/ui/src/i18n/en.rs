@@ -195,7 +195,9 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFileNotOpenedTitle => "This file could not be opened",
         NoticeFileNotOpenedBody => "No app on this computer opened it.",
         NoticeFileNotAllowedBody => "orbok isn't allowed to open it.",
-        NoticeFileBusyBody => "orbok was busy. Try again in a moment.",
+        NoticeFileCheckFailedBody => {
+            "orbok could not check this file just now. Try again in a moment."
+        }
         NoticeSettingSaveFailTitle => "Setting not saved",
         NoticeSettingSaveFailBody => {
             "Your change didn't save. It may not be there next time you open orbok."

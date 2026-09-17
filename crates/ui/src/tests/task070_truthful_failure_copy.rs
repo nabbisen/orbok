@@ -1,8 +1,8 @@
 //! Task 070: failure copy that says only what is true.
 //!
 //! - Part A: the failed-download heading gives no connection advice.
-//! - Part B: a refused open is Not allowed or Busy, never "Files may have
-//!   moved".
+//! - Part B: a refused open is Not allowed or could-not-check (Task 074),
+//!   never "Files may have moved".
 
 use crate::i18n::{Locale, MessageKey, tr};
 use crate::notice::UserNotice;
@@ -56,7 +56,7 @@ fn the_failed_download_heading_gives_no_connection_advice() {
     }
 }
 
-// ── Part B: Not allowed and Busy ─────────────────────────────────────────
+// ── Part B: Not allowed and could not check (Task 074) ─────────────────
 
 fn raised(locale: Locale, message: Message) -> AppState {
     let mut state = AppState {
@@ -68,27 +68,28 @@ fn raised(locale: Locale, message: Message) -> AppState {
 }
 
 /// §B.4 test 3: both notices render their exact copy in both locales,
-/// through the shell. Not allowed renders no button; Busy renders Try again.
+/// through the shell. Not allowed renders no button; could-not-check renders
+/// Try again.
 #[test]
-fn not_allowed_and_busy_render_the_approved_copy() {
+fn not_allowed_and_check_failed_render_the_approved_copy() {
     let _guard = iced_test_guard();
     let copy = [
         (
             Locale::En,
             "This file could not be opened",
             "orbok isn't allowed to open it.",
-            "orbok was busy. Try again in a moment.",
+            "orbok could not check this file just now. Try again in a moment.",
             "Try again",
         ),
         (
             Locale::Ja,
             "このファイルを開けませんでした",
             "orbok にはこのファイルを開く権限がありません。",
-            "orbok が処理中でした。少し待ってからもう一度お試しください。",
+            "orbok がこのファイルを確認できませんでした。少し待ってからもう一度お試しください。",
             "もう一度試す",
         ),
     ];
-    for (locale, title, not_allowed, busy, try_again) in copy {
+    for (locale, title, not_allowed, check_failed, try_again) in copy {
         let state = raised(locale, Message::ShowNotice(UserNotice::FileNotAllowed));
         let app = OrbokApp::with_state(state);
         let mut ui = simulator(app.view());
@@ -102,14 +103,17 @@ fn not_allowed_and_busy_render_the_approved_copy() {
         let state = raised(
             locale,
             Message::ShowNoticeWithAction {
-                notice: UserNotice::FileBusy,
+                notice: UserNotice::FileCheckFailed,
                 action: Box::new(Message::RevealResult(2)),
             },
         );
         let app = OrbokApp::with_state(state);
         let mut ui = simulator(app.view());
-        for text in [title, busy, try_again] {
-            assert!(ui.find(text).is_ok(), "{locale:?}: Busy renders {text:?}");
+        for text in [title, check_failed, try_again] {
+            assert!(
+                ui.find(text).is_ok(),
+                "{locale:?}: could-not-check renders {text:?}"
+            );
         }
     }
 }
@@ -127,29 +131,30 @@ fn result(name: &str) -> SearchResultDisplay {
     }
 }
 
-fn busy_on_result_1() -> AppState {
+fn check_failed_on_result_1() -> AppState {
     let mut state = AppState::default();
     state.update(&Message::SearchResultsReady(vec![
         result("a.md"),
         result("b.md"),
     ]));
     state.update(&Message::ShowNoticeWithAction {
-        notice: UserNotice::FileBusy,
+        notice: UserNotice::FileCheckFailed,
         action: Box::new(Message::OpenResult(1)),
     });
     state
 }
 
-/// §B.4 test 4: new results clear a Busy notice and its indexed retry.
+/// §B.4 test 4: new results clear a could-not-check notice and its indexed
+/// retry.
 #[test]
-fn a_new_search_clears_a_busy_notice_and_its_retry() {
-    let mut state = busy_on_result_1();
+fn a_new_search_clears_a_check_failed_notice_and_its_retry() {
+    let mut state = check_failed_on_result_1();
     state.update(&Message::SearchResultsReady(vec![result("other.md")]));
     assert_eq!(state.notice, None);
     assert!(state.take_notice_action().is_none());
 
     // Positive control: without new results, Try again opens result 1.
-    let mut state = busy_on_result_1();
+    let mut state = check_failed_on_result_1();
     assert!(matches!(
         state.take_notice_action(),
         Some(Message::OpenResult(1))
