@@ -43,9 +43,10 @@ macro_rules! every_user_notice {
 every_user_notice! {
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
-    FilesMovedOrMissing,
     FileCouldNotBeFound,
     FileCouldNotBeOpened,
+    FileNotAllowed,
+    FileBusy,
     SensitiveSourceAdded,
     FolderAdded,
     FolderAlreadyAdded,

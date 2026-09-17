@@ -181,10 +181,6 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeSearchFailTitle => "検索が完了しませんでした",
         NoticeSearchFailBody => "検索中に問題が発生しました。もう一度お試しください。",
-        NoticeFilesMissingTitle => "ファイルが移動した可能性があります",
-        NoticeFilesMissingBody => {
-            "一部のファイルが見つかりません。ドライブが取り外されたか、ファイルが移動された可能性があります。"
-        }
         NoticeFolderAddedTitle => "フォルダーを追加しました",
         NoticeFolderAddedBody => "検索の準備をしています。",
         NoticeFolderAlreadyAddedTitle => "フォルダーは追加済みです",
@@ -206,6 +202,8 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeFileNotOpenedTitle => "このファイルを開けませんでした",
         NoticeFileNotOpenedBody => "このコンピューターのアプリでは開けませんでした。",
+        NoticeFileNotAllowedBody => "orbok にはこのファイルを開く権限がありません。",
+        NoticeFileBusyBody => "orbok が処理中でした。少し待ってからもう一度お試しください。",
         NoticeSettingSaveFailTitle => "設定を保存できませんでした",
         NoticeSettingSaveFailBody => {
             "変更を保存できませんでした。次回起動時に元に戻っている可能性があります。"
@@ -332,9 +330,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelNeedsDownload => "不足しているファイルのみダウンロードします。",
         ModelDownloadInProgress => "モデルをダウンロード中",
         ModelFilesStayLocal => "ファイルはこのコンピューターに保存されます。",
-        ModelDownloadFailed => {
-            "ダウンロードが完了しませんでした。接続を確認してもう一度お試しください。"
-        }
+        ModelDownloadFailed => "ダウンロードが完了しませんでした",
         ModelDownloadRetry => "もう一度試す",
         ModelRepairingFiles => "修復が必要なファイルのみダウンロードします。",
         ModelBasicSearchAvailable => "基本検索は使えます。意味による検索は後で追加できます。",

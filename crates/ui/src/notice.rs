@@ -14,13 +14,18 @@ pub enum UserNotice {
     // ── Problems ──────────────────────────────────────────────────────
     FolderCouldNotBeAdded,
     SearchDidNotFinish,
-    FilesMovedOrMissing,
     /// Task 065: opening a result was refused because the file is no longer
     /// where orbok found it.
     FileCouldNotBeFound,
     /// Task 065: the file is there, but no app opened it (or the file
     /// manager could not show it).
     FileCouldNotBeOpened,
+    /// Task 070: opening a result was refused because orbok may not open the
+    /// file (a folder rule, or permission denied).
+    FileNotAllowed,
+    /// Task 070: the folder list could not be read to check the file; the
+    /// same action can be tried again.
+    FileBusy,
     /// The added folder may contain sensitive files (SSH keys, browser profiles, etc.).
     SensitiveSourceAdded,
     // ── Confirmations ─────────────────────────────────────────────────
@@ -101,9 +106,10 @@ impl UserNotice {
             | Self::IndexingCouldNotStart
             | Self::ModelCouldNotBeLoaded => Tone::Danger,
             // Cautions: action succeeded but the user should be aware.
-            Self::FilesMovedOrMissing
-            | Self::FileCouldNotBeFound
+            Self::FileCouldNotBeFound
             | Self::FileCouldNotBeOpened
+            | Self::FileNotAllowed
+            | Self::FileBusy
             | Self::SensitiveSourceAdded => Tone::Warning,
             // Positive confirmations.
             Self::FolderAdded | Self::SearchReady => Tone::Success,
@@ -123,9 +129,10 @@ impl UserNotice {
         let key = match self {
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailTitle,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailTitle,
-            Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingTitle,
             Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundTitle,
-            Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedTitle,
+            Self::FileCouldNotBeOpened | Self::FileNotAllowed | Self::FileBusy => {
+                MessageKey::NoticeFileNotOpenedTitle
+            }
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceTitle,
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
@@ -152,9 +159,10 @@ impl UserNotice {
         let key = match self {
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailBody,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailBody,
-            Self::FilesMovedOrMissing => MessageKey::NoticeFilesMissingBody,
             Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundBody,
             Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedBody,
+            Self::FileNotAllowed => MessageKey::NoticeFileNotAllowedBody,
+            Self::FileBusy => MessageKey::NoticeFileBusyBody,
             Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
@@ -186,13 +194,14 @@ impl UserNotice {
         let key = match self {
             Self::SearchDidNotFinish => MessageKey::NoticeActionTryAgain,
             Self::FolderCouldNotBeAdded => MessageKey::NoticeActionChooseFolder,
-            // Task 065: after a refusal orbok cannot classify, there is no
-            // approved action -- dismiss only.
-            Self::FilesMovedOrMissing => return None,
             Self::FileCouldNotBeFound => MessageKey::NoticeActionGoToFolders,
             // Rendered only when a Show-in-folder retry was stored: an Open
             // failure has one, a Reveal failure does not.
             Self::FileCouldNotBeOpened => MessageKey::NoticeActionShowInFolder,
+            // Task 070: retrying cannot change a permission.
+            Self::FileNotAllowed => return None,
+            // The same action on the same result.
+            Self::FileBusy => MessageKey::NoticeActionTryAgain,
             Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
             | Self::FolderAlreadyAdded

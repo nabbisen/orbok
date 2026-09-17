@@ -126,10 +126,7 @@ fn a_notice_class_follows_its_tone() {
         let expected = matches!(notice.tone(), Tone::Danger | Tone::Warning);
         assert_eq!(notice.is_problem(), expected, "{notice:?}");
     }
-    assert!(
-        UserNotice::FilesMovedOrMissing.is_problem(),
-        "a Warning is a problem"
-    );
+    assert!(UserNotice::FileBusy.is_problem(), "a Warning is a problem");
 }
 
 /// §3 test 5: exactly one render site -- `friendly_notice` is called once in

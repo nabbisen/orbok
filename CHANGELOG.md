@@ -56,6 +56,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 070: two failure messages said something untrue.**
+  - **A failed model download** was headed "Download did not finish. Please
+    check your connection and try again." for every failure, including ones
+    the connection had nothing to do with: the model source was unavailable,
+    the downloaded files failed their check, or they could not be saved on
+    this computer. The heading is now "Download did not finish"; the line
+    below it, unchanged, gives the advice for the actual cause.
+  - **A result that orbok refused to open** for any reason other than a
+    missing file still said "Files may have moved". Now:
+    - **orbok may not open it** (a folder rule, or no permission): "This
+      file could not be opened. orbok isn't allowed to open it.", with no
+      button.
+    - **orbok could not check it** (its data was busy): "This file could not
+      be opened. orbok was busy. Try again in a moment.", with **Try again**
+      repeating the same open or show-in-folder.
+
+    "Files may have moved" is gone. A new search clears both notices, like
+    the other open failures.
 - **Task 069: Enter could confirm a destructive action that was no longer on
   screen.** Removing a folder, resetting saved app data and clearing recent
   searches each ask first, but a confirmation stayed open after moving to

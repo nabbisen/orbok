@@ -6,6 +6,7 @@ use super::{
     launch_request, launch_result, reveal_command,
 };
 use crate::bootstrap;
+use orbok_core::OrbokError;
 use orbok_db::Catalog;
 use orbok_db::repo::SourceRepository;
 use orbok_fs::ValidatedPath;
@@ -341,10 +342,11 @@ fn a_reveal_that_failed_is_could_not_open_for_the_reveal() {
     );
 }
 
-/// Task 065 §5 test 1: a policy refusal -- a hidden file under an
-/// exclude-hidden folder -- has no approved copy, so it stays unclassified.
+/// Task 070 §B.2 row 2: a folder rule refusing the file -- a real hidden
+/// file under an exclude-hidden folder, and `file_too_large` through the
+/// classifier -- is Not allowed.
 #[test]
-fn a_policy_refusal_is_unclassified() {
+fn a_policy_refusal_is_not_allowed() {
     let temp = tempfile::tempdir().unwrap();
     let (catalog, inside, _, _) = fixture(temp.path());
     let hidden_dir = inside.parent().unwrap().join(".hidden");
@@ -360,38 +362,158 @@ fn a_policy_refusal_is_unclassified() {
             LaunchAction::Open,
             &launcher
         ),
-        Some(LaunchFailure::Unclassified)
+        Some(LaunchFailure::NotAllowed)
     );
     assert!(launcher.0.borrow().is_empty());
     assert_eq!(
-        classify_refusal(
-            &orbok_core::OrbokError::PolicyBlocked("file_too_large"),
-            &inside
-        ),
-        LaunchFailure::Unclassified
+        classify_refusal(&OrbokError::PolicyBlocked("file_too_large"), &inside),
+        LaunchFailure::NotAllowed
     );
 }
 
-/// The classifier reads the path, not the error message: a canonicalization
-/// failure on a file that still exists (permission denied, say) is not
-/// "not found".
+/// Task 070 §B.2 rows 4 and 5: a canonicalization or io failure that is not
+/// permission denied is Not found -- the file is gone, or the path is a
+/// dangling link. The classifier reads the path, never the message: a
+/// message saying "permission denied" does not make a missing file Not
+/// allowed.
 #[test]
-fn a_canonicalization_failure_on_an_existing_file_is_unclassified() {
+fn a_canonicalization_failure_that_is_not_permission_is_not_found() {
+    let temp = tempfile::tempdir().unwrap();
+    let gone = temp.path().join("gone.md");
+    for error in [
+        OrbokError::PathCanonicalization("permission denied".into()),
+        OrbokError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+    ] {
+        assert_eq!(
+            classify_refusal(&error, &gone),
+            LaunchFailure::NotFound,
+            "{error:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dangling_link_is_not_found() {
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, _, _) = fixture(temp.path());
+    let link = inside.parent().unwrap().join("dangling.md");
+    std::os::unix::fs::symlink(temp.path().join("nowhere.md"), &link).unwrap();
+    assert_eq!(
+        launch_result(
+            &catalog,
+            &[result_for(&link)],
+            0,
+            LaunchAction::Open,
+            &RecordingLauncher::default()
+        ),
+        Some(LaunchFailure::NotFound)
+    );
+}
+
+/// Task 070 §B.2's named arm: a variant `PathGuard::validate` never returns
+/// is Not found when it comes from the path stage -- never Busy, whose Try
+/// again would repeat an error that comes back the same. (From the catalog
+/// stage, the same `Database` error is Busy: see
+/// `a_catalog_that_cannot_be_read_is_busy`.)
+#[test]
+fn an_error_validation_never_returns_is_not_found() {
     let temp = tempfile::tempdir().unwrap();
     let (_, inside, _, _) = fixture(temp.path());
     assert_eq!(
         classify_refusal(
-            &orbok_core::OrbokError::PathCanonicalization("permission denied".into()),
+            &OrbokError::Database("no such table: sources".into()),
             &inside
         ),
-        LaunchFailure::Unclassified
-    );
-    let gone = temp.path().join("gone.md");
-    assert_eq!(
-        classify_refusal(
-            &orbok_core::OrbokError::PathCanonicalization("no such file".into()),
-            &gone
-        ),
         LaunchFailure::NotFound
+    );
+}
+
+// ── Task 070 Part B: every refused open gets a truthful notice ─────────
+
+/// A catalog on disk with one registered source holding `note.md`, and a
+/// short busy timeout so a locked catalog fails fast.
+fn file_fixture(temp: &Path) -> (Catalog, PathBuf, PathBuf) {
+    let source = temp.join("source");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(source.join("note.md"), "# Note\n").unwrap();
+    let db = temp.join("orbok-catalog.sqlite3");
+    let catalog = Catalog::open(&db).unwrap();
+    bootstrap::add_source_expect_added(&catalog, &source.to_string_lossy()).unwrap();
+    catalog
+        .lock()
+        .busy_timeout(std::time::Duration::from_millis(50))
+        .unwrap();
+    let inside = std::fs::canonicalize(source.join("note.md")).unwrap();
+    (catalog, inside, db)
+}
+
+/// Task 070 §B.4 test 1 (catalog stage): a catalog that cannot be read for
+/// the folder list is Busy. A second connection cannot lock a WAL catalog
+/// against readers while orbok's own connection is open (taking exclusive
+/// locking mode is itself refused as busy), so the read is made to fail by
+/// moving the folder table aside for the duration of the open.
+#[test]
+fn a_catalog_that_cannot_be_read_is_busy() {
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, db) = file_fixture(temp.path());
+    let locker = rusqlite::Connection::open(&db).unwrap();
+    locker
+        .execute_batch("ALTER TABLE sources RENAME TO sources_moved_aside;")
+        .unwrap();
+    let got = launch_result(
+        &catalog,
+        &[result_for(&inside)],
+        0,
+        LaunchAction::Open,
+        &RecordingLauncher::default(),
+    );
+    locker
+        .execute_batch("ALTER TABLE sources_moved_aside RENAME TO sources;")
+        .unwrap();
+    assert_eq!(
+        got,
+        Some(LaunchFailure::Busy {
+            index: 0,
+            action: LaunchAction::Open
+        }),
+        "a catalog that cannot be read is busy"
+    );
+}
+
+/// Task 070 §B.4 test 1 (path stage, Not allowed): a file orbok may not read.
+/// Skipped when the process can still read a mode-000 directory (running as
+/// root), so a root CI container cannot produce a false pass.
+#[cfg(unix)]
+#[test]
+fn a_file_orbok_may_not_read_is_not_allowed() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, _, _, _) = fixture(temp.path());
+    let locked_dir = temp.path().join("source").join("locked");
+    std::fs::create_dir_all(&locked_dir).unwrap();
+    let file = locked_dir.join("secret.md");
+    std::fs::write(&file, "# Secret\n").unwrap();
+    let file = std::fs::canonicalize(&file).unwrap();
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable_anyway = std::fs::read_dir(&locked_dir).is_ok();
+    let got = (!readable_anyway).then(|| {
+        launch_result(
+            &catalog,
+            &[result_for(&file)],
+            0,
+            LaunchAction::Open,
+            &RecordingLauncher::default(),
+        )
+    });
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let Some(got) = got else {
+        eprintln!("skipped: a mode-000 directory is readable (running as root)");
+        return;
+    };
+    assert_eq!(
+        got,
+        Some(LaunchFailure::NotAllowed),
+        "permission denied is not allowed"
     );
 }

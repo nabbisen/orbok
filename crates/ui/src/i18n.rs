@@ -267,8 +267,6 @@ message_keys! {
     NoticeFolderFailBody,
     NoticeSearchFailTitle,
     NoticeSearchFailBody,
-    NoticeFilesMissingTitle,
-    NoticeFilesMissingBody,
     NoticeFolderAddedTitle,
     NoticeFolderAddedBody,
     NoticeFolderAlreadyAddedTitle,
@@ -288,6 +286,8 @@ message_keys! {
     NoticeFileNotFoundBody,
     NoticeFileNotOpenedTitle,
     NoticeFileNotOpenedBody,
+    NoticeFileNotAllowedBody,
+    NoticeFileBusyBody,
     // RFC-061 §8: failures that were silently swallowed before
     NoticeSettingSaveFailTitle,
     NoticeSettingSaveFailBody,

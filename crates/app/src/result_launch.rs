@@ -42,7 +42,7 @@
 //! `\\?\C:\...` paths, which Explorer is not documented to accept, so the
 //! prefix is removed with [`explorer_path`] after validation.
 
-use orbok_core::{OrbokError, OrbokResult};
+use orbok_core::OrbokError;
 use orbok_db::Catalog;
 use orbok_fs::ValidatedPath;
 use orbok_search::ResultRecoveryAction;
@@ -83,34 +83,66 @@ pub(crate) trait Launcher {
     fn reveal(&self, path: &ValidatedPath) -> io::Result<()>;
 }
 
-/// Why a result was not launched (Task 065). `main.rs` turns it into the
-/// user's notice through `notice_retry::result_not_launched`.
+/// Why a result was not launched (Tasks 065, 070). `main.rs` turns it into
+/// the user's notice through `notice_retry::result_not_launched`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LaunchFailure {
     /// Validation refused it because the file is no longer where orbok found
-    /// it: gone from disk, or outside every folder orbok searches.
+    /// it: gone from disk, outside every folder orbok searches, or on a
+    /// drive that cannot be reached.
     NotFound,
+    /// Validation refused it because orbok may not open it: a folder rule
+    /// blocks it, or the system denied permission.
+    NotAllowed,
+    /// The folder list could not be read to validate it. Retrying repeats
+    /// `action` on the same result.
+    Busy { index: usize, action: LaunchAction },
     /// The file validated, but the launcher failed on `action`.
     CouldNotOpen { index: usize, action: LaunchAction },
-    /// Validation refused it for a reason there is no approved copy for yet
-    /// (a policy block, permission denied, a catalog error). Reported, and
-    /// shown with the older "files may have moved" notice.
-    Unclassified,
 }
 
-/// Classify a validation refusal (Task 065 §2). A missing file fails
-/// canonicalization, but the guard flattens the io error into a string, so
-/// this checks the path itself rather than matching that message.
+/// Classify a refusal from the path stage of validation (Task 070 §B.2).
+/// The guard flattens io errors into strings, so a canonicalization failure
+/// is classified by looking at the path itself, never by the message.
+///
+/// No wildcard arm: a new `OrbokError` variant fails to compile here until
+/// it is classified.
 pub(crate) fn classify_refusal(error: &OrbokError, path: &Path) -> LaunchFailure {
     match error {
         OrbokError::PathOutsideSources => LaunchFailure::NotFound,
-        OrbokError::PathCanonicalization(_)
+        OrbokError::PolicyBlocked(_) => LaunchFailure::NotAllowed,
+        // `canonicalize`, the size check's `metadata`, and the symlink walk's
+        // `symlink_metadata` all fail with io errors, reported through these
+        // two variants. Permission denied is Not allowed; anything else --
+        // gone, a dangling link, an unreachable drive -- is Not found.
+        OrbokError::PathCanonicalization(_) | OrbokError::Io(_) => {
             if std::fs::symlink_metadata(path)
-                .is_err_and(|e| e.kind() == io::ErrorKind::NotFound) =>
-        {
-            LaunchFailure::NotFound
+                .is_err_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+            {
+                LaunchFailure::NotAllowed
+            } else {
+                LaunchFailure::NotFound
+            }
         }
-        _ => LaunchFailure::Unclassified,
+        // `PathGuard::validate` returns none of these: it reads no catalog,
+        // cache, model or queue. Were one to arrive from the path stage, it
+        // would come back the same on every retry, so it is not Busy (whose
+        // Try again would repeat it forever). Not found's Go to Folders is
+        // the one way out that stays useful. A catalog error never reaches
+        // this arm: the catalog stage is classified before it.
+        OrbokError::Database(_)
+        | OrbokError::MigrationFailed { .. }
+        | OrbokError::SourceNotFound
+        | OrbokError::FileNotFound
+        | OrbokError::CleanupWouldTouchPersistentData
+        | OrbokError::Cache(_)
+        | OrbokError::Extraction { .. }
+        | OrbokError::Embedding { .. }
+        | OrbokError::ExtractionCacheMissing
+        | OrbokError::InvalidCatalogValue { .. }
+        | OrbokError::Canceled
+        | OrbokError::BackpressureActive { .. }
+        | OrbokError::SchemaVersionUnsupported { .. } => LaunchFailure::NotFound,
     }
 }
 
@@ -128,7 +160,17 @@ pub(crate) fn launch_result(
     // launches nothing and needs no notice.
     let result = results.get(index)?;
     let path = Path::new(&result.canonical_path);
-    let validated = match validate(catalog, path) {
+    // Task 070 §B.2: classified by the stage that failed. The catalog stage
+    // reads the folder list; the startup check has already refused an
+    // unusable catalog, so a failure here is a lock or busy condition.
+    let guard = match orbok_search::snippet::searchable_path_guard(catalog) {
+        Ok(guard) => guard,
+        Err(error) => {
+            tracing::warn!(%error, "a search result was not opened: the folder list could not be read");
+            return Some(LaunchFailure::Busy { index, action });
+        }
+    };
+    let validated = match guard.validate(path) {
         Ok(validated) => validated,
         Err(error) => {
             tracing::warn!(%error, "a search result was not opened: it failed validation");
@@ -148,10 +190,6 @@ pub(crate) fn launch_result(
             Some(LaunchFailure::CouldNotOpen { index, action })
         }
     }
-}
-
-fn validate(catalog: &Catalog, path: &Path) -> OrbokResult<ValidatedPath> {
-    orbok_search::snippet::searchable_path_guard(catalog)?.validate(path)
 }
 
 /// The real launcher: one process or shell-API call per action, the path

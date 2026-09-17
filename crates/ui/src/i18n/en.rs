@@ -173,11 +173,6 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeSearchFailTitle => "Search did not finish",
         NoticeSearchFailBody => "Something went wrong while searching. Please try again.",
-        NoticeFilesMissingTitle => "Files may have moved",
-        NoticeFilesMissingBody => {
-            "Some files are no longer where orbok expected them. This can \
-             happen if a drive was disconnected or files were moved."
-        }
         NoticeFolderAddedTitle => "Folder added",
         NoticeFolderAddedBody => "orbok is preparing your search now.",
         NoticeFolderAlreadyAddedTitle => "Folder already added",
@@ -199,6 +194,8 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeFileNotOpenedTitle => "This file could not be opened",
         NoticeFileNotOpenedBody => "No app on this computer opened it.",
+        NoticeFileNotAllowedBody => "orbok isn't allowed to open it.",
+        NoticeFileBusyBody => "orbok was busy. Try again in a moment.",
         NoticeSettingSaveFailTitle => "Setting not saved",
         NoticeSettingSaveFailBody => {
             "Your change didn't save. It may not be there next time you open orbok."
@@ -320,9 +317,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelNeedsDownload => "Only the missing files are downloaded.",
         ModelDownloadInProgress => "Downloading model",
         ModelFilesStayLocal => "Your files stay on this computer.",
-        ModelDownloadFailed => {
-            "Download did not finish. Please check your connection and try again."
-        }
+        ModelDownloadFailed => "Download did not finish",
         ModelDownloadRetry => "Try again",
         ModelRepairingFiles => "Only the files needing repair are downloaded.",
         ModelBasicSearchAvailable => "Basic search is ready. Search by meaning can be added later.",

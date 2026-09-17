@@ -61,11 +61,31 @@ fn a_failed_reveal_offers_no_button() {
     );
 }
 
+/// Task 070 §B.4 test 2.
 #[test]
-fn an_unclassified_refusal_keeps_the_older_notice_without_a_button() {
-    let (notice, action) = raise(result_not_launched(LaunchFailure::Unclassified));
-    assert_eq!(notice, Some(UserNotice::FilesMovedOrMissing));
-    assert!(action.is_none());
+fn a_file_not_allowed_offers_no_button() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::NotAllowed));
+    assert_eq!(notice, Some(UserNotice::FileNotAllowed));
+    assert!(action.is_none(), "retrying cannot change a permission");
+}
+
+#[test]
+fn busy_retries_the_same_action_on_the_same_result() {
+    let (notice, action) = raise(result_not_launched(LaunchFailure::Busy {
+        index: 2,
+        action: LaunchAction::Open,
+    }));
+    assert_eq!(notice, Some(UserNotice::FileBusy));
+    assert!(matches!(action, Some(Message::OpenResult(2))), "{action:?}");
+    let (notice, action) = raise(result_not_launched(LaunchFailure::Busy {
+        index: 2,
+        action: LaunchAction::Reveal,
+    }));
+    assert_eq!(notice, Some(UserNotice::FileBusy));
+    assert!(
+        matches!(action, Some(Message::RevealResult(2))),
+        "a failed reveal retries the reveal, got {action:?}"
+    );
 }
 
 #[test]

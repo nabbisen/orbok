@@ -911,16 +911,18 @@ impl AppState {
                 self.search_running = false;
                 self.selected_result = None;
                 // Task 065: new results resolve a failed search, and make a
-                // launch-failure notice stale -- its Show-in-folder retry is a
-                // result index, which would now point at a different file.
+                // launch-failure notice stale -- its Show-in-folder or Try
+                // again retry is a result index, which would now point at a
+                // different file.
                 // Other problem notices stay (Task 064).
                 if matches!(
                     self.notice,
                     Some(
                         UserNotice::SearchDidNotFinish
-                            | UserNotice::FilesMovedOrMissing
                             | UserNotice::FileCouldNotBeFound
                             | UserNotice::FileCouldNotBeOpened
+                            | UserNotice::FileNotAllowed
+                            | UserNotice::FileBusy
                     )
                 ) {
                     self.clear_notice();

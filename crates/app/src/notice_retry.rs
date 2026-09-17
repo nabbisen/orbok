@@ -45,7 +45,8 @@ pub(crate) fn search_folder_failed() -> Message {
 ///   by `launch_result` when pressed (a new search clears this notice, so the
 ///   index cannot point at a different file);
 /// - **Reveal failed** -> no button: showing it in its folder is what failed;
-/// - **unclassified refusal** -> the older notice, dismiss only.
+/// - **not allowed** -> no button: retrying cannot change a permission;
+/// - **busy** -> "Try again", the same action on the same result (Task 070).
 pub(crate) fn result_not_launched(failure: LaunchFailure) -> Message {
     match failure {
         LaunchFailure::NotFound => with_action(
@@ -63,7 +64,14 @@ pub(crate) fn result_not_launched(failure: LaunchFailure) -> Message {
             action: LaunchAction::Reveal,
             ..
         } => Message::ShowNotice(UserNotice::FileCouldNotBeOpened),
-        LaunchFailure::Unclassified => Message::ShowNotice(UserNotice::FilesMovedOrMissing),
+        LaunchFailure::NotAllowed => Message::ShowNotice(UserNotice::FileNotAllowed),
+        LaunchFailure::Busy { index, action } => with_action(
+            UserNotice::FileBusy,
+            match action {
+                LaunchAction::Open => Message::OpenResult(index),
+                LaunchAction::Reveal => Message::RevealResult(index),
+            },
+        ),
     }
 }
 
