@@ -1,0 +1,12 @@
+# Task 076 (snora 0.50 migration guide §2): iced_test is not CPU-only -- it
+# tries wgpu first, and parallel simulators have crashed the orbok-ui test
+# binary with SIGSEGV in the renderer (recorded in crates/ui/src/tests.rs's
+# ICED_TEST_LOCK comment, commit 59f632b, Task 024). Selecting the
+# tiny-skia backend keeps simulator rendering on the CPU.
+#
+# Caveats (snora's testing guide): a value already exported in your shell
+# overrides this line silently, and it depends on iced_test 0.14 behaviour
+# (`iced_test::Simulator` reads ICED_TEST_BACKEND when it builds its
+# renderer).
+[env]
+ICED_TEST_BACKEND = "tiny-skia"

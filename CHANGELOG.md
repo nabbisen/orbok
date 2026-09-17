@@ -425,6 +425,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **snora 0.49 → 0.50: the sidebar buttons are square and their icons
+  centred (Task 076).** The navigation rail's buttons were narrow 32 × 48
+  pills with the icon sitting high; they are now 48 × 48 with the icon in the
+  middle. Nothing else on the page moves. The rail width is unchanged, and a
+  pixel comparison of the page beside it found no difference. The only other
+  dependency change is snora's own crates.
+  - **Tests:** `.cargo/config.toml` now selects iced_test's CPU (tiny-skia)
+    renderer, as snora's migration guide advises. Parallel UI simulators have
+    crashed with SIGSEGV here before. The UI test suite also runs in about
+    1 s instead of 13 s.
+
 - **Task 072: icons, labels and controls line up.** Across every page,
   icons now sit on the same centre line as their labels, and controls placed
   side by side line up.
