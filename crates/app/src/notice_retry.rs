@@ -76,6 +76,37 @@ pub(crate) fn result_not_launched(failure: LaunchFailure) -> Message {
     }
 }
 
+/// Task 075: clearing recent searches failed. "Try again" re-opens the
+/// confirmation -- a destructive retry never acts on its own.
+pub(crate) fn recent_searches_not_cleared() -> Message {
+    with_action(
+        UserNotice::RecentSearchesNotCleared,
+        Message::AskClearRecentSearches,
+    )
+}
+
+/// Task 075: removing one recent search failed. "Try again" repeats that
+/// removal (it has no confirmation to re-open).
+pub(crate) fn recent_search_not_removed(id: &orbok_core::SearchHistoryId) -> Message {
+    with_action(
+        UserNotice::RecentSearchNotRemoved,
+        Message::RemoveRecentSearch(id.clone()),
+    )
+}
+
+/// Task 075: a Safe cleanup itself failed. "Try again" repeats that cleanup.
+pub(crate) fn cleanup_did_not_finish(cleanup: &Message) -> Message {
+    with_action(UserNotice::CleanupDidNotFinish, cleanup.clone())
+}
+
+/// Task 075: checking a folder for changes failed. "Try again" repeats it.
+pub(crate) fn folder_not_checked(source_id: &str) -> Message {
+    with_action(
+        UserNotice::FolderNotChecked,
+        Message::SourceRefreshRequested(source_id.to_string()),
+    )
+}
+
 /// Saving a setting failed: "Try again" re-sends that exact setting change.
 pub(crate) fn setting_not_saved(change: &Message) -> Message {
     with_action(UserNotice::SettingCouldNotBeSaved, change.clone())

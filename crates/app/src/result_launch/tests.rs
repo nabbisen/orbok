@@ -432,7 +432,10 @@ fn an_error_validation_never_returns_is_not_found() {
 // ── Task 070 Part B: every refused open gets a truthful notice ─────────
 
 /// A catalog on disk with one registered source holding `note.md`, and a
-/// short SQLite lock timeout (`busy_timeout`) so a locked catalog fails fast.
+/// short SQLite lock timeout (`busy_timeout`). The failure these tests make
+/// is not a lock -- under WAL no second connection can block this read
+/// (Review Request 246 §3) -- so the timeout only keeps any write the
+/// fixture's catalog attempts from waiting the default 5 s.
 fn file_fixture(temp: &Path) -> (Catalog, PathBuf, PathBuf) {
     let source = temp.join("source");
     std::fs::create_dir_all(&source).unwrap();

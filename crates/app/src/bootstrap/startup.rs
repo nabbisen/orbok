@@ -138,7 +138,9 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     };
 
     let health = get_health(&catalog);
-    let sources = get_sources(&catalog);
+    // Task 075 (Review 253 §2.3): an unreadable folder list is a startup
+    // failure, not an empty list.
+    let sources = get_sources(&catalog).map_err(StartupFailure::other)?;
     // RFC-042: reflect the persisted history setting and load entries.
     let privacy = settings.privacy_settings();
     let history = if privacy.effective_recent_searches() {
@@ -261,14 +263,16 @@ pub fn get_health(catalog: &Catalog) -> orbok_ui::state::IndexHealth {
 }
 
 /// Load all registered sources for the Sources view.
-pub fn get_sources(catalog: &Catalog) -> Vec<orbok_ui::state::SourceCard> {
+pub fn get_sources(catalog: &Catalog) -> OrbokResult<Vec<orbok_ui::state::SourceCard>> {
     use orbok_core::FileStatus;
     use orbok_db::repo::{FileRepository, SourceRepository};
-    SourceRepository::new(catalog)
-        .list()
-        .unwrap_or_default()
+    Ok(SourceRepository::new(catalog)
+        .list()?
         .into_iter()
         .map(|src| {
+            // A per-folder count that cannot be read shows as 0 beside a card
+            // that exists. That is not a claim about which folders the catalog
+            // holds, which is what the `?` above guards (Task 075).
             let files = FileRepository::new(catalog);
             let indexed = files
                 .count_for_source_with_status(&src.source_id, FileStatus::Indexed)
@@ -289,5 +293,5 @@ pub fn get_sources(catalog: &Catalog) -> Vec<orbok_ui::state::SourceCard> {
                 source_id: src.source_id.as_str().to_string(),
             }
         })
-        .collect()
+        .collect())
 }

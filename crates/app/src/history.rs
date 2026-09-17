@@ -5,7 +5,8 @@
 //! privacy mode) nothing is recorded.
 
 use orbok_core::{
-    PrivacySettings, SearchHistoryEntry, SearchHistoryId, SearchHistorySettings, StoredSearchFilter,
+    OrbokResult, PrivacySettings, SearchHistoryEntry, SearchHistoryId, SearchHistorySettings,
+    StoredSearchFilter,
 };
 use orbok_db::Catalog;
 use orbok_db::repo::SearchHistoryRepository;
@@ -64,20 +65,16 @@ pub fn get_entry(catalog: &Catalog, id: &SearchHistoryId) -> Option<SearchHistor
     SearchHistoryRepository::new(catalog).get(id).ok().flatten()
 }
 
-/// Remove a single entry, then return the refreshed list.
-pub fn remove_entry(catalog: &Catalog, id: &SearchHistoryId) -> Vec<SearchHistoryEntry> {
-    let repo = SearchHistoryRepository::new(catalog);
-    if let Err(e) = repo.remove(id) {
-        tracing::warn!("remove search history entry failed: {e}");
-    }
-    repo.list().unwrap_or_default()
+/// Remove a single entry. Task 075: the caller decides what the UI shows,
+/// so a failure is returned, not swallowed.
+pub fn remove_entry(catalog: &Catalog, id: &SearchHistoryId) -> OrbokResult<()> {
+    SearchHistoryRepository::new(catalog).remove(id)
 }
 
-/// Clear all entries (RFC-042 §13.3).
-pub fn clear_history(catalog: &Catalog) {
-    if let Err(e) = SearchHistoryRepository::new(catalog).clear() {
-        tracing::warn!("clear search history failed: {e}");
-    }
+/// Clear all entries (RFC-042 §13.3). Task 075: a failure is returned, not
+/// swallowed.
+pub fn clear_history(catalog: &Catalog) -> OrbokResult<()> {
+    SearchHistoryRepository::new(catalog).clear()
 }
 
 /// Filters from a stored entry, dropping any folder filter whose source id

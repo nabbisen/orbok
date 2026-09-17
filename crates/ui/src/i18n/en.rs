@@ -208,6 +208,16 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NoticeSourceRemoveFailTitle => "Folder not removed",
         NoticeSourceRemoveFailBody => "This folder is still registered. Try removing it again.",
+        NoticeRecentSearchesNotClearedTitle => "Recent searches not cleared",
+        NoticeRecentSearchesNotClearedBody => "The list could not be cleared. Try again.",
+        NoticeRecentSearchNotRemovedTitle => "Recent search not removed",
+        NoticeRecentSearchNotRemovedBody => "It is still in the list. Try again.",
+        NoticeCleanupDidNotFinishTitle => "Cleanup didn't finish",
+        NoticeCleanupDidNotFinishBody => {
+            "Some of it may not have been removed. Your files are untouched. Try again."
+        }
+        NoticeFolderNotCheckedTitle => "Folder not checked",
+        NoticeFolderNotCheckedBody => "orbok could not check this folder for changes. Try again.",
         NoticeStorageUnavailableTitle => "Local storage unavailable",
         NoticeStorageUnavailableBody => {
             "orbok could not reach its local files just now. Check storage space and permissions, then try again."

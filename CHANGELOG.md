@@ -78,6 +78,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 075: some actions failed silently, or said they had worked.**
+  - **Clearing recent searches** announced "Recent searches cleared" even
+    when nothing was cleared. It now says so only once they are cleared.
+    Otherwise it shows "Recent searches not cleared", with Try again, which
+    asks for confirmation again.
+  - **Removing one recent search** that failed made the entry vanish and
+    reappear with no explanation. It now shows "Recent search not removed",
+    with Try again.
+  - **A reset that failed** emptied the folder list even though the folders
+    were still registered. The list now changes only once the reset has
+    finished. If it fails, orbok shows what is still saved. If even that
+    cannot be read, the list stays as it was.
+  - **Saving the language or "Remember recent searches"** could fail
+    silently. It now shows "Setting not saved", with Try again.
+  - **A Safe cleanup that failed** looked like the button did nothing. It now
+    shows "Cleanup didn't finish", with Try again.
+  - **Checking a folder for changes** that failed now shows "Folder not
+    checked", with Try again.
 - **Task 073: a folder that could not be removed disappeared from the list.**
   If removing a folder failed, the notice said "Folder not removed" while the
   Folders page said "No folders added"; pressing Try again then opened a

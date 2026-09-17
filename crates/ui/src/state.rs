@@ -599,6 +599,9 @@ pub enum Message {
     CancelRemoveSource,
     AskResetCatalog,
     ConfirmResetCatalog,
+    /// Task 075: the catalog was reset; the list, health, results and
+    /// storage rows now clear.
+    CatalogResetSucceeded,
     CancelResetCatalog,
     // Wizard navigation
     WizardBack,
@@ -803,6 +806,8 @@ pub enum Message {
     RecentSearchRestored(SearchHistoryId),
     /// Remove a single history entry.
     RemoveRecentSearch(SearchHistoryId),
+    /// Task 075: the catalog removed this history entry; the list drops it.
+    RecentSearchRemoved(SearchHistoryId),
     /// User pressed "Clear recent searches" — show confirmation.
     AskClearRecentSearches,
     /// User pressed Cancel in the clear confirmation.
@@ -865,13 +870,9 @@ impl AppState {
             Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
             Message::CancelResetCatalog => self.confirm_reset = false,
             Message::ConfirmResetCatalog => {
+                // Task 075: a request. orbok resets the catalog, then sends
+                // `CatalogResetSucceeded`; nothing clears before that.
                 self.confirm_reset = false;
-                // Actual reset handled in orbok; UI pre-clears state.
-                self.sources.clear();
-                self.health = crate::state::IndexHealth::default();
-                self.search_results.clear();
-                self.storage_rows.clear();
-                self.storage_total_bytes = 0;
             }
             Message::CleanSnippets
             | Message::CleanSearchCache
@@ -1254,10 +1255,8 @@ impl AppState {
                     self.search_ui.restoring_history_id = None;
                 }
             }
-            Message::RemoveRecentSearch(id) => {
-                self.search_ui.history.retain(|e| e.id != *id);
-                // Persist handled by orbok.
-            }
+            // Task 075: a request; the entry goes on `RecentSearchRemoved`.
+            Message::RemoveRecentSearch(_) => {} // handled by orbok
             Message::AskClearRecentSearches => {
                 // Drives the confirmation dialog rendered by the view layer.
                 self.confirm_clear_history = true;
@@ -1275,16 +1274,27 @@ impl AppState {
                 self.search_ui.history_panel_open = false;
                 self.confirm_clear_history = false;
             }
+            Message::RecentSearchRemoved(id) => {
+                self.search_ui.history.retain(|e| e.id != *id);
+            }
+            Message::CatalogResetSucceeded => {
+                self.sources.clear();
+                self.selected_source = None;
+                self.health = crate::state::IndexHealth::default();
+                self.search_results.clear();
+                self.storage_rows.clear();
+                self.storage_total_bytes = 0;
+            }
             Message::HistoryLoaded(entries) => {
                 self.search_ui.history = entries.clone();
             }
             Message::ToggleRememberRecentSearches(on) => {
-                // UI reflects the new state immediately; orbok persists it.
+                // The setting shows the new value at once, as theme and text
+                // size do (`SettingCouldNotBeSaved` reports a failed save).
+                // Task 075: turning it off clears history, but the visible
+                // list empties only on `RecentSearchesCleared`, which orbok
+                // sends once the catalog has cleared it (RFC-042 §13.4).
                 self.remember_recent_searches = *on;
-                if !*on {
-                    // Turning off also empties the visible list (RFC-042 §13.4).
-                    self.search_ui.history.clear();
-                }
             }
         }
     }

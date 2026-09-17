@@ -13,6 +13,7 @@
 // output reaches a terminal through `platform_host::attach_parent_console`.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod backend_actions;
 mod bootstrap;
 mod cli;
 mod diagnostics;
@@ -434,110 +435,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.update(message.clone());
                     return iced::Task::none();
                 }
-                Message::CleanSnippets => {
-                    // RFC-061 §8(d): was `.expect("active cache path must be
-                    // authorized")` -- a bad cache path terminated the whole
-                    // process on a click of "Clear temporary previews".
-                    match bootstrap::cache_service(&runtime) {
-                        Ok(cache) => match bootstrap::clean_snippets(&catalog, &cache) {
-                            Ok(_) => app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::PreviewsCleared,
-                            )),
-                            Err(e) => tracing::error!("clean snippets failed: {e}"),
-                        },
-                        Err(e) => {
-                            tracing::error!("cache handle unavailable for clean snippets: {e}");
-                            app.update(notice_retry::cleanup_storage_unavailable(&message));
-                        }
-                    }
-                    return iced::Task::none();
-                }
-                Message::CleanSearchCache => {
-                    // RFC-061 §8(d): same panic-on-bad-cache-path fix as
-                    // `CleanSnippets` above.
-                    match bootstrap::cache_service(&runtime) {
-                        Ok(cache) => match bootstrap::clean_search_cache(&catalog, &cache) {
-                            Ok(_) => app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::SearchCacheCleared,
-                            )),
-                            Err(e) => tracing::error!("clean search cache failed: {e}"),
-                        },
-                        Err(e) => {
-                            tracing::error!("cache handle unavailable for clean search cache: {e}");
-                            app.update(notice_retry::cleanup_storage_unavailable(&message));
-                        }
-                    }
-                    return iced::Task::none();
-                }
-                Message::CleanTemporaryExtraction => {
-                    // RFC-059 §8 Slice 4: same panic-on-bad-cache-path fix as
-                    // `CleanSnippets` above.
-                    match bootstrap::cache_service(&runtime) {
-                        Ok(cache) => {
-                            match bootstrap::clean_temporary_extraction(&catalog, &cache) {
-                                Ok(_) => app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::ExtractedTextCleared,
-                                )),
-                                Err(e) => tracing::error!("clean temporary extraction failed: {e}"),
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "cache handle unavailable for clean temporary extraction: {e}"
-                            );
-                            app.update(notice_retry::cleanup_storage_unavailable(&message));
-                        }
-                    }
-                    return iced::Task::none();
-                }
-                Message::RemoveReplacedStaleIndexes => {
-                    // RFC-059 §8 Slice 4: same panic-on-bad-cache-path fix as
-                    // `CleanSnippets` above.
-                    match bootstrap::cache_service(&runtime) {
-                        Ok(cache) => {
-                            match bootstrap::remove_replaced_stale_indexes(&catalog, &cache) {
-                                Ok(_) => app.update(Message::ShowNotice(
-                                    orbok_ui::notice::UserNotice::ReplacedDataRemoved,
-                                )),
-                                Err(e) => {
-                                    tracing::error!("remove replaced stale indexes failed: {e}")
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "cache handle unavailable for remove replaced stale indexes: {e}"
-                            );
-                            app.update(notice_retry::cleanup_storage_unavailable(&message));
-                        }
-                    }
+                // Task 075: each backend action's result, reflected truthfully
+                // (`backend_actions`).
+                Message::CleanSnippets
+                | Message::CleanSearchCache
+                | Message::CleanTemporaryExtraction
+                | Message::RemoveReplacedStaleIndexes => {
+                    backend_actions::run_cleanup(
+                        &catalog,
+                        bootstrap::cache_service(&runtime),
+                        &mut app.state,
+                        &message,
+                    );
                     return iced::Task::none();
                 }
                 Message::ConfirmResetCatalog => {
-                    // RFC-061 §8(d): `.expect(...)` here used to panic the
-                    // whole process on a bad cache path. `StorageUnavailable`
-                    // covers this open failure; `bootstrap::cache_service`
-                    // itself never fails on a legitimately authorized
-                    // profile, only on a broken one (RFC-049 §8's sealed
-                    // handle contract).
-                    match bootstrap::cache_service(&runtime) {
-                        Ok(cache) => {
-                            // RFC-061 §8(b): a failed reset used to be
-                            // silently invisible -- the UI cleared its own
-                            // state (below, via the fallthrough `update`)
-                            // regardless of whether anything was actually
-                            // cleared on disk.
-                            if let Err(e) = bootstrap::reset_catalog(&catalog, &cache) {
-                                tracing::error!("reset catalog failed: {e}");
-                                app.update(notice_retry::reset_failed());
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("cache handle unavailable for reset: {e}");
-                            app.update(notice_retry::reset_storage_unavailable());
-                        }
-                    }
-                    // UI state pre-cleared in AppState::update; fall through for update().
+                    backend_actions::reset_catalog(
+                        &catalog,
+                        bootstrap::cache_service(&runtime),
+                        &mut app.state,
+                    );
+                    return iced::Task::none();
                 }
                 Message::SourceRemoved(source_id) => {
                     source_removal::remove(&catalog, &mut app.state, source_id);
@@ -552,15 +470,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // the background scheduler emits further updates as the
                 // enqueued job actually runs.
                 Message::SourceRefreshRequested(source_id) => {
-                    match bootstrap::check_and_refresh_source(&catalog, source_id) {
-                        Ok(health) => {
-                            app.update(Message::SourcesLoaded(bootstrap::get_sources(&catalog)));
-                            app.update(Message::HealthUpdated(health));
-                        }
-                        Err(e) => {
-                            tracing::error!("source refresh failed: {e}");
-                        }
-                    }
+                    backend_actions::refresh_source(&catalog, &mut app.state, source_id);
                     return iced::Task::none();
                 }
                 Message::FocusSearch => {
@@ -588,7 +498,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::widget::operation::focus_previous();
                 }
                 Message::PersistLocale(locale) => {
-                    let _ = bootstrap::persist_locale(&catalog, locale);
+                    backend_actions::persist_locale(&catalog, &mut app.state, *locale);
+                    return iced::Task::none();
                 }
                 Message::SetTheme(theme) => {
                     if let Err(e) = bootstrap::persist_theme(&runtime, *theme) {
@@ -837,32 +748,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 // RFC-042: remove one entry.
                 Message::RemoveRecentSearch(id) => {
-                    let refreshed = history::remove_entry(&catalog, id);
-                    app.update(message.clone());
-                    app.update(Message::HistoryLoaded(refreshed));
+                    backend_actions::remove_recent_search(&catalog, &mut app.state, id);
                     return iced::Task::none();
                 }
                 // RFC-042: clear all entries.
                 Message::ConfirmClearRecentSearches => {
-                    history::clear_history(&catalog);
-                    app.update(Message::RecentSearchesCleared);
-                    app.update(Message::ShowNotice(
-                        orbok_ui::notice::UserNotice::RecentSearchesCleared,
-                    ));
+                    backend_actions::clear_recent_searches(&catalog, &mut app.state);
                     return iced::Task::none();
                 }
                 // RFC-042: toggle the Remember recent searches setting.
                 Message::ToggleRememberRecentSearches(on) => {
-                    let mut s = bootstrap::load_runtime_settings(&runtime).unwrap_or_default();
-                    s.remember_recent_searches = *on;
-                    let _ = bootstrap::save_runtime_settings(&runtime, &s);
-                    // If turned off, also clear existing entries (RFC-042 §13.4
-                    // "Turn off and clear" — default safe behavior here).
-                    if !*on {
-                        history::clear_history(&catalog);
-                        app.update(Message::RecentSearchesCleared);
-                    }
-                    app.update(message.clone());
+                    backend_actions::toggle_remember_recent_searches(
+                        &runtime,
+                        &catalog,
+                        &mut app.state,
+                        *on,
+                    );
                     return iced::Task::none();
                 }
                 _ => {}

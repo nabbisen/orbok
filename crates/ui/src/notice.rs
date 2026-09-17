@@ -62,6 +62,15 @@ pub enum UserNotice {
     CatalogResetFailed,
     /// `remove_source` failed; the folder is still registered.
     SourceCouldNotBeRemoved,
+    /// Task 075: clearing recent searches failed; the list is unchanged.
+    RecentSearchesNotCleared,
+    /// Task 075: removing one recent search failed; it is still listed.
+    RecentSearchNotRemoved,
+    /// Task 075: a Safe cleanup action itself failed (not its cache handle,
+    /// which is `StorageUnavailable`).
+    CleanupDidNotFinish,
+    /// Task 075: checking a folder for changes failed.
+    FolderNotChecked,
     /// The model store or cache handle could not be opened for an
     /// in-session action (download, clear previews, clear search data,
     /// full reset) -- was a panic (`.expect(...)`) before RFC-061 §8(d).
@@ -102,6 +111,10 @@ impl UserNotice {
             | Self::SettingCouldNotBeSaved
             | Self::CatalogResetFailed
             | Self::SourceCouldNotBeRemoved
+            | Self::RecentSearchesNotCleared
+            | Self::RecentSearchNotRemoved
+            | Self::CleanupDidNotFinish
+            | Self::FolderNotChecked
             | Self::StorageUnavailable
             | Self::IndexingCouldNotStart
             | Self::ModelCouldNotBeLoaded => Tone::Danger,
@@ -148,6 +161,10 @@ impl UserNotice {
             Self::SettingCouldNotBeSaved => MessageKey::NoticeSettingSaveFailTitle,
             Self::CatalogResetFailed => MessageKey::NoticeResetFailTitle,
             Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailTitle,
+            Self::RecentSearchesNotCleared => MessageKey::NoticeRecentSearchesNotClearedTitle,
+            Self::RecentSearchNotRemoved => MessageKey::NoticeRecentSearchNotRemovedTitle,
+            Self::CleanupDidNotFinish => MessageKey::NoticeCleanupDidNotFinishTitle,
+            Self::FolderNotChecked => MessageKey::NoticeFolderNotCheckedTitle,
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailedTitle,
@@ -178,6 +195,10 @@ impl UserNotice {
             Self::SettingCouldNotBeSaved => MessageKey::NoticeSettingSaveFailBody,
             Self::CatalogResetFailed => MessageKey::NoticeResetFailBody,
             Self::SourceCouldNotBeRemoved => MessageKey::NoticeSourceRemoveFailBody,
+            Self::RecentSearchesNotCleared => MessageKey::NoticeRecentSearchesNotClearedBody,
+            Self::RecentSearchNotRemoved => MessageKey::NoticeRecentSearchNotRemovedBody,
+            Self::CleanupDidNotFinish => MessageKey::NoticeCleanupDidNotFinishBody,
+            Self::FolderNotChecked => MessageKey::NoticeFolderNotCheckedBody,
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableBody,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
@@ -216,6 +237,10 @@ impl UserNotice {
             Self::SettingCouldNotBeSaved
             | Self::CatalogResetFailed
             | Self::SourceCouldNotBeRemoved
+            | Self::RecentSearchesNotCleared
+            | Self::RecentSearchNotRemoved
+            | Self::CleanupDidNotFinish
+            | Self::FolderNotChecked
             | Self::StorageUnavailable => MessageKey::NoticeActionTryAgain,
             // No in-app action can restart the background task; the body
             // text names the recovery step (restart orbok) as prose instead.

@@ -23,7 +23,9 @@ fn folders_with_one(temp: &Path) -> (Catalog, PathBuf, AppState, String) {
         .unwrap();
     let mut state = AppState::default();
     state.update(&Message::Switch(ViewId::Sources));
-    state.update(&Message::SourcesLoaded(bootstrap::get_sources(&catalog)));
+    state.update(&Message::SourcesLoaded(
+        bootstrap::get_sources(&catalog).unwrap(),
+    ));
     let id = state.sources[0].source_id.clone();
     state.update(&Message::SelectNextSource);
     (catalog, db, state, id)
@@ -70,7 +72,7 @@ fn a_failed_removal_keeps_the_folder_listed_and_try_again_is_visible() {
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        bootstrap::get_sources(&catalog).len(),
+        bootstrap::get_sources(&catalog).unwrap().len(),
         1,
         "control: the catalog still has the folder"
     );
@@ -126,5 +128,5 @@ fn a_successful_removal_removes_the_folder() {
     assert!(state.sources.is_empty(), "the card is gone");
     assert_eq!(state.selected_source, None);
     assert_eq!(state.notice, None);
-    assert!(bootstrap::get_sources(&catalog).is_empty());
+    assert!(bootstrap::get_sources(&catalog).unwrap().is_empty());
 }

@@ -37,11 +37,8 @@ crates/ui/src/views.rs	temporary_extraction	internal storage-category identifier
 # ── Developer-facing panic/invariant messages ────────────────────────────
 # .expect()/debug_assert! text surfaces only on a programming-error panic,
 # never in normal end-user operation.
-crates/ui/src/views/wizard.rs	wizard_view called without active wizard	panic message on an internal invariant violation, developer-facing only
 crates/ui/src/components.rs	status_badge: label must not be empty	debug_assert message on an internal invariant violation, developer-facing only
 crates/ui/src/state/model_consent.rs	reviewed default-model file sizes must fit in u64	panic message on an internal invariant violation, developer-facing only
-crates/app/src/main.rs	active model store must be authorized	panic message on an internal invariant violation, developer-facing only
-crates/app/src/main.rs	active cache path must be authorized	panic message on an internal invariant violation, developer-facing only
 crates/app/src/main.rs	PersistReady must produce a completion	panic message on an internal invariant violation, developer-facing only
 
 # ── Developer-facing log messages ────────────────────────────────────────
@@ -51,23 +48,12 @@ crates/app/src/main.rs	PersistReady must produce a completion	panic message on a
 crates/app/src/main.rs	sensitive source: {warning}	tracing::warn! log message, not rendered in the GUI (paired with the localized UserNotice::SensitiveSourceAdded)
 crates/app/src/main.rs	scan failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
 crates/app/src/main.rs	add source failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
-crates/app/src/main.rs	clean snippets failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	snippets for PDF/DOCX/HTML results are unavailable this session	tracing::warn! log message, not rendered in the GUI (RFC-060 §6: the extraction cache could not be opened, so page/paragraph/block snippets render empty)
-crates/app/src/main.rs	clean search cache failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	orbok could not start	tracing::error! log message, not rendered in the GUI (Task 071: paired with the localized startup-failure window, MessageKey::StartupFailedTitle)
 crates/app/src/main.rs	the startup-failure window could not be shown	tracing::error! log message, not rendered in the GUI (Task 071: logged only when the window itself fails to open)
 crates/app/src/main.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
-crates/app/src/main.rs	source refresh failed: {e}	tracing::error! log message, not rendered in the GUI (Task 035, RFC-037 §10.2 manual refresh) -- no dedicated UserNotice yet, matching the clean-snippets/clean-search-cache log-only precedent above rather than inventing one outside this task's scope
 crates/app/src/main.rs	model store unavailable: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
-crates/app/src/main.rs	cache handle unavailable for clean snippets: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
-crates/app/src/main.rs	cache handle unavailable for clean search cache: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
-crates/app/src/main.rs	clean temporary extraction failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-059 §8 Slice 4, same log-only precedent as clean-snippets/clean-search-cache above)
-crates/app/src/main.rs	cache handle unavailable for clean temporary extraction: {e}	tracing::error! log message, not rendered in the GUI (RFC-059 §8 Slice 4, paired with the localized UserNotice::StorageUnavailable)
-crates/app/src/main.rs	remove replaced stale indexes failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-059 §8 Slice 4, same log-only precedent as clean-snippets/clean-search-cache above)
-crates/app/src/main.rs	cache handle unavailable for remove replaced stale indexes: {e}	tracing::error! log message, not rendered in the GUI (RFC-059 §8 Slice 4, paired with the localized UserNotice::StorageUnavailable)
-crates/app/src/main.rs	reset catalog failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::CatalogResetFailed)
-crates/app/src/main.rs	cache handle unavailable for reset: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
 crates/app/src/source_removal.rs	remove source failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SourceCouldNotBeRemoved; moved from main.rs by Task 073)
 crates/app/src/main.rs	persist theme failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
 crates/app/src/main.rs	persist text scale failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)

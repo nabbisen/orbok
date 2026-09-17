@@ -218,6 +218,20 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeSourceRemoveFailBody => {
             "このフォルダーはまだ登録されたままです。もう一度削除をお試しください。"
         }
+        NoticeRecentSearchesNotClearedTitle => "最近の検索を消去できませんでした",
+        NoticeRecentSearchesNotClearedBody => {
+            "一覧を消去できませんでした。もう一度お試しください。"
+        }
+        NoticeRecentSearchNotRemovedTitle => "最近の検索を削除できませんでした",
+        NoticeRecentSearchNotRemovedBody => "一覧に残っています。もう一度お試しください。",
+        NoticeCleanupDidNotFinishTitle => "クリーンアップが完了しませんでした",
+        NoticeCleanupDidNotFinishBody => {
+            "一部が削除されていない可能性があります。ファイルはそのままです。もう一度お試しください。"
+        }
+        NoticeFolderNotCheckedTitle => "フォルダーを確認できませんでした",
+        NoticeFolderNotCheckedBody => {
+            "このフォルダーの変更を確認できませんでした。もう一度お試しください。"
+        }
         NoticeStorageUnavailableTitle => "ローカルストレージにアクセスできません",
         NoticeStorageUnavailableBody => {
             "orbokが現在ローカルファイルにアクセスできませんでした。空き容量と権限を確認し、もう一度お試しください。"

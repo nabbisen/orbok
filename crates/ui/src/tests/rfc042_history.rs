@@ -62,6 +62,8 @@ fn clear_confirmation_flow() {
     assert!(!app.confirm_clear_history);
 }
 
+/// Task 075: turning the setting off shows at once, but the visible list
+/// empties only when orbok reports the catalog cleared it.
 #[test]
 fn toggle_off_clears_visible_history() {
     let mut app = AppState::default();
@@ -69,15 +71,29 @@ fn toggle_off_clears_visible_history() {
     app.remember_recent_searches = true;
     app.update(&Message::ToggleRememberRecentSearches(false));
     assert!(!app.remember_recent_searches);
+    assert_eq!(
+        app.search_ui.history.len(),
+        1,
+        "the toggle alone clears nothing"
+    );
+    app.update(&Message::RecentSearchesCleared);
     assert!(app.search_ui.history.is_empty());
 }
 
+/// Task 075: `RemoveRecentSearch` is the request; the entry goes on
+/// `RecentSearchRemoved`, which orbok sends once the catalog removed it.
 #[test]
 fn remove_single_entry_from_state() {
     let mut app = AppState::default();
     app.search_ui.history = vec![entry("keep"), entry("drop")];
     let drop_id = app.search_ui.history[1].id.clone();
-    app.update(&Message::RemoveRecentSearch(drop_id));
+    app.update(&Message::RemoveRecentSearch(drop_id.clone()));
+    assert_eq!(
+        app.search_ui.history.len(),
+        2,
+        "the request alone removes nothing"
+    );
+    app.update(&Message::RecentSearchRemoved(drop_id));
     assert_eq!(app.search_ui.history.len(), 1);
     assert_eq!(app.search_ui.history[0].search_text, "keep");
 }
