@@ -139,6 +139,10 @@ pub struct SearchLocationState {
     /// True while the OS folder picker is open, to guard against opening
     /// duplicate dialogs on repeated Search clicks (RFC-045 §19.0).
     pub picker_in_progress: bool,
+    /// Task 068: the query in the box when the picker opened for a search,
+    /// resumed once a folder is picked. Held here because the portal picker
+    /// is not modal -- the box can change while it is open.
+    pub pending_query: Option<String>,
 }
 
 impl SearchLocationState {

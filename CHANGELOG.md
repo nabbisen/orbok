@@ -56,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 068: a first search through the folder picker never finished.** On
+  a new profile, typing a query and pressing Search opens the "choose a
+  folder" dialog; after picking a folder, the page said "Searching…" forever
+  with the Search button disabled. After an earlier search it instead ran
+  the *earlier* query, while the box showed the new one, and it never
+  recorded the search in history. Now the query in the box when the dialog
+  opened runs once a folder is picked, through the same path as any other
+  search, and is recorded in history. Cancelling the dialog still does
+  nothing.
 - **Task 065: after a result did not open, orbok now says why.** Both cases
   used to say "Files may have moved", even when the file was right there and
   simply had no app to open it.

@@ -871,6 +871,8 @@ impl AppState {
             Message::SubmitSearch => {
                 let trimmed = self.query.trim();
                 if !trimmed.is_empty() {
+                    // Task 068: a submitted search resolves the pending one.
+                    self.search_location.pending_query = None;
                     self.last_query = Some(trimmed.to_string());
                     self.search_running = true;
                     self.search_results.clear();
@@ -1144,10 +1146,14 @@ impl AppState {
             Message::ChooseFolderRequested => {
                 // Guard: block duplicate picker dialogs on rapid Search clicks.
                 self.search_location.picker_in_progress = true;
+                // Task 068: the search this picker is for.
+                let query = self.query.trim();
+                self.search_location.pending_query = (!query.is_empty()).then(|| query.to_string());
             }
             Message::FolderPickerCancelled => {
                 // RFC-045 §8.2: cancel is neutral — no error, query preserved.
                 self.search_location.picker_in_progress = false;
+                self.search_location.pending_query = None;
             }
             Message::FolderPicked(_) => {
                 // Handled in orbok (source create/reuse); result arrives
@@ -1157,14 +1163,9 @@ impl AppState {
             Message::SearchLocationSelected(location) => {
                 self.search_location.picker_in_progress = false;
                 self.search_location.selected = Some(location.clone());
-                // After a location becomes ready, treat as a fresh search
-                // so results reflect the new scope.
-                if !self.query.trim().is_empty() {
-                    self.search_running = true;
-                    self.search_results.clear();
-                    self.selected_result = None;
-                    self.search_ui.results_status = ResultsStatus::Searching;
-                }
+                // Task 068: no "Searching" here. This message issues no search
+                // task, so setting it left a first search stuck forever;
+                // `SubmitSearch`, which does issue one, sets it.
             }
             Message::SearchLocationCleared => {
                 // RFC-045 §11.3: clear chip, preserve query.

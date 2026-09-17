@@ -27,6 +27,7 @@ mod rfc062_acceptance_tests;
 #[cfg(test)]
 mod runtime_isolation_tests;
 mod scheduler_host;
+mod search_flow;
 mod search_model;
 mod settings;
 #[cfg(test)]
@@ -718,51 +719,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(e) => tracing::warn!("initial scan failed: {e}"),
                     }
 
-                    // Resume the search that triggered the picker.
-                    // RFC-061 §7 Slice 5: off the update thread, same as
-                    // `SubmitSearch` above -- this resume doesn't record
-                    // history (matches the pre-Slice-5 behavior), so its
-                    // outcome maps straight onto the plain
-                    // `SearchResultsReady`/`SearchError` messages.
-                    let query = app.state.last_query.clone().unwrap_or_default();
-                    if query.is_empty() {
-                        return iced::Task::none();
-                    }
-                    let catalog_task = catalog.clone();
-                    let search_model_task = search_model.current();
-                    let search_cache_task = search_cache.clone();
-                    // RFC-060 §7: the kind filters and chosen folder the user
-                    // actually set, resolved before the task takes ownership.
-                    let mode_task = app.state.search_mode;
-                    let scope_task = bootstrap::scope_from_ui(
-                        &app.state.search_ui.active_filters,
-                        app.state.search_location.selected.as_ref(),
-                    );
-                    let failed_query = query.clone();
-                    return iced::Task::perform(
-                        async move {
-                            bootstrap::run_search(
-                                &catalog_task,
-                                search_model_task.as_ref().as_ref(),
-                                search_cache_task
-                                    .as_ref()
-                                    .as_ref()
-                                    .map(|cache| cache.service()),
-                                &query,
-                                mode_task,
-                                20,
-                                scope_task,
-                            )
-                            .map_err(|e| e.to_string())
-                        },
-                        move |outcome| match outcome {
-                            Ok(results) => Message::SearchResultsReady(results),
-                            Err(error) => Message::SearchError {
-                                query: failed_query,
-                                error,
-                            },
-                        },
-                    );
+                    // Resume the search that triggered the picker (RFC-045 §8.1),
+                    // through the ordinary path (Task 068): `RetrySearch` restores
+                    // the query pending when the picker opened, then dispatches
+                    // `SubmitSearch`, which now sees the selected location, sets
+                    // `last_query`, runs the search and records history. There is
+                    // no second search path here any more.
+                    return search_flow::after_folder_picked(&app.state)
+                        .map_or_else(iced::Task::none, iced::Task::done);
                 }
                 // RFC-042: Search again — restore text + valid filters, rerun.
                 Message::SearchAgain(id) => {
