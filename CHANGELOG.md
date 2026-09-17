@@ -56,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Task 069: Enter could confirm a destructive action that was no longer on
+  screen.** Removing a folder, resetting saved app data and clearing recent
+  searches each ask first, but a confirmation stayed open after moving to
+  another page, where Enter still confirmed it. For example, press Delete on
+  a folder, click Settings in the sidebar, press Enter: the folder was
+  removed. Now changing page closes any confirmation, and Enter confirms only
+  the one you can see.
 - **Task 068: a first search through the folder picker never finished.** On
   a new profile, typing a query and pressing Search opens the "choose a
   folder" dialog; after picking a folder, the page said "Searching…" forever

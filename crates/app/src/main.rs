@@ -34,8 +34,8 @@ mod settings;
 mod wired_application_tests;
 
 use orbok_ui::i18n::{dialog_title_add_source, dialog_title_choose_search_folder};
-use orbok_ui::state::{WizardFileCheck, WizardState};
-use orbok_ui::{KeyboardContext, Message, OrbokApp, key_to_message};
+use orbok_ui::state::WizardFileCheck;
+use orbok_ui::{Message, OrbokApp, key_to_message};
 use orbok_workers::model_verifier::REQUIRED_MODEL_FILES;
 use orbok_workers::{VerifyOutcome, verify_embedding_model};
 
@@ -852,22 +852,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `Subscription::with` payload -- see `KeyboardContext`'s own doc
         // comment for why it carries only these small pieces rather than
         // `&AppState` itself.
-        let ctx = KeyboardContext {
-            text_input_focused: app.search_focused,
-            active_view: app.state.active_view,
-            confirm_reset: app.state.confirm_reset,
-            confirm_remove_source: app.state.confirm_remove_source.is_some(),
-            confirm_clear_history: app.state.confirm_clear_history,
-            wizard_kind: app.state.wizard.as_ref().map(WizardState::kind),
-            selected_source_id: app
-                .state
-                .selected_source
-                .and_then(|i| app.state.sources.get(i))
-                .map(|card| card.source_id.clone()),
-            selected_result: (app.state.active_view == orbok_ui::state::ViewId::Search)
-                .then_some(app.state.selected_result)
-                .flatten(),
-        };
+        let ctx = app.keyboard_context();
         iced::Subscription::batch([
             scheduler_host::subscription(scheduler_host::SchedulerSubscriptionData {
                 portable,

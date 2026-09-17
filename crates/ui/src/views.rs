@@ -122,7 +122,7 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
-    if state.confirm_clear_history {
+    if state.visible_confirmation() == Some(crate::state::Confirmation::ClearRecentSearches) {
         column![
             text(tr(locale, MessageKey::ClearRecentSearchesConfirmTitle))
                 .size(theme::body_s(tokens, sc)),
@@ -450,10 +450,11 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
 
     // Task 062: the removal confirmation, laid out like the reset one.
-    if let Some(folder) = state
-        .confirm_remove_source
-        .as_ref()
-        .and_then(|id| state.sources.iter().find(|card| &card.source_id == id))
+    if let Some(folder) = (state.visible_confirmation()
+        == Some(crate::state::Confirmation::RemoveSource))
+    .then_some(state.confirm_remove_source.as_ref())
+    .flatten()
+    .and_then(|id| state.sources.iter().find(|card| &card.source_id == id))
     {
         let content = column![
             text(crate::i18n::fmt_remove_source_title(
@@ -662,7 +663,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
-    if state.confirm_reset {
+    if state.visible_confirmation() == Some(crate::state::Confirmation::ResetCatalog) {
         let content = column![
             text(tr(locale, MessageKey::StorageResetCatalog)).size(theme::title_s(tokens, sc)),
             text(tr(locale, MessageKey::StorageResetWarning))

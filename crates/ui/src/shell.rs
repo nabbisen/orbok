@@ -7,6 +7,7 @@
 //! it here (in `orbok-ui`) means it is unit-testable without the iced runtime.
 
 use crate::i18n::{MessageKey, tr};
+use crate::state::Confirmation;
 use crate::state::{AppState, Message, NavGroup, ViewId, WizardKind};
 use crate::views;
 use iced::Element;
@@ -296,6 +297,30 @@ pub struct OrbokApp {
 }
 
 impl OrbokApp {
+    /// The `KeyboardContext` the key subscription is built from (Task 069:
+    /// one construction, shared by `orbok` and the tests, so a test can never
+    /// check a hand-built copy of this logic).
+    pub fn keyboard_context(&self) -> KeyboardContext {
+        let state = &self.state;
+        KeyboardContext {
+            text_input_focused: self.search_focused,
+            active_view: state.active_view,
+            // Task 069: only the confirmation on screen can be confirmed.
+            confirm_reset: state.visible_confirmation() == Some(Confirmation::ResetCatalog),
+            confirm_remove_source: state.visible_confirmation() == Some(Confirmation::RemoveSource),
+            confirm_clear_history: state.visible_confirmation()
+                == Some(Confirmation::ClearRecentSearches),
+            wizard_kind: state.wizard.as_ref().map(crate::state::WizardState::kind),
+            selected_source_id: state
+                .selected_source
+                .and_then(|i| state.sources.get(i))
+                .map(|card| card.source_id.clone()),
+            selected_result: (state.active_view == ViewId::Search)
+                .then_some(state.selected_result)
+                .flatten(),
+        }
+    }
+
     pub fn with_state(state: AppState) -> Self {
         Self {
             state,

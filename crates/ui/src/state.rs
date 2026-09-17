@@ -414,6 +414,28 @@ impl ModelConsentReturn {
     }
 }
 
+/// Task 069: the destructive confirmations, each rendered on exactly one view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confirmation {
+    /// Folder removal -- Folders (`sources_view`).
+    RemoveSource,
+    /// Reset saved app data -- Storage (`storage_view`).
+    ResetCatalog,
+    /// Clear recent searches -- Settings (`settings_view`).
+    ClearRecentSearches,
+}
+
+impl Confirmation {
+    /// The one view this confirmation renders on.
+    pub fn view(self) -> ViewId {
+        match self {
+            Self::RemoveSource => ViewId::Sources,
+            Self::ResetCatalog => ViewId::Storage,
+            Self::ClearRecentSearches => ViewId::Settings,
+        }
+    }
+}
+
 /// The whole-app view model.
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -793,6 +815,14 @@ impl AppState {
     pub fn update(&mut self, message: &Message) {
         let view_before = self.active_view;
         self.apply(message);
+        // Task 069: a confirmation renders on one view, so changing view
+        // closes every confirmation -- whatever message changed it (the tab
+        // bar's `Switch`, the sidebar's `SwitchGroup`, a shortcut).
+        if self.active_view != view_before {
+            self.confirm_remove_source = None;
+            self.confirm_reset = false;
+            self.confirm_clear_history = false;
+        }
         // Task 064: an info notice belongs to the view it was raised on, so a
         // view change clears it -- compared here, once, rather than in each
         // message that can switch views. A problem notice stays.
@@ -804,13 +834,7 @@ impl AppState {
 
     fn apply(&mut self, message: &Message) {
         match message {
-            Message::Switch(view) => {
-                self.active_view = *view;
-                // Task 062: the removal dialog renders only on Folders, so
-                // it must not stay open -- and Enter-confirmable -- unseen on
-                // another view.
-                self.confirm_remove_source = None;
-            }
+            Message::Switch(view) => self.active_view = *view,
             Message::SwitchGroup(group) => self.active_view = ViewId::group_default(*group),
             Message::ToggleAdvanced => self.show_advanced = !self.show_advanced,
             Message::SetTheme(theme) => {
@@ -1263,6 +1287,30 @@ impl AppState {
     fn clear_notice(&mut self) {
         self.notice = None;
         self.notice_action = None;
+    }
+
+    /// Task 069: the confirmation the user can actually see -- its flag set,
+    /// its own view active, and no wizard replacing the view. Both the views
+    /// and the keyboard context use this, so Enter can never confirm
+    /// something that is not on screen.
+    pub fn visible_confirmation(&self) -> Option<Confirmation> {
+        if self.wizard.is_some() {
+            return None;
+        }
+        [
+            (self.confirm_reset, Confirmation::ResetCatalog),
+            (
+                self.confirm_remove_source.is_some(),
+                Confirmation::RemoveSource,
+            ),
+            (
+                self.confirm_clear_history,
+                Confirmation::ClearRecentSearches,
+            ),
+        ]
+        .into_iter()
+        .find(|(open, confirmation)| *open && confirmation.view() == self.active_view)
+        .map(|(_, confirmation)| confirmation)
     }
 
     /// Task 062: the removal confirmation was confirmed. Returns the removal

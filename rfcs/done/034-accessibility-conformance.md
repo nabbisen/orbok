@@ -175,6 +175,9 @@ restore focus to the triggering control on close (§17.2).
 >    at all. The protection that matters still holds: no single key performs a
 >    destructive action — it takes a deliberate `Delete` or click to open the
 >    dialog, then a separate confirmation.
+>
+> A confirmation can be confirmed only while it is on screen; changing view
+> closes it. (Task 069, 2026-09-17.)
 
 ### 5.4. Focus visibility — the iced 0.14 limitation (recorded)
 
