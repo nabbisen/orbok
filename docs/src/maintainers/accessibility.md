@@ -394,15 +394,29 @@ verifies the tokens *permit* an adequate target, not that any control is one.
 
 **2. The claim was scoped to primary actions; the criterion is not.** WCAG 2.5.8
 applies to every target. orbok's smallest controls are not primary actions — they
-are chips and toggles built with bare `button(...)`, which take iced's
-`DEFAULT_PADDING` (5 px vertical, 10 px horizontal), not the
-`[spacing.md, spacing.lg]` = `[12, 16]` this entry described.
+are the chips (`components::chip`) and the toggles still built with bare
+`button(...)`, not the `[spacing.md, spacing.lg]` = `[12, 16]` this entry
+described.
 
-**The smallest target, computed:** a chip renders `meta_s` text — `body_small`,
-14.0 px at the default scale — at iced's default `LineHeight::Relative(1.3)`,
-inside 5 px vertical padding each side. Height ≈ **14 × 1.3 + 10 ≈ 28 px**,
-comfortably above 24. `TextScale` only increases from there (1.0 / 1.15 / 1.3),
-so 28 px is the floor. Width is label-driven and far larger.
+**The smallest target (updated 2026-09-17, Task 072 and Review 252 §3):** since
+Task 072 the chips (the search location chip, the scope toggle and the
+recent-folder chips) are `components::chip`, with `[spacing.xs, spacing.sm]` =
+`[4, 8]` padding and a lucide icon sized to the label. Each chip renders
+`meta_s` text — `body_small`, 14.0 px at the default scale — at iced's default
+`LineHeight::Relative(1.3)`:
+
+- **computed:** 14 × 1.3 + 2 × 4 ≈ **26.2 px**;
+- **measured:** Task 072 measured the location chip at 31 px tall at display
+  scale 1.2 (`.git-exclude/evidence/task072/`), **≈ 25.8 logical px**.
+
+Both are above 24, with less margin than before. `TextScale` only increases
+from there (1.0 / 1.15 / 1.3), so the default scale is the floor. Width is
+label-driven and far larger.
+
+The toggles still built with bare `button(...)` take iced's `DEFAULT_PADDING`
+(5 px vertical, 10 px horizontal): 14 × 1.3 + 10 ≈ 28 px. This entry
+previously named that 28 px as the smallest target, which the chips no longer
+are.
 
 So the status holds. **What was wrong was the evidence, not the outcome** — and
 had a control been undersized, nothing in the suite would have caught it.
@@ -411,9 +425,9 @@ orbok's house rule of 44 px for primary actions (WCAG 2.5.5 AAA guideline) is
 separate and unaffected.
 
 **Not applicable:** snora's RFC-061 chip repair does not reach orbok. We do not
-use `snora::design::widget::chip`; our chips are single `button`s whose label
-*contains* the `✕` (`views.rs:196`), so the dismiss target is the whole chip
-rather than a glyph-sized control.
+use `snora::design::widget::chip`. Our chips are single `button`s
+(`components::chip`) whose content includes the remove icon (a lucide `X`), so
+the remove target is the whole chip, not a glyph-sized control.
 
 ### 4.1.2 Name, Role, Value
 
