@@ -2673,15 +2673,27 @@ fn a_cache_that_keeps_nothing_stops_after_one_re_extraction() {
         });
     });
 
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // The verdict is the extraction count, checked on every poll: an
+    // unguarded chain re-extracts again and again, so a third extraction
+    // fails at once, however fast or slow the machine. The deadline is only
+    // a backstop for a host that never finishes at all. It used to be a
+    // 20 s verdict, and failed on a loaded Windows runner (CI run
+    // 35173241129) with 1 extraction -- the setup's own -- that is, before
+    // the host had done any work, not after it had looped.
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !(failed_with_category(&ui_catalog, "chunk", "extraction_cache_unavailable") == 1
         && nothing_unfinished(&ui_catalog))
     {
+        let extractions = succeeded_extractions(&ui_catalog);
+        assert!(
+            extractions <= 2,
+            "unbounded: {extractions} extractions -- the original plus more than one \
+             re-extraction"
+        );
         assert!(
             Instant::now() < deadline,
-            "timed out: the chain did not end as extraction_cache_unavailable \
-             (extractions so far: {})",
-            succeeded_extractions(&ui_catalog)
+            "backstop: the host did not finish within 300 s (extractions so far: \
+             {extractions}); this is a hang, not the loop guard's verdict"
         );
         std::thread::sleep(Duration::from_millis(20));
     }
