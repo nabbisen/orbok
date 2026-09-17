@@ -19,19 +19,6 @@
 crates/ui/src/views/wizard.rs	lucide	font family name for the icon glyph font — a technical resource identifier, not display text
 crates/ui/src/components.rs	lucide	font family name for the icon glyph font — a technical resource identifier, not display text
 
-# ── Iconographic glyphs standing in for icons, not words ────────────────
-# Rendered via the same icon_text/glyph technique as lucide icons; the glyph
-# itself does not vary by locale, matching how lucide::Download etc. render
-# identically regardless of language.
-crates/ui/src/views.rs	✕	iconographic close/remove glyph, not translatable text
-crates/ui/src/views.rs	↕	iconographic scope-toggle glyph, not translatable text
-crates/ui/src/views.rs	▶	iconographic selected-result indicator glyph, not translatable text
-crates/ui/src/views.rs	✓	iconographic checkmark glyph (reduced-motion toggle), not translatable text
-crates/ui/src/views/wizard.rs	✓	iconographic checkmark glyph (file-found indicator), not translatable text
-crates/ui/src/views/wizard.rs	✗	iconographic cross-mark glyph (file-missing indicator), not translatable text
-crates/ui/src/views/wizard.rs	←	iconographic back/missing-marker arrow glyph, not translatable text
-crates/ui/src/views/wizard.rs	↓	iconographic download-in-progress arrow glyph, not translatable text
-
 # ── Proper nouns / vendor and model identifiers ──────────────────────────
 crates/ui/src/views/wizard.rs	multilingual-e5-small	default embedding model identifier (HuggingFace model id), a proper noun not translated across locales
 crates/ui/src/state/model_consent.rs	Hugging Face	model vendor/provider proper name, not translated across locales

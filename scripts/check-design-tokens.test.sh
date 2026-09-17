@@ -5,7 +5,7 @@
 # files (scripts/fixtures/design-tokens/), proving both directions: the
 # clean fixture produces zero findings, and the violation fixture produces
 # exactly one finding per RFC-052 §5 category (font size, padding, array
-# padding, spacing, radius, colour).
+# padding, spacing, radius, colour), plus Task 072's row alignment.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,8 +34,8 @@ fi
 
 violation_out="$(check_tokens scripts/fixtures/design-tokens/violation.rs || true)"
 violation_findings="$(echo "$violation_out" | grep -c "^design-token gate:" || true)"
-check "violation fixture produces exactly six findings (one per category)" "6" "$violation_findings"
-if [ "$violation_findings" != "6" ]; then
+check "violation fixture produces exactly seven findings (one per category)" "7" "$violation_findings"
+if [ "$violation_findings" != "7" ]; then
   echo "$violation_out" >&2
 fi
 
@@ -45,7 +45,8 @@ for expected_substr in \
   'literal array padding' \
   'literal spacing' \
   'literal radius' \
-  'literal colour'
+  'literal colour' \
+  'row![ without .align_y('
 do
   if echo "$violation_out" | grep -qF "$expected_substr"; then
     echo "ok: violation fixture reports $expected_substr"

@@ -48,6 +48,57 @@ check_tokens() {
   if grep -nE 'iced::Color|Color::from_rgb|from_rgba' "${files[@]}"; then
     flag "literal colour — use palette roles via the token bridge"
   fi
+  # Task 072: every horizontal row declares its vertical alignment. A bare
+  # `row![...]` aligns its children to the top, so an icon sits above its
+  # label and a button hangs below the input beside it. Use `hrow![...]`
+  # (centred), or `row![...].align_y(..)` for a deliberate choice. Unlike
+  # the categories above this spans lines, so it balances the macro's
+  # brackets and reads the method chain that follows it.
+  local bare_rows
+  bare_rows=$(bare_rows_without_alignment "${files[@]}")
+  if [ -n "$bare_rows" ]; then
+    echo "$bare_rows"
+    flag "row![ without .align_y( — use hrow![..] (centred) or row![..].align_y(..) ($(echo "$bare_rows" | grep -c .) found)"
+  fi
+}
+
+# bare_rows_without_alignment <file...> — prints file:line for each `row![`
+# whose expression (the balanced macro plus its `.method(..)` chain) has no
+# `.align_y(`. `hrow![` does not match: the word boundary excludes it.
+bare_rows_without_alignment() {
+  perl -0777 -ne '
+    my $src = $_;
+    while ($src =~ /(?<![A-Za-z0-9_])row!\[/g) {
+      my $start = $-[0];
+      my $pos = pos($src);
+      my $depth = 1;
+      while ($depth > 0 && $pos < length $src) {
+        my $c = substr($src, $pos, 1);
+        $depth++ if $c eq "[" || $c eq "(" || $c eq "{";
+        $depth-- if $c eq "]" || $c eq ")" || $c eq "}";
+        $pos++;
+      }
+      my $chain = "";
+      while (substr($src, $pos) =~ /^(\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*)/) {
+        $chain .= $1;
+        $pos += length $1;
+        if (substr($src, $pos, 1) eq "(") {
+          my $d = 0;
+          do {
+            my $c = substr($src, $pos, 1);
+            $d++ if $c eq "(";
+            $d-- if $c eq ")";
+            $chain .= $c;
+            $pos++;
+          } while ($d > 0 && $pos < length $src);
+        }
+      }
+      if ($chain !~ /\.align_y\(/) {
+        my $line = (substr($src, 0, $start) =~ tr/\n//) + 1;
+        print "$ARGV:$line: row![ without .align_y(\n";
+      }
+    }
+  ' "$@"
 }
 
 main() {

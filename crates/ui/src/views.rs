@@ -11,7 +11,9 @@ pub mod startup_failure;
 pub mod wizard;
 pub use wizard::wizard_view;
 
-use crate::components::{self, health_cell, job_progress, result_card, source_card};
+use crate::components::{
+    self, health_cell, hrow, icon_text, job_progress, result_card, source_card,
+};
 use crate::i18n::{
     Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
     fmt_query, fmt_storage_row, preparing_folder_for_search, search_location_chip,
@@ -19,7 +21,7 @@ use crate::i18n::{
 };
 use crate::state::{AppState, Message, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
 use iced::{Element, Length, Padding};
 use orbok_models::SearchCapability;
 use snora::design::Tokens;
@@ -42,7 +44,7 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
         if state.search_ui.history.is_empty() {
             return column![].into();
         }
-        return row![
+        return hrow![
             button(
                 text(tr(locale, MessageKey::OpenRecentSearches)).size(theme::meta_s(tokens, sc))
             )
@@ -102,10 +104,18 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
     }
 
     column![
-        row![
+        hrow![
             text(tr(locale, MessageKey::RecentSearchesLabel)).size(theme::label_s(tokens, sc)),
-            button(text("✕").size(theme::meta_s(tokens, sc)))
+            // Task 072: an icon-only control keeps its label as a tooltip.
+            tooltip(
+                button(icon_text(
+                    char::from(lucide::X),
+                    theme::meta_s(tokens, sc).0
+                ))
                 .on_press(Message::CloseRecentSearches),
+                text(tr(locale, MessageKey::NoticeDismiss)).size(theme::meta_s(tokens, sc)),
+                tooltip::Position::Bottom,
+            ),
         ]
         .spacing(tokens.spacing.sm),
         scrollable(entries).height(Length::Shrink),
@@ -131,7 +141,7 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
                 .size(theme::meta_s(tokens, sc))
                 .line_height(theme::meta_lh(tokens))
                 .color(to_iced_color(tokens.palette.text_secondary)),
-            row![
+            hrow![
                 button(text(tr(locale, MessageKey::Cancel)).size(theme::meta_s(tokens, sc)))
                     .on_press(Message::CancelClearRecentSearches),
                 button(
@@ -167,7 +177,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
     match &state.search_location.selected {
         None => {
             // First-run / no-folder state: passive one-line prompt (RFC-045 §7.1).
-            row![
+            hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
                 text(tr(locale, MessageKey::SearchChooseFolder))
                     .size(theme::meta_s(tokens, sc))
@@ -191,17 +201,28 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 ),
             };
 
-            row![
+            hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
-                // Folder chip with ✕ remove — keyboard removable (RFC-045 §20).
-                button(text(format!("{chip_label}  ✕")).size(theme::meta_s(tokens, sc)))
-                    .on_press(Message::SearchLocationCleared),
-                // Scope toggle button.
-                button(
-                    text(format!("↕ {}", tr(locale, other_label_key)))
-                        .size(theme::meta_s(tokens, sc)),
-                )
-                .on_press(Message::SearchScopeChanged(other_scope)),
+                // Folder chip with an X to remove — keyboard removable
+                // (RFC-045 §20).
+                components::chip(
+                    tokens,
+                    sc,
+                    None,
+                    &chip_label,
+                    Some(char::from(lucide::X)),
+                    Message::SearchLocationCleared,
+                ),
+                // Scope toggle: ArrowUpDown says "switch to the other scope",
+                // which is what pressing it does.
+                components::chip(
+                    tokens,
+                    sc,
+                    Some(char::from(lucide::ArrowUpDown)),
+                    tr(locale, other_label_key),
+                    None,
+                    Message::SearchScopeChanged(other_scope),
+                ),
             ]
             .spacing(tokens.spacing.xs)
             .into()
@@ -221,13 +242,12 @@ pub(crate) fn friendly_notice<'a>(
     let mut builder = Notice::new(tokens, notice.tone(), notice.body(locale).to_string())
         .title(notice.title(locale).to_string());
     // Task 060: a labelled action renders only when its raise site stored the
-    // concrete retry; otherwise the notice offers dismiss alone.
+    // concrete retry. Task 072: dismiss is always offered, beside the action
+    // when there is one (Task 060 §1).
     if let (Some(action_label), true) = (notice.action(locale), has_action) {
         builder = builder.action(action_label.to_string(), Message::NoticeActionPressed);
-    } else {
-        builder = builder.dismiss(Message::ClearNotice);
     }
-    builder.render()
+    builder.dismiss(Message::ClearNotice).render()
 }
 
 fn page<'a>(tokens: &Tokens, content: iced::widget::Column<'a, Message>) -> Element<'a, Message> {
@@ -258,7 +278,10 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     let input = text_input(tr(locale, MessageKey::SearchPlaceholder), &state.query)
         .on_input(Message::QueryChanged)
         .on_submit(Message::SubmitSearch)
-        .padding(tokens.spacing.sm);
+        // Task 072: the same text size and vertical padding as the Search
+        // button beside it, so the two are the same height.
+        .size(theme::body(tokens))
+        .padding(components::input_padding(tokens));
 
     let submit = components::icon_primary(
         tokens,
@@ -270,7 +293,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::NavSearch)),
-        row![container(input).width(Length::Fill), submit].spacing(tokens.spacing.sm),
+        hrow![container(input).width(Length::Fill), submit].spacing(tokens.spacing.sm),
         // RFC-045: "Search in" location row.
         search_location_row(state),
     ];
@@ -281,17 +304,21 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     if !state.search_location.recent_locations.is_empty()
         && state.search_location.selected.is_none()
     {
-        let mut chips = row![
+        let mut chips = hrow![
             text(tr(locale, MessageKey::SearchRecentFoldersLabel))
                 .size(theme::meta_s(tokens, sc))
                 .color(to_iced_color(tokens.palette.text_secondary)),
         ]
         .spacing(tokens.spacing.xs);
         for summary in &state.search_location.recent_locations {
-            chips = chips.push(
-                button(text(&summary.display_name).size(theme::meta_s(tokens, sc)))
-                    .on_press(Message::RecentFolderSelected(summary.source_id.clone())),
-            );
+            chips = chips.push(components::chip(
+                tokens,
+                sc,
+                Some(char::from(lucide::Folder)),
+                &summary.display_name,
+                None,
+                Message::RecentFolderSelected(summary.source_id.clone()),
+            ));
         }
         content = content.push(chips);
     }
@@ -321,7 +348,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
 
     if state.show_advanced {
         content = content.push(
-            row![
+            hrow![
                 text(tr(locale, MessageKey::SearchModeLabel)).size(theme::meta_s(tokens, sc)),
                 button(
                     text(tr(locale, MessageKey::SearchModeAuto)).size(theme::meta_s(tokens, sc))
@@ -395,11 +422,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                 for (i, result) in state.search_results.iter().enumerate() {
                     let is_selected = state.selected_result == Some(i);
                     let title_raw = result.title.as_deref().unwrap_or(&result.display_path);
-                    let title_str = if is_selected {
-                        format!("▶  {title_raw}")
-                    } else {
-                        title_raw.to_string()
-                    };
+                    let title_str = title_raw.to_string();
                     let snippet = result
                         .snippet
                         .as_deref()
@@ -421,7 +444,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     // selected result carries its two file actions.
                     if is_selected {
                         content = content.push(
-                            row![
+                            hrow![
                                 components::secondary(
                                     tokens,
                                     tr(locale, MessageKey::SearchResultOpenFile),
@@ -466,7 +489,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
             text(tr(locale, MessageKey::SourceRemoveConfirmBody))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
-            row![
+            hrow![
                 components::ghost(
                     tokens,
                     tr(locale, MessageKey::Cancel),
@@ -499,11 +522,13 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     )
     .on_input(Message::SourcePathChanged)
     .on_submit_maybe(add_folder)
-    .padding(tokens.spacing.sm);
+    // Task 072: matches the Add Folder button beside it.
+    .size(theme::body(tokens))
+    .padding(components::input_padding(tokens));
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::SourcesTitle)),
-        row![add_btn, container(add_input).width(Length::Fill)].spacing(tokens.spacing.sm),
+        hrow![add_btn, container(add_input).width(Length::Fill)].spacing(tokens.spacing.sm),
         text(tr(locale, MessageKey::SourcesRecursiveHint))
             .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
@@ -589,7 +614,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
     let h = state.health;
 
-    let mut cells = row![health_cell(
+    let mut cells = hrow![health_cell(
         tokens,
         tr(locale, MessageKey::IndexingHealthIndexed),
         h.indexed
@@ -670,7 +695,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             text(tr(locale, MessageKey::StorageResetWarning))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
-            row![
+            hrow![
                 components::ghost(
                     tokens,
                     tr(locale, MessageKey::Cancel),
@@ -745,7 +770,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     let content = column![
         breakdown,
         text(tr(locale, MessageKey::StorageSafeCleanupHeading)).size(theme::body_s(tokens, sc)),
-        row![
+        hrow![
             components::secondary(
                 tokens,
                 tr(locale, MessageKey::StorageClearSnippets),
@@ -846,7 +871,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
 
     // Language picker
-    let mut language_row = row![].spacing(tokens.spacing.sm);
+    let mut language_row = hrow![].spacing(tokens.spacing.sm);
     for candidate in Locale::ALL {
         let label = text(candidate.display_name()).size(theme::body_s(tokens, sc));
         let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
@@ -857,7 +882,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     }
 
     // Theme picker
-    let mut theme_row = row![].spacing(tokens.spacing.sm);
+    let mut theme_row = hrow![].spacing(tokens.spacing.sm);
     for candidate in Theme::ALL {
         let label = text(tr(locale, candidate.label_key())).size(theme::body_s(tokens, sc));
         let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
@@ -868,7 +893,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     }
 
     // Text size picker (RFC-035)
-    let mut scale_row = row![].spacing(tokens.spacing.sm);
+    let mut scale_row = hrow![].spacing(tokens.spacing.sm);
     for candidate in TextScale::ALL {
         let label = text(tr(locale, candidate.label_key())).size(theme::body_s(tokens, sc));
         let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
@@ -881,9 +906,15 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     // Reduce motion toggle (RFC-035) — checkbox-style button
     let motion_label = tr(locale, MessageKey::SettingsReduceMotion);
     let motion_btn = if state.reduced_motion {
-        button(text(format!("✓  {motion_label}")).size(theme::body_s(tokens, sc)))
-            .padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]))
-            .on_press(Message::SetReducedMotion(false))
+        button(
+            hrow![
+                icon_text(char::from(lucide::Check), theme::body_s(tokens, sc).0),
+                text(motion_label.to_string()).size(theme::body_s(tokens, sc)),
+            ]
+            .spacing(tokens.spacing.xs),
+        )
+        .padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]))
+        .on_press(Message::SetReducedMotion(false))
     } else {
         button(text(motion_label.to_string()).size(theme::body_s(tokens, sc)))
             .padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]))
@@ -902,7 +933,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
         scale_row,
         // Accessibility
-        row![
+        hrow![
             motion_btn,
             text(tr(locale, MessageKey::SettingsReduceMotionHint))
                 .size(theme::meta_s(tokens, sc))
@@ -919,7 +950,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
         // RFC-042: Remember recent searches toggle + note.
-        row![
+        hrow![
             button(
                 text(if state.remember_recent_searches {
                     tr(locale, MessageKey::SettingsAdvancedOn)
@@ -940,7 +971,7 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         recent_searches_clear_control(state),
         // Advanced
         text(tr(locale, MessageKey::SettingsAdvancedHeading)).size(theme::body_s(tokens, sc)),
-        row![
+        hrow![
             button(
                 text(if state.show_advanced {
                     tr(locale, MessageKey::SettingsAdvancedOn)

@@ -72,7 +72,7 @@ fn component_smoke_result_card() {
     let _ = crate::components::result_card(
         &tokens,
         Locale::Ja,
-        "▶  selected.pdf".to_string(),
+        "selected.pdf".to_string(),
         "/docs/selected.pdf".to_string(),
         String::new(),
         "(source unavailable)".to_string(),

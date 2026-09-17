@@ -13,6 +13,7 @@
 //! [`crate::theme`] helpers and the token spacing scale; icon glyph dimensions
 //! stay explicit.
 
+use crate::components::{control_padding, hrow, input_padding};
 use crate::i18n::{
     Locale, MessageKey, fmt_label_value, model_exact_size, model_file_position,
     model_transfer_progress, tr, wizard_file_size_mb,
@@ -22,7 +23,7 @@ use crate::state::{
     ModelPersistenceState, ModelProvenance, ModelTrustPresentation, WizardFileCheck, WizardState,
 };
 use crate::theme;
-use iced::widget::{button, column, container, progress_bar, row, text, text_input};
+use iced::widget::{button, column, container, progress_bar, text, text_input};
 use iced::{Element, Length, Padding};
 use snora::design::Tokens;
 use snora::lucide;
@@ -31,6 +32,28 @@ fn icon_text<'a>(glyph: char, size: f32) -> iced::widget::Text<'a> {
     iced::widget::text(glyph.to_string())
         .font(iced::Font::with_name("lucide"))
         .size(size)
+}
+
+/// Task 072: one required model file's check line -- a lucide check or X
+/// (not a text "✓"/"✗"), the file, and for a missing file an arrow and the
+/// "missing" marker, all on one centre line.
+fn file_check_line<'a>(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    locale: Locale,
+    found: bool,
+    label: String,
+) -> Element<'a, Message> {
+    let size = theme::meta_s(tokens, sc);
+    let glyph = if found { lucide::Check } else { lucide::X };
+    let mut line = hrow![icon_text(char::from(glyph), size.0), text(label).size(size),]
+        .spacing(tokens.spacing.sm);
+    if !found {
+        line = line
+            .push(icon_text(char::from(lucide::ArrowLeft), size.0))
+            .push(text(tr(locale, MessageKey::WizardMissingMarker)).size(size));
+    }
+    line.into()
 }
 
 /// Standard wizard page wrapper: token page padding, fills the window.
@@ -141,7 +164,7 @@ fn page_setup<'a>(
     // ── Primary action: Download ──────────────────────────────────────
     let download_card = container(
         column![
-            row![
+            hrow![
                 icon_text(char::from(lucide::Download), 16.0),
                 text(tr(locale, MessageKey::WizardDownloadAction)).size(theme::body_s(tokens, sc)),
             ]
@@ -154,7 +177,7 @@ fn page_setup<'a>(
             )
             .size(theme::meta_s(tokens, sc)),
             button(
-                row![
+                hrow![
                     icon_text(char::from(lucide::Download), 13.0),
                     text(tr(locale, MessageKey::WizardDownloadAction))
                         .size(theme::body_s(tokens, sc)),
@@ -184,17 +207,13 @@ fn page_setup<'a>(
         );
         col = col.push(text(prev_dir).size(theme::meta_s(tokens, sc)));
         for fc in checks {
-            let (icon, note) = if fc.found {
-                ("✓", String::new())
-            } else {
-                (
-                    "✗",
-                    format!("  ← {}", tr(locale, MessageKey::WizardMissingMarker)),
-                )
-            };
-            col = col.push(
-                text(format!("{icon}  {}{note}", fc.relative_path)).size(theme::meta_s(tokens, sc)),
-            );
+            col = col.push(file_check_line(
+                tokens,
+                sc,
+                locale,
+                fc.found,
+                fc.relative_path.clone(),
+            ));
         }
     } else {
         col = col.push(
@@ -210,19 +229,23 @@ fn page_setup<'a>(
     )
     .on_input(Message::WizardPathChanged)
     .on_submit(Message::WizardValidate)
-    .padding(tokens.spacing.sm);
+    // Task 072: the same text size and vertical padding as the Validate
+    // button beside it.
+    .size(theme::body_s(tokens, sc))
+    .padding(input_padding(tokens));
 
     col = col.push(
-        row![
+        hrow![
             container(path_input).width(Length::Fill),
             button(
-                row![
+                hrow![
                     icon_text(char::from(lucide::FolderOpen), 13.0),
                     text(tr(locale, MessageKey::WizardActionValidate))
                         .size(theme::body_s(tokens, sc)),
                 ]
                 .spacing(tokens.spacing.xs),
             )
+            .padding(control_padding(tokens))
             .on_press(Message::WizardValidate),
         ]
         .spacing(tokens.spacing.sm),
@@ -301,7 +324,7 @@ fn page_download_consent<'a>(
             trust
         ))
         .size(theme::body_s(tokens, sc)),
-        row![
+        hrow![
             button(
                 text(tr(locale, MessageKey::ModelConsentConfirm)).size(theme::body_s(tokens, sc)),
             )
@@ -349,7 +372,7 @@ fn page_downloading<'a>(
     let transfer_label = model_transfer_progress(locale, bytes, total);
 
     let mut col = column![
-        row![
+        hrow![
             icon_text(char::from(lucide::Download), 16.0),
             text(tr(locale, MessageKey::WizardDownloadProgress)).size(theme::title_s(tokens, sc)),
         ]
@@ -360,7 +383,11 @@ fn page_downloading<'a>(
         ))
         .size(theme::meta_s(tokens, sc)),
         text(overall_label).size(theme::meta_s(tokens, sc)),
-        text(format!("↓  {artifact_label}")).size(theme::body_s(tokens, sc)),
+        hrow![
+            icon_text(char::from(lucide::ArrowDown), theme::body_s(tokens, sc).0),
+            text(artifact_label).size(theme::body_s(tokens, sc)),
+        ]
+        .spacing(tokens.spacing.sm),
         progress_bar(0.0..=1.0, frac),
         text(transfer_label).size(theme::meta_s(tokens, sc)),
     ]
@@ -440,28 +467,23 @@ fn page_checked<'a>(
     .spacing(tokens.spacing.sm);
 
     for fc in checks {
-        let (icon, style) = if fc.found {
-            ("✓", String::new())
-        } else {
-            (
-                "✗",
-                format!("  ← {}", tr(locale, MessageKey::WizardMissingMarker)),
-            )
-        };
         let size_info = fc
             .size_mb
             .map(|m| format!("  {}", wizard_file_size_mb(locale, m)))
             .unwrap_or_default();
-        col = col.push(
-            text(format!("{icon}  {}{size_info}{style}", fc.relative_path))
-                .size(theme::meta_s(tokens, sc)),
-        );
+        col = col.push(file_check_line(
+            tokens,
+            sc,
+            locale,
+            fc.found,
+            format!("{}{size_info}", fc.relative_path),
+        ));
     }
 
     if all_ok {
         col = col.push(
             button(
-                row![
+                hrow![
                     icon_text(char::from(lucide::CheckCircle), 13.0),
                     text(tr(locale, MessageKey::WizardActionUseModel))
                         .size(theme::body_s(tokens, sc)),
@@ -482,18 +504,21 @@ fn page_checked<'a>(
         )
         .on_input(Message::WizardPathChanged)
         .on_submit(Message::WizardValidate)
-        .padding(tokens.spacing.sm);
+        // Task 072: matches the Validate button beside it.
+        .size(theme::body_s(tokens, sc))
+        .padding(input_padding(tokens));
         col = col.push(
-            row![
+            hrow![
                 container(path_input).width(Length::Fill),
                 button(
-                    row![
+                    hrow![
                         icon_text(char::from(lucide::ScanEye), 13.0),
                         text(tr(locale, MessageKey::WizardActionValidate))
                             .size(theme::body_s(tokens, sc)),
                     ]
                     .spacing(tokens.spacing.xs),
                 )
+                .padding(control_padding(tokens))
                 .on_press(Message::WizardValidate),
             ]
             .spacing(tokens.spacing.sm),
@@ -501,10 +526,13 @@ fn page_checked<'a>(
     }
 
     col = col.push(
-        row![
+        hrow![
             button(
-                text(format!("← {}", tr(locale, MessageKey::WizardBack)))
-                    .size(theme::meta_s(tokens, sc)),
+                hrow![
+                    icon_text(char::from(lucide::ArrowLeft), theme::meta_s(tokens, sc).0),
+                    text(tr(locale, MessageKey::WizardBack)).size(theme::meta_s(tokens, sc)),
+                ]
+                .spacing(tokens.spacing.xs),
             )
             .on_press(Message::WizardBack),
             button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
@@ -531,7 +559,7 @@ fn page_ready<'a>(
         ModelProvenance::UserSupplied => tr(locale, MessageKey::ModelTrustUserSupplied),
     };
     let mut col = column![
-        row![
+        hrow![
             icon_text(char::from(lucide::CheckCircle), 18.0),
             text(tr(locale, MessageKey::WizardTitleReady)).size(theme::title_s(tokens, sc)),
         ]
@@ -546,7 +574,7 @@ fn page_ready<'a>(
         ModelPersistenceState::Idle => {
             col = col.push(
                 button(
-                    row![
+                    hrow![
                         icon_text(char::from(lucide::CheckCircle), 13.0),
                         text(tr(locale, MessageKey::WizardActionUseModel))
                             .size(theme::body_s(tokens, sc)),

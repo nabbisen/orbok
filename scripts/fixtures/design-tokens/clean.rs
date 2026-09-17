@@ -11,5 +11,13 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
         ..Default::default()
     });
     let g = to_iced_color(tokens.palette.accent);
+    // Task 072: a centred row, and a deliberate alignment across lines.
+    let h = hrow![a, b].spacing(tokens.spacing.sm);
+    let i = row![
+        text(label).size(theme::body_s(tokens, sc)),
+        badge,
+    ]
+    .spacing(tokens.spacing.sm)
+    .align_y(Alignment::Start);
     a
 }

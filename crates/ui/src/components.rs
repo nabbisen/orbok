@@ -28,16 +28,49 @@ use crate::i18n::{Locale, MessageKey, tr};
 use crate::state::Message;
 use crate::theme;
 use iced::widget::{button, column, container, row, text};
-use iced::{Border, Element, Padding, Shadow};
+use iced::{Alignment, Border, Element, Padding, Shadow};
 use orbok_search::MatchBadge;
 use snora::design::style::button as btn_style;
 use snora::design::style::color::to_iced_color;
 use snora::design::{Tokens, Tone, card, progress};
 use snora::lucide;
 
+// ── Rows (Task 072) ───────────────────────────────────────────────────────
+
+/// A horizontal row whose children share a centre line. iced aligns a row's
+/// children to the top by default, which puts an icon above its label and
+/// hangs a button below the input beside it, so views use this instead of
+/// `row!`. A deliberate top-aligned row writes
+/// `row![..].align_y(Alignment::Start)` with a comment saying why;
+/// `scripts/check-design-tokens.sh` fails on a `row!` with neither.
+macro_rules! hrow {
+    () => {
+        iced::widget::row![].align_y(iced::Alignment::Center)
+    };
+    ($($child:expr),+ $(,)?) => {
+        iced::widget::row![$($child),+].align_y(iced::Alignment::Center)
+    };
+}
+pub(crate) use hrow;
+
+// ── Control heights (Task 072) ────────────────────────────────────────────
+
+/// Padding for a button that sits beside a text input. Its vertical padding
+/// is [`input_padding`]'s, so with the same text size both controls are the
+/// same height.
+pub fn control_padding(tokens: &Tokens) -> Padding {
+    Padding::from([tokens.spacing.sm, tokens.spacing.lg])
+}
+
+/// Padding for a text input that sits beside a button; see
+/// [`control_padding`].
+pub fn input_padding(tokens: &Tokens) -> Padding {
+    Padding::from([tokens.spacing.sm, tokens.spacing.sm])
+}
+
 // ── Icon helper (same technique as views.rs; glyph size stays explicit) ──
 
-fn icon_text<'a>(glyph: char, size: f32) -> iced::widget::Text<'a> {
+pub(crate) fn icon_text<'a>(glyph: char, size: f32) -> iced::widget::Text<'a> {
     iced::widget::text(glyph.to_string())
         .font(iced::Font::with_name("lucide"))
         .size(size)
@@ -90,7 +123,7 @@ pub fn tone_icon(tone: Tone) -> char {
 /// a logic error and is caught by the `status_badge_label_invariant` test.
 pub fn status_badge<'a>(tokens: &Tokens, label: &str, tone: Tone) -> Element<'a, Message> {
     debug_assert!(!label.is_empty(), "status_badge: label must not be empty");
-    row![
+    hrow![
         icon_text(tone_icon(tone), theme::meta(tokens).0),
         text(label.to_string()).size(theme::meta(tokens)),
     ]
@@ -184,7 +217,7 @@ pub fn result_card<'a>(
     let badge_row: Element<'a, Message> = if shown_badges.is_empty() {
         text("").size(theme::meta(tokens)).into()
     } else {
-        let mut r = row![].spacing(tokens.spacing.sm);
+        let mut r = hrow![].spacing(tokens.spacing.sm);
         for b in shown_badges {
             let label = tr(locale, badge_message_key(b));
             r = r.push(status_badge(tokens, label, badge_tone(b)));
@@ -192,12 +225,29 @@ pub fn result_card<'a>(
         r.into()
     };
 
+    // A result's title -- often a document heading, not guaranteed to fit
+    // one line at the card's bounded width (Task 028 §2).
+    let title_text = text(title)
+        .size(theme::body(tokens))
+        .line_height(theme::body_lh(tokens));
+    // Task 072: the selected result's non-colour marker (RFC-034 §5.2) is a
+    // lucide chevron, not a text "▶".
+    let title_line: Element<'a, Message> = if is_selected {
+        // Top-aligned: the title can wrap, and the marker belongs beside its
+        // first line.
+        row![
+            icon_text(char::from(lucide::ChevronRight), theme::body(tokens).0),
+            title_text,
+        ]
+        .spacing(tokens.spacing.xs)
+        .align_y(Alignment::Start)
+        .into()
+    } else {
+        title_text.into()
+    };
+
     let body = column![
-        // A result's title -- often a document heading, not guaranteed
-        // to fit one line at the card's bounded width (Task 028 §2).
-        text(title)
-            .size(theme::body(tokens))
-            .line_height(theme::body_lh(tokens)),
+        title_line,
         text(display_path).size(theme::meta(tokens)),
         if !heading_str.is_empty() {
             text(heading_str).size(theme::meta(tokens))
@@ -253,7 +303,7 @@ pub fn source_card<'a>(
     on_remove: Message,
 ) -> Element<'a, Message> {
     let mut actions =
-        row![text(status_label.to_string()).size(theme::meta(tokens))].spacing(tokens.spacing.sm);
+        hrow![text(status_label.to_string()).size(theme::meta(tokens))].spacing(tokens.spacing.sm);
     if let Some((label, on_refresh)) = refresh_action {
         actions = actions.push(secondary(tokens, label, Some(on_refresh)));
     }
@@ -333,13 +383,13 @@ pub fn icon_primary<'a>(
     on: Option<Message>,
 ) -> Element<'a, Message> {
     let t = tokens.clone();
-    let content = row![
+    let content = hrow![
         icon_text(glyph, icon_size),
         text(label.to_string()).size(theme::body(tokens)),
     ]
     .spacing(tokens.spacing.sm);
     let mut b = button(content)
-        .padding(Padding::from([tokens.spacing.md, tokens.spacing.lg]))
+        .padding(control_padding(tokens))
         .style(move |_theme, status| btn_style::primary(&t, status));
     if let Some(msg) = on {
         b = b.on_press(msg);
@@ -356,13 +406,13 @@ pub fn icon_secondary<'a>(
     on: Option<Message>,
 ) -> Element<'a, Message> {
     let t = tokens.clone();
-    let content = row![
+    let content = hrow![
         icon_text(glyph, icon_size),
         text(label.to_string()).size(theme::body(tokens)),
     ]
     .spacing(tokens.spacing.sm);
     let mut b = button(content)
-        .padding(Padding::from([tokens.spacing.md, tokens.spacing.lg]))
+        .padding(control_padding(tokens))
         .style(move |_theme, status| btn_style::secondary(&t, status));
     if let Some(msg) = on {
         b = b.on_press(msg);
@@ -388,7 +438,7 @@ pub fn cleanup_row<'a>(
     tokens: &Tokens,
     actions: impl IntoIterator<Item = (&'a str, Message)>,
 ) -> Element<'a, Message> {
-    let mut r = row![].spacing(tokens.spacing.sm);
+    let mut r = hrow![].spacing(tokens.spacing.sm);
     for (label, msg) in actions {
         r = r.push(
             button(text(label.to_string()).size(theme::body(tokens)))
@@ -416,21 +466,53 @@ pub fn danger_action<'a>(
 
 /// A narrowing chip — either a quick suggestion or an active filter.
 ///
-/// When `selected` is true the label shows with " ×" appended and the
-/// chip renders in its active state. Color must not be the only
-/// selected-state indicator (RFC-041 §19; RFC-034 §8).
+/// When `selected` is true the chip shows a trailing lucide `X`, the
+/// remove affordance, beside its label. Color must not be the only
+/// signal of the active state (RFC-034 §5.2), so the icon carries it too.
 pub fn filter_chip<'a>(
     tokens: &Tokens,
     label: &str,
     selected: bool,
     on_press: Message,
 ) -> Element<'a, Message> {
-    let display = if selected {
-        format!("{label} ×")
-    } else {
-        label.to_string()
-    };
-    snora::design::button::primary_maybe(tokens, &display, Some(on_press))
+    chip(
+        tokens,
+        crate::theme::TextScale::default(),
+        None,
+        label,
+        selected.then_some(char::from(lucide::X)),
+        on_press,
+    )
+}
+
+/// Task 072: one chip primitive -- token-styled (primary), with an optional
+/// leading and trailing lucide icon sharing the label's centre line. The
+/// label is the chip's accessible text: the whole chip is the control, so
+/// finding and pressing the label presses the chip. Icons are sized to the
+/// label's text size, so no glyph dimension is chosen here.
+pub fn chip<'a>(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    leading: Option<char>,
+    label: &str,
+    trailing: Option<char>,
+    on_press: Message,
+) -> Element<'a, Message> {
+    let size = theme::meta_s(tokens, sc);
+    let mut content = hrow![].spacing(tokens.spacing.xs);
+    if let Some(glyph) = leading {
+        content = content.push(icon_text(glyph, size.0));
+    }
+    content = content.push(text(label.to_string()).size(size));
+    if let Some(glyph) = trailing {
+        content = content.push(icon_text(glyph, size.0));
+    }
+    let t = tokens.clone();
+    button(content)
+        .padding(Padding::from([tokens.spacing.xs, tokens.spacing.sm]))
+        .style(move |_theme, status| btn_style::primary(&t, status))
+        .on_press(on_press)
+        .into()
 }
 
 // ── Result trust badge (RFC-038 §6) ───────────────────────────────────

@@ -416,6 +416,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Task 072: icons, labels and controls line up.** Across every page,
+  icons now sit on the same centre line as their labels, and controls placed
+  side by side line up.
+  - **Search:** the Search button is the same height as the search box
+    (it used to hang about 10 px below it), and its icon is centred on its
+    label.
+  - **"Search in":** the label lines up with the folder chips, and the
+    chips use the app's own style with proper icons: an X to remove the
+    folder, and arrows to switch between "and subfolders" and "only".
+  - **Other icons** that were drawn as text characters are now real icons:
+    the selected-result marker, the reduced-motion checkmark, the model
+    file check marks, and Back.
+  - **Notices with an action** ("Folder not removed — Try again") now also
+    show the × to close them, as every other notice does.
+
 - **Japanese: "folder" is spelled one way, 「フォルダー」 (Task 066).** The
   navigation and the Folders page already said 「フォルダー」, but 27 other
   Japanese messages said 「フォルダ」: the model setup pages, folder notices,

@@ -16,5 +16,8 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     });
     // Category 6: hard-coded colour.
     let f = iced::Color::from_rgb(0.2, 0.4, 0.6);
+    // Category 7 (Task 072): a row with no vertical alignment.
+    let g = row![a, b]
+        .spacing(tokens.spacing.sm);
     a
 }
