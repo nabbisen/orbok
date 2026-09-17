@@ -162,6 +162,7 @@ SCAN_FILES=(
   crates/app/src/diagnostics.rs
   crates/app/src/main.rs
   crates/app/src/notice_retry.rs
+  crates/app/src/platform_host.rs
   crates/app/src/search_flow.rs
 )
 

@@ -64,6 +64,12 @@ jobs:
       - name: migration integrity gate (RFC-062 §7)
         run: bash scripts/check-migration-integrity.sh
 
+      - name: Store manifest version gate self-test (Task 061 §2)
+        run: bash scripts/check-store-manifest.test.sh
+
+      - name: Store manifest version gate (Task 061 §2)
+        run: bash scripts/check-store-manifest.sh
+
       - name: unit tests (no GUI crates)
         env:
           ORBOK_DATA_DIR: /tmp/orbok-ci
@@ -406,6 +412,33 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then bin="target/release/orbok.exe"; fi
           rm -rf "$ORBOK_DATA_DIR"
           "$bin" --check
+
+      # Task 061 §4: prove the Store package's manifest and layout are valid
+      # on every push by packing the release binary with the Windows SDK's
+      # MakeAppx. Build step only: unsigned and never installed -- running
+      # the packaged app needs a signature and a real machine. If MakeAppx
+      # is missing from the runner image, this fails and says so; no SDK is
+      # installed here (Task 061 §7).
+      - name: pack MSIX (unsigned, not installed)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+          if (-not $makeappx) {
+            Write-Error "makeappx.exe not found under Windows Kits\10\bin on this runner (Task 061 section 7: report it, do not install an SDK)"
+            exit 1
+          }
+          Write-Host "using $($makeappx.FullName)"
+          $stage = Join-Path $env:RUNNER_TEMP "orbok-msix"
+          Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory $stage | Out-Null
+          Copy-Item target\release\orbok.exe $stage
+          Copy-Item packaging\windows\AppxManifest.xml $stage
+          Copy-Item -Recurse packaging\windows\Assets (Join-Path $stage "Assets")
+          & $makeappx.FullName pack /d $stage /p (Join-Path $env:RUNNER_TEMP "orbok.msix") /o
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # RFC-019 §7 / Task 014 §2: `orbok-ui`'s 94 tests (including
       # `iced_test::Simulator`'s headless view-rendering suite) have only

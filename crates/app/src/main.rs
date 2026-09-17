@@ -8,6 +8,11 @@
 //! 5. if wizard active: show wizard until resolved or skipped
 //! 6. launch main GUI
 
+// Task 061 §1: a GUI program on Windows, so launching it from the Start
+// menu or the Store opens no console window behind the app. Command-line
+// output reaches a terminal through `platform_host::attach_parent_console`.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod bootstrap;
 mod cli;
 mod diagnostics;
@@ -15,6 +20,7 @@ mod download;
 mod history;
 mod model_flow;
 mod notice_retry;
+mod platform_host;
 mod result_launch;
 #[cfg(test)]
 mod rfc059_cache_measurement;
@@ -52,7 +58,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `--help` nor an unrecognised argument can resolve, create or migrate
     // a profile.
     let args: Vec<String> = std::env::args().collect();
-    let (portable, check) = match cli::parse_args(&args) {
+    let command = cli::parse_args(&args);
+    if cli::needs_console(&command) {
+        platform_host::attach_parent_console();
+    }
+    // Task 061 §4: refused before anything is resolved, like an
+    // unrecognised argument, so no profile is touched.
+    if let Some(message) = cli::portable_refusal(&command, platform_host::is_packaged()) {
+        eprint!("{message}");
+        std::process::exit(2);
+    }
+    let (portable, check) = match command {
         cli::CliCommand::Help => {
             print!("{}", cli::USAGE);
             return Ok(());

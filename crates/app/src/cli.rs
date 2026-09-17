@@ -73,9 +73,38 @@ pub(crate) fn unknown_argument_message(arg: &str) -> String {
     format!("orbok: unrecognized argument '{arg}'\n\n{USAGE}")
 }
 
+/// Task 061 §1: whether this invocation prints before any window opens, and
+/// so needs the parent console on Windows, where `orbok.exe` is a GUI
+/// program with no console of its own. Only a plain GUI launch prints
+/// nothing: `--portable` announces its data directory, and every other
+/// command's whole output is text.
+pub(crate) fn needs_console(command: &CliCommand) -> bool {
+    !matches!(command, CliCommand::Gui { portable: false })
+}
+
+/// The stderr text refusing `--portable` in the Microsoft Store package.
+pub(crate) const PORTABLE_UNAVAILABLE_WHEN_PACKAGED: &str =
+    "orbok: portable mode is not available in the Microsoft Store version\n";
+
+/// Task 061 §4: a packaged install directory is read-only, so data "beside
+/// the executable" cannot work. `Some` is the message to print before
+/// refusing -- decided before any runtime context is resolved, so nothing
+/// is created or opened. Commands that never resolve a profile (help,
+/// version, an unrecognised argument) are unaffected.
+pub(crate) fn portable_refusal(command: &CliCommand, packaged: bool) -> Option<&'static str> {
+    match command {
+        CliCommand::Gui { portable: true } | CliCommand::Check { portable: true } if packaged => {
+            Some(PORTABLE_UNAVAILABLE_WHEN_PACKAGED)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CliCommand, parse_args};
+    use super::{
+        CliCommand, PORTABLE_UNAVAILABLE_WHEN_PACKAGED, needs_console, parse_args, portable_refusal,
+    };
 
     fn parse(args: &[&str]) -> CliCommand {
         let mut all = vec!["orbok".to_string()];
@@ -122,5 +151,47 @@ mod tests {
             parse(&["--version", "extra"]),
             CliCommand::Unknown("extra".to_string())
         );
+    }
+
+    /// Task 061 §1: every command that prints needs a console; a plain GUI
+    /// launch does not.
+    #[test]
+    fn only_a_plain_gui_launch_runs_without_a_console() {
+        for (args, expected) in [
+            (&[][..], false),
+            (&["--portable"][..], true),
+            (&["--check"][..], true),
+            (&["--portable", "--check"][..], true),
+            (&["--version"][..], true),
+            (&["--help"][..], true),
+            (&["--chek"][..], true),
+        ] {
+            assert_eq!(needs_console(&parse(args)), expected, "{args:?}");
+        }
+    }
+
+    /// Task 061 §4: packaged, `--portable` is refused whether it opens the
+    /// window or runs `--check`; unpackaged, nothing changes; commands that
+    /// never resolve a profile are never refused.
+    #[test]
+    fn portable_is_refused_only_when_packaged() {
+        let refused = Some(PORTABLE_UNAVAILABLE_WHEN_PACKAGED);
+        for (args, packaged, expected) in [
+            (&["--portable"][..], true, refused),
+            (&["--portable", "--check"][..], true, refused),
+            (&["--portable"][..], false, None),
+            (&["--portable", "--check"][..], false, None),
+            (&[][..], true, None),
+            (&["--check"][..], true, None),
+            (&["--portable", "--version"][..], true, None),
+            (&["--portable", "--help"][..], true, None),
+            (&["--portable", "--chek"][..], true, None),
+        ] {
+            assert_eq!(
+                portable_refusal(&parse(args), packaged),
+                expected,
+                "{args:?} packaged={packaged}"
+            );
+        }
     }
 }

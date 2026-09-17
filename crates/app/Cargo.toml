@@ -45,7 +45,10 @@ futures                     = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 # `Win32_UI_Shell` + `Win32_UI_WindowsAndMessaging`: `ShellExecuteW` and
 # `SW_SHOWNORMAL` for opening a search result (Review 230 §3).
-windows-sys                 = { workspace = true, features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+# `Win32_System_Console`: attaching to the parent console for command-line
+# output; `Win32_Storage_Packaging_Appx`: `GetCurrentPackageFullName` to
+# detect the Store package (Task 061).
+windows-sys                 = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_Packaging_Appx", "Win32_System_Console", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile                    = { workspace = true }

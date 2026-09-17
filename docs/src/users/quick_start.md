@@ -69,6 +69,19 @@ minimal-disclosure default for interactive output. `orbok --check` is an
 explicit headless diagnostic command and prints the full resolved path for
 either mode, since showing the path is the point of running it.
 
+### Microsoft Store version (Windows)
+
+The Store version keeps its data in the standard place for an app installed
+from the Store, which Windows manages for you:
+
+- **Uninstalling orbok also removes its saved data**: your folder list,
+  settings, the downloaded model, and everything orbok prepared for search.
+  Installing it again starts from the beginning, and preparing large folders
+  can take hours. Your own files are never touched.
+- **`--portable` is not available**, because the Store installs orbok in a
+  folder that cannot be written to. orbok says so and exits without
+  creating or opening anything.
+
 ## First launch walkthrough
 
 1. **Add a source folder** — orbok only scans explicitly added folders.

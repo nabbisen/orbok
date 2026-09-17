@@ -293,6 +293,11 @@ id, name, version, and dimension.
 - [ ] Archive does **not** contain: `target/`, `.git/`, `.git-exclude/`,
       `.agents/`, `.codex/`, `dist/`, `docs/book/`
 - [ ] `orbok --version` output matches the Cargo.toml version
+- [ ] The release commit sets `packaging/windows/AppxManifest.xml`'s
+      `<Identity Version>` to the workspace version with `.0` appended (the
+      Store requires a fourth part of `0`, e.g. `0.25.0.0`);
+      `scripts/check-store-manifest.sh` fails CI's fast gate until it does
+      (Task 061)
 - [ ] `./scripts/package.sh <version>` built from a clean tracked tree (dirty
       tracked content fails packaging by design — commit or stash first)
 - [ ] `./scripts/verify-release-archive.sh dist/orbok-X.Y.Z.tar.gz` passes —

@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Microsoft Store readiness (Task 061).**
+  - **No console window on Windows.** `orbok.exe` is now a Windows GUI
+    program, so starting it from the Start menu or the Store no longer opens
+    a console window behind the app. `--version`, `--help`, `--check` and
+    argument errors still print in the terminal they were typed in, by
+    attaching to that terminal; output redirected to a file or pipe is
+    unchanged. One difference: `cmd` and PowerShell no longer wait for
+    `orbok.exe` to finish, so the output can appear after the next prompt.
+  - **`--portable` is refused in the Store version,** whose install folder
+    cannot be written to: orbok says so, exits with status 2, and creates or
+    opens nothing. Other builds are unchanged.
+  - **The package manifest** now carries the real version (`0.25.0.0`) and
+    declares Japanese as well as English. A new gate,
+    `scripts/check-store-manifest.sh` (with its self-test, in the fast CI
+    job), fails when the manifest's version is not the workspace version
+    with `.0` appended.
+  - **CI packs the MSIX** on the Windows runner with the SDK's MakeAppx,
+    unsigned and never installed, so an invalid manifest or layout fails on
+    push.
+  - **User guide:** uninstalling the Store version also removes orbok's
+    saved data and prepared search.
+
 - **Removing a folder asks first (Task 062).** Removing a folder erases
   everything orbok prepared to search it, and it used to happen at once:
   from the folder card's button, or even from a stray Enter on a selected
