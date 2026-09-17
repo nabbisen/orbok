@@ -52,6 +52,17 @@ impl StartupFailure {
         }
     }
 
+    /// The class alone, without the path, for the log line (RFC-061 §10
+    /// criterion 4's evidence reads it): `DataFolder`, `NewerData` or
+    /// `Other`.
+    pub(crate) fn class(&self) -> &'static str {
+        match self {
+            Self::DataFolder { .. } => "DataFolder",
+            Self::NewerData { .. } => "NewerData",
+            Self::Other { .. } => "Other",
+        }
+    }
+
     /// What the window says.
     pub(crate) fn cause(&self) -> StartupFailureCause {
         match self {

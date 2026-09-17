@@ -944,7 +944,7 @@ fn show_startup_failure(failed: FailedStartup) -> ! {
     };
 
     let source = failed.failure.source();
-    tracing::error!(error = ?source, "orbok could not start");
+    tracing::error!(cause = %failed.failure.class(), error = ?source, "orbok could not start");
     eprintln!("Error: {source:?}");
 
     let locale = failed

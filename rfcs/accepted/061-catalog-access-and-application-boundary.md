@@ -393,6 +393,15 @@ Phrased per RFC-058 §5.
 4. With the data directory made unreadable at startup, the application logs at
    `error!` and shows a notice rather than presenting a healthy UI that never
    indexes.
+
+   **Startup half evidenced (2026-09-17, Review 247 §3).** With an existing
+   profile's data folder set to mode `000`, a GUI launch fails at startup as a
+   data-folder failure, logs `error!` ("orbok could not start",
+   `cause=DataFolder`), and shows Task 071's window instead of a UI:
+   `crates/app/tests/cli_touches_no_profile.rs`,
+   `an_unreadable_existing_data_folder_fails_startup_as_a_data_folder_failure`
+   (Linux, real binary, skipped as root). A data folder that becomes
+   unreadable while the UI runs is not covered; that half stays open.
 5. With a source folder containing several thousand files, the window remains
    responsive to input during the initial scan — measured as the update loop
    continuing to process messages, not by impression.

@@ -128,3 +128,97 @@ fn check_reports_an_unusable_data_folder_as_text_and_opens_no_window() {
         );
     }
 }
+
+/// RFC-061 §10 criterion 4, startup half (Review 247 §3): an **existing**
+/// profile whose data folder cannot be read makes a GUI launch fail at
+/// startup as a data-folder failure -- logged at `error!` -- rather than
+/// start a UI that never indexes.
+///
+/// Linux only: the display variables are removed so no window can open and
+/// the run ends by itself; on macOS and Windows a window would open and
+/// wait. Skipped when a mode-000 directory is still readable (root).
+#[cfg(target_os = "linux")]
+#[test]
+fn an_unreadable_existing_data_folder_fails_startup_as_a_data_folder_failure() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile");
+    let created = Command::new(env!("CARGO_BIN_EXE_orbok"))
+        .arg("--check")
+        .env("ORBOK_DATA_DIR", &profile)
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "--check creates the profile first"
+    );
+    assert!(profile.join("orbok-catalog.sqlite3").exists());
+
+    std::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_dir(&profile).is_ok() {
+        std::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: a mode-000 directory is readable (running as root)");
+        return;
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_orbok"))
+        .env("ORBOK_DATA_DIR", &profile)
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("WAYLAND_SOCKET")
+        .env_remove("DISPLAY")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut killed = false;
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() > deadline {
+            child.kill().unwrap();
+            killed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().unwrap();
+    std::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!killed, "startup must end by itself");
+    assert!(
+        !output.status.success(),
+        "an unreadable data folder must not start successfully"
+    );
+    let failure_line = stdout
+        .lines()
+        .find(|line| line.contains("ERROR") && line.contains("orbok could not start"))
+        .unwrap_or_else(|| panic!("startup failure logged at error!; stdout: {stdout:?}"));
+    assert!(
+        failure_line.contains("cause=DataFolder"),
+        "classified as a data-folder failure, got {failure_line:?}"
+    );
+    assert!(
+        stderr.contains("PermissionDenied"),
+        "the underlying error is printed, got {stderr:?}"
+    );
+}
+
+/// The log's colour codes split `field=value` pairs; remove them.
+#[cfg(target_os = "linux")]
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
