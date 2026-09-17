@@ -1508,9 +1508,15 @@ mod tests {
     // Task 025 §4.2/§5: the flag is checked *between* chunks, not just
     // between files -- assert the transfer actually stopped (the second
     // chunk's bytes are never written), not merely that an error came
-    // back. The first chunk arrives immediately and is written; the second
-    // is held back long enough for the cancel flag to be set first, so the
-    // loop's next iteration must see it before touching disk again.
+    // back.
+    //
+    // Ordered by signals, not by sleeps. The flag is set only after the
+    // first chunk's progress event arrives, which `download_file` sends
+    // after writing it; the server sends the second chunk only after the
+    // flag is set. An earlier version set the flag on a 30 ms timer and
+    // failed on a slow CI runner (run 35166917848) when the first chunk had
+    // not arrived by then -- time was standing in for "the first chunk was
+    // written".
     #[tokio::test]
     async fn cancelling_mid_transfer_stops_before_the_next_chunk_is_written() {
         let body = b"trusted-bytes-that-arrive-in-two-separate-chunks";
@@ -1522,19 +1528,45 @@ mod tests {
         let mut first = header.into_bytes();
         first.extend_from_slice(&body[..split]);
         let second = body[split..].to_vec();
-        let (url, server) = RawServer::start(vec![
-            (Duration::ZERO, first),
-            (Duration::from_millis(150), second),
-        ])
-        .await;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/file", listener.local_addr().unwrap());
+        let (release_second, second_released) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = vec![0_u8; 2048];
+            let _ = stream.read(&mut request).await;
+            stream.write_all(&first).await.unwrap();
+            if second_released.await.is_ok() {
+                let _ = stream.write_all(&second).await;
+            }
+            let _ = stream.shutdown().await;
+        });
+
         let temp = tempfile::tempdir().unwrap();
         let file = test_file_plan(&url, body, body.len() as u64);
-        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+        let (mut events, mut receiver) = futures::channel::mpsc::channel(4);
         let cancel = Arc::new(AtomicBool::new(false));
         let setter = Arc::clone(&cancel);
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(30)).await;
+        let split_bytes = split as u64;
+        let canceller = tokio::spawn(async move {
+            // The first half may arrive in more than one read; wait until
+            // all of it is reported written.
+            loop {
+                match receiver.next().await {
+                    Some(ModelDeliveryEvent::FileProgress { bytes, .. })
+                        if bytes >= split_bytes =>
+                    {
+                        break;
+                    }
+                    Some(_) => {}
+                    None => panic!("the transfer ended before the first half was written"),
+                }
+            }
             setter.store(true, Ordering::Relaxed);
+            let _ = release_second.send(());
+            // Keep draining so a further send can never block the transfer.
+            while receiver.next().await.is_some() {}
         });
 
         let result = download_file(
@@ -1548,7 +1580,9 @@ mod tests {
             &cancel,
         )
         .await;
-        server.finish().await;
+        drop(events);
+        server.await.unwrap();
+        canceller.await.unwrap();
 
         assert!(matches!(result, Err(ModelDeliveryError::Cancelled)));
         let partial = std::fs::read(file.temp_path(temp.path())).unwrap();
