@@ -208,8 +208,16 @@ pub struct ExtractContext {
 /// A non-empty `warnings` list means the output is honest but incomplete.
 /// The UI maps these to plain-language messages; raw variant names must
 /// not appear in default user-facing copy.
+///
+/// **Do not add `#[serde(tag = "...")]` (an internal tag) to this enum, or to
+/// any type that is stored in the extraction cache.** The cache's codec is
+/// bincode, which is not self-describing: an internally tagged enum can be
+/// written but not read back (`Serde(AnyNotSupported)`). Until Task 077 this
+/// enum was internally tagged, so an extraction that produced *any* warning --
+/// a document over its size limit, a scanned PDF -- wrote a cache entry that
+/// the chunk job then failed to read, and the file never became searchable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
+#[serde(rename_all = "snake_case")]
 pub enum ExtractWarning {
     /// Generic content was skipped; `reason` is for logs only.
     SomeContentSkipped { reason: String },
@@ -249,10 +257,11 @@ pub struct ExtractedSegment {
 
 /// Extraction result for one file (RFC-005 §7; RFC-044 §10.3).
 ///
-/// This payload is cached under the `extract-segments:v1` namespace
-/// (Appendix A §7). Adding `warnings` is backward-compatible: existing
-/// cache payloads deserialize with an empty warnings vec via the
-/// `#[serde(default)]` attribute.
+/// This payload is cached under the `extract-segments:v2` namespace
+/// (Appendix A §7). The cache's codec is bincode, which reads fields in
+/// order and cannot skip a missing one, so `#[serde(default)]` on `warnings`
+/// does **not** make an older payload readable: a change to this shape needs
+/// a new namespace (Task 077 moved it from `:v1` to `:v2`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtractOutput {
     pub extractor_name: String,

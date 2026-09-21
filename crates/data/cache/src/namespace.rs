@@ -67,7 +67,13 @@ impl OrbokCacheNamespace {
     /// The localcache namespace string (Appendix A §7 table).
     pub fn as_namespace(&self) -> String {
         match self {
-            Self::ExtractSegments => "extract-segments:v1".to_string(),
+            // Task 077: `v2`. `ExtractWarning` was internally tagged, which
+            // bincode can write but not read, so every `v1` entry that
+            // carried a warning was unreadable, and a `v1` entry of the old
+            // shape must never be decoded as the new one. A new namespace
+            // makes a `v1` entry a miss (the chunk job then re-extracts, Task
+            // 056) instead of relying on it decoding wrongly.
+            Self::ExtractSegments => "extract-segments:v2".to_string(),
             Self::ChunkBundle => "chunk-bundle:v1".to_string(),
             Self::EmbeddingBundle {
                 model_id,

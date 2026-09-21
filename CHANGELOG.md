@@ -96,6 +96,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Long documents and scanned PDFs are no longer missing from search
+  results (Task 077).** A document longer than orbok's size limit, or a PDF
+  with no selectable text, was read, but its saved reading could not be
+  loaded back when orbok went on to index it, so it never became
+  searchable, with no message: the Folders view still counted it as a file.
+  These files are now indexed and found. A long document shows the *Partly
+  prepared* badge, with *View details* saying only part of it was read.
+  - **On an existing profile,** a file that was already stuck this way is
+    **not** picked up again by a folder check. Its content has to change, or
+    its folder has to be removed and added again. orbok's saved readings from
+    before this fix are left in place and no longer used.
+  - **A scanned PDF** now finishes its indexing step without an error, but
+    has no text to find, so a search cannot return it.
+
 - **Task 075: some actions failed silently, or said they had worked.**
   - **Clearing recent searches** announced "Recent searches cleared" even
     when nothing was cleared. It now says so only once they are cleared.

@@ -880,21 +880,16 @@ fn write_oversize_markdown(path: &Path) {
 /// is represented in the result's trust, and a partly prepared file is honest
 /// about it **and still searchable**.
 ///
-/// **This is a known defect, so the test is wrapped in `should_panic`** (the
-/// F-06 pattern in this file): a real file whose extraction emits *any*
-/// warning is never searchable. Its `extract` job succeeds and writes the
-/// cache entry; its `chunk` job then fails reading that entry back --
-/// `cache engine error: serialization error: Serde(AnyNotSupported)` --
-/// and the file stays `discovered`. `ExtractWarning` is an internally tagged
-/// serde enum (`tag = "kind"`), which bincode, `localcache`'s codec, can
-/// write but not read. See `an_extraction_with_a_warning_can_be_read_back_
-/// from_the_cache` for the root cause alone.
+/// A real file, through the real hosted scheduler: its extraction ends with
+/// `SizeLimitReached`, the warning goes into the extraction cache and comes
+/// back out, and the search returns the file as `PartlyPrepared`, carrying
+/// that warning, with `ViewDetails` on offer.
 ///
-/// **The wrapper is removed by the fix.** When the cache can round-trip a
-/// warning, this test stops panicking and fails with "test did not panic",
-/// which is the prompt to delete the attribute.
+/// This was a `should_panic` "known defect" test until Task 077: a file whose
+/// extraction emitted *any* warning never became searchable, because
+/// `ExtractWarning` was internally tagged and the cache's codec could not read
+/// it back. It is now the end-to-end evidence for those two criteria.
 #[tokio::test]
-#[should_panic(expected = "still searchable")]
 async fn a_real_file_with_an_extraction_warning_is_partly_prepared_and_still_found() {
     use orbok_search::{ResultRecoveryAction, ResultTrustState, ResultWarningSummary};
     let temp = tempfile::tempdir().unwrap();
@@ -931,16 +926,52 @@ async fn a_real_file_with_an_extraction_warning_is_partly_prepared_and_still_fou
     );
 }
 
-/// The root cause of the test above, alone: the extraction cache cannot read
-/// back an `ExtractOutput` whose `warnings` is not empty. (Serialising is
-/// fine; the entry is written, and then no read of it succeeds.)
+/// Every `ExtractWarning` variant an extraction can produce.
 ///
-/// Wrapped in `should_panic` for the same reason, removed by the same fix.
+/// The exhaustive `match` is the guard: a new variant fails to compile here
+/// until it is added to the list below it, so a new variant cannot ship
+/// without a round trip through the cache. (Task 077: an internally tagged
+/// variant set could be written to the cache and never read back.)
+fn every_extract_warning() -> Vec<orbok_extract::ExtractWarning> {
+    use orbok_extract::ExtractWarning as W;
+    let all = vec![
+        W::SomeContentSkipped {
+            reason: "a reason".into(),
+        },
+        W::SomePagesUnreadable { pages: vec![2, 5] },
+        W::PossiblyScannedPdf,
+        W::SizeLimitReached {
+            limit_name: "segments".into(),
+        },
+        W::EncodingUnsupported,
+        W::UnsupportedDocumentPart {
+            part: "footnotes".into(),
+        },
+        W::ApproximateLocationOnly,
+        W::MalformedContentRecovered,
+    ];
+    for w in &all {
+        match w {
+            W::SomeContentSkipped { .. }
+            | W::SomePagesUnreadable { .. }
+            | W::PossiblyScannedPdf
+            | W::SizeLimitReached { .. }
+            | W::EncodingUnsupported
+            | W::UnsupportedDocumentPart { .. }
+            | W::ApproximateLocationOnly
+            | W::MalformedContentRecovered => {}
+        }
+    }
+    all
+}
+
+/// The extraction cache reads back what it was given, for every warning an
+/// extraction can carry (Task 077): each variant alone, and all of them
+/// together, through the real cache engine and its real codec.
 #[tokio::test]
-#[should_panic(expected = "AnyNotSupported")]
 async fn an_extraction_with_a_warning_can_be_read_back_from_the_cache() {
     use orbok_cache::{CacheService, OrbokCacheNamespace};
-    use orbok_extract::{ExtractOutput, ExtractWarning};
+    use orbok_extract::ExtractOutput;
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
     let source_dir = temp.path().join("source");
@@ -960,17 +991,215 @@ async fn an_extraction_with_a_warning_can_be_read_back_from_the_cache() {
         .unwrap()
         .validate(&doc)
         .unwrap();
-    let output = ExtractOutput {
-        extractor_name: "test".into(),
-        extractor_version: "1".into(),
-        normalization_version: "1".into(),
-        segments: vec![],
-        char_count: 0,
-        warnings: vec![ExtractWarning::PossiblyScannedPdf],
+
+    let every = every_extract_warning();
+    let mut cases: Vec<Vec<orbok_extract::ExtractWarning>> =
+        every.iter().cloned().map(|w| vec![w]).collect();
+    cases.push(every);
+    for warnings in cases {
+        let output = ExtractOutput {
+            extractor_name: "test".into(),
+            extractor_version: "1".into(),
+            normalization_version: "1".into(),
+            segments: vec![],
+            char_count: 0,
+            warnings: warnings.clone(),
+        };
+        CacheService::put(&engine, &validated, &output).unwrap();
+        let back = CacheService::get_fresh(&engine, &validated)
+            .unwrap_or_else(|e| panic!("reading back {warnings:?} failed: {e}"));
+        assert_eq!(back, Some(output), "round trip of {warnings:?}");
+    }
+}
+
+/// Task 077: an entry written under the namespace this fix retired is never
+/// read. A profile upgraded mid-index has such entries, written in the old
+/// shape (an internally tagged warning, which the new reader would misread).
+///
+/// The file is `discovered` with a chunk job queued and an old-shape entry
+/// under `extract-segments:v1`, which is where an upgraded profile's
+/// in-flight file would be. The chunk job must see a miss -- not decode the
+/// old entry -- and fail as `extraction_cache_missing`, queuing a fresh
+/// extraction (Task 056); the file then ends searchable and `PartlyPrepared`.
+#[tokio::test]
+async fn an_entry_from_before_the_namespace_bump_is_not_read_and_the_file_is_re_extracted() {
+    use orbok_core::JobType;
+    use orbok_db::repo::{FileRepository, IndexJobRepository};
+    use orbok_search::ResultTrustState;
+
+    /// The shape `ExtractWarning` had before Task 077, internally tagged.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "snake_case", tag = "kind")]
+    enum OldWarning {
+        SizeLimitReached { limit_name: String },
+    }
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct OldOutput {
+        extractor_name: String,
+        extractor_version: String,
+        normalization_version: String,
+        segments: Vec<orbok_extract::ExtractedSegment>,
+        char_count: u64,
+        warnings: Vec<OldWarning>,
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    let doc = source_dir.join("big.md");
+    write_oversize_markdown(&doc);
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
+    orbok_fs::Scanner::new(&catalog)
+        .scan(
+            &orbok_fs::ScanRequest {
+                source_id: source_id.clone(),
+                force_hash: false,
+                enqueue_index_jobs: false,
+            },
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    let file = FileRepository::new(&catalog)
+        .find_by_canonical_path(&std::fs::canonicalize(&doc).unwrap().to_string_lossy())
+        .unwrap()
+        .expect("the scan registered the file");
+
+    // The old entry, in the old namespace and the old shape.
+    let old = localcache::CacheEngine::<OldOutput>::builder()
+        .database(temp.path().join(orbok_db::CACHE_FILE_NAME))
+        .namespace("extract-segments:v1")
+        .payload_version(1)
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .compress()
+        .build()
+        .unwrap();
+    old.set(
+        std::fs::canonicalize(&doc).unwrap(),
+        &OldOutput {
+            extractor_name: "markdown".into(),
+            extractor_version: "1".into(),
+            normalization_version: "1".into(),
+            segments: vec![],
+            char_count: 0,
+            warnings: vec![OldWarning::SizeLimitReached {
+                limit_name: "segments".into(),
+            }],
+        },
+    )
+    .unwrap();
+
+    IndexJobRepository::new(&catalog)
+        .enqueue(JobType::Chunk, Some(&source_id), Some(&file.file_id))
+        .unwrap();
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+
+    let failed_as_missing: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'chunk' AND status = 'failed' \
+             AND error_category = 'extraction_cache_missing'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        failed_as_missing, 1,
+        "the chunk job must find no entry under the current namespace and re-extract"
+    );
+    let results = search_marker(&context, &catalog, "realwarningmarker");
+    assert_eq!(
+        results.len(),
+        1,
+        "the file is searchable after re-extraction"
+    );
+    assert_eq!(results[0].trust.state, ResultTrustState::PartlyPrepared);
+}
+
+/// A PDF whose pages carry no text -- what a scanned document looks like to
+/// the extractor -- built in code, so no binary is checked in.
+fn write_text_less_pdf(path: &Path, pages: usize) {
+    use lopdf::content::Content;
+    use lopdf::{Document, Object, Stream, dictionary};
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let mut kids: Vec<Object> = Vec::new();
+    for _ in 0..pages {
+        let content = Content { operations: vec![] };
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+        });
+        kids.push(page_id.into());
+    }
+    let pages_dict = dictionary! {
+        "Type" => "Pages",
+        "Count" => kids.len() as i64,
+        "Kids" => kids,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
     };
-    CacheService::put(&engine, &validated, &output).unwrap();
-    let back = CacheService::get_fresh(&engine, &validated).unwrap();
-    assert_eq!(back.map(|o| o.warnings), Some(output.warnings));
+    doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
+    let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(path).unwrap();
+}
+
+/// Task 077: a scanned PDF (pages, no text) is extracted with
+/// `PossiblyScannedPdf`, and that warning survives the cache, so its chunk
+/// job finishes instead of failing on the read-back.
+///
+/// This asserts the symptom the fix removes and nothing about the file's
+/// final status: a text-less file has no chunks to search, and what state it
+/// should end in is a separate question (Review Request 255 §5).
+#[tokio::test]
+async fn a_scanned_pdfs_warning_survives_the_cache_and_its_chunk_job_finishes() {
+    use orbok_cache::{CacheService, OrbokCacheNamespace};
+    use orbok_extract::{ExtractOutput, ExtractWarning};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let pdf = source_dir.join("scan.pdf");
+    write_text_less_pdf(&pdf, 2);
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let failed: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE status = 'failed'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(failed, 0, "no job may fail because a warning was cached");
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let engine = cache
+        .engine::<ExtractOutput>(
+            &catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )
+        .unwrap();
+    let validated = orbok_search::snippet::searchable_path_guard(&catalog)
+        .unwrap()
+        .validate(&pdf)
+        .unwrap();
+    let cached = CacheService::get_fresh(&engine, &validated)
+        .unwrap()
+        .expect("the extraction is cached");
+    assert_eq!(cached.warnings, vec![ExtractWarning::PossiblyScannedPdf]);
 }
 
 /// RFC-038 §16 criterion 5 (HANDOFF-038 Slice 1), and Prepare again
