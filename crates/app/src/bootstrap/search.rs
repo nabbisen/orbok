@@ -113,6 +113,7 @@ pub(crate) fn run_search(
             trust: orbok_ui::state::ResultTrustDisplay {
                 state: r.trust.state,
                 recovery_actions: r.trust.recovery_actions,
+                warnings: r.trust.warnings,
             },
         })
         .collect())

@@ -119,6 +119,26 @@ impl<'a> FileRepository<'a> {
         }
     }
 
+    /// HANDOFF-038: the file a search result names, by its canonical path
+    /// alone. A result carries no file id, and a file under two nested
+    /// sources has a row in each; either is the same file on disk, so the
+    /// first is returned.
+    pub fn find_by_canonical_path(&self, canonical_path: &str) -> OrbokResult<Option<FileRecord>> {
+        let conn = self.catalog.lock();
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT {COLUMNS} FROM files WHERE canonical_path = ?1 LIMIT 1"
+            ))
+            .map_err(db_err)?;
+        let mut rows = stmt
+            .query_map(params![canonical_path], row_to_record)
+            .map_err(db_err)?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(db_err)??)),
+            None => Ok(None),
+        }
+    }
+
     /// Insert a newly discovered file.
     pub fn insert(&self, new: NewFile) -> OrbokResult<FileRecord> {
         let id = FileId::generate();

@@ -17,7 +17,7 @@ use crate::i18n::{Locale, MessageKey, tr};
 use crate::notice::UserNotice;
 use orbok_core::{SearchHistoryEntry, SearchHistoryId, SourceStatus};
 use orbok_models::SearchCapability;
-use orbok_search::{MatchBadge, ResultRecoveryAction, SearchMode};
+use orbok_search::{MatchBadge, ResultRecoveryAction, ResultTrustState, SearchMode};
 
 /// Top-level navigation group for the two-level sidebar + tab layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -647,6 +647,11 @@ pub enum Message {
         result_idx: usize,
         action: ResultRecoveryAction,
     },
+    /// HANDOFF-038: orbok queued the result's file for re-preparation, so
+    /// its row now says so.
+    ResultPreparationQueued {
+        result_idx: usize,
+    },
     PersistLocale(Locale),
     SetLocale(Locale),
     // RFC-034: keyboard navigation messages
@@ -921,6 +926,7 @@ impl AppState {
                 self.search_results = results.clone();
                 self.search_running = false;
                 self.selected_result = None;
+                self.search_ui.trust_details_open.clear();
                 // Task 065: new results resolve a failed search, and make a
                 // launch-failure notice stale -- its Show-in-folder or Try
                 // again retry is a result index, which would now point at a
@@ -938,15 +944,7 @@ impl AppState {
                 ) {
                     self.clear_notice();
                 }
-                self.search_ui.results_status = if count == 0 {
-                    if self.search_ui.has_active_filters() {
-                        ResultsStatus::EmptyAfterFiltering
-                    } else {
-                        ResultsStatus::EmptyAfterSearch
-                    }
-                } else {
-                    ResultsStatus::Ready { total_count: count }
-                };
+                self.search_ui.results_status = self.results_status_for(count);
             }
             Message::SearchError { query, .. } => {
                 self.search_running = false;
@@ -968,8 +966,39 @@ impl AppState {
             Message::SearchInResultFolder(_idx) => {} // handled by orbok
             Message::ShowNearbyFiles(_idx) => {}      // handled by orbok
             Message::ShowSimilarFiles(_idx) => {}     // handled by orbok
-            // RFC-038: trust recovery actions
-            Message::TrustRecoveryAction { .. } => {} // handled by orbok
+            // RFC-038: trust recovery actions. Removing a row and opening a
+            // detail change only what is shown, so they happen here.
+            // `PrepareAgain` and `CheckFolder` touch the catalog: orbok does
+            // them, and `ResultPreparationQueued` reports the first.
+            // `OpenAnyway` and `ShowInFolder` are `result_launch`'s.
+            Message::TrustRecoveryAction { result_idx, action } => match action {
+                ResultRecoveryAction::RemoveFromResults => self.remove_result(*result_idx),
+                ResultRecoveryAction::ViewDetails => {
+                    if let Some(result) = self.search_results.get(*result_idx)
+                        && !self
+                            .search_ui
+                            .trust_details_open
+                            .contains(&result.canonical_path)
+                    {
+                        self.search_ui
+                            .trust_details_open
+                            .push(result.canonical_path.clone());
+                    }
+                }
+                ResultRecoveryAction::PrepareAgain
+                | ResultRecoveryAction::CheckFolder
+                | ResultRecoveryAction::OpenAnyway
+                | ResultRecoveryAction::ShowInFolder => {}
+            },
+            Message::ResultPreparationQueued { result_idx } => {
+                if let Some(result) = self.search_results.get_mut(*result_idx) {
+                    result.trust = ResultTrustDisplay {
+                        state: ResultTrustState::StillBeingPrepared,
+                        recovery_actions: Vec::new(),
+                        warnings: Vec::new(),
+                    };
+                }
+            }
             Message::SelectResult(idx) => self.selected_result = Some(*idx),
             Message::OpenResult(_) | Message::RevealResult(_) => {} // handled by orbok
             Message::SetSearchMode(mode) => self.search_mode = *mode,
@@ -1318,6 +1347,52 @@ impl AppState {
     fn clear_notice(&mut self) {
         self.notice = None;
         self.notice_action = None;
+    }
+
+    /// The results status for a list of `count` results (Task 075's reducer
+    /// arms and HANDOFF-038's row removal share it).
+    fn results_status_for(&self, count: usize) -> ResultsStatus {
+        if count == 0 {
+            if self.search_ui.has_active_filters() {
+                ResultsStatus::EmptyAfterFiltering
+            } else {
+                ResultsStatus::EmptyAfterSearch
+            }
+        } else {
+            ResultsStatus::Ready { total_count: count }
+        }
+    }
+
+    /// HANDOFF-038 `RemoveFromResults`: drop one row from the visible list --
+    /// state only, nothing on disk. Everything that holds a result index is
+    /// kept consistent: the selection follows its row, and a launch-failure
+    /// notice whose retry is an index (Task 065) goes, as it does when the
+    /// results are replaced.
+    fn remove_result(&mut self, index: usize) {
+        if index >= self.search_results.len() {
+            return;
+        }
+        let removed = self.search_results.remove(index);
+        self.search_ui
+            .trust_details_open
+            .retain(|path| *path != removed.canonical_path);
+        self.selected_result = match self.selected_result {
+            Some(selected) if selected == index => None,
+            Some(selected) if selected > index => Some(selected - 1),
+            other => other,
+        };
+        self.search_ui.results_status = self.results_status_for(self.search_results.len());
+        if matches!(
+            self.notice,
+            Some(
+                UserNotice::FileCouldNotBeFound
+                    | UserNotice::FileCouldNotBeOpened
+                    | UserNotice::FileNotAllowed
+                    | UserNotice::FileCheckFailed
+            )
+        ) {
+            self.clear_notice();
+        }
     }
 
     /// Task 073: the folder the removal confirmation is for -- its card in

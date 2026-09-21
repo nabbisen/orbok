@@ -20,6 +20,7 @@
 
 pub mod a11y;
 pub mod components;
+mod handoff038_trust_display;
 mod handoff041_open_result;
 pub mod i18n;
 pub mod keyboard_reachability;

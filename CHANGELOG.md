@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Each search result shows how far to trust it, and what to do about it
+  (HANDOFF-038, RFC-038 slices 1 and 2).**
+  - **A trust badge on the result card.** A result that is not ready shows
+    *Needs update*, *File not found*, *Still being prepared*, *Partly prepared* or
+    *Cannot open*, each with its own icon and label, so the state is not
+    carried by colour alone. A ready result shows nothing.
+  - **A button for what orbok can do.** *Prepare again* queues the file to be
+    read again and relabels the row *Still being prepared* only once the job is in
+    the catalog. *Check folder* runs the same check as the folder's own
+    button. *Remove from results* drops the row and keeps the selection and
+    the count consistent. *View details* (or the Advanced view) says in plain
+    words why the result is in this state.
+  - **A failure says so.** If the catalog cannot be written, the row is left
+    as it was and a notice offers to try the same action again.
+  - Not built: *Open anyway* and *Show in folder* as row buttons. Whether
+    they belong there is pending an owner decision; the selected result's
+    *Open file* and *Show in folder* are unchanged.
+
 - **Microsoft Store readiness (Task 061).**
   - **No console window on Windows.** `orbok.exe` is now a Windows GUI
     program, so starting it from the Start menu or the Store no longer opens

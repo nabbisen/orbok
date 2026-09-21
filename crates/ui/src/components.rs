@@ -200,6 +200,7 @@ pub fn result_card<'a>(
     heading_str: String,
     snippet: String,
     badges: &'a [MatchBadge],
+    trust: orbok_search::ResultTrustState,
     show_advanced: bool,
     is_selected: bool,
     on_select: Message,
@@ -214,10 +215,16 @@ pub fn result_card<'a>(
             .collect()
     };
 
-    let badge_row: Element<'a, Message> = if shown_badges.is_empty() {
+    // HANDOFF-038: the trust badge sits beside the match badges, first
+    // because it is the one that says whether to rely on the result.
+    let trust_badge = result_trust_badge(tokens, trust, locale);
+    let badge_row: Element<'a, Message> = if shown_badges.is_empty() && trust_badge.is_none() {
         text("").size(theme::meta(tokens)).into()
     } else {
         let mut r = hrow![].spacing(tokens.spacing.sm);
+        if let Some(badge) = trust_badge {
+            r = r.push(badge);
+        }
         for b in shown_badges {
             let label = tr(locale, badge_message_key(b));
             r = r.push(status_badge(tokens, label, badge_tone(b)));
@@ -517,13 +524,26 @@ pub fn chip<'a>(
 
 // ── Result trust badge (RFC-038 §6) ───────────────────────────────────
 
-/// A plain-text trust badge shown only when the result is not fully ready.
+/// The tone (and so the icon and colour) each trust state reinforces its
+/// text label with (RFC-038 §6.3: text, never colour alone).
+pub fn trust_tone(state: orbok_search::ResultTrustState) -> Tone {
+    use orbok_search::ResultTrustState;
+    match state {
+        ResultTrustState::Ready => Tone::Success,
+        ResultTrustState::NeedsUpdate | ResultTrustState::PartlyPrepared => Tone::Warning,
+        ResultTrustState::FileNotFound | ResultTrustState::CannotOpen => Tone::Danger,
+        ResultTrustState::StillBeingPrepared => Tone::Neutral,
+    }
+}
+
+/// The trust badge for a result: icon, text label and tone, three redundant
+/// channels (RFC-038 §6.3, criterion 8), shown only when the result is not
+/// fully ready.
 ///
 /// Returns `None` for `ResultTrustState::Ready` so callers can skip
 /// rendering entirely — keeping clean results uncluttered (RFC-038 §6.1).
 pub fn result_trust_badge<'a>(
     tokens: &Tokens,
-    sc: crate::theme::TextScale,
     state: orbok_search::ResultTrustState,
     locale: crate::i18n::Locale,
 ) -> Option<Element<'a, Message>> {
@@ -537,9 +557,5 @@ pub fn result_trust_badge<'a>(
         ResultTrustState::PartlyPrepared => MessageKey::TrustPartlyPrepared,
         ResultTrustState::CannotOpen => MessageKey::TrustCannotOpen,
     };
-    Some(
-        iced::widget::text(tr(locale, key))
-            .size(crate::theme::meta_s(tokens, sc))
-            .into(),
-    )
+    Some(status_badge(tokens, tr(locale, key), trust_tone(state)))
 }

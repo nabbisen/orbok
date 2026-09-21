@@ -844,6 +844,241 @@ async fn a_result_for_a_file_deleted_from_disk_is_not_labelled_ready() {
     );
 }
 
+// ── HANDOFF-038: the trust state, end to end ─────────────────────────────
+
+/// A search through the path `main.rs` uses: with the extraction cache
+/// handle, which is where a result's warnings (and so its trust) come from.
+fn search_marker(
+    context: &RuntimeContext,
+    catalog: &orbok_db::Catalog,
+    marker: &str,
+) -> Vec<orbok_ui::state::SearchResultDisplay> {
+    let cache = bootstrap::cache_service(context).unwrap();
+    bootstrap::run_search(
+        catalog,
+        None,
+        Some(cache.service()),
+        marker,
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap()
+}
+
+/// A markdown file with more paragraphs than the extractor's segment limit,
+/// so a real extraction of it ends with `SizeLimitReached` (RFC-044 §9.5).
+fn write_oversize_markdown(path: &Path) {
+    let mut body = String::from("# Big\n\nrealwarningmarker is early in the file.\n\n");
+    for i in 0..20_010 {
+        body.push_str(&format!("paragraph number {i}\n\n"));
+    }
+    write_markdown(path, &body);
+}
+
+/// RFC-038 §16 criteria 3 and 6 (HANDOFF-038 Slice 1): an extraction warning
+/// is represented in the result's trust, and a partly prepared file is honest
+/// about it **and still searchable**.
+///
+/// **This is a known defect, so the test is wrapped in `should_panic`** (the
+/// F-06 pattern in this file): a real file whose extraction emits *any*
+/// warning is never searchable. Its `extract` job succeeds and writes the
+/// cache entry; its `chunk` job then fails reading that entry back --
+/// `cache engine error: serialization error: Serde(AnyNotSupported)` --
+/// and the file stays `discovered`. `ExtractWarning` is an internally tagged
+/// serde enum (`tag = "kind"`), which bincode, `localcache`'s codec, can
+/// write but not read. See `an_extraction_with_a_warning_can_be_read_back_
+/// from_the_cache` for the root cause alone.
+///
+/// **The wrapper is removed by the fix.** When the cache can round-trip a
+/// warning, this test stops panicking and fails with "test did not panic",
+/// which is the prompt to delete the attribute.
+#[tokio::test]
+#[should_panic(expected = "still searchable")]
+async fn a_real_file_with_an_extraction_warning_is_partly_prepared_and_still_found() {
+    use orbok_search::{ResultRecoveryAction, ResultTrustState, ResultWarningSummary};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_oversize_markdown(&source_dir.join("big.md"));
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let results = search_marker(&context, &catalog, "realwarningmarker");
+    assert_eq!(
+        results.len(),
+        1,
+        "a partly prepared file is still searchable"
+    );
+    assert_eq!(results[0].trust.state, ResultTrustState::PartlyPrepared);
+    assert_eq!(
+        results[0].trust.warnings,
+        vec![ResultWarningSummary::SizeLimitReached]
+    );
+    assert!(
+        results[0]
+            .trust
+            .recovery_actions
+            .contains(&ResultRecoveryAction::ViewDetails),
+        "the detail is one press away, got {:?}",
+        results[0].trust.recovery_actions
+    );
+}
+
+/// The root cause of the test above, alone: the extraction cache cannot read
+/// back an `ExtractOutput` whose `warnings` is not empty. (Serialising is
+/// fine; the entry is written, and then no read of it succeeds.)
+///
+/// Wrapped in `should_panic` for the same reason, removed by the same fix.
+#[tokio::test]
+#[should_panic(expected = "AnyNotSupported")]
+async fn an_extraction_with_a_warning_can_be_read_back_from_the_cache() {
+    use orbok_cache::{CacheService, OrbokCacheNamespace};
+    use orbok_extract::{ExtractOutput, ExtractWarning};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    let doc = source_dir.join("small.md");
+    write_markdown(&doc, "# Small\n\ncontent.\n");
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let engine = cache
+        .engine::<ExtractOutput>(
+            &catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )
+        .unwrap();
+    let validated = orbok_search::snippet::searchable_path_guard(&catalog)
+        .unwrap()
+        .validate(&doc)
+        .unwrap();
+    let output = ExtractOutput {
+        extractor_name: "test".into(),
+        extractor_version: "1".into(),
+        normalization_version: "1".into(),
+        segments: vec![],
+        char_count: 0,
+        warnings: vec![ExtractWarning::PossiblyScannedPdf],
+    };
+    CacheService::put(&engine, &validated, &output).unwrap();
+    let back = CacheService::get_fresh(&engine, &validated).unwrap();
+    assert_eq!(back.map(|o| o.warnings), Some(output.warnings));
+}
+
+/// RFC-038 §16 criterion 5 (HANDOFF-038 Slice 1), and Prepare again
+/// end to end. A file edited after it was indexed, then seen by a refresh,
+/// is `Needs update` with Prepare again offered -- and stays that way until
+/// Prepare again queues it, after which it is Ready with its new content.
+///
+/// The refresh's own `Scan` job is left queued, and the scan it would run is
+/// done by hand with no extraction queued: the hosted scheduler would
+/// re-extract at once, so the stale window -- the one a user searches in --
+/// would never be observable.
+#[tokio::test]
+async fn a_changed_file_needs_an_update_until_prepare_again_makes_it_ready() {
+    use orbok_search::{ResultRecoveryAction, ResultTrustState};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    let doc = source_dir.join("notes.md");
+    write_markdown(&doc, "# Notes\n\noldcontentmarker is here.\n");
+    let source_id = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        card.source_id
+    };
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(
+        search_marker(&context, &catalog, "oldcontentmarker")[0]
+            .trust
+            .state,
+        ResultTrustState::Ready,
+        "baseline: indexed and Ready"
+    );
+
+    // Edit, then refresh (queues a Scan), then the scan's effect by hand.
+    write_markdown(&doc, "# Notes\n\nnewcontentmarker is here.\n");
+    bootstrap::check_and_refresh_source(&catalog, &source_id).unwrap();
+    orbok_fs::Scanner::new(&catalog)
+        .scan(
+            &orbok_fs::ScanRequest {
+                source_id: orbok_core::SourceId::from_string(source_id.clone()),
+                force_hash: true,
+                enqueue_index_jobs: false,
+            },
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+
+    let results = search_marker(&context, &catalog, "oldcontentmarker");
+    assert_eq!(
+        results.len(),
+        1,
+        "the file is still found by what it used to say"
+    );
+    assert_eq!(results[0].trust.state, ResultTrustState::NeedsUpdate);
+    assert_eq!(
+        results[0].trust.recovery_actions.first(),
+        Some(&ResultRecoveryAction::PrepareAgain),
+        "Prepare again is offered first, got {:?}",
+        results[0].trust.recovery_actions
+    );
+
+    // Control: the scheduler running the refresh's Scan does not re-extract
+    // it -- the file is still Needs update.
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+    assert_eq!(
+        search_marker(&context, &catalog, "oldcontentmarker")[0]
+            .trust
+            .state,
+        ResultTrustState::NeedsUpdate,
+        "nothing re-prepared it"
+    );
+
+    // Prepare again.
+    let mut state = orbok_ui::AppState::default();
+    state.update(&orbok_ui::state::Message::SearchResultsReady(
+        search_marker(&context, &catalog, "oldcontentmarker"),
+    ));
+    let request = orbok_ui::state::Message::TrustRecoveryAction {
+        result_idx: 0,
+        action: ResultRecoveryAction::PrepareAgain,
+    };
+    crate::trust_actions::recover(
+        &catalog,
+        &mut state,
+        0,
+        ResultRecoveryAction::PrepareAgain,
+        &request,
+    );
+    assert_eq!(state.notice, None);
+    assert_eq!(
+        state.search_results[0].trust.state,
+        ResultTrustState::StillBeingPrepared
+    );
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let fresh = search_marker(&context, &catalog, "newcontentmarker");
+    assert_eq!(fresh.len(), 1, "the new content is found");
+    assert_eq!(
+        fresh[0].trust.state,
+        ResultTrustState::Ready,
+        "and the file is Ready"
+    );
+}
+
 /// RFC-058 §6 row 5 / RFC-060 §11.6 (F-07, source-level): a source set to
 /// `Paused` must contribute no results, and today it still does -- no
 /// retrieval query joins `sources` (RFC-060 §7's own table). Task 035

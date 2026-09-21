@@ -19,11 +19,12 @@ use crate::i18n::{
     fmt_query, fmt_storage_row, preparing_folder_for_search, search_location_chip,
     search_result_count, source_summary, tr,
 };
-use crate::state::{AppState, Message, SearchFolderScope};
+use crate::state::{AppState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
 use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
 use iced::{Element, Length, Padding};
 use orbok_models::SearchCapability;
+use orbok_search::{ResultRecoveryAction, ResultTrustState, ResultWarningSummary};
 use snora::design::Tokens;
 use snora::design::style::color::to_iced_color;
 use snora::lucide;
@@ -436,10 +437,16 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                         heading_str.to_string(),
                         snippet.to_string(),
                         &result.badges,
+                        result.trust.state,
                         state.show_advanced,
                         is_selected,
                         Message::SelectResult(i),
                     ));
+                    // HANDOFF-038: what the user can do about a result that is
+                    // not fully ready, and the detail behind its badge.
+                    if let Some(recovery) = trust_recovery(state, i, result) {
+                        content = content.push(recovery);
+                    }
                     // HANDOFF-041 §3: until a preview pane exists, the
                     // selected result carries its two file actions.
                     if is_selected {
@@ -464,6 +471,109 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         }
     }
     page(tokens, content)
+}
+
+// ── Result trust recovery (HANDOFF-038) ──────────────────────────────────
+
+/// The label of a recovery action orbok handles itself, or `None` for the
+/// two that open something outside orbok. `OpenAnyway` and `ShowInFolder`
+/// are never rendered here (HANDOFF-038 §3): the selected result's own
+/// Open file and Show in folder buttons are the way to open a file.
+fn recovery_label(action: ResultRecoveryAction) -> Option<MessageKey> {
+    match action {
+        ResultRecoveryAction::PrepareAgain => Some(MessageKey::TrustActionPrepareAgain),
+        ResultRecoveryAction::CheckFolder => Some(MessageKey::TrustActionCheckFolder),
+        ResultRecoveryAction::RemoveFromResults => Some(MessageKey::TrustActionRemoveFromResults),
+        ResultRecoveryAction::ViewDetails => Some(MessageKey::TrustActionViewDetails),
+        ResultRecoveryAction::OpenAnyway | ResultRecoveryAction::ShowInFolder => None,
+    }
+}
+
+/// The plain-language lines behind a result's badge (RFC-038 §14): what the
+/// state means, then what each extraction warning means.
+fn trust_detail_keys(trust: &ResultTrustDisplay) -> Vec<MessageKey> {
+    let mut keys = Vec::new();
+    match trust.state {
+        ResultTrustState::NeedsUpdate => keys.push(MessageKey::TrustFileChangedDetail),
+        ResultTrustState::FileNotFound => keys.push(MessageKey::TrustFileNotFoundDetail),
+        ResultTrustState::PartlyPrepared => keys.push(MessageKey::TrustPartlyPreparedDetail),
+        ResultTrustState::CannotOpen => keys.push(MessageKey::TrustCannotOpenDetail),
+        ResultTrustState::Ready | ResultTrustState::StillBeingPrepared => {}
+    }
+    for warning in &trust.warnings {
+        match warning {
+            ResultWarningSummary::PossiblyScannedPdf => {
+                keys.push(MessageKey::TrustScannedPdfDetail)
+            }
+            ResultWarningSummary::SomePagesUnreadable => {
+                keys.push(MessageKey::TrustSomePagesDetail)
+            }
+            ResultWarningSummary::SizeLimitReached => keys.push(MessageKey::TrustSizeLimitDetail),
+            // No default copy: they change how a result is located, not
+            // whether it can be trusted.
+            ResultWarningSummary::UnsupportedDocumentPart
+            | ResultWarningSummary::ApproximateLocation => {}
+        }
+    }
+    keys
+}
+
+/// Below a non-ready result's card: its detail (when Advanced view is on, or
+/// the user asked for it), and a button for each recovery action orbok can
+/// do. `None` for a Ready result, which stays uncluttered (RFC-038 §6.1).
+fn trust_recovery<'a>(
+    state: &'a AppState,
+    index: usize,
+    result: &'a crate::state::SearchResultDisplay,
+) -> Option<Element<'a, Message>> {
+    let locale = state.locale;
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+    if result.trust.state == ResultTrustState::Ready {
+        return None;
+    }
+    let detail_shown = state.show_advanced
+        || state
+            .search_ui
+            .trust_details_open
+            .contains(&result.canonical_path);
+    let mut block = column![].spacing(tokens.spacing.xs);
+    let mut anything = false;
+    if detail_shown {
+        for key in trust_detail_keys(&result.trust) {
+            anything = true;
+            block = block.push(
+                text(tr(locale, key))
+                    .size(theme::meta_s(tokens, sc))
+                    .line_height(theme::meta_lh(tokens)),
+            );
+        }
+    }
+    let mut buttons = hrow![].spacing(tokens.spacing.sm);
+    let mut any_button = false;
+    for action in &result.trust.recovery_actions {
+        let Some(key) = recovery_label(*action) else {
+            continue;
+        };
+        // Once shown, View details has nothing left to do.
+        if *action == ResultRecoveryAction::ViewDetails && detail_shown {
+            continue;
+        }
+        any_button = true;
+        buttons = buttons.push(components::secondary(
+            tokens,
+            tr(locale, key),
+            Some(Message::TrustRecoveryAction {
+                result_idx: index,
+                action: *action,
+            }),
+        ));
+    }
+    if any_button {
+        anything = true;
+        block = block.push(buttons);
+    }
+    anything.then(|| block.into())
 }
 
 // ── Sources view ─────────────────────────────────────────────────────────

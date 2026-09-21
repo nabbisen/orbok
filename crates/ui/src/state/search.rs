@@ -4,7 +4,9 @@
 //! stays focused on the top-level app model.
 
 use orbok_core::{SearchHistoryEntry, SearchHistoryId};
-use orbok_search::{ActiveFilter, ResultRecoveryAction, ResultTrustState, SuggestedFilter};
+use orbok_search::{
+    ActiveFilter, ResultRecoveryAction, ResultTrustState, ResultWarningSummary, SuggestedFilter,
+};
 
 // ── Results status ────────────────────────────────────────────────────
 
@@ -39,6 +41,9 @@ pub enum ResultsStatus {
 pub struct ResultTrustDisplay {
     pub state: ResultTrustState,
     pub recovery_actions: Vec<ResultRecoveryAction>,
+    /// The extraction warnings behind a `PartlyPrepared` state, for the
+    /// detail View details and Advanced view show (RFC-038 §6.2, §14).
+    pub warnings: Vec<ResultWarningSummary>,
 }
 
 impl Default for ResultTrustDisplay {
@@ -46,6 +51,7 @@ impl Default for ResultTrustDisplay {
         Self {
             state: ResultTrustState::Ready,
             recovery_actions: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -75,6 +81,9 @@ pub struct SearchUiState {
     pub history: Vec<SearchHistoryEntry>,
     /// RFC-042: whether the Recent searches panel is open.
     pub history_panel_open: bool,
+    /// HANDOFF-038: the results (by canonical path) whose trust detail the
+    /// user opened with View details. Cleared when new results arrive.
+    pub trust_details_open: Vec<String>,
     /// RFC-042: set while a history entry is being restored; drives the
     /// "Searching again…" status copy (RFC-042 §9 step 5).
     pub restoring_history_id: Option<SearchHistoryId>,

@@ -126,6 +126,23 @@ impl<'a> IndexJobRepository<'a> {
         file_id: &FileId,
         current_job: &JobId,
     ) -> OrbokResult<bool> {
+        self.enqueue_extraction_excluding(file_id, current_job.as_str())
+    }
+
+    /// HANDOFF-038 "Prepare again": queue an `Extract` job for `file_id`,
+    /// exactly as the scanner does for a changed file, unless an extract or
+    /// chunk job for it is already unfinished. No job is running on the
+    /// file's behalf here, so none is excluded. Returns whether a job was
+    /// queued; `false` also means the file has no row.
+    pub fn enqueue_extraction_if_idle(&self, file_id: &FileId) -> OrbokResult<bool> {
+        self.enqueue_extraction_excluding(file_id, "")
+    }
+
+    fn enqueue_extraction_excluding(
+        &self,
+        file_id: &FileId,
+        excluded_job: &str,
+    ) -> OrbokResult<bool> {
         let mut conn = self.catalog.lock();
         let tx = conn.transaction().map_err(db_err)?;
         let source_id: Option<String> = tx
@@ -136,7 +153,7 @@ impl<'a> IndexJobRepository<'a> {
                     AND j.job_type IN ('extract', 'chunk') \
                     AND j.status IN ('queued', 'running', 'paused', 'blocked', \
                                      'waiting_for_dependency'))",
-                params![file_id.as_str(), current_job.as_str()],
+                params![file_id.as_str(), excluded_job],
                 |row| row.get(0),
             )
             .optional()

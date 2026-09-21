@@ -107,6 +107,19 @@ pub(crate) fn folder_not_checked(source_id: &str) -> Message {
     )
 }
 
+/// HANDOFF-038: a recovery action's file is not in the catalog any more
+/// (its folder was removed since the search). The existing "could not be
+/// found" copy is true, and Go to Folders is where to look.
+pub(crate) fn result_not_in_catalog() -> Message {
+    result_not_launched(LaunchFailure::NotFound)
+}
+
+/// HANDOFF-038: a recovery action could not read or write the catalog.
+/// "Try again" re-sends that action.
+pub(crate) fn recovery_storage_unavailable(action: &Message) -> Message {
+    with_action(UserNotice::StorageUnavailable, action.clone())
+}
+
 /// Saving a setting failed: "Try again" re-sends that exact setting change.
 pub(crate) fn setting_not_saved(change: &Message) -> Message {
     with_action(UserNotice::SettingCouldNotBeSaved, change.clone())

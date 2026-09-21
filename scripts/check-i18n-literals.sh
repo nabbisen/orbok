@@ -182,6 +182,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/app/src/bootstrap.rs"]="module declarations only, verified zero display text"
   ["crates/app/src/download.rs"]="developer-facing tracing/log and panic/expect strings only, verified in full; errors reach users only via typed UserNotice variants routed through the catalog, never shown raw"
   ["crates/app/src/backend_actions.rs"]="developer-facing tracing::error! log strings only, verified in full; every failure reaches the user as a typed UserNotice built by notice_retry (Task 075)"
+  ["crates/app/src/trust_actions.rs"]="developer-facing tracing::error! log strings only, verified in full; every failure reaches the user as a typed UserNotice built by notice_retry (HANDOFF-038)"
   ["crates/app/src/history.rs"]="developer-facing tracing/log strings only, verified in full"
   ["crates/app/src/lib.rs"]="crate root: module declarations only, verified zero display text"
   ["crates/app/src/model_flow.rs"]="developer-facing tracing/log/panic/assert strings and inline #[cfg(test)] module content only, verified in full"

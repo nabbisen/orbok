@@ -39,6 +39,7 @@ mod search_model;
 mod settings;
 mod source_removal;
 mod startup_failure;
+mod trust_actions;
 #[cfg(test)]
 mod wired_application_tests;
 
@@ -353,6 +354,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     app.update(notice_retry::result_not_launched(failure));
                 }
+                return iced::Task::none();
+            }
+            // HANDOFF-038: the recovery actions that touch the catalog.
+            if let Message::TrustRecoveryAction { result_idx, action } = &message {
+                trust_actions::recover(&catalog, &mut app.state, *result_idx, *action, &message);
+                app.update(message.clone());
                 return iced::Task::none();
             }
             match &message {
