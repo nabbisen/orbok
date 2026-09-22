@@ -57,6 +57,14 @@ Two points worth knowing when touching this area:
   diagnostics/privacy minimal-disclosure default, while `--check` is an
   explicit headless diagnostic command where showing the resolved path is
   the point (RFC-049 §4.7).
+- **A debug build refuses to resolve the default profile** (Task 087):
+  with no `ORBOK_DATA_DIR` and not `--portable`, it stops before opening,
+  creating or migrating anything and exits 2. Twice now a stray dev
+  invocation without either has migrated the owner's real catalog. Set
+  `ORBOK_DATA_DIR` to a scratch directory for ordinary development, or
+  `ORBOK_ALLOW_DEFAULT_PROFILE=1` on the rare occasion a debug build
+  against the real profile is actually what you mean. A release build is
+  unaffected — see `crates/app/src/cli.rs`'s `default_profile_refusal`.
 
 ## Testing Philosophy
 

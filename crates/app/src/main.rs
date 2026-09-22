@@ -72,6 +72,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprint!("{message}");
         std::process::exit(2);
     }
+    // Task 087: decided at the same pre-resolution point as
+    // `portable_refusal` above, so a debug build cannot create or migrate
+    // the default profile even once before refusing. Read here, not left
+    // to `resolve_runtime_context`'s own later read of `ORBOK_DATA_DIR`:
+    // both checks must agree on what counts as "set" (empty is unset), and
+    // this one has to run before that call happens at all.
+    let data_dir_override_set =
+        std::env::var_os("ORBOK_DATA_DIR").is_some_and(|value| !value.is_empty());
+    let allow_default_profile =
+        std::env::var_os("ORBOK_ALLOW_DEFAULT_PROFILE").is_some_and(|value| value == "1");
+    if let Some(message) = cli::default_profile_refusal(
+        &command,
+        cfg!(debug_assertions),
+        data_dir_override_set,
+        allow_default_profile,
+    ) {
+        eprint!("{message}");
+        std::process::exit(2);
+    }
     let (portable, check) = match command {
         cli::CliCommand::Help => {
             print!("{}", cli::USAGE);

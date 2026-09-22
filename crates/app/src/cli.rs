@@ -100,10 +100,43 @@ pub(crate) fn portable_refusal(command: &CliCommand, packaged: bool) -> Option<&
     }
 }
 
+/// The stderr text refusing a debug build's default-profile resolution.
+pub(crate) const DEFAULT_PROFILE_REFUSED_IN_DEBUG_BUILD: &str = "\
+orbok: this is a development build; it will not open the default profile.
+Set ORBOK_DATA_DIR to a scratch directory, or ORBOK_ALLOW_DEFAULT_PROFILE=1
+to override.
+";
+
+/// Task 087: twice now a stray development-build invocation with no
+/// `ORBOK_DATA_DIR` has resolved and migrated the owner's real profile
+/// (Review Request 263; Task 051's origin). Decided before any runtime
+/// context is resolved, the same "no profile touched" guarantee
+/// `portable_refusal` already gives. `is_debug_build` is a parameter rather
+/// than a `cfg!` read inside this function, so the gate itself stays
+/// testable without a release build -- the call site passes
+/// `cfg!(debug_assertions)`.
+pub(crate) fn default_profile_refusal(
+    command: &CliCommand,
+    is_debug_build: bool,
+    data_dir_override_set: bool,
+    allow_default_profile: bool,
+) -> Option<&'static str> {
+    let portable = match command {
+        CliCommand::Gui { portable } | CliCommand::Check { portable } => *portable,
+        CliCommand::Version | CliCommand::Help | CliCommand::Unknown(_) => return None,
+    };
+    if is_debug_build && !portable && !data_dir_override_set && !allow_default_profile {
+        Some(DEFAULT_PROFILE_REFUSED_IN_DEBUG_BUILD)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CliCommand, PORTABLE_UNAVAILABLE_WHEN_PACKAGED, needs_console, parse_args, portable_refusal,
+        CliCommand, DEFAULT_PROFILE_REFUSED_IN_DEBUG_BUILD, PORTABLE_UNAVAILABLE_WHEN_PACKAGED,
+        default_profile_refusal, needs_console, parse_args, portable_refusal,
     };
 
     fn parse(args: &[&str]) -> CliCommand {
@@ -191,6 +224,47 @@ mod tests {
                 portable_refusal(&parse(args), packaged),
                 expected,
                 "{args:?} packaged={packaged}"
+            );
+        }
+    }
+
+    /// Task 087: refused only for a debug build, only in Standard mode
+    /// (never `--portable`), only with no `ORBOK_DATA_DIR` override and no
+    /// `ORBOK_ALLOW_DEFAULT_PROFILE` escape hatch -- and never for a command
+    /// that resolves no profile at all.
+    #[test]
+    fn default_profile_is_refused_only_for_a_debug_standard_run_with_no_override_or_allow() {
+        let refused = Some(DEFAULT_PROFILE_REFUSED_IN_DEBUG_BUILD);
+        for (args, is_debug_build, data_dir_override_set, allow_default_profile, expected) in [
+            // The one refused case.
+            (&["--check"][..], true, false, false, refused),
+            (&[][..], true, false, false, refused),
+            // Test 2: the override works.
+            (&["--check"][..], true, false, true, None),
+            // Test 3: ORBOK_DATA_DIR is unaffected.
+            (&["--check"][..], true, true, false, None),
+            // `--portable` never resolves the default profile.
+            (&["--portable"][..], true, false, false, None),
+            (&["--portable", "--check"][..], true, false, false, None),
+            // Test 4: a release build is unaffected.
+            (&["--check"][..], false, false, false, None),
+            (&[][..], false, false, false, None),
+            // Commands that resolve no profile at all.
+            (&["--version"][..], true, false, false, None),
+            (&["--help"][..], true, false, false, None),
+            (&["--chek"][..], true, false, false, None),
+        ] {
+            assert_eq!(
+                default_profile_refusal(
+                    &parse(args),
+                    is_debug_build,
+                    data_dir_override_set,
+                    allow_default_profile
+                ),
+                expected,
+                "{args:?} is_debug_build={is_debug_build} \
+                 data_dir_override_set={data_dir_override_set} \
+                 allow_default_profile={allow_default_profile}"
             );
         }
     }
