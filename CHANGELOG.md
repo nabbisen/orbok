@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-09-22
+
 ### Added
 
 - **Each search result shows how far to trust it, and what to do about it
@@ -144,10 +146,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   searchable, with no message: the Folders view still counted it as a file.
   These files are now indexed and found. A long document shows the *Partly
   prepared* badge, with *View details* saying only part of it was read.
-  - **On an existing profile,** a file that was already stuck this way is
-    **not** picked up again by a folder check. Its content has to change, or
-    its folder has to be removed and added again. orbok's saved readings from
-    before this fix are left in place and no longer used.
+  On an existing profile, a file already stuck this way is picked up
+  automatically at the next start (Task 078, above) -- no folder check,
+  removal or re-add needed.
   - **A scanned PDF** now finishes its indexing step without an error, but
     has no text to find, so a search cannot return it.
 
@@ -458,7 +459,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test-count mechanism is withdrawn. `HANDOFF-038-rendering-trust-and-recovery`
   renders the trust badge that has been computed and never shown, and wires
   four recovery actions; the two that open files through the operating system
-  are held back, because orbok has no way to open a file at all.
+  are held back, because orbok has no way to open a file at all. (The hold
+  was lifted by Task 082, above, once HANDOFF-041 gave orbok that way.)
 
 - **RFC-062 and RFC-063 stamped `0.25.0`, and RFC-063's open questions marked
   resolved.** Both RFCs' implementing commits (`125ba7e`, `b85faa9`,
@@ -477,7 +479,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     criterion 1 was re-checked by removing the missing-record check and
     watching the gate's self-test go red.
   - **RFC-038** (trust badges) stays open: trust is computed on every result,
-    but nothing renders it.
+    but nothing renders it. (Closed since: HANDOFF-038 and Task 082 render it
+    and wire every recovery action; see "Each search result shows how far to
+    trust it", above.)
   - **RFC-041** (narrow, browse around) stays open: filters reach the query,
     but no view sets them, and the browse-around actions have no handler.
   - **RFC-058** (verifying the wired application) stays open: two criteria
