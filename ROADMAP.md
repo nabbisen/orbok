@@ -2,7 +2,7 @@
 
 ## Current Status (2026-09-22)
 
-Shipped: **0.26.0**. Latest tagged release: **0.26.0**. Each RFC's state is
+Shipped: **0.26.1**. Latest tagged release: **0.26.1**, also the newest on crates.io. Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -36,6 +36,9 @@ across v0.16.0–v0.24.0:
   confirmed while on screen (Task 069); results carry trust badges and
   working recovery actions (RFC-038 closed); the Storage page shows measured
   numbers (Task 081); Microsoft Store readiness (Task 061).
+- 0.26.1 — a packaging release: orbok's library crates pinned each other
+  loosely, so a published `orbok` could have taken a sibling from an older
+  release. First version published to crates.io since 0.24.0 (Task 089).
 
 Stack: snora 0.50 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
