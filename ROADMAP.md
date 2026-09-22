@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-09-16)
+## Current Status (2026-09-22)
 
-Shipped: **0.25.0**. Latest tagged release: **0.25.0**. Each RFC's state is
+Shipped: **0.26.0**. Latest tagged release: **0.26.0**. Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -28,8 +28,16 @@ across v0.16.0–v0.24.0:
   and visible failures (RFC-061), duplicate folders refused (Task 047); eleven
   RFCs recorded as implemented, including RFC-049, RFC-050, RFC-051 and
   RFC-053.
+- 0.26.0 — files orbok could only partly read were silently missing from
+  search, and are found again (Task 077) along with those an earlier version
+  left behind (Task 078); the UI stopped claiming what did not happen
+  (Tasks 070, 073, 074, 075); orbok says why it cannot start (Task 071);
+  removing a folder asks first (Task 062) and a confirmation can only be
+  confirmed while on screen (Task 069); results carry trust badges and
+  working recovery actions (RFC-038 closed); the Storage page shows measured
+  numbers (Task 081); Microsoft Store readiness (Task 061).
 
-Stack: snora 0.49 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.50 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 
