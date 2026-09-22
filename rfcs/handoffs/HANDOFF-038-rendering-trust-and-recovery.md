@@ -4,7 +4,7 @@
 **RFC:** 038 — Result Freshness, Trust Badges and Recovery Actions\
 **Lifecycle stage:** Accepted. The trust state is computed for every result since RFC-060 Slice 4a (`2d90e1c`); nothing renders it.\
 **Primary owner:** `crates/ui/src/views.rs` (result rows), `crates/ui/src/components.rs`, `crates/app/src/main.rs` (handlers)\
-**RFC:** [`../accepted/038-result-freshness-trust-badges-and-recovery-actions.md`](../accepted/038-result-freshness-trust-badges-and-recovery-actions.md)
+**RFC:** [`../done/038-result-freshness-trust-badges-and-recovery-actions.md`](../done/038-result-freshness-trust-badges-and-recovery-actions.md)
 
 Owner priority 2 of 4, 2026-09-16.
 

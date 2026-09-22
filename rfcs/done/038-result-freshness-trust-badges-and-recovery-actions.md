@@ -4,11 +4,16 @@
 **Former project name:** orbit  
 **RFC:** 038  
 **Title:** Result Freshness, Trust Badges, and Recovery Actions  
-**Status:** Accepted
+**Status:** Implemented (main; release pending)
 **Target milestone:** Search result trust / UX honesty  
 **Date:** 2026-06-18  
 
-**Returned to `accepted/` 2026-09-02 (RFC-063 §7).** Accepted 2026-06-18; carried `Implemented (v0.18.0)` while §16 criteria **4, 5 and 7** are false — `bootstrap/search.rs` hardcodes `ResultTrustDisplay::default()` = `Ready` with no recovery actions, so a deleted file's result reads clean. **Wiring is RFC-060 §7.**
+**Returned to `accepted/` 2026-09-02 (RFC-063 §7)** while §16 criteria
+**4, 5 and 7** were false. 4, 5, 6, 8, 9 closed with RFC-060's later
+slices and HANDOFF-038 (Slices 1–2, `9e499f5`); criterion 7 closed by
+Task 082 (`b6ac890`), which lifted HANDOFF-038 §3's hold on
+`OpenAnyway`/`ShowInFolder`. **Closed 2026-09-22.** Closure record at
+[`../closures/038-result-freshness-trust-badges-and-recovery-actions.md`](../closures/038-result-freshness-trust-badges-and-recovery-actions.md).
 **Related RFCs:** RFC-041 Search, Narrow Results, and Browse Around, RFC-044 `orbok-extract` Production Hardening and Boundary Cleanup, RFC-037 Source Lifecycle, Refresh Policy, and Change Detection UX  
 
 ---
