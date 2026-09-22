@@ -1157,9 +1157,9 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         hrow![
             button(
                 text(if state.remember_recent_searches {
-                    tr(locale, MessageKey::SettingsAdvancedOn)
+                    tr(locale, MessageKey::SettingsToggleOn)
                 } else {
-                    tr(locale, MessageKey::SettingsAdvancedOff)
+                    tr(locale, MessageKey::SettingsToggleOff)
                 })
                 .size(theme::body_s(tokens, sc)),
             )
@@ -1178,9 +1178,9 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         hrow![
             button(
                 text(if state.show_advanced {
-                    tr(locale, MessageKey::SettingsAdvancedOn)
+                    tr(locale, MessageKey::SettingsToggleOn)
                 } else {
-                    tr(locale, MessageKey::SettingsAdvancedOff)
+                    tr(locale, MessageKey::SettingsToggleOff)
                 })
                 .size(theme::body_s(tokens, sc)),
             )

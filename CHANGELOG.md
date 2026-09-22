@@ -99,6 +99,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"Remember recent searches" in Settings said "Advanced view: On/Off"
+  (Task 088).** Its toggle button reused the Advanced-view toggle's own
+  label by mistake, so switching it read as if it changed a different
+  setting. Both toggles now show only their own state, "On" or "Off",
+  beside their own name.
+
 - **The Storage page now shows what orbok actually stores (Task 081).**
   It always read "0.000 GiB total", on every profile, with buttons beside
   it that delete real data -- nothing ever measured anything. It now shows

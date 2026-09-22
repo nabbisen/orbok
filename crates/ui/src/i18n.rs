@@ -204,8 +204,8 @@ message_keys! {
     SettingsLanguageHeading,
     SettingsPrivacyHeading,
     SettingsAdvancedHeading,
-    SettingsAdvancedOn,
-    SettingsAdvancedOff,
+    SettingsToggleOn,
+    SettingsToggleOff,
     SettingsAdvancedHint,
     SettingsPrivacyLocalOnly,
     // Search modes (RFC-009 §8)
