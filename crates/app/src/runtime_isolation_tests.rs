@@ -83,10 +83,15 @@ fn production_persistent_open_apis_remain_confined_to_the_runtime_boundary() {
         read_top_level_rs_files(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bootstrap"));
     let bootstrap = format!("{bootstrap_root}\n{bootstrap_dir}");
     let main = include_str!("main.rs");
+    // Task 084: the `update` closure this scan used to catch inside
+    // `main.rs` moved to `router.rs` -- included here too, so the scan's
+    // coverage does not silently shrink to the now-empty shell `main.rs`
+    // left behind.
+    let router = include_str!("router.rs");
     let model_flow = include_str!("model_flow.rs");
     let download = include_str!("download.rs");
     let settings = include_str!("settings.rs");
-    let outside_boundary = [bootstrap.as_str(), main, model_flow, download].join("\n");
+    let outside_boundary = [bootstrap.as_str(), main, router, model_flow, download].join("\n");
 
     assert!(!outside_boundary.contains("Catalog::open"));
     assert!(!outside_boundary.contains("CacheService::new"));

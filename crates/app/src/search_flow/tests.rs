@@ -11,7 +11,7 @@ fn docs() -> SearchLocation {
     SearchLocation::remembered(SourceId::from_string("src-1".to_string()), "Docs")
 }
 
-/// Drive the picker flow the way `main.rs` does: `SubmitSearch` with no
+/// Drive the picker flow the way `router.rs` does: `SubmitSearch` with no
 /// location opens the picker (the reducer sees `ChooseFolderRequested`, not
 /// `SubmitSearch`); the pick selects the folder; then the resume decides.
 fn pick_folder_for_pending_search(state: &mut AppState) -> Option<Message> {
@@ -96,24 +96,28 @@ fn the_resume_enters_the_ordinary_submit_path() {
 /// search of its own and hand over to `after_folder_picked`.
 #[test]
 fn the_folder_picked_handler_has_no_search_path_of_its_own() {
-    let main = include_str!("../main.rs");
-    let start = main
+    // Task 084: the handler this test inspects moved from `main.rs`'s
+    // `update` closure into `router.rs`'s `route` function -- a plain
+    // text move, so this test's own text-scanning approach just needed
+    // its source file name updated, not its assertions.
+    let router = include_str!("../router.rs");
+    let start = router
         .find("Message::FolderPicked(path) =>")
         .expect("the FolderPicked handler");
     let end = start
-        + main[start..]
+        + router[start..]
             .find("Message::SearchAgain(id) =>")
             .expect("the next handler");
-    let handler = &main[start..end];
+    let handler = &router[start..end];
     assert!(
         !handler.contains("run_search("),
         "FolderPicked must not run its own search"
     );
     assert!(handler.contains("search_flow::after_folder_picked"));
     assert_eq!(
-        main.matches("history::record_search(").count(),
+        router.matches("history::record_search(").count(),
         1,
         "history is recorded in one place"
     );
-    assert!(main.contains("Message::SubmitSearchCompleted { query, outcome } =>"));
+    assert!(router.contains("Message::SubmitSearchCompleted { query, outcome } =>"));
 }
