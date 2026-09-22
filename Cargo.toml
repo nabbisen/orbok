@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.26.0"
+version = "0.26.1"
 edition                 = "2024"
 rust-version            = "1.91"
 license                 = "Apache-2.0"
@@ -30,24 +30,24 @@ repository              = "https://github.com/nabbisen/orbok"
 #
 # Task 089 §2.1: pinned to the exact workspace version, not the bare "0"
 # semver range would accept -- crates.io has no path dependencies, so a
-# published orbok 0.26.0 depending on "0" would accept any 0.x sibling on
+# published orbok 0.26.1 depending on "0" would accept any 0.x sibling on
 # the registry, including 0.24.0. Cargo has no mechanism for a
 # workspace.dependencies entry to inherit workspace.package.version the
 # way a crate's own [package].version.workspace = true does, so these
 # eleven lines must be bumped by hand at every release -- see
 # docs/src/maintainers/release_readiness.md's "Publish to crates.io" step,
 # added for exactly this.
-orbok-core                  = { version = "0.26.0", path = "crates/core" }
-orbok-db                    = { version = "0.26.0", path = "crates/data/db" }
-orbok-fs                    = { version = "0.26.0", path = "crates/data/fs" }
-orbok-cache                 = { version = "0.26.0", path = "crates/data/cache" }
-orbok-extract               = { version = "0.26.0", path = "crates/pipeline/extract" }
-orbok-search                = { version = "0.26.0", path = "crates/search/engine" }
-orbok-models                = { version = "0.26.0", path = "crates/search/models" }
-orbok-workers               = { version = "0.26.0", path = "crates/pipeline/workers" }
-orbok-bench                 = { version = "0.26.0", path = "crates/bench" }
-orbok-embed                 = { version = "0.26.0", path = "crates/search/embed" }
-orbok-ui                    = { version = "0.26.0", path = "crates/ui" }
+orbok-core                  = { version = "0.26.1", path = "crates/core" }
+orbok-db                    = { version = "0.26.1", path = "crates/data/db" }
+orbok-fs                    = { version = "0.26.1", path = "crates/data/fs" }
+orbok-cache                 = { version = "0.26.1", path = "crates/data/cache" }
+orbok-extract               = { version = "0.26.1", path = "crates/pipeline/extract" }
+orbok-search                = { version = "0.26.1", path = "crates/search/engine" }
+orbok-models                = { version = "0.26.1", path = "crates/search/models" }
+orbok-workers               = { version = "0.26.1", path = "crates/pipeline/workers" }
+orbok-bench                 = { version = "0.26.1", path = "crates/bench" }
+orbok-embed                 = { version = "0.26.1", path = "crates/search/embed" }
+orbok-ui                    = { version = "0.26.1", path = "crates/ui" }
 
 # ai
 tract-onnx                  = { version = "0.23" }
