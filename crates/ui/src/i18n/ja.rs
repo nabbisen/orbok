@@ -64,6 +64,9 @@ pub fn message(key: MessageKey) -> &'static str {
             "登録済みフォルダーとすべての検索データを削除します。\
              元のファイルが削除されることはありません。"
         }
+        // Task 091 (owner-approved 2026-09-23).
+        StorageResetConfirmTitle => "保存されたアプリデータをリセットしますか?",
+        StorageResetConfirm => "リセット",
         // Task 081 (RFC-011 §13.1、owner-approved 2026-09-22).
         StorageNotCalculatedYet => "使用量はまだ計算されていません。",
         StorageCalculateNow => "計算する",

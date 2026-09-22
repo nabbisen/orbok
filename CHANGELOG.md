@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The reset-catalog dialog now asks a question, and its button names the
+  action** (Task 091). The dialog previously repeated "Reset saved app
+  data..." as both its title and its confirm button; the title now reads
+  "Reset saved app data?" and the button reads "Reset", matching how the
+  folder-removal confirmation already asks-then-answers. The Storage
+  page's own button that opens the dialog is unchanged.
+
 ## [0.26.1] — 2026-09-22
 
 ### Changed

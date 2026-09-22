@@ -11,7 +11,6 @@ use crate::state::{AppState, Message};
 use crate::tests::iced_test_guard;
 use crate::views;
 use iced::keyboard::{Key, Modifiers, key::Named};
-use iced_test::selector::{Candidate, Text as TextTarget};
 use iced_test::simulator;
 
 fn storage_state(locale: Locale) -> AppState {
@@ -22,42 +21,13 @@ fn storage_state(locale: Locale) -> AppState {
     }
 }
 
-/// The dialog's title and the danger button share one label
-/// (`MessageKey::StorageResetCatalog`), so a plain `&str` selector finds
-/// the title -- the first, non-interactive match in tree order -- rather
-/// than the button. This selects the `n`th match specifically (0 = title,
-/// 1 = the button's own label), and clicking it lands inside the button's
-/// rendered area, exactly as a user clicking the button's visible text
-/// does.
-fn nth_text_match(
-    content: &'static str,
-    n: usize,
-) -> impl FnMut(Candidate<'_>) -> Option<TextTarget> {
-    let mut seen = 0usize;
-    move |candidate| match candidate {
-        Candidate::Text {
-            id,
-            bounds,
-            visible_bounds,
-            content: found,
-        } if found == content => {
-            let is_match = seen == n;
-            seen += 1;
-            is_match.then(|| TextTarget::Raw {
-                id: id.cloned(),
-                bounds,
-                visible_bounds,
-            })
-        }
-        _ => None,
-    }
-}
-
 /// RFC-011 §14 criterion 7's evidence, half 1: the dialog renders with
-/// Cancel and the danger button, and each button sends the message it
-/// names. Title and the danger button share one label
-/// (`MessageKey::StorageResetCatalog`), so clicking it after finding both
-/// confirms it is a real button, not just the title text repeated.
+/// Cancel and the danger button, each with its own text, and each button
+/// sends the message it names. Task 091: the title asks a question and the
+/// button names the action -- they must differ, the way the removal
+/// dialog's title/button already do (Review Request 264 §3 found them
+/// identical, which forced a same-text disambiguation workaround here;
+/// that workaround is gone along with the defect).
 #[test]
 fn the_reset_confirmation_renders_cancel_and_the_danger_button() {
     let _guard = iced_test_guard();
@@ -66,20 +36,20 @@ fn the_reset_confirmation_renders_cancel_and_the_danger_button() {
         state.update(&Message::AskResetCatalog);
         assert!(state.confirm_reset);
 
-        let title = tr(locale, MessageKey::StorageResetCatalog);
+        let title = tr(locale, MessageKey::StorageResetConfirmTitle);
         let warning = tr(locale, MessageKey::StorageResetWarning);
         let cancel = tr(locale, MessageKey::Cancel);
+        let confirm = tr(locale, MessageKey::StorageResetConfirm);
+        assert_ne!(
+            title, confirm,
+            "{locale:?}: the title asks, the button names the action -- they must differ"
+        );
 
         let mut ui = simulator(views::storage_view(&state));
-        for text in [title, warning, cancel] {
+        for text in [title, warning, cancel, confirm] {
             assert!(ui.find(text).is_ok(), "{locale:?}: {text:?} renders");
         }
-        // The title is the 0th match; the button's own label is the 1st.
-        assert!(
-            ui.find(nth_text_match(title, 1)).is_ok(),
-            "{locale:?}: the danger button's label is a second, distinct match"
-        );
-        let _ = ui.click(nth_text_match(title, 1));
+        let _ = ui.click(confirm);
         assert!(
             ui.into_messages()
                 .any(|m| matches!(m, Message::ConfirmResetCatalog)),

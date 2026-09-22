@@ -825,7 +825,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
 
     if state.visible_confirmation() == Some(crate::state::Confirmation::ResetCatalog) {
         let content = column![
-            text(tr(locale, MessageKey::StorageResetCatalog)).size(theme::title_s(tokens, sc)),
+            text(tr(locale, MessageKey::StorageResetConfirmTitle)).size(theme::title_s(tokens, sc)),
             text(tr(locale, MessageKey::StorageResetWarning))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
@@ -837,7 +837,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 ),
                 components::danger(
                     tokens,
-                    tr(locale, MessageKey::StorageResetCatalog),
+                    tr(locale, MessageKey::StorageResetConfirm),
                     Some(Message::ConfirmResetCatalog)
                 ),
             ]

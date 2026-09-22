@@ -173,6 +173,11 @@ message_keys! {
     StorageDangerHeading,
     StorageResetCatalog,
     StorageResetWarning,
+    // Task 091: the confirmation dialog's own title/button, distinct from
+    // the Storage page's button that opens it (`StorageResetCatalog`,
+    // which keeps its ellipsis -- correct there, since it opens this).
+    StorageResetConfirmTitle,
+    StorageResetConfirm,
     // Task 081: RFC-011 §13.1 empty state, and per-category Advanced-view
     // labels.
     StorageNotCalculatedYet,

@@ -60,6 +60,9 @@ pub fn message(key: MessageKey) -> &'static str {
             "This removes registered folders and all search data. \
              Your files are never deleted."
         }
+        // Task 091 (owner-approved 2026-09-23).
+        StorageResetConfirmTitle => "Reset saved app data?",
+        StorageResetConfirm => "Reset",
         // Task 081 (RFC-011 §13.1, owner-approved 2026-09-22).
         StorageNotCalculatedYet => "Storage usage has not been calculated yet.",
         StorageCalculateNow => "Calculate now",
