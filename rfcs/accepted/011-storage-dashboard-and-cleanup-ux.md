@@ -8,22 +8,24 @@
 **Date:** 2026-06-06  
 
 **Returned to `accepted/` 2026-09-22 (Task 083, Review Request 259 §6).**
-Carried `Implemented (v0.4.0)` while §14 criteria **5, 6 and 7** are
-false: `DeleteKeywordIndex`/`DeleteVectorIndex` have no executor arm (the
-only `CleanupExecutor` methods are `run_safe` and `run_reset_catalog`;
-routing either action through `run_safe` returns
+Carried `Implemented (v0.4.0)` while §14 criteria **5 and 6** are false:
+`DeleteKeywordIndex`/`DeleteVectorIndex` have no executor arm (the only
+`CleanupExecutor` methods are `run_safe` and `run_reset_catalog`; routing
+either action through `run_safe` returns
 `Err(CleanupWouldTouchPersistentData)`, a plan-shaped answer for an
 action the code never actually implements) and no caller anywhere in
 `crates/app` — deleting the keyword or semantic index independently is
 unreachable from the product, so nothing ever marks a rebuild required.
-Reset catalog's confirmation (Task 062's dialog: Escape cancels, Enter
-confirms while visible, Task 069 closes it on view change) is Cancel/
-Confirm, not the typed `Type RESET to confirm` §9 names — the product
-never asks the user to type a word. Criteria 2, 3, 4 and 9 hold, each
-with an end-to-end test; criteria 1, 8 and 10 were evidenced by Task 081.
-No closure record: see `rfcs/closures/LEGACY-ALLOWLIST.txt` (`011` stays
-listed; removing it means writing the record, and there is no record
-until 5, 6 and 7 are true or the RFC is amended to drop them).
+**Criterion 7 held as of Task 086 (2026-09-23, §9a):** reset catalog's
+confirmation (Task 062's dialog: Escape cancels, Enter confirms while
+visible, Task 069 closes it on view change) is Cancel/Confirm, not the
+typed `Type RESET to confirm` §9 originally named — the owner decided the
+RFC changes to describe that dialog, not that the product grows a typing
+field. Criteria 2, 3, 4, 7 and 9 hold, each with an end-to-end test;
+criteria 1, 8 and 10 were evidenced by Task 081. No closure record: see
+`rfcs/closures/LEGACY-ALLOWLIST.txt` (`011` stays listed; removing it
+means writing the record, and there is no record until 5 and 6 are true or
+the RFC is amended to drop them).
 
 ---
 
@@ -222,6 +224,61 @@ Typed confirmation example:
 ```text
 Type RESET to confirm.
 ```
+
+## 9a. Amendment 1 (2026-09-23) — what orbok's reset confirmation actually is
+
+Task 086's origin: the product never built the typed-word confirmation
+above. Reset catalog asks with Task 062's dialog instead — a title, the
+warning, a Cancel button and a danger button — and the owner decided the
+RFC changes, not the product. No typing field is built.
+
+**Why the dialog is the better design here, not merely what shipped:**
+
+- **Reset does not destroy the user's files.** It removes what orbok
+  prepared, which orbok can prepare again. A typed word is the convention
+  for irreversible loss of the user's own data, which this is not.
+- **It is keyboard-operable without a text field.** iced 0.14 buttons
+  cannot take focus (RFC-034 §5.3's Task 062 amendment, citing §5.4), so a
+  typed-word field would be the only focusable control in the dialog, and
+  `Enter` inside it would have to be bound to confirm — the same key the
+  dialog already uses, with an extra step that teaches nothing.
+- **The protection is that it cannot be confirmed unseen** (Task 069:
+  switching views closes the dialog, so a stale `Enter` cannot land on it),
+  and that the danger button is styled and labelled as destructive
+  (RFC-033 §6).
+
+**The dialog, precisely:**
+
+- The reset confirmation renders a title, the warning text, a Cancel
+  button, and a danger button labelled the same as the title — each
+  button sends the message it names
+  (`the_reset_confirmation_renders_cancel_and_the_danger_button`,
+  `crates/ui/src/tests/task062_reset_catalog_confirmation.rs`).
+- `Escape` cancels it and nothing is reset — the only route to an actual
+  reset is `Message::ConfirmResetCatalog` reaching the backend, and
+  `Escape` never sends it
+  (`escape_cancels_the_reset_confirmation_and_resets_nothing`, same file).
+- `Enter` confirms it only while it is the one thing on screen — not from
+  another view, and not under an open wizard
+  (`crates/ui/src/tests/task069_confirm_only_what_is_on_screen.rs`:
+  `on_its_own_view_each_confirmation_is_confirmed_by_enter`,
+  `switching_view_closes_every_confirmation_and_enter_cannot_confirm_it`,
+  `a_wizard_over_an_open_confirmation_never_confirms_it`).
+- A failed reset leaves the list exactly as the catalog holds it, not a
+  blind clear and not the state from before the attempt
+  (`crates/app/src/backend_actions/tests.rs`:
+  `a_reset_that_fails_under_a_write_lock_leaves_the_list_as_the_catalog_holds_it`,
+  `a_reset_whose_reload_also_fails_leaves_the_list_as_it_was`,
+  `a_reset_that_fails_after_the_catalog_step_shows_what_the_catalog_holds`).
+
+**§14 criterion 7 ("Reset catalog requires strong typed confirmation") is
+met by this dialog**, not by the typed word above: the criterion's
+substance — a deliberate, non-accidental, clearly-labelled confirmation
+before an irreversible-feeling action — holds under the Cancel/danger
+design for the reasons stated above. The criterion's own wording is not
+edited here, since it is the acceptance table's record of what was asked
+for; the amendment is what settles that asking for a typed word was not
+itself the requirement.
 
 ---
 
