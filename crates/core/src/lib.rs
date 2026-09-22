@@ -22,7 +22,7 @@ pub mod versions;
 #[cfg(test)]
 mod tests;
 
-pub use data_class::{CleanupAction, CleanupPlan, DataClass, StorageCategory};
+pub use data_class::{CleanupAction, CleanupPlan, DataClass, StorageCategory, StorageMeasurement};
 pub use error::{ErrorCategory, OrbokError, OrbokResult};
 pub use history::{
     SearchHistoryEntry, SearchHistoryId, SearchHistorySettings, StoredChangedFilter,

@@ -262,6 +262,25 @@ const EXEMPTIONS: &[(MessageKey, &str)] = &[
     // "ソース" name the same field.
     (MessageKey::ModelConsentSource, "source"),
     (MessageKey::ModelConsentSource, "ソース"),
+    // Task 081: RFC-011 §11's storage-category labels and the cache-file
+    // line, shown only in Advanced view -- whose own copy already says
+    // "Show technical detail in search results, preparation, and
+    // storage." These *are* the technical detail: RFC-011 names these
+    // categories with these exact terms ("keyword_index", "vector_index",
+    // "persistent_catalog"), and a user who has turned Advanced on has
+    // asked to see them. Ordinary (non-Advanced) Storage copy stays plain
+    // -- `StorageGroupSearchIndex`/`StorageGroupCaches` etc. are unchanged
+    // and carry no exemption.
+    (MessageKey::StorageCategoryPersistentCatalog, "catalog"),
+    (MessageKey::StorageCategoryPersistentCatalog, "カタログ"),
+    (MessageKey::StorageCategoryKeywordIndex, "index"),
+    (MessageKey::StorageCategoryKeywordIndex, "索引"),
+    (MessageKey::StorageCategoryVectorIndex, "index"),
+    (MessageKey::StorageCategoryVectorIndex, "vector"),
+    (MessageKey::StorageCategoryVectorIndex, "索引"),
+    (MessageKey::StorageCategoryVectorIndex, "ベクトル"),
+    (MessageKey::StorageCacheFileSize, "cache"),
+    (MessageKey::StorageCacheFileSize, "キャッシュ"),
 ];
 
 fn forbidden_terms_for(locale: Locale) -> &'static [&'static str] {

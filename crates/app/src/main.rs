@@ -443,7 +443,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return iced::Task::none();
                 }
                 // Task 075: each backend action's result, reflected truthfully
-                // (`backend_actions`).
+                // (`backend_actions`). Task 081: the numbers this action
+                // just changed are refreshed right after -- a stale number
+                // is the same class of defect as the false zero Task 081
+                // fixed (Review Request 257 §3), so this does not wait for
+                // the user to reopen Storage.
                 Message::CleanSnippets
                 | Message::CleanSearchCache
                 | Message::CleanTemporaryExtraction
@@ -454,7 +458,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &mut app.state,
                         &message,
                     );
-                    return iced::Task::none();
+                    return measure_storage_task(runtime.clone(), catalog.clone());
                 }
                 Message::ConfirmResetCatalog => {
                     backend_actions::reset_catalog(
@@ -462,7 +466,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         bootstrap::cache_service(&runtime),
                         &mut app.state,
                     );
-                    return iced::Task::none();
+                    // Task 081: reset clears `storage_rows` (the reducer's
+                    // own `CatalogResetSucceeded` arm); this replaces the
+                    // RFC-011 §13.1 empty state that would otherwise leave
+                    // with the real measured post-reset numbers.
+                    return measure_storage_task(runtime.clone(), catalog.clone());
+                }
+                // Task 081: "Calculate now", and every switch to the
+                // Storage view (so the numbers shown are current, not
+                // whatever was last measured).
+                Message::StorageMeasurementRequested => {
+                    app.update(message.clone());
+                    return measure_storage_task(runtime.clone(), catalog.clone());
+                }
+                Message::Switch(orbok_ui::state::ViewId::Storage) => {
+                    app.update(message.clone());
+                    return measure_storage_task(runtime.clone(), catalog.clone());
                 }
                 Message::SourceRemoved(source_id) => {
                     source_removal::remove(&catalog, &mut app.state, source_id);
@@ -911,6 +930,34 @@ fn install_panic_hook() {
         );
         default_hook(info);
     }));
+}
+
+/// Task 081: dispatch a fresh storage measurement off the update thread
+/// (the `Task::perform` pattern `SubmitSearch` already uses). All eight
+/// categories `Unknown` and no cache-file size read is treated as a
+/// systemic failure (the catalog or the cache could not be reached at
+/// all) rather than eight individually-unmeasurable categories, which is
+/// what `Message::StorageMeasurementFailed` raises the notice for
+/// (`AppState`'s own reducer, mirroring `Message::SearchError`'s shape --
+/// not a separate `notice_retry` call here, since this path is async and
+/// has no `&mut AppState` to call one synchronously against).
+fn measure_storage_task(
+    runtime: orbok::runtime_context::RuntimeContext,
+    catalog: std::sync::Arc<orbok_db::Catalog>,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { bootstrap::measure_storage(&runtime, &catalog) },
+        |(rows, cache_file_bytes)| {
+            if bootstrap::storage_measurement_is_failure(&rows, cache_file_bytes) {
+                Message::StorageMeasurementFailed
+            } else {
+                Message::StorageDataReady {
+                    rows,
+                    cache_file_bytes,
+                }
+            }
+        },
+    )
 }
 
 /// Convert a `VerifyOutcome` into the file check list shown in the wizard.

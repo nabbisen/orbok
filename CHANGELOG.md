@@ -96,6 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Storage page now shows what orbok actually stores (Task 081).**
+  It always read "0.000 GiB total", on every profile, with buttons beside
+  it that delete real data -- nothing ever measured anything. It now shows
+  real, freshly measured numbers: the catalog file, the keyword and
+  vector indexes inside it, cached extracted text and previews, old
+  search results, and model files. A category orbok cannot measure shows
+  *Unknown*, never a false zero. Numbers refresh when you open Storage,
+  after any cleanup, and after a reset.
+
 - **A file orbok read but found no text in says so, instead of looking
   stuck forever (Task 080).** A scanned PDF is the common case: every step
   used to finish successfully, but the file stayed listed as "Waiting"

@@ -100,7 +100,24 @@ pub fn resolve_runtime_context(
 // `OrbokSettings`-typed wrappers around that generic API for this file's
 // call sites.
 pub use orbok::runtime_storage::cache as cache_service;
-pub use orbok::runtime_storage::{model_store, open_catalog, open_catalog_staged};
+pub use orbok::runtime_storage::{measure_storage, model_store, open_catalog, open_catalog_staged};
+
+/// Task 081: does a `measure_storage` result count as the whole
+/// measurement having failed, rather than some categories individually
+/// being `Unknown`? True only when *every* category is `Unknown` and the
+/// cache-file size could not be read either -- one or two unmeasurable
+/// categories is normal and expected (`main.rs`'s `measure_storage_task`
+/// dispatches `Message::StorageMeasurementFailed` only on this, never on
+/// a partial result).
+pub fn storage_measurement_is_failure(
+    rows: &[(orbok_core::StorageCategory, orbok_core::StorageMeasurement)],
+    cache_file_bytes: Option<u64>,
+) -> bool {
+    cache_file_bytes.is_none()
+        && rows
+            .iter()
+            .all(|(_, m)| matches!(m, orbok_core::StorageMeasurement::Unknown))
+}
 
 pub fn load_runtime_settings(context: &RuntimeContext) -> OrbokResult<OrbokSettings> {
     runtime_settings_with(context, &AllowRuntimePathProbe)

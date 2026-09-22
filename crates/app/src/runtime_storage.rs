@@ -157,6 +157,299 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
         // `model_store()`; nothing here re-resolves or re-authorizes it.
         orbok_workers::run_managed_model_startup(catalog, &model_store.store)
     }
+
+    /// Task 081 (RFC-011 §11): every storage category, measured fresh --
+    /// never a stale cached figure (a caller must call this again to see
+    /// current numbers; nothing here memoizes across calls, since a stale
+    /// number is the same class of defect as the false zero it replaces,
+    /// Review Request 257 §3). Each measurement below says how exact it is
+    /// in its own comment; the caller decides how to render a failure to
+    /// read one path or open the cache (`Unknown`, never a silent zero).
+    ///
+    /// **`persistent_catalog` already includes `keyword_index` and
+    /// `vector_index`'s own bytes** -- all three live in the one catalog
+    /// file. The two index categories are exact `dbstat` sub-measurements
+    /// of that same file, shown so a user can see what is inside it, not
+    /// additional bytes; a caller that sums every row into one grand total
+    /// must exclude `keyword_index`/`vector_index` from that sum or it
+    /// double-counts. `storage_view` does this; see its own comment.
+    pub fn measure_storage(
+        &self,
+        catalog: &Catalog,
+    ) -> (
+        Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+        Option<u64>,
+    ) {
+        use orbok_core::StorageCategory as Cat;
+
+        let mut out = Vec::with_capacity(Cat::ALL.len());
+
+        // persistent_catalog: the catalog file's own size on disk, plus
+        // its row count (registered files) as the "items" figure --
+        // exact, a plain `fs::metadata` read.
+        out.push((
+            Cat::PersistentCatalog,
+            match std::fs::metadata(self.context.catalog_file()) {
+                Ok(meta) => storage_measurement::Measurement {
+                    bytes: meta.len(),
+                    items: storage_measurement::count(catalog, "SELECT COUNT(*) FROM files"),
+                }
+                .into(),
+                Err(_) => orbok_core::StorageMeasurement::Unknown,
+            },
+        ));
+
+        // keyword_index / vector_index: exact, via SQLite's own `dbstat`
+        // virtual table -- confirmed present in this build by a direct
+        // query (bundled libsqlite3-sys compiles it in; no separate
+        // rusqlite Cargo feature gates the C-level table itself, only a
+        // typed Rust wrapper this file has no need of). Real page bytes,
+        // not a row-count estimate.
+        out.push((
+            Cat::KeywordIndex,
+            storage_measurement::dbstat(
+                catalog,
+                "name LIKE 'chunk_fts%' OR name LIKE '%keyword_index%'",
+                "SELECT COUNT(*) FROM keyword_index_records",
+            ),
+        ));
+        out.push((
+            Cat::VectorIndex,
+            storage_measurement::dbstat(
+                catalog,
+                "name LIKE '%embeddings%'",
+                "SELECT COUNT(*) FROM embeddings",
+            ),
+        ));
+
+        // snippet_cache: two real backing stores are cleared by one
+        // action (`ClearSnippetCache`, `cleanup.rs`'s `clear_snippet_cache`
+        // plus `cleanup_service.rs`'s cache-side purge of `PreviewCache`)
+        // -- the catalog's own `snippet_cache` table (dbstat) and the
+        // separate localcache `PreviewCache` namespace
+        // (`CacheService::usage`). Summed: both are real space that one
+        // button reclaims.
+        let snippet_table = storage_measurement::dbstat(
+            catalog,
+            "name LIKE 'snippet_cache%'",
+            "SELECT COUNT(*) FROM snippet_cache",
+        );
+        let snippet_namespace = self
+            .cache()
+            .ok()
+            .and_then(|cache| {
+                cache
+                    .usage(catalog, &[OrbokCacheNamespace::PreviewCache])
+                    .ok()
+            })
+            .map(storage_measurement::from_namespace_usage)
+            .unwrap_or(orbok_core::StorageMeasurement::Unknown);
+        out.push((
+            Cat::SnippetCache,
+            storage_measurement::add(snippet_table, snippet_namespace),
+        ));
+
+        // search_cache: the catalog's own tables -- `ClearExpiredSearchCache`
+        // deletes from `search_result_cache` (`cleanup.rs`); `search_queries`
+        // is its companion table. No separate localcache namespace backs
+        // this category (`OrbokCacheNamespace` has none named for it).
+        out.push((
+            Cat::SearchCache,
+            storage_measurement::dbstat(
+                catalog,
+                "name LIKE 'search_result_cache%' OR name LIKE 'search_queries%'",
+                "SELECT (SELECT COUNT(*) FROM search_result_cache) + \
+                 (SELECT COUNT(*) FROM search_queries)",
+            ),
+        ));
+
+        // temporary_extraction: the localcache ExtractSegments namespace,
+        // with Task 079's retired `extract-segments:v1` rows folded in --
+        // the namespace it retired, so a user sees one "temporary
+        // extraction" figure, not a separate line for a namespace string
+        // nobody should need to know about.
+        let extract_current = self
+            .cache()
+            .ok()
+            .and_then(|cache| {
+                cache
+                    .usage(catalog, &[OrbokCacheNamespace::ExtractSegments])
+                    .ok()
+            })
+            .map(storage_measurement::from_namespace_usage)
+            .unwrap_or(orbok_core::StorageMeasurement::Unknown);
+        let extract_retired = self
+            .cache()
+            .ok()
+            .and_then(|cache| cache.service().retired_namespace_usage().ok())
+            .map(storage_measurement::from_namespace_usage)
+            .unwrap_or(orbok_core::StorageMeasurement::Unknown);
+        out.push((
+            Cat::TemporaryExtraction,
+            storage_measurement::add(extract_current, extract_retired),
+        ));
+
+        // model_files: the model store directory's size, walked
+        // recursively -- exact, real bytes and file count on disk.
+        out.push((
+            Cat::ModelFiles,
+            match storage_measurement::dir_size(self.context.models_dir()) {
+                Ok((bytes, items)) => orbok_core::StorageMeasurement::Measured { bytes, items },
+                Err(_) => orbok_core::StorageMeasurement::Unknown,
+            },
+        ));
+
+        // logs: orbok writes no log files (Task 067 §0 -- tracing output
+        // goes to stderr only, never a file). Not "unmeasured": this is a
+        // known, certain zero, not a stand-in for a measurement that
+        // failed.
+        out.push((
+            Cat::Logs,
+            orbok_core::StorageMeasurement::Measured { bytes: 0, items: 0 },
+        ));
+
+        // Task 081 §2: the cache file's own size, not one of the eight
+        // categories above (see this method's own doc comment).
+        let cache_file_bytes = std::fs::metadata(self.context.cache_file())
+            .map(|m| m.len())
+            .ok();
+
+        (out, cache_file_bytes)
+    }
+}
+
+/// Task 081's storage-measurement helpers: `dbstat` byte sums, a
+/// directory walk, and the small conversions between this module's
+/// `NamespaceUsage`/row shapes and [`orbok_core::StorageMeasurement`].
+/// Free functions, not methods, since none needs `RuntimeStorage`'s own
+/// path-boundary state -- each already takes exactly the borrowed handle
+/// it touches.
+mod storage_measurement {
+    use orbok_core::StorageMeasurement;
+    use orbok_db::Catalog;
+
+    pub(super) struct Measurement {
+        pub bytes: u64,
+        pub items: u64,
+    }
+
+    impl From<Measurement> for StorageMeasurement {
+        fn from(m: Measurement) -> Self {
+            StorageMeasurement::Measured {
+                bytes: m.bytes,
+                items: m.items,
+            }
+        }
+    }
+
+    /// Sum of `pgsize` (real on-disk page bytes) over every `dbstat` row
+    /// whose table name matches `name_where`, plus a separate row count
+    /// from `count_sql` -- `dbstat` reports pages, not rows, so the two
+    /// numbers come from two different queries. `Unknown` only if the
+    /// `dbstat` query itself fails (the virtual table is missing, e.g. an
+    /// exotic SQLite build); a table that simply has no rows yet reports
+    /// zero, not unknown, since `dbstat` still answers the question.
+    pub(super) fn dbstat(
+        catalog: &Catalog,
+        name_where: &str,
+        count_sql: &str,
+    ) -> StorageMeasurement {
+        // The guard must not outlive this block: `count` below takes its
+        // own lock on the same `Catalog`, and `MutexGuard` is not
+        // reentrant -- holding this one across that call deadlocks the
+        // single thread that took it (confirmed: the first version of
+        // this function did exactly that, hanging every call site).
+        let bytes: Result<i64, _> = {
+            let conn = catalog.lock();
+            conn.query_row(
+                &format!("SELECT COALESCE(SUM(pgsize), 0) FROM dbstat WHERE {name_where}"),
+                [],
+                |r| r.get(0),
+            )
+        };
+        match bytes {
+            Ok(bytes) => Measurement {
+                bytes: bytes.max(0) as u64,
+                items: count(catalog, count_sql),
+            }
+            .into(),
+            Err(_) => StorageMeasurement::Unknown,
+        }
+    }
+
+    /// One scalar `COUNT(*)`-shaped query, 0 on any failure (a failed
+    /// item count does not sink an otherwise-successful byte measurement
+    /// -- the category is still `Measured`, just with `items: 0` rather
+    /// than a number this call could not get).
+    pub(super) fn count(catalog: &Catalog, sql: &str) -> u64 {
+        let conn = catalog.lock();
+        conn.query_row(sql, [], |r| r.get::<_, i64>(0))
+            .map(|n| n.max(0) as u64)
+            .unwrap_or(0)
+    }
+
+    /// Sum of `payload_bytes`/`entries` over a `usage()`/
+    /// `retired_namespace_usage()` result -- both already exact per-entry
+    /// byte counts `localcache` itself reports (the compressed stored
+    /// payload, not a derived estimate); summing several namespaces' rows
+    /// is exact addition, not a new estimate.
+    pub(super) fn from_namespace_usage(
+        rows: Vec<orbok_cache::NamespaceUsage>,
+    ) -> StorageMeasurement {
+        let bytes = rows.iter().map(|r| r.payload_bytes).sum();
+        let items = rows.iter().map(|r| r.entries).sum();
+        Measurement { bytes, items }.into()
+    }
+
+    /// Combine two measurements for one category (Task 081: `snippet_cache`
+    /// and `temporary_extraction` each have two real backing stores).
+    /// `Unknown` is infectious: a category with one known and one unknown
+    /// backing store is itself unknown, never half-reported as if the
+    /// unknown side were zero.
+    pub(super) fn add(a: StorageMeasurement, b: StorageMeasurement) -> StorageMeasurement {
+        match (a, b) {
+            (
+                StorageMeasurement::Measured {
+                    bytes: b1,
+                    items: i1,
+                },
+                StorageMeasurement::Measured {
+                    bytes: b2,
+                    items: i2,
+                },
+            ) => StorageMeasurement::Measured {
+                bytes: b1 + b2,
+                items: i1 + i2,
+            },
+            _ => StorageMeasurement::Unknown,
+        }
+    }
+
+    /// Recursive directory size and file count -- exact, real bytes on
+    /// disk for every regular file under `path` (symlinks are not
+    /// followed, matching the model store's own on-disk shape: it never
+    /// creates one). No new dependency: a plain `read_dir` walk.
+    pub(super) fn dir_size(path: &std::path::Path) -> std::io::Result<(u64, u64)> {
+        let mut bytes = 0u64;
+        let mut items = 0u64;
+        if !path.exists() {
+            return Ok((0, 0));
+        }
+        let mut stack = vec![path.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir)? {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+                if file_type.is_dir() {
+                    stack.push(entry.path());
+                } else if file_type.is_file() {
+                    bytes += entry.metadata()?.len();
+                    items += 1;
+                }
+            }
+        }
+        Ok((bytes, items))
+    }
 }
 
 /// Task 071: which stage of opening the catalog failed.
@@ -213,6 +506,19 @@ pub fn model_store_with<P: RuntimePathProbe + ?Sized>(
     probe: &P,
 ) -> io::Result<ProfileModelStore> {
     RuntimeStorage::new(context, probe).model_store()
+}
+
+/// Task 081: every storage category, measured fresh (see
+/// `RuntimeStorage::measure_storage`'s own doc comment for what "fresh"
+/// means here and why).
+pub fn measure_storage(
+    context: &RuntimeContext,
+    catalog: &Catalog,
+) -> (
+    Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+    Option<u64>,
+) {
+    RuntimeStorage::new(context, &AllowRuntimePathProbe).measure_storage(catalog)
 }
 
 pub fn load_settings<T>(context: &RuntimeContext) -> io::Result<T>

@@ -173,6 +173,24 @@ message_keys! {
     StorageDangerHeading,
     StorageResetCatalog,
     StorageResetWarning,
+    // Task 081: RFC-011 §13.1 empty state, and per-category Advanced-view
+    // labels.
+    StorageNotCalculatedYet,
+    StorageCalculateNow,
+    StorageValueUnknown,
+    StorageCategoryPersistentCatalog,
+    StorageCategoryKeywordIndex,
+    StorageCategoryVectorIndex,
+    StorageCategorySnippetCache,
+    StorageCategorySearchCache,
+    StorageCategoryTemporaryExtraction,
+    StorageCategoryModelFiles,
+    StorageCategoryLogs,
+    /// The cache database file's own size on disk (Task 081 §2) --
+    /// distinct from any one category, since several categories' bytes
+    /// live inside it and it does not shrink to match them until a
+    /// VACUUM (Task 079 §2).
+    StorageCacheFileSize,
     // Models view
     ModelsTitle,
     ModelsEmbeddingRole,

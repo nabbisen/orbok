@@ -64,6 +64,19 @@ pub fn message(key: MessageKey) -> &'static str {
             "登録済みフォルダーとすべての検索データを削除します。\
              元のファイルが削除されることはありません。"
         }
+        // Task 081 (RFC-011 §13.1、owner-approved 2026-09-22).
+        StorageNotCalculatedYet => "使用量はまだ計算されていません。",
+        StorageCalculateNow => "計算する",
+        StorageValueUnknown => "不明",
+        StorageCategoryPersistentCatalog => "カタログ",
+        StorageCategoryKeywordIndex => "キーワード索引",
+        StorageCategoryVectorIndex => "ベクトル索引",
+        StorageCategorySnippetCache => "一時プレビュー",
+        StorageCategorySearchCache => "古い検索結果",
+        StorageCategoryTemporaryExtraction => "抽出したテキスト",
+        StorageCategoryModelFiles => "モデル",
+        StorageCategoryLogs => "ログ",
+        StorageCacheFileSize => "キャッシュファイル（ディスク上）",
         ModelsTitle => "モデル",
         ModelsEmbeddingRole => "意味による検索",
         ModelsRerankerRole => "リランカー",

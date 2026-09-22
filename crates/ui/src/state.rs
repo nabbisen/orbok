@@ -457,7 +457,20 @@ pub struct AppState {
     /// recent folders). Defaults to no selected location — the first-run
     /// "choose a folder when you search" state.
     pub search_location: SearchLocationState,
-    pub storage_rows: Vec<(String, u64, u64)>,
+    /// Task 081: RFC-011 §11's storage categories, each either a real
+    /// measurement or explicitly `Unknown` -- never a false zero standing
+    /// in for "not measured". Empty means "never measured this session",
+    /// the RFC-011 §13.1 empty state (`storage_view` reads it that way).
+    pub storage_rows: Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+    /// A measurement is in flight (`Message::StorageMeasurementRequested`
+    /// sent, no `StorageDataReady`/failure yet) -- so "Calculate now" does
+    /// not show as idle while its own `Task::perform` is running.
+    pub storage_measuring: bool,
+    /// Task 081 §2: the cache database file's own size on disk, alongside
+    /// `storage_rows` -- not one of RFC-011's eight categories (several of
+    /// them live inside this one file, so it is not additive with them).
+    /// `None` before the first measurement, same as an empty `storage_rows`.
+    pub storage_cache_file_bytes: Option<u64>,
     pub health: IndexHealth,
     pub sources: Vec<SourceCard>,
     /// RFC-034 (Task 024): keyboard-driven selection into `sources`,
@@ -467,7 +480,6 @@ pub struct AppState {
     pub capability: SearchCapability,
     /// Provenance of the active embedding model, independent of capability.
     pub active_model_provenance: Option<ModelProvenance>,
-    pub storage_total_bytes: u64,
     /// Active startup wizard, or `None` when startup succeeded.
     pub wizard: Option<WizardState>,
     /// Text-input path the user is typing in the wizard.
@@ -529,12 +541,13 @@ impl Default for AppState {
             search_ui: SearchUiState::default(),
             search_location: SearchLocationState::default(),
             storage_rows: Vec::new(),
+            storage_measuring: false,
+            storage_cache_file_bytes: None,
             health: IndexHealth::default(),
             sources: Vec::new(),
             selected_source: None,
             capability: SearchCapability::KeywordOnly,
             active_model_provenance: None,
-            storage_total_bytes: 0,
             wizard: None,
             wizard_path_input: String::new(),
             model_download_consent: None,
@@ -679,7 +692,23 @@ pub enum Message {
     FocusNext,
     /// Move keyboard focus to the previous focusable widget (`Shift+Tab`).
     FocusPrevious,
-    StorageDataReady(Vec<(String, u64, u64)>),
+    /// Task 081: ask for a fresh measurement -- the "Calculate now" button,
+    /// switching to the Storage view, and (`main.rs`) after any cleanup
+    /// action or a reset succeeds. Dispatches the real measurement off the
+    /// update thread (`Task::perform`, the same pattern search uses).
+    StorageMeasurementRequested,
+    StorageDataReady {
+        rows: Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+        /// Task 081 §2: the cache database file's own size, `None` if it
+        /// could not be read (never a silent zero).
+        cache_file_bytes: Option<u64>,
+    },
+    /// Task 081: the measurement itself could not run (the catalog or the
+    /// cache could not be reached). Raises `StorageUnavailable`
+    /// (`notice_retry::storage_measurement_failed`, app crate) and leaves
+    /// `storage_rows` exactly as it was -- Task 075's rule: a failure is
+    /// never presented as a fresh zero.
+    StorageMeasurementFailed,
     // Startup wizard
     WizardPathChanged(String),
     WizardValidate,
@@ -1129,7 +1158,30 @@ impl AppState {
             // Task, issued by `orbok` (see `FocusSearch`'s own comment
             // for why this split exists); nothing in `AppState` changes.
             Message::FocusNext | Message::FocusPrevious => {}
-            Message::StorageDataReady(rows) => self.storage_rows = rows.clone(),
+            // Task 081: `main.rs` runs the real measurement (a catalog/
+            // cache read, off the update thread) and dispatches this
+            // request itself; the reducer only marks the request as sent,
+            // so `storage_view` can show it is in flight.
+            Message::StorageMeasurementRequested => self.storage_measuring = true,
+            Message::StorageDataReady {
+                rows,
+                cache_file_bytes,
+            } => {
+                self.storage_measuring = false;
+                self.storage_rows = rows.clone();
+                self.storage_cache_file_bytes = *cache_file_bytes;
+            }
+            Message::StorageMeasurementFailed => {
+                self.storage_measuring = false;
+                // Task 081: the numbers already on screen (or the RFC-011
+                // §13.1 empty state) are left exactly as they were --
+                // never replaced by a fresh zero. "Try again" re-sends the
+                // same request.
+                self.raise_notice(
+                    UserNotice::StorageUnavailable,
+                    Some(Box::new(Message::StorageMeasurementRequested)),
+                );
+            }
             Message::WizardPathChanged(p) => self.wizard_path_input = p.clone(),
             Message::WizardValidate => {} // handled in orbok update
             Message::WizardChecked {
@@ -1315,8 +1367,11 @@ impl AppState {
                 self.selected_source = None;
                 self.health = crate::state::IndexHealth::default();
                 self.search_results.clear();
+                // Task 081: cleared, not left stale -- `main.rs` follows
+                // this with `StorageMeasurementRequested` so the page
+                // shows the measured post-reset state, not the RFC-011
+                // §13.1 empty state a plain clear would leave it in.
                 self.storage_rows.clear();
-                self.storage_total_bytes = 0;
             }
             Message::HistoryLoaded(entries) => {
                 self.search_ui.history = entries.clone();

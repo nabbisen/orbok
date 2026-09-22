@@ -85,6 +85,17 @@ impl StorageCategory {
     }
 }
 
+/// One category's measured storage (RFC-011 §11, Task 081). Never a zero
+/// standing in for "not measured": a category orbok cannot measure exactly
+/// is [`Self::Unknown`], rendered as such, and left out of any total --
+/// the false-zero the Storage page showed before this measured every
+/// namespace's `usage()` had no caller (Review Request 257 §3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageMeasurement {
+    Measured { bytes: u64, items: u64 },
+    Unknown,
+}
+
 /// Cleanup actions exposed by the Storage view (RFC-001 §9, RFC-011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

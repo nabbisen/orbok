@@ -800,6 +800,22 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
 
 // ── Storage view ─────────────────────────────────────────────────────────
 
+/// Task 081: the Advanced-view label for one RFC-011 §11 storage category.
+fn storage_category_label(locale: Locale, category: orbok_core::StorageCategory) -> String {
+    use orbok_core::StorageCategory::*;
+    let key = match category {
+        PersistentCatalog => MessageKey::StorageCategoryPersistentCatalog,
+        KeywordIndex => MessageKey::StorageCategoryKeywordIndex,
+        VectorIndex => MessageKey::StorageCategoryVectorIndex,
+        SnippetCache => MessageKey::StorageCategorySnippetCache,
+        SearchCache => MessageKey::StorageCategorySearchCache,
+        TemporaryExtraction => MessageKey::StorageCategoryTemporaryExtraction,
+        ModelFiles => MessageKey::StorageCategoryModelFiles,
+        Logs => MessageKey::StorageCategoryLogs,
+    };
+    tr(locale, key).to_string()
+}
+
 pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     let locale = state.locale;
     let tokens = &state.tokens;
@@ -829,38 +845,108 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         return page(tokens, content);
     }
 
-    let total_bytes: u64 = state.storage_rows.iter().map(|(_, b, _)| b).sum();
-    let gib = total_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-
     let mut breakdown = column![
         text(tr(locale, MessageKey::StorageTitle)).size(theme::heading_s(tokens, sc)),
         text(tr(locale, MessageKey::StorageIntro))
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
-        text(fmt_gib(locale, gib)).size(theme::title_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.xs);
 
-    if !state.storage_rows.is_empty() {
+    if state.storage_rows.is_empty() {
+        // Task 081 (RFC-011 §13.1): never measured this session -- not a
+        // zero, an explicit "ask for it" state, exact owner-approved copy.
+        breakdown = breakdown.push(
+            text(tr(locale, MessageKey::StorageNotCalculatedYet)).size(theme::body_s(tokens, sc)),
+        );
+        breakdown = breakdown.push(components::secondary(
+            tokens,
+            tr(locale, MessageKey::StorageCalculateNow),
+            Some(Message::StorageMeasurementRequested),
+        ));
+    } else {
+        // Task 081: the total is the sum of every *measured* category
+        // except keyword_index/vector_index, whose bytes already live
+        // inside persistent_catalog's own file-size measurement -- summing
+        // them too would double-count. An Unknown category is left out of
+        // the sum silently, not counted as zero: the total is honestly
+        // "at least this many bytes", never claimed complete.
+        let total_bytes: u64 = state
+            .storage_rows
+            .iter()
+            .filter(|(cat, _)| {
+                !matches!(
+                    cat,
+                    orbok_core::StorageCategory::KeywordIndex
+                        | orbok_core::StorageCategory::VectorIndex
+                )
+            })
+            .filter_map(|(_, m)| match m {
+                orbok_core::StorageMeasurement::Measured { bytes, .. } => Some(*bytes),
+                orbok_core::StorageMeasurement::Unknown => None,
+            })
+            .sum();
+        let gib = total_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        breakdown = breakdown.push(text(fmt_gib(locale, gib)).size(theme::title_s(tokens, sc)));
+        breakdown = breakdown.push(components::secondary(
+            tokens,
+            tr(locale, MessageKey::StorageCalculateNow),
+            Some(Message::StorageMeasurementRequested),
+        ));
+
         if state.show_advanced {
-            for (category, bytes, count) in &state.storage_rows {
-                if *bytes > 0 || *count > 0 {
-                    let mib = *bytes as f64 / (1024.0 * 1024.0);
-                    breakdown = breakdown.push(
-                        text(fmt_storage_row(locale, category, mib, *count))
-                            .size(theme::meta_s(tokens, sc)),
-                    );
-                }
+            for (category, measurement) in &state.storage_rows {
+                let label = storage_category_label(locale, *category);
+                let line = match measurement {
+                    orbok_core::StorageMeasurement::Measured { bytes, items } => {
+                        let mib = *bytes as f64 / (1024.0 * 1024.0);
+                        fmt_storage_row(locale, &label, mib, *items)
+                    }
+                    orbok_core::StorageMeasurement::Unknown => format!(
+                        "  {}",
+                        fmt_label_value(
+                            locale,
+                            &label,
+                            tr(locale, MessageKey::StorageValueUnknown)
+                        )
+                    ),
+                };
+                breakdown = breakdown.push(text(line).size(theme::meta_s(tokens, sc)));
+            }
+            // Task 081 §2: the cache file's own size, shown here since it
+            // is a technical detail (several categories' bytes live inside
+            // it, and it does not shrink to match them until a VACUUM --
+            // Task 079 §2) rather than one of RFC-011's eight categories.
+            if let Some(cache_bytes) = state.storage_cache_file_bytes {
+                let mib = cache_bytes as f64 / (1024.0 * 1024.0);
+                breakdown = breakdown.push(
+                    text(format!(
+                        "  {}",
+                        fmt_label_value(
+                            locale,
+                            tr(locale, MessageKey::StorageCacheFileSize),
+                            format!("{mib:.1} MiB")
+                        )
+                    ))
+                    .size(theme::meta_s(tokens, sc)),
+                );
             }
         } else {
             let mut search_index = 0u64;
             let mut ai_models = 0u64;
             let mut caches = 0u64;
-            for (category, bytes, _) in &state.storage_rows {
-                match category.as_str() {
-                    "keyword_index" | "vector_index" => search_index += bytes,
-                    "model_files" => ai_models += bytes,
-                    "snippet_cache" | "search_cache" | "temporary_extraction" => caches += bytes,
+            for (category, measurement) in &state.storage_rows {
+                let bytes = match measurement {
+                    orbok_core::StorageMeasurement::Measured { bytes, .. } => *bytes,
+                    orbok_core::StorageMeasurement::Unknown => continue,
+                };
+                match category {
+                    orbok_core::StorageCategory::KeywordIndex
+                    | orbok_core::StorageCategory::VectorIndex => search_index += bytes,
+                    orbok_core::StorageCategory::ModelFiles => ai_models += bytes,
+                    orbok_core::StorageCategory::SnippetCache
+                    | orbok_core::StorageCategory::SearchCache
+                    | orbok_core::StorageCategory::TemporaryExtraction => caches += bytes,
                     _ => {}
                 }
             }

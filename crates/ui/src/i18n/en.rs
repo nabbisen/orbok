@@ -60,6 +60,19 @@ pub fn message(key: MessageKey) -> &'static str {
             "This removes registered folders and all search data. \
              Your files are never deleted."
         }
+        // Task 081 (RFC-011 §13.1, owner-approved 2026-09-22).
+        StorageNotCalculatedYet => "Storage usage has not been calculated yet.",
+        StorageCalculateNow => "Calculate now",
+        StorageValueUnknown => "Unknown",
+        StorageCategoryPersistentCatalog => "Catalog",
+        StorageCategoryKeywordIndex => "Keyword index",
+        StorageCategoryVectorIndex => "Vector index",
+        StorageCategorySnippetCache => "Temporary previews",
+        StorageCategorySearchCache => "Old search results",
+        StorageCategoryTemporaryExtraction => "Extracted text",
+        StorageCategoryModelFiles => "Models",
+        StorageCategoryLogs => "Logs",
+        StorageCacheFileSize => "Cache file on disk",
         ModelsTitle => "Models",
         ModelsEmbeddingRole => "Search by meaning",
         ModelsRerankerRole => "Reranker",

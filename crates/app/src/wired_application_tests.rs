@@ -1478,6 +1478,315 @@ async fn a_no_text_found_file_that_gains_text_later_becomes_searchable() {
     assert_eq!(results.len(), 1, "the new text must be searchable");
 }
 
+// ── Task 081: the Storage page shows what orbok really stores ───────────
+
+/// Task 081 tests 1 and 2: on a real profile with an indexed file, the
+/// total is non-zero, and at least two categories independently cross-
+/// checked against a different read path than `measure_storage` itself
+/// uses -- `persistent_catalog` against a direct `fs::metadata` call, and
+/// `temporary_extraction` against a direct `CacheService::usage` call.
+#[tokio::test]
+async fn measuring_storage_reports_real_numbers_that_match_independent_reads() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\nreal text content for storage measurement.\n",
+    );
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (rows, cache_file_bytes) = bootstrap::measure_storage(&context, &catalog);
+
+    let total: u64 = rows
+        .iter()
+        .filter(|(cat, _)| {
+            !matches!(
+                cat,
+                orbok_core::StorageCategory::KeywordIndex
+                    | orbok_core::StorageCategory::VectorIndex
+            )
+        })
+        .filter_map(|(_, m)| match m {
+            orbok_core::StorageMeasurement::Measured { bytes, .. } => Some(*bytes),
+            orbok_core::StorageMeasurement::Unknown => None,
+        })
+        .sum();
+    assert!(total > 0, "an indexed profile must report a non-zero total");
+    assert!(
+        cache_file_bytes.is_some_and(|b| b > 0),
+        "the cache file itself must have a size once something is cached"
+    );
+
+    // persistent_catalog, cross-checked against an independent read.
+    let catalog_path = temp.path().join(orbok_db::CATALOG_FILE_NAME);
+    let expected_catalog_bytes = std::fs::metadata(&catalog_path).unwrap().len();
+    let persistent = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::PersistentCatalog)
+        .map(|(_, m)| *m)
+        .unwrap();
+    assert_eq!(
+        persistent,
+        orbok_core::StorageMeasurement::Measured {
+            bytes: expected_catalog_bytes,
+            items: 1,
+        },
+        "persistent_catalog must match a direct fs::metadata read of the catalog file, \
+         and count the one registered file"
+    );
+
+    // temporary_extraction, cross-checked against a direct CacheService::usage call.
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let expected_extraction = cache
+        .usage(
+            &catalog,
+            &[orbok_cache::OrbokCacheNamespace::ExtractSegments],
+        )
+        .unwrap();
+    let expected_bytes: u64 = expected_extraction.iter().map(|r| r.payload_bytes).sum();
+    let expected_items: u64 = expected_extraction.iter().map(|r| r.entries).sum();
+    let extraction = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::TemporaryExtraction)
+        .map(|(_, m)| *m)
+        .unwrap();
+    assert_eq!(
+        extraction,
+        orbok_core::StorageMeasurement::Measured {
+            bytes: expected_bytes,
+            items: expected_items,
+        },
+        "temporary_extraction must match a direct CacheService::usage call"
+    );
+    assert!(
+        expected_bytes > 0,
+        "the one cached extraction must have real bytes, or this test proves nothing"
+    );
+}
+
+/// Task 081 test 2 (retired-namespace fold-in): a Task 079 retired-
+/// namespace row (`extract-segments:v1`) is counted inside
+/// `temporary_extraction`, not left invisible the way it was before Task
+/// 079 existed at all.
+#[tokio::test]
+async fn temporary_extraction_counts_retired_namespace_rows_too() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let db_path = temp.path().join(orbok_db::CACHE_FILE_NAME);
+
+    let stale_file = temp.path().join("stale.md");
+    std::fs::write(&stale_file, "stale").unwrap();
+    let retired = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&db_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    retired
+        .set(
+            std::fs::canonicalize(&stale_file).unwrap(),
+            &serde_json::json!({"stale": "x".repeat(1000)}),
+        )
+        .unwrap();
+    drop(retired);
+
+    let (rows, _) = bootstrap::measure_storage(&context, &catalog);
+    let extraction = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::TemporaryExtraction)
+        .map(|(_, m)| *m)
+        .unwrap();
+    match extraction {
+        orbok_core::StorageMeasurement::Measured { bytes, items } => {
+            assert!(
+                bytes > 0 && items == 1,
+                "the retired-namespace row must be counted: bytes={bytes}, items={items}"
+            );
+        }
+        orbok_core::StorageMeasurement::Unknown => panic!("must be measured"),
+    }
+}
+
+/// Task 081 test 3: a category that cannot be measured is `Unknown`, never
+/// a silent zero -- and one unmeasurable category does not sink the rest.
+/// The model store directory is replaced with a plain file, so `dir_size`'s
+/// `read_dir` call fails deterministically (portable: reading a regular
+/// file as a directory is an error on every platform this ships for).
+#[tokio::test]
+async fn an_unmeasurable_category_is_unknown_never_a_silent_zero() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    // Force the models directory path to be a file, not a directory.
+    std::fs::write(temp.path().join("models"), b"not a directory").unwrap();
+
+    let (rows, _cache_file_bytes) = bootstrap::measure_storage(&context, &catalog);
+
+    let model_files = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::ModelFiles)
+        .map(|(_, m)| *m)
+        .unwrap();
+    assert_eq!(
+        model_files,
+        orbok_core::StorageMeasurement::Unknown,
+        "a directory that cannot be read must be Unknown, not a false zero"
+    );
+    let still_measured = rows
+        .iter()
+        .filter(|(cat, m)| {
+            *cat != orbok_core::StorageCategory::ModelFiles
+                && matches!(m, orbok_core::StorageMeasurement::Measured { .. })
+        })
+        .count();
+    assert!(
+        still_measured > 0,
+        "one unmeasurable category must not sink every other category"
+    );
+}
+
+/// Task 081 test 4 (first half): the extraction number drops to nothing
+/// after *Clear extracted text*.
+#[tokio::test]
+async fn the_extraction_number_drops_after_clearing_extracted_text() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(&source_dir.join("doc.md"), "# Doc\n\nsome text.\n");
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (before, _) = bootstrap::measure_storage(&context, &catalog);
+    let before_bytes = match before
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::TemporaryExtraction)
+        .map(|(_, m)| *m)
+        .unwrap()
+    {
+        orbok_core::StorageMeasurement::Measured { bytes, .. } => bytes,
+        orbok_core::StorageMeasurement::Unknown => panic!("must be measured before clearing"),
+    };
+    assert!(
+        before_bytes > 0,
+        "baseline: something must be cached, or this test proves nothing"
+    );
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::clean_temporary_extraction(&catalog, &cache).unwrap();
+
+    let (after, _) = bootstrap::measure_storage(&context, &catalog);
+    let after_bytes = match after
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::TemporaryExtraction)
+        .map(|(_, m)| *m)
+        .unwrap()
+    {
+        orbok_core::StorageMeasurement::Measured { bytes, .. } => bytes,
+        orbok_core::StorageMeasurement::Unknown => panic!("must still be measured after clearing"),
+    };
+    assert_eq!(
+        after_bytes, 0,
+        "clearing extracted text must drop the number to zero"
+    );
+}
+
+/// Task 081 test 4 (second half): after a reset, a fresh measurement
+/// reflects the real, now-empty state -- not the numbers from before the
+/// reset.
+#[tokio::test]
+async fn numbers_reflect_reality_after_a_reset() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(&source_dir.join("doc.md"), "# Doc\n\nsome text.\n");
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (before, _) = bootstrap::measure_storage(&context, &catalog);
+    let files_before = match before
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::PersistentCatalog)
+        .map(|(_, m)| *m)
+        .unwrap()
+    {
+        orbok_core::StorageMeasurement::Measured { items, .. } => items,
+        orbok_core::StorageMeasurement::Unknown => panic!("must be measured before reset"),
+    };
+    assert_eq!(files_before, 1, "baseline: one registered file");
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::reset_catalog(&catalog, &cache).unwrap();
+
+    let (after, _) = bootstrap::measure_storage(&context, &catalog);
+    let files_after = match after
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::PersistentCatalog)
+        .map(|(_, m)| *m)
+        .unwrap()
+    {
+        orbok_core::StorageMeasurement::Measured { items, .. } => items,
+        orbok_core::StorageMeasurement::Unknown => panic!("must still be measured after reset"),
+    };
+    assert_eq!(
+        files_after, 0,
+        "a fresh measurement after reset must show zero registered files"
+    );
+}
+
+/// Task 081 test 5's classifier, in isolation: only "every category
+/// Unknown and no cache-file size" counts as the whole measurement
+/// failing.
+#[test]
+fn storage_measurement_is_failure_only_when_everything_is_unknown() {
+    use orbok_core::{StorageCategory, StorageMeasurement};
+    let all_unknown: Vec<_> = StorageCategory::ALL
+        .iter()
+        .map(|c| (*c, StorageMeasurement::Unknown))
+        .collect();
+    assert!(bootstrap::storage_measurement_is_failure(
+        &all_unknown,
+        None
+    ));
+    assert!(
+        !bootstrap::storage_measurement_is_failure(&all_unknown, Some(1024)),
+        "a readable cache file means the measurement was not a total failure"
+    );
+
+    let one_measured: Vec<_> = StorageCategory::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            if i == 0 {
+                (*c, StorageMeasurement::Measured { bytes: 1, items: 1 })
+            } else {
+                (*c, StorageMeasurement::Unknown)
+            }
+        })
+        .collect();
+    assert!(
+        !bootstrap::storage_measurement_is_failure(&one_measured, None),
+        "one measured category, out of eight, is a partial result, not a failure"
+    );
+}
+
 /// RFC-038 §16 criterion 5 (HANDOFF-038 Slice 1), and Prepare again
 /// end to end. A file edited after it was indexed, then seen by a refresh,
 /// is `Needs update` with Prepare again offered -- and stays that way until
