@@ -29,7 +29,10 @@ fn storage_state(locale: Locale) -> AppState {
 /// 1 = the button's own label), and clicking it lands inside the button's
 /// rendered area, exactly as a user clicking the button's visible text
 /// does.
-fn nth_text_match(content: &'static str, n: usize) -> impl FnMut(Candidate<'_>) -> Option<TextTarget> {
+fn nth_text_match(
+    content: &'static str,
+    n: usize,
+) -> impl FnMut(Candidate<'_>) -> Option<TextTarget> {
     let mut seen = 0usize;
     move |candidate| match candidate {
         Candidate::Text {
