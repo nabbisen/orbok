@@ -94,6 +94,38 @@ Recommended artifacts:
 
 Early releases should prefer simple portable archives.
 
+## 6a. Amendment 1 (2026-09-22) — crates.io as a distribution channel
+
+Task 089's origin: crates.io showed 0.24.0 while GitHub had 0.25.0 and
+0.26.0 tagged and released, because publishing was in no checklist, no RFC
+and no task. This RFC did not mention crates.io at all; it does now.
+
+**crates.io is a distribution channel, alongside the source archive
+(RFC-051) and the release archives in §6 above -- not the source of truth
+for either.** `docs/src/maintainers/release_readiness.md`'s "Publish to
+crates.io" section is the process; this amendment records that the
+channel exists and what it carries.
+
+**Which crates go there:** every publishable workspace member --
+`orbok-core`, `orbok-db`, `orbok-fs`, `orbok-cache`, `orbok-extract`,
+`orbok-models`, `orbok-search`, `orbok-embed`, `orbok-workers`,
+`orbok-ui`, and the application itself, `orbok`. `orbok-bench` carries
+`publish = false` and stays off the registry: it is a development-only
+benchmark harness, never a dependency of anything else in the workspace
+(orbok-workers pulls it in only as a `[dev-dependencies]` path reference,
+which a published crate never carries forward).
+
+**The source archive (RFC-051) is separate and unaffected.** RFC-051's
+archive exists so the audited, reviewed source ships with a release,
+reproducibly, from a single `git ls-tree` of the tagged commit -- the
+whole tree, `rfcs/` and `docs/` and `scripts/` included, none of which
+crates.io carries (a published crate is its own package directory only,
+stripped of workspace context). Neither channel substitutes for the
+other: crates.io lets `cargo install orbok` and lets other Rust projects
+depend on the library crates; the source archive is what RFC-051 §3 built
+it for (an auditable, byte-reproducible artifact independent of any
+registry).
+
 ---
 
 ## 7. Data Directory Layout

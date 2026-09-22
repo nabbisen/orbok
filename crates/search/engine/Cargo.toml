@@ -14,7 +14,7 @@ orbok-cache                 = { workspace = true }
 orbok-core                  = { workspace = true }
 orbok-db                    = { workspace = true }
 orbok-extract               = { workspace = true }
-orbok-fs                    = { path = "../../data/fs" }
+orbok-fs                    = { workspace = true }
 orbok-models                = { workspace = true }
 
 rusqlite                    = { workspace = true }

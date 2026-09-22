@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal crate dependencies now require an exact version match**
+  (Task 089). If you depend on `orbok-core`, `orbok-db`, `orbok-fs`,
+  `orbok-cache`, `orbok-extract`, `orbok-models`, `orbok-search`,
+  `orbok-embed`, `orbok-workers` or `orbok-ui` directly, its requirement on
+  its own orbok siblings is now the exact published version rather than
+  any `0.x`. This is the fix, not a new restriction to route around: the
+  loose requirement could silently resolve to a stale sibling.
+
 ## [0.26.0] — 2026-09-22
 
 ### Added

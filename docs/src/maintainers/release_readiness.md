@@ -328,6 +328,113 @@ id, name, version, and dimension.
 
 ---
 
+## Publish to crates.io (RFC-017 §6a)
+
+**A separate step from everything above, and it happens after all of
+it.** Task 089's origin: crates.io sat at 0.24.0 while 0.25.0 and 0.26.0
+were tagged and released on GitHub — publishing was in no checklist, no
+RFC and no task, so it silently stopped happening. This section is what
+stops that from repeating.
+
+**Order: after the tag and the GitHub release, from the tagged commit.**
+Never from a working tree, and never before the tag exists — a published
+crate version can never be replaced, so publishing from anything other
+than the exact commit the tag names risks publishing something the tag
+does not actually point at.
+
+### 1. Bump the internal dependency versions first
+
+`Cargo.toml`'s `[workspace.dependencies]` pins every internal crate
+(`orbok-core`, `orbok-db`, …) to the exact workspace version, not a bare
+`"0"` — crates.io has no path dependencies, so a bare `"0"` would let a
+published crate accept **any** 0.x sibling already on the registry,
+including a stale one. Cargo has no mechanism for a
+`workspace.dependencies` entry to inherit `workspace.package.version`
+the way a crate's own `[package].version.workspace = true` does, so this
+is a hand edit, every release: bump all eleven `orbok-*` lines in
+`[workspace.dependencies]` to the new version, alongside the
+`[workspace.package]` version bump Task 085's checklist already covers.
+
+**What happens if this is skipped:** verified directly, not assumed —
+against a clean checkout of the 0.26.0 tag with the old bare `"0"` pins
+still in place, `cargo publish -p orbok-models --dry-run` **succeeds**,
+silently compiling against `orbok-core v0.24.0` from the registry instead
+of the tagged 0.26.0 source. Crates further down the dependency graph
+(`orbok-db`, `orbok-ui`, …) fail outright instead, with compile errors
+against the stale sibling's now-missing APIs — confusing, since the
+error looks like the crate's own code is broken. With the exact pin in
+place, the same dry run fails cleanly instead: `failed to select a
+version for the requirement orbok-core = "^0.26.0" ... candidate
+versions found which didn't match: 0.24.0, ...` — the correct, honest
+failure, since that sibling is not on the registry yet.
+
+### 2. Publish in dependency order, one at a time
+
+```
+orbok-core → orbok-models → orbok-db → orbok-embed → orbok-fs
+→ orbok-cache → orbok-extract → orbok-search → orbok-ui
+→ orbok-workers → orbok
+```
+
+Verified against the real dependency graph (each crate's own
+`[dependencies]`, not `cargo tree`'s flattened output, which does not
+show direction) at 0.26.0; re-derive it from the graph at each release
+rather than assuming this order stays correct, since a new internal
+dependency changes it. `orbok-bench` (`publish = false`) is never
+published; it is a `[dev-dependencies]` path reference from
+`orbok-workers` only, which a published crate never carries forward.
+
+For each crate, in that order:
+
+```sh
+cargo publish -p <crate> --locked
+```
+
+**A crate cannot be verified until every crate before it in the order is
+actually live on the registry** — `cargo publish`'s own local
+verification build resolves the *exact* pinned version from the index,
+which does not exist until the previous publish finishes propagating.
+This is expected, not a bug to route around: it is what makes the order
+above load-bearing rather than advisory. Re-run
+`cargo publish -p <crate> --dry-run --locked` immediately before the real
+publish if there is any doubt a predecessor has propagated.
+
+### 3. `orbok` itself
+
+Verified directly: `cargo install orbok --locked` (tested against the
+live 0.24.0 registry release) compiles in release profile and installs a
+working binary — `orbok --version`, `orbok --check`, and the GUI itself
+(wizard, icon font, navigation) all function identically to a local
+build. Nothing the registry copy omits is needed at runtime: the icon
+font ships inside the `snora` dependency (`include_bytes!`, not a local
+file), the embedding model is fetched at first run over the network
+regardless of install method, and the Windows Store/MSIX assets under
+`packaging/windows/` are a separate distribution channel (RFC-017 §6a)
+that a `cargo install` build correctly does not carry and does not need.
+
+### 4. Metadata and package contents
+
+Every publishable crate already carries `description`, `license`,
+`repository` and `readme` (via `[workspace.package]` inheritance or its
+own `description`). `keywords`/`categories` exist only on `orbok` itself,
+tailored to the GUI application; crates.io does not require them on the
+library crates (`cargo publish --dry-run` raises no warning for their
+absence), and the workspace-level values (`"gui"`, `"development-tools"`,
+…) would misdescribe a crate like `orbok-core`, which has no GUI code at
+all. Adding crate-specific ones is a discoverability judgment call, not a
+publishing requirement — decide it separately from a release, not as
+part of cutting one.
+
+`cargo package -p <crate> --list` (works without a registry round-trip,
+unlike a full package or dry-run publish) is the check for unwanted
+content — fixtures, evidence, anything under `.git-exclude/`. Checked for
+all eleven crates at 0.26.0: every file listed is source, a migration
+`.sql` file, or `README.md`; nothing over roughly 800 KB uncompressed
+(`orbok` itself, the largest, is its own source plus inline `#[cfg(test)]`
+modules — no binary asset ships in any crate).
+
+---
+
 ## RFC Status Lifecycle
 
 New RFCs start in `rfcs/proposed/`. They move to `rfcs/done/` when the
