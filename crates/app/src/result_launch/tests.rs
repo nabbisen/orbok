@@ -285,6 +285,90 @@ fn recovery_actions_share_the_open_and_reveal_path() {
     assert_eq!(launch_request(&Message::SelectResult(1)), None);
 }
 
+/// Task 082 §3 test 3: `OpenAnyway` and `ShowInFolder` go all the way
+/// through -- `launch_request` names the same index and action the row
+/// dispatched, and `launch_result` reaches the launcher with the result's
+/// own path, unchanged by Task 082's rendering fix.
+#[test]
+fn open_anyway_and_show_in_folder_reach_the_launcher_through_the_same_path_as_open_and_reveal() {
+    use orbok_search::ResultRecoveryAction;
+    use orbok_ui::state::Message;
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, inside, _, _) = fixture(temp.path());
+    let launcher = RecordingLauncher::default();
+    for (message, expected_action) in [
+        (
+            Message::TrustRecoveryAction {
+                result_idx: 0,
+                action: ResultRecoveryAction::OpenAnyway,
+            },
+            LaunchAction::Open,
+        ),
+        (
+            Message::TrustRecoveryAction {
+                result_idx: 0,
+                action: ResultRecoveryAction::ShowInFolder,
+            },
+            LaunchAction::Reveal,
+        ),
+    ] {
+        let (index, action) = launch_request(&message).expect("named a launch");
+        assert_eq!(action, expected_action);
+        assert_eq!(
+            launch_result(&catalog, &[result_for(&inside)], index, action, &launcher),
+            None
+        );
+    }
+    assert_eq!(
+        launcher.0.borrow().as_slice(),
+        [
+            (LaunchAction::Open, inside.clone()),
+            (LaunchAction::Reveal, inside)
+        ]
+    );
+}
+
+/// Task 082 §1.4 and §3 test 4: `ShowInFolder` on a `CannotOpen` result
+/// whose folder orbok may not read reaches Not allowed, the same
+/// classification `Open` already gets on the same fixture -- never a false
+/// Not found, since validation runs identically before either launcher
+/// method is chosen. Skipped when the process can still read a mode-000
+/// directory (running as root), so a root CI container cannot produce a
+/// false pass.
+#[cfg(unix)]
+#[test]
+fn show_in_folder_on_an_unreadable_path_is_not_allowed_not_not_found() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let (catalog, _, _, _) = fixture(temp.path());
+    let locked_dir = temp.path().join("source").join("locked");
+    std::fs::create_dir_all(&locked_dir).unwrap();
+    let file = locked_dir.join("secret.md");
+    std::fs::write(&file, "# Secret\n").unwrap();
+    let file = std::fs::canonicalize(&file).unwrap();
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable_anyway = std::fs::read_dir(&locked_dir).is_ok();
+    let got = (!readable_anyway).then(|| {
+        launch_result(
+            &catalog,
+            &[result_for(&file)],
+            0,
+            LaunchAction::Reveal,
+            &RecordingLauncher::default(),
+        )
+    });
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let Some(got) = got else {
+        eprintln!("skipped: a mode-000 directory is readable (running as root)");
+        return;
+    };
+    assert_eq!(
+        got,
+        Some(LaunchFailure::NotAllowed),
+        "permission denied is not allowed, not a false not-found"
+    );
+}
+
 /// A launcher whose open and reveal both fail, as when no app handles the
 /// file.
 struct FailingLauncher;

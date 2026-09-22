@@ -475,17 +475,19 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
 
 // ── Result trust recovery (HANDOFF-038) ──────────────────────────────────
 
-/// The label of a recovery action orbok handles itself, or `None` for the
-/// two that open something outside orbok. `OpenAnyway` and `ShowInFolder`
-/// are never rendered here (HANDOFF-038 §3): the selected result's own
-/// Open file and Show in folder buttons are the way to open a file.
+/// The label of a recovery action. HANDOFF-038 §3 held `OpenAnyway` and
+/// `ShowInFolder` back, reasoning orbok had no way to open a file at all;
+/// Task 041 gave it one, `launch_request` (`result_launch.rs`) already maps
+/// both through that same catalog-checked path, and Task 082 lifted the
+/// hold on the strength of that (Review Request 254 §4, §6).
 fn recovery_label(action: ResultRecoveryAction) -> Option<MessageKey> {
     match action {
         ResultRecoveryAction::PrepareAgain => Some(MessageKey::TrustActionPrepareAgain),
         ResultRecoveryAction::CheckFolder => Some(MessageKey::TrustActionCheckFolder),
         ResultRecoveryAction::RemoveFromResults => Some(MessageKey::TrustActionRemoveFromResults),
         ResultRecoveryAction::ViewDetails => Some(MessageKey::TrustActionViewDetails),
-        ResultRecoveryAction::OpenAnyway | ResultRecoveryAction::ShowInFolder => None,
+        ResultRecoveryAction::OpenAnyway => Some(MessageKey::TrustActionOpenAnyway),
+        ResultRecoveryAction::ShowInFolder => Some(MessageKey::TrustActionShowInFolder),
     }
 }
 

@@ -1,7 +1,9 @@
-//! HANDOFF-038 Slices 1 and 2 (RFC-038 criteria 2, 4, 7, 8, 9): the trust
-//! badge is rendered, each non-ready result offers the recovery actions that
-//! stay inside orbok, and the two that open something outside it are never
-//! shown.
+//! HANDOFF-038 Slices 1 and 2 (RFC-038 criteria 2, 4, 7, 8, 9), extended by
+//! Task 082: the trust badge is rendered, and each non-ready result offers
+//! every recovery action `trust.recovery_actions` names -- including
+//! `OpenAnyway` and `ShowInFolder`, held back until Task 082 lifted
+//! HANDOFF-038 §3's hold (both go through the real, catalog-checked launch
+//! path; see `result_launch.rs`).
 
 use crate::components::{tone_icon, trust_tone};
 use crate::i18n::{Locale, MessageKey, tr};
@@ -134,18 +136,25 @@ fn every_trust_badge_has_a_distinct_label_and_an_icon() {
 
 // ── Slice 2: the recovery buttons ────────────────────────────────────────
 
-/// Criterion 7, and RFC-038 §9's wireframes: every recovery action that
-/// stays inside orbok is a button that sends its own message; the two that
-/// open something outside orbok are never rendered (HANDOFF-038 §3).
+/// Criterion 7, and RFC-038 §9's wireframes: every recovery action a
+/// result's trust names is a button that sends its own message -- the
+/// rendered row matches `trust.recovery_actions` exactly, in order,
+/// including `OpenAnyway` and `ShowInFolder` (Task 082; previously these
+/// two were asserted to never render, per HANDOFF-038 §3's now-lifted
+/// hold).
 #[test]
 fn recovery_buttons_match_the_state_and_send_their_action() {
     let _guard = iced_test_guard();
-    // (state, the trust's actions, the buttons rendered)
+    // (state, the trust's actions, the buttons rendered -- one per action,
+    // in the same order, since every action now has a label)
     let cases = [
         (
             Trust::NeedsUpdate,
             vec![Action::PrepareAgain, Action::OpenAnyway],
-            vec![(MessageKey::TrustActionPrepareAgain, Action::PrepareAgain)],
+            vec![
+                (MessageKey::TrustActionPrepareAgain, Action::PrepareAgain),
+                (MessageKey::TrustActionOpenAnyway, Action::OpenAnyway),
+            ],
         ),
         (
             Trust::FileNotFound,
@@ -161,7 +170,10 @@ fn recovery_buttons_match_the_state_and_send_their_action() {
         (
             Trust::PartlyPrepared,
             vec![Action::OpenAnyway, Action::ViewDetails],
-            vec![(MessageKey::TrustActionViewDetails, Action::ViewDetails)],
+            vec![
+                (MessageKey::TrustActionOpenAnyway, Action::OpenAnyway),
+                (MessageKey::TrustActionViewDetails, Action::ViewDetails),
+            ],
         ),
         (
             Trust::PartlyPrepared,
@@ -171,7 +183,11 @@ fn recovery_buttons_match_the_state_and_send_their_action() {
                 (MessageKey::TrustActionViewDetails, Action::ViewDetails),
             ],
         ),
-        (Trust::CannotOpen, vec![Action::ShowInFolder], vec![]),
+        (
+            Trust::CannotOpen,
+            vec![Action::ShowInFolder],
+            vec![(MessageKey::TrustActionShowInFolder, Action::ShowInFolder)],
+        ),
         (Trust::StillBeingPrepared, vec![], vec![]),
     ];
     for locale in [Locale::En, Locale::Ja] {
@@ -188,27 +204,76 @@ fn recovery_buttons_match_the_state_and_send_their_action() {
                     tr(locale, *key)
                 );
             }
-            for hidden in [
-                MessageKey::TrustActionOpenAnyway,
-                MessageKey::TrustActionShowInFolder,
-            ] {
-                assert!(
-                    !finds(&app, tr(locale, hidden)),
-                    "{locale:?} {state:?}: {:?} is never rendered",
-                    tr(locale, hidden)
-                );
-            }
             let expected = buttons.len();
             let rendered = [
                 MessageKey::TrustActionPrepareAgain,
                 MessageKey::TrustActionCheckFolder,
                 MessageKey::TrustActionRemoveFromResults,
                 MessageKey::TrustActionViewDetails,
+                MessageKey::TrustActionOpenAnyway,
+                MessageKey::TrustActionShowInFolder,
             ]
             .iter()
             .filter(|key| finds(&app, tr(locale, **key)))
             .count();
             assert_eq!(rendered, expected, "{locale:?} {state:?}: no extra buttons");
+        }
+    }
+}
+
+/// Task 082 §3 test 2: every non-ready state with any recovery action
+/// renders at least one button. `StillBeingPrepared` is the one state with
+/// no actions at all -- named explicitly, not skipped silently.
+#[test]
+fn no_state_with_actions_is_button_less() {
+    let _guard = iced_test_guard();
+    let cases: [(Trust, Vec<Action>); 6] = [
+        (
+            Trust::NeedsUpdate,
+            vec![Action::PrepareAgain, Action::OpenAnyway],
+        ),
+        (
+            Trust::FileNotFound,
+            vec![Action::CheckFolder, Action::RemoveFromResults],
+        ),
+        (Trust::PartlyPrepared, vec![Action::OpenAnyway]),
+        (
+            Trust::PartlyPrepared,
+            vec![Action::PrepareAgain, Action::ViewDetails],
+        ),
+        (Trust::CannotOpen, vec![Action::ShowInFolder]),
+        (Trust::StillBeingPrepared, vec![]),
+    ];
+    let all_action_keys = [
+        MessageKey::TrustActionPrepareAgain,
+        MessageKey::TrustActionCheckFolder,
+        MessageKey::TrustActionRemoveFromResults,
+        MessageKey::TrustActionViewDetails,
+        MessageKey::TrustActionOpenAnyway,
+        MessageKey::TrustActionShowInFolder,
+    ];
+    for locale in [Locale::En, Locale::Ja] {
+        for (state, actions) in &cases {
+            let app = with_results(locale, vec![result("a.md", trust(*state, actions))]);
+            let any_button = all_action_keys
+                .iter()
+                .any(|key| finds(&app, tr(locale, *key)));
+            if actions.is_empty() {
+                assert_eq!(
+                    *state,
+                    Trust::StillBeingPrepared,
+                    "only StillBeingPrepared has no actions"
+                );
+                assert!(
+                    !any_button,
+                    "{locale:?} {state:?}: no actions means no button"
+                );
+            } else {
+                assert!(
+                    any_button,
+                    "{locale:?} {state:?}: {actions:?} names an action but no button rendered"
+                );
+            }
         }
     }
 }

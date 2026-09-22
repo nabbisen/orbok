@@ -1,11 +1,13 @@
 //! RFC-034 (accessibility conformance) and RFC-035 (inclusive design) tests.
 
 use crate::a11y;
-use crate::components::tone_icon;
+use crate::components::{tone_icon, trust_tone};
+use crate::i18n::{Locale, MessageKey, tr};
 use crate::shell::{KeyboardContext, key_to_message};
 use crate::state::{AppState, Message, SearchResultDisplay, SourceCard, ViewId, WizardKind};
 use crate::theme::TextScale;
 use iced::keyboard::{Key, Modifiers, key::Named};
+use orbok_search::ResultTrustState;
 use snora::design::{Tokens, Tone};
 
 /// A [`KeyboardContext`] with everything neutral: not typing, Search view
@@ -740,6 +742,61 @@ fn cvd_greyscale_status_distinguishable() {
                 relative_luminance(color_a),
                 relative_luminance(color_b),
             );
+        }
+    }
+}
+
+// Task 082 §2.1: the same greyscale-collapse property, extended to the five
+// non-Ready `ResultTrustState`s. `trust_tone` (components.rs) is not
+// injective -- `NeedsUpdate`/`PartlyPrepared` share Warning, and
+// `FileNotFound`/`CannotOpen` share Danger, so those two pairs share both
+// tone and icon under a greyscale or colour-blind collapse. Their label is
+// the only channel left, so this test's shape differs from the base
+// `cvd_greyscale_status_distinguishable` above: rather than favouring
+// "icon or label differs" generically, it asserts the label is what
+// distinguishes every colliding pair, in both locales the app ships.
+#[test]
+fn cvd_greyscale_trust_status_distinguishable() {
+    let states_and_keys = [
+        (ResultTrustState::NeedsUpdate, MessageKey::TrustNeedsUpdate),
+        (
+            ResultTrustState::FileNotFound,
+            MessageKey::TrustFileNotFound,
+        ),
+        (
+            ResultTrustState::StillBeingPrepared,
+            MessageKey::TrustStillBeingPrepared,
+        ),
+        (
+            ResultTrustState::PartlyPrepared,
+            MessageKey::TrustPartlyPrepared,
+        ),
+        (ResultTrustState::CannotOpen, MessageKey::TrustCannotOpen),
+    ];
+    for locale in [Locale::En, Locale::Ja] {
+        for i in 0..states_and_keys.len() {
+            for j in (i + 1)..states_and_keys.len() {
+                let (state_a, key_a) = states_and_keys[i];
+                let (state_b, key_b) = states_and_keys[j];
+                let icon_a = tone_icon(trust_tone(state_a));
+                let icon_b = tone_icon(trust_tone(state_b));
+                let label_a = tr(locale, key_a);
+                let label_b = tr(locale, key_b);
+                assert!(
+                    icon_a != icon_b || label_a != label_b,
+                    "{locale:?}: {state_a:?} and {state_b:?} are indistinguishable \
+                     (same icon {icon_a:?} and same label {label_a:?}) even after \
+                     a greyscale or colour-blind collapse"
+                );
+                if icon_a == icon_b {
+                    assert_ne!(
+                        label_a, label_b,
+                        "{locale:?}: {state_a:?} and {state_b:?} share tone/icon \
+                         {icon_a:?} -- their label is the only remaining channel, \
+                         and it must differ"
+                    );
+                }
+            }
         }
     }
 }

@@ -25,9 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     words why the result is in this state.
   - **A failure says so.** If the catalog cannot be written, the row is left
     as it was and a notice offers to try the same action again.
-  - Not built: *Open anyway* and *Show in folder* as row buttons. Whether
-    they belong there is pending an owner decision; the selected result's
-    *Open file* and *Show in folder* are unchanged.
+  - **`Open file anyway` and `Show in folder` now appear on the row too**
+    (Task 082), for a result that needs an update or cannot be opened.
+    Both go through the same validated path as the selected result's own
+    *Open file* and *Show in folder* buttons, so a refusal (the file
+    moved, or orbok may not read it) reaches the same truthful notice
+    either way.
 
 - **Microsoft Store readiness (Task 061).**
   - **No console window on Windows.** `orbok.exe` is now a Windows GUI
