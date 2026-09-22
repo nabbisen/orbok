@@ -49,6 +49,29 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         );
     }
 
+    // Task 079 (Review Request 255 §6): a namespace this project has
+    // retired (a prior payload-shape change left it behind) is purged
+    // once, here, rather than left for the user to press "Clear temporary
+    // extraction" to reclaim -- measured cheap at scale (182 ms at 20,000
+    // rows, `task079_purge_cost_at_20000_retired_rows`). Best-effort: a
+    // failure here does not stop orbok from starting, unlike the recovery
+    // step above -- this is space reclamation, not repair the rest of
+    // startup depends on.
+    match storage.cache() {
+        Ok(cache) => match cache.service().purge_retired_namespaces() {
+            Ok(removed) if removed > 0 => {
+                tracing::info!(removed, "purged retired cache namespaces on startup");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, "could not purge retired cache namespaces on startup");
+            }
+        },
+        Err(error) => {
+            tracing::warn!(%error, "could not open the cache to purge retired namespaces on startup");
+        }
+    }
+
     // RFC-037 §10.1 startup check (Task 035): "check registered folder
     // exists / check permission lightly / detect obvious changed/missing
     // files / queue safe refresh work" -- runs after crash recovery

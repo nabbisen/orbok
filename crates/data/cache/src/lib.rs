@@ -10,5 +10,5 @@ pub mod service;
 #[cfg(test)]
 mod tests;
 
-pub use namespace::OrbokCacheNamespace;
+pub use namespace::{OrbokCacheNamespace, RETIRED_NAMESPACES};
 pub use service::{CacheCleanupOutcome, CacheService, EngineOptions, NamespaceUsage};

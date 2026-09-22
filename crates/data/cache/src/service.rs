@@ -11,7 +11,7 @@
 //! - engines self-register in the catalog `cache_engines` table
 //!   (RFC-002 §7.16) so the storage dashboard can enumerate them.
 
-use crate::namespace::OrbokCacheNamespace;
+use crate::namespace::{OrbokCacheNamespace, RETIRED_NAMESPACES};
 use localcache::{CacheEngine, ChangeDetectionMode, LocalFileCacheError};
 use orbok_core::{CleanupAction, CleanupPlan, OrbokError, OrbokResult};
 use orbok_db::{CACHE_FILE_NAME, Catalog};
@@ -159,6 +159,70 @@ impl CacheService {
             );
         }
         Ok(outcome)
+    }
+
+    /// Task 079: delete every entry under every namespace this project has
+    /// retired ([`RETIRED_NAMESPACES`]). Returns the number of entries
+    /// removed.
+    ///
+    /// Opens a raw engine over each retired namespace *string* rather than
+    /// going through [`Self::engine`] (which takes an [`OrbokCacheNamespace`]
+    /// -- a retired namespace has no such variant any more) or
+    /// [`Self::maintenance_engine`] (same requirement). No `payload_version`
+    /// is set, which `localcache` treats as "match any version" (the
+    /// version check inside `get`/`get_if_fresh` is skipped when it is 0),
+    /// so every row is addressed regardless of the shape it was written in
+    /// -- the same reasoning that makes reading it back unsafe is exactly
+    /// why deleting it without decoding it is safe. Never touches a live
+    /// namespace: `retired_namespaces_are_never_a_live_namespace` in this
+    /// crate's tests guards `RETIRED_NAMESPACES` itself.
+    ///
+    /// Does not call `shrink_database`: a caller purging alongside another
+    /// namespace erasure (`CleanupService::run_cache_side`) should VACUUM
+    /// once, after every deletion in the same pass, not once per namespace.
+    pub fn purge_retired_namespaces(&self) -> OrbokResult<u64> {
+        let mut removed = 0u64;
+        for namespace in RETIRED_NAMESPACES {
+            let engine = CacheEngine::<serde_json::Value>::builder()
+                .database(&self.db_path)
+                .namespace((*namespace).to_string())
+                .change_detection(ChangeDetectionMode::MetadataThenFullHash)
+                .build()
+                .map_err(cache_err)?;
+            for key in engine.keys(None).map_err(cache_err)? {
+                if engine.remove(&key).map_err(cache_err)? {
+                    removed += 1;
+                }
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Task 079 §1.4: usage for every namespace this project has retired,
+    /// the same shape [`Self::usage`] returns for a live one -- so a
+    /// retired namespace's space is visible rather than silently missing
+    /// from a total, while it still exists. No `cache_engines` row is
+    /// registered for these (that table is for engines this project still
+    /// opens for real work); the same raw-namespace-string engine
+    /// [`Self::purge_retired_namespaces`] uses, since `cache_stats` is a
+    /// metadata aggregate that never decodes a payload.
+    pub fn retired_namespace_usage(&self) -> OrbokResult<Vec<NamespaceUsage>> {
+        let mut out = Vec::new();
+        for namespace in RETIRED_NAMESPACES {
+            let engine = CacheEngine::<serde_json::Value>::builder()
+                .database(&self.db_path)
+                .namespace((*namespace).to_string())
+                .change_detection(ChangeDetectionMode::MetadataThenFullHash)
+                .build()
+                .map_err(cache_err)?;
+            let stats = engine.cache_stats().map_err(cache_err)?;
+            out.push(NamespaceUsage {
+                namespace: stats.namespace,
+                entries: stats.total_entries as u64,
+                payload_bytes: stats.total_payload_bytes,
+            });
+        }
+        Ok(out)
     }
 
     /// Reclaim file space after large deletions (storage dashboard's

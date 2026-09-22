@@ -46,6 +46,30 @@ const EXTRACTION_CACHE_TTL: Duration = Duration::from_secs(90 * 24 * 60 * 60); /
 /// original measurement; only the enforcement point moved.
 pub const EXTRACTION_CACHE_CLEANUP_ENTRY_CAP: usize = 20_000;
 
+/// Namespace strings this project no longer writes, because a payload
+/// shape change bumped the namespace that replaced them (Task 079,
+/// Review Request 255 §6: nothing deleted these on its own, so an
+/// upgraded profile kept every old-shape row forever, invisible to the
+/// storage dashboard and to *Clear temporary extraction*).
+///
+/// `localcache`'s `keys`/`list_entries`/`remove` filter by namespace
+/// string alone, with no requirement that the namespace be one
+/// [`OrbokCacheNamespace::as_namespace`] currently produces -- so a
+/// retired string here can still be addressed and deleted.
+///
+/// **A typo that names a namespace still in [`OrbokCacheNamespace`] would
+/// delete live data.** `retired_namespaces_are_never_a_live_namespace` in
+/// `crates/data/cache/src/tests.rs` checks every entry here against every
+/// live namespace this crate can produce today.
+pub const RETIRED_NAMESPACES: &[&str] = &[
+    // Task 077 (2026-09-22): `ExtractWarning` was internally tagged, which
+    // bincode could write but never read back. A `v1` entry may be
+    // unreadable, or -- worse, if it happened to decode -- read as the
+    // wrong shape under `:v2`'s current layout. Replaced by
+    // `extract-segments:v2`.
+    "extract-segments:v1",
+];
+
 /// The orbok cache namespaces. Embedding bundles are parameterized by
 /// model and vector format so different models never collide.
 #[derive(Debug, Clone, PartialEq, Eq)]

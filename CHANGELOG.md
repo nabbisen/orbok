@@ -96,6 +96,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Space used by an old version's prepared text is reclaimed (Task 079).**
+  A payload-format change (Task 077) left behind a generation of cached
+  extracted text that nothing removed -- invisible, and never freed. It is
+  now purged automatically the next time orbok starts, and also by
+  *Clear temporary extraction* in Settings.
+
 - **Files missed by an earlier version are prepared again on the next
   start (Task 078).** Before Task 077, a document that produced a warning
   during preparation never became searchable; it stayed listed as

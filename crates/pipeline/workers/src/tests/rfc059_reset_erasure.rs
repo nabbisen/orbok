@@ -196,6 +196,24 @@ fn reset_clears_the_extraction_cache_through_cache_service() {
         "the extraction namespace must be non-empty before Reset"
     );
 
+    // Task 079: Reset claims to clear every cache (RFC-011 §13); a retired
+    // namespace is still a cache.
+    let stale_file = dir.path().join("stale.md");
+    fs::write(&stale_file, "stale payload").unwrap();
+    let retired_before = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&cache_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    retired_before
+        .set(
+            fs::canonicalize(&stale_file).unwrap(),
+            &serde_json::json!({"stale": true}),
+        )
+        .unwrap();
+    assert!(!retired_before.keys(None).unwrap().is_empty());
+
     let svc = CleanupService::new(&catalog, &cache, &cache_path);
     svc.run_reset(
         &CleanupPlan::for_action(CleanupAction::ResetCatalog, 0),
@@ -221,6 +239,17 @@ fn reset_clears_the_extraction_cache_through_cache_service() {
         engine_after.keys(None).unwrap().is_empty(),
         "the extraction namespace must be empty after Reset, not merely \
          unable to serve this one lookup"
+    );
+    let retired_after = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&cache_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    assert!(
+        retired_after.keys(None).unwrap().is_empty(),
+        "Reset must also leave the retired extract-segments:v1 namespace \
+         empty (Task 079)"
     );
 }
 
@@ -259,6 +288,27 @@ fn clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service(
         "the fresh entry must be retrievable before the action, or this test proves nothing"
     );
 
+    // Task 079 (Review Request 255 §6): a retired namespace, from before
+    // Task 077's `:v1` -> `:v2` bump, must be erased alongside the live one
+    // -- RFC-059 §10 criterion 5's "leaves nothing behind" is not honest if
+    // an old-shape entry from a prior generation survives.
+    let stale_file = dir.path().join("stale.md");
+    fs::write(&stale_file, "stale payload").unwrap();
+    let stale_canonical = fs::canonicalize(&stale_file).unwrap();
+    let retired_engine_before = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&cache_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    retired_engine_before
+        .set(&stale_canonical, &serde_json::json!({"stale": true}))
+        .unwrap();
+    assert!(
+        !retired_engine_before.keys(None).unwrap().is_empty(),
+        "the retired-namespace entry must exist before the action, or this proves nothing"
+    );
+
     CleanupService::new(&catalog, &cache, &cache_path)
         .run_safe(&CleanupPlan::for_action(
             CleanupAction::ClearTemporaryExtraction,
@@ -277,6 +327,17 @@ fn clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service(
     assert!(
         after.keys(None).unwrap().is_empty(),
         "Clear extracted text must leave keys(None) empty (RFC-059 §10 criterion 5)"
+    );
+    let retired_engine_after = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&cache_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    assert!(
+        retired_engine_after.keys(None).unwrap().is_empty(),
+        "Clear extracted text must also leave the retired extract-segments:v1 \
+         namespace empty (Task 079)"
     );
 }
 
@@ -428,5 +489,68 @@ fn remove_replaced_stale_indexes_cleans_up_the_leftover_chunk_row_after_a_reinde
     assert_eq!(
         stale_chunks_after, 0,
         "the superseded generation's chunk row must actually be gone"
+    );
+}
+
+/// Task 079 §4 manual check: on an upgraded profile with real retired-
+/// namespace rows, does "Clear temporary extraction" actually shrink the
+/// cache file?
+///
+/// A measurement, not a gate -- `#[ignore]`d so CI never times it. Run:
+/// `cargo test -p orbok-workers --release --lib task079_manual_check -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn task079_manual_check_cache_file_shrinks_after_clearing_retired_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let cache_path = cache_db_path(dir.path());
+
+    // A live entry, so the action's ordinary behaviour is exercised too.
+    seed_indexed(
+        &catalog,
+        &cache,
+        dir.path(),
+        "live.md",
+        "live extracted text",
+    );
+
+    // 500 retired-namespace rows, roughly realistic payload size (RFC-059
+    // §7's own 5.4 KB/entry average, from real markdown documents).
+    let retired = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&cache_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    let files_dir = dir.path().join("stale_files");
+    fs::create_dir_all(&files_dir).unwrap();
+    let filler = "x".repeat(5_000);
+    for i in 0..500 {
+        let file = files_dir.join(format!("s{i}.md"));
+        fs::write(&file, "stale").unwrap();
+        retired
+            .set(&file, &serde_json::json!({"stale": filler}))
+            .unwrap();
+    }
+    drop(retired);
+
+    let size_before = cache_path.metadata().unwrap().len();
+
+    CleanupService::new(&catalog, &cache, &cache_path)
+        .run_safe(&CleanupPlan::for_action(
+            CleanupAction::ClearTemporaryExtraction,
+            0,
+        ))
+        .unwrap();
+
+    let size_after = cache_path.metadata().unwrap().len();
+    println!(
+        "cache file: {size_before} bytes before, {size_after} bytes after \
+         Clear temporary extraction (500 retired rows + 1 live entry)"
+    );
+    assert!(
+        size_after < size_before,
+        "the cache file must shrink once the retired rows and the live \
+         namespace are both erased and the database is vacuumed"
     );
 }

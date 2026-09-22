@@ -209,3 +209,184 @@ fn same_size_immediate_overwrite_is_detected() {
         "same-size immediate overwrite must invalidate the cached payload"
     );
 }
+
+// ── Task 079: retired namespaces ────────────────────────────────────────
+
+/// Write one entry directly under a raw namespace string, bypassing
+/// [`OrbokCacheNamespace`] entirely -- the same shape a namespace this
+/// project no longer produces would have been written in, and the same
+/// technique `purge_retired_namespaces`/`retired_namespace_usage` use to
+/// address it back.
+fn write_raw_entry(db_path: &std::path::Path, namespace: &str, path: &std::path::Path) {
+    let engine = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(db_path)
+        .namespace(namespace.to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    engine
+        .set(path, &serde_json::json!({"stale": "payload"}))
+        .unwrap();
+}
+
+fn raw_engine(
+    db_path: &std::path::Path,
+    namespace: &str,
+) -> localcache::CacheEngine<serde_json::Value> {
+    localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(db_path)
+        .namespace(namespace.to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap()
+}
+
+/// Task 079 test 1: `purge_retired_namespaces` deletes every entry under a
+/// retired namespace and leaves the current, live namespace untouched.
+#[test]
+fn purging_retired_namespaces_deletes_them_and_leaves_the_live_namespace_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let catalog = Catalog::open(dir.path().join(CATALOG_FILE_NAME)).unwrap();
+    let service = CacheService::new(dir.path());
+    let db_path = dir.path().join(CACHE_FILE_NAME);
+
+    let old_file = dir.path().join("old.md");
+    fs::write(&old_file, "old").unwrap();
+    let old_canonical = fs::canonicalize(&old_file).unwrap();
+    write_raw_entry(&db_path, "extract-segments:v1", &old_canonical);
+
+    let live_file = dir.path().join("live.md");
+    fs::write(&live_file, "live").unwrap();
+    let engine = service
+        .engine::<Segments>(
+            &catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            EngineOptions::default(),
+        )
+        .unwrap();
+    let live_path = validated(&live_file);
+    CacheService::put(
+        &engine,
+        &live_path,
+        &Segments {
+            lines: vec!["live".into()],
+        },
+    )
+    .unwrap();
+
+    let removed = service.purge_retired_namespaces().unwrap();
+    assert_eq!(removed, 1, "exactly the one v1 entry must be removed");
+
+    let v1 = raw_engine(&db_path, "extract-segments:v1");
+    assert!(
+        v1.keys(None).unwrap().is_empty(),
+        "the retired namespace must be empty after purging"
+    );
+    assert_eq!(
+        CacheService::get_fresh(&engine, &live_path).unwrap(),
+        Some(Segments {
+            lines: vec!["live".into()]
+        }),
+        "the live namespace must be untouched"
+    );
+}
+
+/// Task 079 test 3: `retired_namespace_usage` reports the retired
+/// namespace's entries and bytes before a purge, and zero after.
+#[test]
+fn retired_namespace_usage_reports_bytes_before_purge_and_zero_after() {
+    let dir = tempfile::tempdir().unwrap();
+    let service = CacheService::new(dir.path());
+    let db_path = dir.path().join(CACHE_FILE_NAME);
+
+    for name in ["a.md", "b.md", "c.md"] {
+        let file = dir.path().join(name);
+        fs::write(&file, "stale payload text").unwrap();
+        write_raw_entry(
+            &db_path,
+            "extract-segments:v1",
+            &fs::canonicalize(&file).unwrap(),
+        );
+    }
+
+    let before = service.retired_namespace_usage().unwrap();
+    assert_eq!(before.len(), 1, "one retired namespace is currently listed");
+    assert_eq!(before[0].namespace, "extract-segments:v1");
+    assert_eq!(before[0].entries, 3);
+    assert!(
+        before[0].payload_bytes > 0,
+        "three real payloads must report a non-zero byte total"
+    );
+
+    service.purge_retired_namespaces().unwrap();
+
+    let after = service.retired_namespace_usage().unwrap();
+    assert_eq!(after[0].entries, 0);
+    assert_eq!(after[0].payload_bytes, 0);
+}
+
+/// Task 079 test 4: a typo in `RETIRED_NAMESPACES` that names a namespace
+/// this project still produces would delete live data on the next purge.
+/// This asserts every retired string is distinct from every namespace
+/// [`OrbokCacheNamespace`] can currently produce, including the whole
+/// `EmbeddingBundle` family (parameterized by model and vector format, so
+/// checked by prefix rather than by one instance).
+#[test]
+fn retired_namespaces_are_never_a_live_namespace() {
+    let live_fixed = [
+        OrbokCacheNamespace::ExtractSegments.as_namespace(),
+        OrbokCacheNamespace::ChunkBundle.as_namespace(),
+        OrbokCacheNamespace::PreviewCache.as_namespace(),
+    ];
+    for retired in crate::RETIRED_NAMESPACES {
+        assert!(
+            !live_fixed.iter().any(|live| live == retired),
+            "{retired} is a live namespace -- purging it would delete current data"
+        );
+        assert!(
+            !retired.starts_with("embedding-bundle:"),
+            "{retired} looks like an EmbeddingBundle namespace, which is still live \
+             for every model/format pair"
+        );
+    }
+}
+
+/// Task 079 §1.3: is a one-time startup purge of a large retired
+/// namespace cheap enough to run unconditionally? 20,000 entries, matching
+/// `EXTRACTION_CACHE_CLEANUP_ENTRY_CAP` -- the same scale RFC-059's own
+/// measurements use elsewhere in this project.
+///
+/// A measurement, not a gate -- `#[ignore]`d so CI never times it. Run:
+/// `cargo test -p orbok-cache --release --lib task079_purge_cost -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn task079_purge_cost_at_20000_retired_rows() {
+    use std::time::Instant;
+    const ROWS: usize = 20_000;
+    let dir = tempfile::tempdir().unwrap();
+    let service = CacheService::new(dir.path());
+    let db_path = dir.path().join(CACHE_FILE_NAME);
+
+    let engine = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&db_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    let files_dir = dir.path().join("files");
+    fs::create_dir_all(&files_dir).unwrap();
+    for i in 0..ROWS {
+        let file = files_dir.join(format!("f{i}.md"));
+        fs::write(&file, "stale payload text, roughly realistic length here").unwrap();
+        engine
+            .set(&file, &serde_json::json!({"stale": "payload", "i": i}))
+            .unwrap();
+    }
+    drop(engine);
+
+    let start = Instant::now();
+    let removed = service.purge_retired_namespaces().unwrap();
+    let elapsed = start.elapsed();
+    println!("{ROWS} retired rows: purge_retired_namespaces took {elapsed:?}, removed {removed}");
+    assert_eq!(removed, ROWS as u64);
+}

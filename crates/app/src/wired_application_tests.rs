@@ -277,6 +277,48 @@ async fn restarting_orbok_picks_up_a_file_edited_while_closed() {
     );
 }
 
+/// Task 079 §1.3: a namespace this project has retired is purged the next
+/// time orbok starts, through the real startup entry point.
+#[test]
+fn a_retired_cache_namespace_is_purged_on_the_next_start() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let db_path = temp.path().join(orbok_db::CACHE_FILE_NAME);
+
+    let stale_file = temp.path().join("stale.md");
+    write_markdown(&stale_file, "# Stale\n\nstale.\n");
+    let retired = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&db_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    retired
+        .set(
+            std::fs::canonicalize(&stale_file).unwrap(),
+            &serde_json::json!({"stale": true}),
+        )
+        .unwrap();
+    assert!(
+        !retired.keys(None).unwrap().is_empty(),
+        "the retired-namespace entry must exist before startup, or this proves nothing"
+    );
+    drop(retired);
+
+    let _state = bootstrap::load_initial_state(&context).unwrap();
+
+    let retired_after = localcache::CacheEngine::<serde_json::Value>::builder()
+        .database(&db_path)
+        .namespace("extract-segments:v1".to_string())
+        .change_detection(localcache::ChangeDetectionMode::MetadataThenFullHash)
+        .build()
+        .unwrap();
+    assert!(
+        retired_after.keys(None).unwrap().is_empty(),
+        "starting orbok must purge the retired extract-segments:v1 namespace"
+    );
+}
+
 /// RFC-058 §6 / Task 035 §5.2: with a new file added to a registered
 /// folder while orbok is running, invoking manual refresh causes a
 /// subsequent search to find it.

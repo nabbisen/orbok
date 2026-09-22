@@ -132,6 +132,15 @@ impl<'a> CleanupService<'a> {
                 // nothing survives to expire, purge, or cap. The cap is
                 // enforced at scheduler idle instead (RFC-059 Amendment 2,
                 // `trim_extraction_cache_to`).
+                //
+                // Task 079 (Review Request 255 §6): every namespace this
+                // project has retired is purged in the same pass, before
+                // the live namespace's own erase, so the one `shrink_database`
+                // below (inside `erase_engine_namespace`) reclaims both at
+                // once -- the user should not need to know the word
+                // "namespace" to get that space back, so this rides the
+                // existing button rather than adding one.
+                self.cache.purge_retired_namespaces()?;
                 let engine = self.cache.engine::<Vec<u8>>(
                     self.catalog,
                     &OrbokCacheNamespace::ExtractSegments,
@@ -188,6 +197,16 @@ impl<'a> CleanupService<'a> {
     fn purge_all_cache_namespaces(&self) -> OrbokResult<u64> {
         use orbok_cache::OrbokCacheNamespace;
         let size_before = self.cache_db_path.metadata().map(|m| m.len()).unwrap_or(0);
+        // Task 079: Reset claims to clear caches (RFC-011 §13); a namespace
+        // this project has retired is still a cache, so it is purged here
+        // too, not just by the narrower "Clear temporary extraction" path.
+        let retired_removed = self.cache.purge_retired_namespaces()?;
+        if retired_removed > 0 {
+            info!(
+                entries_removed = retired_removed,
+                "retired cache namespaces erased"
+            );
+        }
         for ns in [
             OrbokCacheNamespace::ExtractSegments,
             OrbokCacheNamespace::ChunkBundle,
