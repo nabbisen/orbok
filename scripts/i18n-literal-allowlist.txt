@@ -39,25 +39,25 @@ crates/ui/src/views.rs	temporary_extraction	internal storage-category identifier
 # never in normal end-user operation.
 crates/ui/src/components.rs	status_badge: label must not be empty	debug_assert message on an internal invariant violation, developer-facing only
 crates/ui/src/state/model_consent.rs	reviewed default-model file sizes must fit in u64	panic message on an internal invariant violation, developer-facing only
-crates/app/src/main.rs	PersistReady must produce a completion	panic message on an internal invariant violation, developer-facing only
+crates/app/src/router.rs	PersistReady must produce a completion	panic message on an internal invariant violation, developer-facing only
 
 # ── Developer-facing log messages ────────────────────────────────────────
 # tracing::{warn,error}! output goes to the log stream, never the GUI; the
 # corresponding user-visible notice is a separate, already-localized
 # UserNotice variant dispatched alongside each of these.
-crates/app/src/main.rs	sensitive source: {warning}	tracing::warn! log message, not rendered in the GUI (paired with the localized UserNotice::SensitiveSourceAdded)
-crates/app/src/main.rs	scan failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
-crates/app/src/main.rs	add source failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
+crates/app/src/router.rs	sensitive source: {warning}	tracing::warn! log message, not rendered in the GUI (paired with the localized UserNotice::SensitiveSourceAdded)
+crates/app/src/router.rs	scan failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
+crates/app/src/router.rs	add source failed: {e}	tracing::error! log message, not rendered in the GUI (paired with the localized UserNotice::FolderCouldNotBeAdded)
 crates/app/src/main.rs	snippets for PDF/DOCX/HTML results are unavailable this session	tracing::warn! log message, not rendered in the GUI (RFC-060 §6: the extraction cache could not be opened, so page/paragraph/block snippets render empty)
-crates/app/src/main.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
+crates/app/src/router.rs	add source from search failed: {e}	tracing::error! log message, not rendered in the GUI
 crates/app/src/main.rs	orbok could not start	tracing::error! log message, not rendered in the GUI (Task 071: paired with the localized startup-failure window, MessageKey::StartupFailedTitle)
 crates/app/src/main.rs	the startup-failure window could not be shown	tracing::error! log message, not rendered in the GUI (Task 071: logged only when the window itself fails to open)
-crates/app/src/main.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
-crates/app/src/main.rs	model store unavailable: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
+crates/app/src/router.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
+crates/app/src/router.rs	model store unavailable: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
 crates/app/src/source_removal.rs	remove source failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SourceCouldNotBeRemoved; moved from main.rs by Task 073)
-crates/app/src/main.rs	persist theme failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
-crates/app/src/main.rs	persist text scale failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
-crates/app/src/main.rs	persist reduced motion failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
+crates/app/src/router.rs	persist theme failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
+crates/app/src/router.rs	persist text scale failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
+crates/app/src/router.rs	persist reduced motion failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)
 crates/app/src/main.rs	unknown	std::panic::Location fallback when a panic carries no location info (RFC-061 §8(d) panic hook); a tracing field value, not rendered in the GUI
 
 # ── Framework/system technical identifiers ───────────────────────────────
@@ -70,8 +70,8 @@ crates/ui/src/shell.rs	,	keyboard-shortcut key character (Cmd/Ctrl+,), not displ
 crates/app/src/main.rs	orbok {}	--version flag output to stdout, conventional CLI text outside the GUI i18n boundary
 crates/app/src/main.rs	CARGO_PKG_VERSION	compile-time env var name for --version output, a technical identifier
 crates/app/src/main.rs	orbok: portable mode — data directory: ./orbok-data/	interactive startup console message (RFC-049 §4.7 minimal-disclosure text), conventional CLI/diagnostic text outside the GUI i18n boundary — flagged as a boundary question in review-request 132, not a settled classification
-crates/app/src/main.rs	could not tell background preparation about the new model	tracing::warn! log message, not rendered in the GUI (Task 055: the indexing host still backfills at the next startup)
-crates/app/src/main.rs	could not ask background preparation to load the model again	tracing::warn! log message, not rendered in the GUI (Task 057: the user already saw UserNotice::ModelCouldNotBeLoaded)
+crates/app/src/router.rs	could not tell background preparation about the new model	tracing::warn! log message, not rendered in the GUI (Task 055: the indexing host still backfills at the next startup)
+crates/app/src/router.rs	could not ask background preparation to load the model again	tracing::warn! log message, not rendered in the GUI (Task 057: the user already saw UserNotice::ModelCouldNotBeLoaded)
 
 # ── Dynamic technical identifiers (paths, externally-supplied metadata) ──
 # RFC-052 §3: "Dynamic technical identifiers such as filenames may remain
