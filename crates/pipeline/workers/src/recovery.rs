@@ -5,8 +5,9 @@
 //! running jobs are reset to queued (not deleted), and the previous active
 //! index is preserved (RFC-006 §12 replace-on-success guarantee).
 
-use orbok_core::{OrbokResult, now_iso8601};
+use orbok_core::{FileId, OrbokResult, now_iso8601};
 use orbok_db::Catalog;
+use orbok_db::repo::IndexJobRepository;
 use std::path::Path;
 
 /// Results of the startup recovery scan (RFC-018 §16 requirements).
@@ -20,6 +21,9 @@ pub struct RecoveryReport {
     pub cache_recreated: bool,
     /// Whether the cache DB was detected as corrupt and rebuilt.
     pub cache_rebuilt: bool,
+    /// Task 078: `discovered` files with no queued or running extract/chunk
+    /// job, re-queued for extraction.
+    pub jobs_requeued_discovered: u64,
 }
 
 /// Run all startup recovery steps.
@@ -35,6 +39,7 @@ pub fn run_startup_recovery(
         jobs_pending: count_pending_jobs(catalog)?,
         cache_recreated: cache_status == CacheDbStatus::Recreated,
         cache_rebuilt: cache_status == CacheDbStatus::Rebuilt,
+        jobs_requeued_discovered: requeue_orphaned_discovered_files(catalog)?,
     };
     if report.jobs_reset > 0 {
         tracing::warn!(
@@ -42,7 +47,54 @@ pub fn run_startup_recovery(
             "reset interrupted jobs to queued on startup"
         );
     }
+    if report.jobs_requeued_discovered > 0 {
+        tracing::info!(
+            requeued = report.jobs_requeued_discovered,
+            "requeued extraction for discovered files left without a pending job"
+        );
+    }
     Ok(report)
+}
+
+/// Task 078: a file can sit in `discovered` with no queued or running
+/// extract/chunk job forever, since nothing else revisits it --
+/// `Scanner::scan` enqueues `Extract` only for a file that is new or whose
+/// content hash changed (RFC-004 §9.1/§9.2), so an unmodified file's folder
+/// check leaves it alone, and `reset_interrupted_jobs` above only touches
+/// `running` jobs. A file could reach this state through a defect since
+/// fixed (Task 077) or by exhausting `MAX_JOB_ATTEMPTS` on a file that can
+/// never be extracted (a corrupt document).
+///
+/// Every `discovered` file is selected, then queued through
+/// [`IndexJobRepository::enqueue_extraction_if_idle`], which re-checks
+/// idleness for that one file inside its own transaction rather than
+/// trusting this snapshot -- so a file that already has a job (the common
+/// case: mid-scan, or one this same call already queued) is never
+/// duplicated, and running this twice queues nothing the second time.
+/// Returns the number of files queued.
+fn requeue_orphaned_discovered_files(catalog: &Catalog) -> OrbokResult<u64> {
+    let file_ids: Vec<FileId> = {
+        let conn = catalog.lock();
+        let mut stmt = conn
+            .prepare("SELECT file_id FROM files WHERE file_status = 'discovered'")
+            .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| orbok_core::OrbokError::Database(e.to_string()))?
+            .into_iter()
+            .map(FileId::from_string)
+            .collect()
+    };
+    let jobs = IndexJobRepository::new(catalog);
+    let mut queued = 0u64;
+    for file_id in &file_ids {
+        if jobs.enqueue_extraction_if_idle(file_id)? {
+            queued += 1;
+        }
+    }
+    Ok(queued)
 }
 
 /// RFC-018 §16 test 1: any job left in `running` state from a previous

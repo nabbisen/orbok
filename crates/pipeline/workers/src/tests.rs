@@ -17,4 +17,6 @@ mod v09_rc;
 mod rfc036_scheduler;
 mod rfc059_cache_lifetime;
 mod rfc059_reset_erasure;
+mod task078_repair_cost;
+mod task078_requeue_discovered;
 mod v092_features;

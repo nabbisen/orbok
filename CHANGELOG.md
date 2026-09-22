@@ -96,6 +96,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Files missed by an earlier version are prepared again on the next
+  start (Task 078).** Before Task 077, a document that produced a warning
+  during preparation never became searchable; it stayed listed as
+  "Waiting" with no further attempt. orbok now retries such a file
+  automatically the next time it starts, with no action needed. The same
+  retry also covers a file whose preparation exhausts its attempts for any
+  other reason.
+
 - **Long documents and scanned PDFs are no longer missing from search
   results (Task 077).** A document longer than orbok's size limit, or a PDF
   with no selectable text, was read, but its saved reading could not be
