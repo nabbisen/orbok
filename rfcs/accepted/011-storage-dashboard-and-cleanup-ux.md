@@ -3,9 +3,27 @@
 **Project:** orbok  
 **RFC:** 011  
 **Title:** Storage Dashboard and Cleanup UX  
-**Status:** Implemented (v0.4.0)
+**Status:** Accepted
 **Target Milestone:** M10  
 **Date:** 2026-06-06  
+
+**Returned to `accepted/` 2026-09-22 (Task 083, Review Request 259 §6).**
+Carried `Implemented (v0.4.0)` while §14 criteria **5, 6 and 7** are
+false: `DeleteKeywordIndex`/`DeleteVectorIndex` have no executor arm (the
+only `CleanupExecutor` methods are `run_safe` and `run_reset_catalog`;
+routing either action through `run_safe` returns
+`Err(CleanupWouldTouchPersistentData)`, a plan-shaped answer for an
+action the code never actually implements) and no caller anywhere in
+`crates/app` — deleting the keyword or semantic index independently is
+unreachable from the product, so nothing ever marks a rebuild required.
+Reset catalog's confirmation (Task 062's dialog: Escape cancels, Enter
+confirms while visible, Task 069 closes it on view change) is Cancel/
+Confirm, not the typed `Type RESET to confirm` §9 names — the product
+never asks the user to type a word. Criteria 2, 3, 4 and 9 hold, each
+with an end-to-end test; criteria 1, 8 and 10 were evidenced by Task 081.
+No closure record: see `rfcs/closures/LEGACY-ALLOWLIST.txt` (`011` stays
+listed; removing it means writing the record, and there is no record
+until 5, 6 and 7 are true or the RFC is amended to drop them).
 
 ---
 

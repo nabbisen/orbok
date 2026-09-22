@@ -28,7 +28,6 @@ may start" a checked state rather than an implicit convention.
 | 007 | [Keyword Search Engine Selection](done/007-keyword-search-engine-selection.md) | v0.2.0 |
 | 008 | [Embedding Model and Vector Storage](done/008-embedding-model-and-vector-storage.md) | v0.3.0 |
 | 009 | [Hybrid Search and RRF Fusion](done/009-hybrid-search-and-rrf-fusion.md) | v0.3.0 |
-| 011 | [Storage Dashboard and Cleanup UX](done/011-storage-dashboard-and-cleanup-ux.md) | v0.4.0 |
 | 012 | [Model Registry and Installation Workflow](done/012-model-registry-and-installation-workflow.md) | v0.5.0 |
 | 013 | [Search View and Result Explanation UX](done/013-search-view-and-result-explanation-ux.md) | v0.4.0 |
 | 014 | [Japanese and Mixed-Language Search Strategy](done/014-japanese-and-mixed-language-search-strategy.md) | v0.4.0 |
@@ -75,6 +74,7 @@ may start" a checked state rather than an implicit convention.
 
 | ID | Title | Status |
 |---|---|---|
+| 011 | [Storage Dashboard and Cleanup UX](accepted/011-storage-dashboard-and-cleanup-ux.md) | Returned from `done/` 2026-09-22 (Task 083) — open: `DeleteKeywordIndex`/`DeleteVectorIndex` have no executor arm and no caller anywhere in `crates/app`, so deleting either index independently is unreachable and nothing marks a rebuild required; the reset-catalog confirmation is Cancel/Confirm, not the typed `Type RESET to confirm` §9 names. §14 criteria 5, 6, 7 unmet; 2, 3, 4, 9 evidenced (Task 083), 1, 8, 10 evidenced (Task 081) |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](accepted/040-safe-diagnostics-and-redacted-support-bundle.md) | Returned from `done/` 2026-09-17 — open: no UI creates a support file and nothing writes one; `diagnostics.rs` is unwired under `#![allow(dead_code)]`. §22 criteria 1–7, 9, 10, 11 unmet or unobservable (Task 067) |
 | 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — open: filters reach the query (RFC-060 Slice 4b) but no view emits `ApplySuggestedFilter`/`RemoveFilter`/`ClearFilters`/`OpenMoreWays`, the browse-around messages have no handler, and the search-mode control is ignored (`Auto` hardcoded). §25 criteria 2, 3, 5, 6, 7, 9 unmet (Task 052) |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — open: timing breakdowns exist (`crates/bench/src/report.rs` `timing_ms`); the gate itself is unevidenced. Closing needs a guarded `--expect-mode hybrid-real-model` benchmark run (1,000 documents, `--features orbok-embed/tract`, `--model-dir` pointing at multilingual-e5-small) meeting RFC-047's p99 ≤ 200 ms and indexing ≥ 10 files/s, or a later RFC changing that policy — a machine with the model installed is required; CI cannot produce it |

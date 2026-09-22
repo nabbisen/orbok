@@ -287,6 +287,35 @@ engine
 backend
 ```
 
+## 8.2a. Amendment 1 (2026-09-22) — Advanced view is exempt from this list
+
+Task 081 (RFC-011 §11) named eight Storage categories in Advanced view
+using exactly these terms — "keyword_index", "vector_index",
+"persistent_catalog" — because RFC-011 itself names the categories that
+way, and Advanced view's own copy already says "Show technical detail in
+search results, preparation, and storage." Review Request 259 §3 asked for
+this policy to be written down rather than live only as a test comment
+(`crates/ui/src/tests/rfc041_search.rs`'s `EXEMPTIONS`).
+
+**The carve-out, and its exact limit:** §8.2's forbidden-label rule does
+not reach a string that is shown **only when Advanced view is on**. A
+user who has turned Advanced view on has asked to see technical detail;
+these categories' own names are that detail.
+
+**Ordinary (non-Advanced) copy is unchanged.** §8.2 still applies in
+full to every default-view label — the category *group* headings
+(`StorageGroupSearchIndex`, `StorageGroupCaches`, …) and everything
+outside Advanced view carry no exemption and never will.
+
+**Every exemption is named, not implied.** Each use of a forbidden term
+under this carve-out is listed in `rfc041_search.rs`'s `EXEMPTIONS`
+array as a `(MessageKey, term)` pair with the reason on its own line, and
+`every_exemption_is_load_bearing` (same file) fails if an exemption stops
+matching real copy — so a stale permission cannot survive a wording
+change unnoticed. A future Advanced-view string reaching for a forbidden
+term follows the same pattern: add the pair, with the reason, to that
+array.
+
 ## 8.3. Project Name Rule
 
 Use:
