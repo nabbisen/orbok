@@ -96,6 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A file orbok read but found no text in says so, instead of looking
+  stuck forever (Task 080).** A scanned PDF is the common case: every step
+  used to finish successfully, but the file stayed listed as "Waiting"
+  with no further sign of activity. It now shows *No text found*, and a
+  folder's line names how many such files it has, for example "3 with no
+  text" -- shown only when the count is not zero. If the file later gains
+  real text (a scan is replaced with a real document, say), it is prepared
+  and found normally.
+
 - **Space used by an old version's prepared text is reclaimed (Task 079).**
   A payload-format change (Task 077) left behind a generation of cached
   extracted text that nothing removed -- invisible, and never freed. It is

@@ -44,6 +44,7 @@ fn file_state_user_labels_are_plain() {
         FileState::CouldNotPrepare,
         FileState::FileNotFound,
         FileState::Ignored,
+        FileState::NoTextFound,
     ] {
         let label = state.user_label();
         for term in forbidden {
@@ -107,6 +108,18 @@ fn failed_maps_to_partly_prepared() {
     assert_eq!(
         FileState::from_catalog_status("failed"),
         FileState::PartlyPrepared
+    );
+}
+
+/// Task 080: a file orbok read but found no text in maps to its own
+/// state, distinct from `Ready` (0 chunks would otherwise be
+/// indistinguishable from "prepared and searchable") and from
+/// `Discovered` (nothing is pending -- every job succeeded).
+#[test]
+fn no_text_found_maps_to_its_own_state() {
+    assert_eq!(
+        FileState::from_catalog_status("no_text_found"),
+        FileState::NoTextFound
     );
 }
 

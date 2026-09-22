@@ -4,7 +4,7 @@
 
 use crate::chunk_adapter::to_chunk_specs;
 use orbok_cache::{CacheService, OrbokCacheNamespace};
-use orbok_core::{ExtractionId, FileId, JobType, OrbokError, OrbokResult};
+use orbok_core::{ExtractionId, FileId, FileStatus, JobType, OrbokError, OrbokResult};
 use orbok_db::Catalog;
 use orbok_db::repo::{ChunkRepository, FileRepository, IndexJobRepository, SourceRepository};
 use orbok_extract::{ExtractOutput, chunk};
@@ -56,6 +56,27 @@ impl<'a> ChunkAndIndexWorker<'a> {
         let raw = chunk(&output, &file_name);
         let specs = to_chunk_specs(raw);
         if specs.is_empty() || (specs.len() == 1 && specs[0].normalized_text.is_empty()) {
+            // Task 080: `chunk()` returns exactly one empty-text chunk when
+            // `output.segments` is empty, and only then (`chunker.rs`'s
+            // `empty_document_chunk`) -- so this branch is reached exactly
+            // when extraction genuinely found no text, not when chunking
+            // dropped real content. Confirmed across every extractor
+            // (`orbok-extract`): pdf/html/docx derive `char_count` by
+            // summing only the characters behind a pushed segment, so
+            // `char_count == 0` and `segments.is_empty()` are the same
+            // fact; markdown/text assign every non-blank line to some
+            // segment (heading, code block or paragraph), so segments can
+            // only be empty when the whole normalized document is
+            // whitespace. A silent bug that lost real text without a
+            // warning would need to defeat that in every extractor at
+            // once, which is a different failure than "this document has
+            // no text in it" and would need its own fix, not this state.
+            //
+            // Previously this returned Ok(()) and left the file exactly as
+            // `extract` found it -- `discovered`, labelled "Waiting" --
+            // forever, even though every job for it had succeeded (Review
+            // Request 255 §5). It is now a finished, distinct state.
+            FileRepository::new(self.catalog).set_status(file_id, FileStatus::NoTextFound)?;
             return Ok(());
         }
 

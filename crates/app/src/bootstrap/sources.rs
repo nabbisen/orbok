@@ -92,6 +92,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
             indexed: 0,
             stale: 0,
             failed: 0,
+            no_text_found: 0,
             status: orbok_core::SourceStatus::Active,
             source_id: src.source_id.as_str().to_string(),
         },
@@ -239,6 +240,9 @@ fn source_card(
     let failed = files
         .count_for_source_with_status(&src.source_id, FileStatus::Failed)
         .unwrap_or(0);
+    let no_text_found = files
+        .count_for_source_with_status(&src.source_id, FileStatus::NoTextFound)
+        .unwrap_or(0);
     let display_name = src.display_name.unwrap_or_else(|| "folder".to_string());
     orbok_ui::state::SourceCard {
         display_name,
@@ -246,6 +250,7 @@ fn source_card(
         indexed,
         stale,
         failed,
+        no_text_found,
         status: orbok_core::SourceStatus::Active,
         source_id: src.source_id.as_str().to_string(),
     }

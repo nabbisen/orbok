@@ -683,11 +683,26 @@ fn model_bytes(locale: Locale, bytes: u64) -> String {
     }
 }
 
-/// Parameterized: source card summary line.
-pub fn source_summary(locale: Locale, indexed: u64, stale: u64, failed: u64) -> String {
-    match locale {
+/// Parameterized: source card summary line. Task 080 (owner-approved
+/// copy): the "with no text" segment is appended only when `no_text_found`
+/// is non-zero, so an ordinary folder's line is unchanged.
+pub fn source_summary(
+    locale: Locale,
+    indexed: u64,
+    stale: u64,
+    failed: u64,
+    no_text_found: u64,
+) -> String {
+    let base = match locale {
         Locale::En => format!("{indexed} indexed · {stale} stale · {failed} failed"),
         Locale::Ja => format!("インデックス済み {indexed} · 要更新 {stale} · 失敗 {failed}"),
+    };
+    if no_text_found == 0 {
+        return base;
+    }
+    match locale {
+        Locale::En => format!("{base} · {no_text_found} with no text"),
+        Locale::Ja => format!("{base} · テキストなし {no_text_found}"),
     }
 }
 

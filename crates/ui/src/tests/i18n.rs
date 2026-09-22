@@ -97,10 +97,38 @@ fn parameterized_messages_localize() {
     assert!(files_ready_for_search(Locale::Ja, 124).contains("124"));
 
     // source_summary
-    let s = source_summary(Locale::En, 10, 2, 1);
+    let s = source_summary(Locale::En, 10, 2, 1, 0);
     assert!(
         s.contains("10") || s.contains("2") || s.contains("1"),
         "source_summary should include counts: {s}"
+    );
+    assert!(
+        !s.contains("no text"),
+        "no_text_found = 0 must not append the segment: {s}"
+    );
+}
+
+/// Task 080 (owner-approved copy): the "with no text" segment appears
+/// only when the count is non-zero, in both locales, matching the
+/// task's own example line exactly.
+#[test]
+fn source_summary_appends_no_text_found_only_when_nonzero() {
+    assert_eq!(
+        source_summary(Locale::En, 812, 0, 0, 3),
+        "812 indexed · 0 stale · 0 failed · 3 with no text"
+    );
+    assert_eq!(
+        source_summary(Locale::Ja, 812, 0, 0, 3),
+        "インデックス済み 812 · 要更新 0 · 失敗 0 · テキストなし 3"
+    );
+    assert_eq!(
+        source_summary(Locale::En, 812, 0, 0, 0),
+        "812 indexed · 0 stale · 0 failed",
+        "zero must leave the line exactly as it was before this task"
+    );
+    assert_eq!(
+        source_summary(Locale::Ja, 812, 0, 0, 0),
+        "インデックス済み 812 · 要更新 0 · 失敗 0"
     );
 }
 

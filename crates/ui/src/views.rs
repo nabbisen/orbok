@@ -697,7 +697,13 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
             // other cards (17.1/17.2/17.4), which carry no such line.
             let detail = matches!(card.status, SourceStatus::Missing)
                 .then(|| tr(locale, MessageKey::SourceFolderNotFoundDetail));
-            let summary = source_summary(locale, card.indexed, card.stale, card.failed);
+            let summary = source_summary(
+                locale,
+                card.indexed,
+                card.stale,
+                card.failed,
+                card.no_text_found,
+            );
             content = content.push(source_card(
                 tokens,
                 card.display_name.clone(),

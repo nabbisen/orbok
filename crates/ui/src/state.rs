@@ -94,6 +94,10 @@ pub struct SourceCard {
     pub indexed: u64,
     pub stale: u64,
     pub failed: u64,
+    /// Task 080: files orbok read but found no text in (a scanned PDF is
+    /// the common case) -- a finished, distinct state, not counted as
+    /// `indexed` and not left pending as `discovered`.
+    pub no_text_found: u64,
     pub status: SourceStatus,
     pub source_id: String,
 }

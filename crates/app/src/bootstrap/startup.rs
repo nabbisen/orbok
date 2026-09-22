@@ -306,12 +306,16 @@ pub fn get_sources(catalog: &Catalog) -> OrbokResult<Vec<orbok_ui::state::Source
             let failed = files
                 .count_for_source_with_status(&src.source_id, FileStatus::Failed)
                 .unwrap_or(0);
+            let no_text_found = files
+                .count_for_source_with_status(&src.source_id, FileStatus::NoTextFound)
+                .unwrap_or(0);
             orbok_ui::state::SourceCard {
                 display_name: src.display_name.unwrap_or_else(|| "source".into()),
                 display_path: src.canonical_path,
                 indexed,
                 stale,
                 failed,
+                no_text_found,
                 status: src.status,
                 source_id: src.source_id.as_str().to_string(),
             }

@@ -26,6 +26,7 @@ fn state_with_results(selected: Option<usize>) -> AppState {
             indexed: 2,
             stale: 0,
             failed: 0,
+            no_text_found: 0,
             status: orbok_core::SourceStatus::Active,
             source_id: "src-1".into(),
         }],

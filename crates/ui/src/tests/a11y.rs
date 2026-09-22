@@ -609,6 +609,7 @@ fn source_navigation_bounds() {
         indexed: 0,
         stale: 0,
         failed: 0,
+        no_text_found: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: id.into(),
     };
@@ -639,6 +640,7 @@ fn selected_source_removed_by_source_removed_message() {
         indexed: 0,
         stale: 0,
         failed: 0,
+        no_text_found: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     }]));

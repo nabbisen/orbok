@@ -131,6 +131,12 @@ catalog_enum!(
         PermissionDenied => "permission_denied",
         Unsupported => "unsupported",
         Failed => "failed",
+        // Task 080: orbok read the file but its extraction produced no
+        // segments at all -- a scanned PDF is the common case. Distinct
+        // from `Indexed` (0 chunks would otherwise be silently indistinct
+        // from "prepared and searchable") and from `Discovered` (nothing
+        // is pending: the file's jobs all succeeded).
+        NoTextFound => "no_text_found",
     }
 );
 

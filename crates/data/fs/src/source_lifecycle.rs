@@ -89,6 +89,7 @@ impl SourceState {
 /// - `CouldNotPrepare` → "Could not prepare"
 /// - `FileNotFound`    → "File not found"
 /// - `Ignored`         → "Skipped"
+/// - `NoTextFound`      → "No text found" (Task 080; owner-approved copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileState {
     Discovered,
@@ -99,6 +100,7 @@ pub enum FileState {
     CouldNotPrepare,
     FileNotFound,
     Ignored,
+    NoTextFound,
 }
 
 impl FileState {
@@ -113,6 +115,7 @@ impl FileState {
             FileState::CouldNotPrepare => "Could not prepare",
             FileState::FileNotFound => "File not found",
             FileState::Ignored => "Skipped",
+            FileState::NoTextFound => "No text found",
         }
     }
 
@@ -122,6 +125,7 @@ impl FileState {
         match s {
             "discovered" => FileState::Discovered,
             "indexed" => FileState::Ready,
+            "no_text_found" => FileState::NoTextFound,
             "stale" => FileState::NeedsUpdate,
             "missing" | "deleted" => FileState::FileNotFound,
             "permission_denied" => FileState::CouldNotPrepare,

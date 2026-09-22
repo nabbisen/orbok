@@ -1190,6 +1190,50 @@ fn write_text_less_pdf(path: &Path, pages: usize) {
     doc.save(path).unwrap();
 }
 
+/// A one-page PDF with a real text-showing content stream -- the "gained
+/// text" fixture for Task 080 test 5: the same file path a text-less PDF
+/// used, rewritten with content a real PDF extractor reads back.
+fn write_pdf_with_text(path: &Path, text: &str) {
+    use lopdf::content::{Content, Operation};
+    use lopdf::{Document, Object, Stream, dictionary};
+    let mut doc = Document::with_version("1.5");
+    let pages_id = doc.new_object_id();
+    let font_id = doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type1",
+        "BaseFont" => "Helvetica",
+    });
+    let resources_id = doc.add_object(dictionary! {
+        "Font" => dictionary! { "F1" => font_id },
+    });
+    let content = Content {
+        operations: vec![
+            Operation::new("BT", vec![]),
+            Operation::new("Tf", vec!["F1".into(), 12.into()]),
+            Operation::new("Td", vec![72.into(), 700.into()]),
+            Operation::new("Tj", vec![Object::string_literal(text)]),
+            Operation::new("ET", vec![]),
+        ],
+    };
+    let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+    let page_id = doc.add_object(dictionary! {
+        "Type" => "Page",
+        "Parent" => pages_id,
+        "Contents" => content_id,
+    });
+    let pages_dict = dictionary! {
+        "Type" => "Pages",
+        "Count" => 1,
+        "Kids" => vec![page_id.into()],
+        "Resources" => resources_id,
+        "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+    };
+    doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
+    let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog_id);
+    doc.save(path).unwrap();
+}
+
 /// Task 077: a scanned PDF (pages, no text) is extracted with
 /// `PossiblyScannedPdf`, and that warning survives the cache, so its chunk
 /// job finishes instead of failing on the read-back.
@@ -1242,6 +1286,196 @@ async fn a_scanned_pdfs_warning_survives_the_cache_and_its_chunk_job_finishes() 
         .unwrap()
         .expect("the extraction is cached");
     assert_eq!(cached.warnings, vec![ExtractWarning::PossiblyScannedPdf]);
+}
+
+// ── Task 080: a file orbok read but found no text in is finished ────────
+
+/// Task 080 test 1: a text-less PDF ends `NoTextFound`, not `discovered`,
+/// with no job left queued or running.
+#[tokio::test]
+async fn a_text_less_pdf_finishes_with_no_text_found_and_no_pending_job() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let pdf = source_dir.join("scan.pdf");
+    write_text_less_pdf(&pdf, 2);
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let status: String = catalog
+        .lock()
+        .query_row("SELECT file_status FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        status, "no_text_found",
+        "a text-less PDF must finish as no_text_found, not stay discovered"
+    );
+    let pending: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE status IN ('queued', 'running')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        pending, 0,
+        "no job must be left pending for a finished file"
+    );
+}
+
+/// Task 080 test 2: Task 078's startup repair does not re-queue a
+/// `no_text_found` file -- its own SQL filter is `file_status =
+/// 'discovered'`, and this file is no longer that. Through the real
+/// startup entry point, so this exercises the actual repair, not the
+/// filter in isolation.
+#[tokio::test]
+async fn startup_recovery_does_not_requeue_a_no_text_found_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let pdf = source_dir.join("scan.pdf");
+    write_text_less_pdf(&pdf, 2);
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    // "Restart": the real startup entry point, which runs Task 078's
+    // repair among its other steps.
+    let _state = bootstrap::load_initial_state(&context).unwrap();
+    // Let the startup Scan job (RFC-037 SS10.1, queued for every source
+    // regardless of file state) actually run, so a second-order requeue
+    // from *it* would show up too, not just Task 078's own repair.
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    // A per-source Scan job is queued at every startup regardless of file
+    // state (RFC-037 SS10.1) -- unrelated to Task 078's repair, and
+    // `run_pending`/the scheduler treat Scan as a no-op. What matters here
+    // is that no *extract* or *chunk* job was ever created for the
+    // no_text_found file beyond the original scan's one of each -- not
+    // just that none is still pending (a wrongly requeued extraction would
+    // run and finish before this check, so "nothing pending" alone would
+    // not catch a requeue that already completed).
+    let extract_or_chunk_total: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type IN ('extract', 'chunk')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        extract_or_chunk_total, 2,
+        "a no_text_found file must not be requeued by the startup repair -- \
+         exactly the original extract and chunk job, never a second round"
+    );
+    let status: String = catalog
+        .lock()
+        .query_row("SELECT file_status FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(status, "no_text_found", "the state must be left as it was");
+}
+
+/// Task 080 test 4: an ordinary file with real text is unaffected --
+/// still `indexed`, still searchable, alongside a text-less file in the
+/// same folder.
+#[tokio::test]
+async fn an_ordinary_file_is_unaffected_by_the_no_text_found_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    write_text_less_pdf(&source_dir.join("scan.pdf"), 2);
+    write_markdown(
+        &source_dir.join("notes.md"),
+        "# Notes\n\nordinarymarker is here.\n",
+    );
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let ordinary_status: String = catalog
+        .lock()
+        .query_row(
+            "SELECT file_status FROM files WHERE display_path LIKE '%notes.md'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(ordinary_status, "indexed");
+    let results = search_marker(&context, &catalog, "ordinarymarker");
+    assert_eq!(
+        results.len(),
+        1,
+        "the ordinary file must still be searchable"
+    );
+}
+
+/// Task 080 test 5: a `no_text_found` file that gains real text later
+/// leaves the state and becomes searchable -- the state is not a dead
+/// end. Rewrites the fixture with real content, then re-scans (the same
+/// path a Check Folder or startup rescan takes for an edited file).
+#[tokio::test]
+async fn a_no_text_found_file_that_gains_text_later_becomes_searchable() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let doc = source_dir.join("scan.pdf");
+    write_text_less_pdf(&doc, 2);
+    let source_id = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        card.source_id
+    };
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let status: String = catalog
+            .lock()
+            .query_row("SELECT file_status FROM files", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "no_text_found", "baseline: no text yet");
+    }
+
+    // The file changes: real text where there was none, same path (still
+    // `.pdf`, so the same extractor applies) -- so the scanner sees a
+    // genuine content change to the one file, not a new one.
+    write_pdf_with_text(&doc, "gainedtextmarker is here");
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    bootstrap::check_and_refresh_source(&catalog, &source_id).unwrap();
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let status: String = catalog
+        .lock()
+        .query_row("SELECT file_status FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(status, "indexed", "the state must not be a dead end");
+    let results = search_marker(&context, &catalog, "gainedtextmarker");
+    assert_eq!(results.len(), 1, "the new text must be searchable");
 }
 
 /// RFC-038 §16 criterion 5 (HANDOFF-038 Slice 1), and Prepare again

@@ -72,6 +72,7 @@ fn sources_view_renders_both_states() {
         indexed: 12,
         stale: 0,
         failed: 0,
+        no_text_found: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
@@ -98,6 +99,7 @@ fn sources_view_shows_folder_not_found_detail_copy() {
         indexed: 40,
         stale: 0,
         failed: 0,
+        no_text_found: 0,
         status: orbok_core::SourceStatus::Missing,
         source_id: "src-1".into(),
     });
@@ -123,6 +125,7 @@ fn indexing_view_shows_rfc036_preparing_and_ready_copy() {
         indexed: 0,
         stale: 0,
         failed: 0,
+        no_text_found: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
