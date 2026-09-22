@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Reset saved app data?" and the button reads "Reset", matching how the
   folder-removal confirmation already asks-then-answers. The Storage
   page's own button that opens the dialog is unchanged.
+- **The reset-catalog dialog now says what it will remove** (Task 092): a
+  line naming the number of registered folders and prepared files, counted
+  fresh from the catalog each time the dialog opens. Reset itself never
+  waits on the count; if it cannot be read, the dialog shows no line
+  rather than a guess.
 
 ## [0.26.1] — 2026-09-22
 

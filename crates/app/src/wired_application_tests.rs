@@ -1751,6 +1751,69 @@ async fn numbers_reflect_reality_after_a_reset() {
     );
 }
 
+/// Task 092 test 1: the reset confirmation's own counts match independent
+/// `COUNT(*)` reads, taken separately from the code under test -- two
+/// registered folders, a known number of indexed files.
+#[tokio::test]
+async fn reset_counts_match_independent_reads() {
+    use orbok_db::repo::{FileRepository, SourceRepository};
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+
+    for name in ["one", "two"] {
+        let dir = temp.path().join(name);
+        write_markdown(&dir.join("doc.md"), "# Doc\n\nsome text.\n");
+        let (card, _) = bootstrap::add_source_expect_added(&catalog, &dir.to_string_lossy())
+            .unwrap_or_else(|_| panic!("{name} must be a newly added source"));
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let counts = bootstrap::get_reset_counts(&catalog).unwrap();
+
+    let independent_folders = SourceRepository::new(&catalog).count().unwrap();
+    let independent_files = FileRepository::new(&catalog)
+        .count_with_status(orbok_core::FileStatus::Indexed)
+        .unwrap();
+    assert_eq!(counts.folders, independent_folders);
+    assert_eq!(counts.files, independent_files);
+    assert_eq!(counts.folders, 2, "baseline: two registered folders");
+    assert_eq!(counts.files, 2, "baseline: two indexed files");
+}
+
+/// Task 092 test 6: after a real reset, the folder count really is
+/// zero -- the number the dialog showed was the one actually removed, not
+/// a number recomputed to match after the fact.
+#[tokio::test]
+async fn reset_counts_are_zero_after_a_real_reset() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(&source_dir.join("doc.md"), "# Doc\n\nsome text.\n");
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let (card, _) =
+        bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let before = bootstrap::get_reset_counts(&catalog).unwrap();
+    assert_eq!(before.folders, 1, "baseline: one registered folder");
+    assert_eq!(before.files, 1, "baseline: one indexed file");
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::reset_catalog(&catalog, &cache).unwrap();
+
+    let after = bootstrap::get_reset_counts(&catalog).unwrap();
+    assert_eq!(after.folders, 0, "a real reset must remove every folder");
+    assert_eq!(after.files, 0, "a real reset must remove every file");
+}
+
 /// Task 081 test 5's classifier, in isolation: only "every category
 /// Unknown and no cache-file size" counts as the whole measurement
 /// failing.

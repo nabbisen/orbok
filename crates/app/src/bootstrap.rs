@@ -54,7 +54,7 @@ pub use sources::{
 // handler in `main.rs` needs to re-fetch the sources list after a refresh
 // (the status it may have just changed), the same reach `get_health` has
 // long had for the equivalent reason.
-pub use startup::{get_health, get_sources, load_initial_state, run_check};
+pub use startup::{get_health, get_reset_counts, get_sources, load_initial_state, run_check};
 #[cfg(test)]
 pub(crate) use startup::{load_initial_state_with, run_check_with};
 

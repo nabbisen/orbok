@@ -4,10 +4,10 @@
 //! evidence: Task 062 built and shipped this dialog, but no test rendered
 //! it directly, or proved Escape resets nothing, until now.
 
-use crate::i18n::{Locale, MessageKey, tr};
+use crate::i18n::{Locale, MessageKey, fmt_reset_removes, tr};
 use crate::shell::{KeyboardContext, key_to_message};
 use crate::state::ViewId;
-use crate::state::{AppState, Message};
+use crate::state::{AppState, Message, ResetCounts};
 use crate::tests::iced_test_guard;
 use crate::views;
 use iced::keyboard::{Key, Modifiers, key::Named};
@@ -95,4 +95,98 @@ fn escape_cancels_the_reset_confirmation_and_resets_nothing() {
 
     state.update(&escape.unwrap());
     assert!(!state.confirm_reset, "the dialog closes");
+}
+
+/// Task 092 test 4: no counts, no line -- before they arrive
+/// (`AskResetCatalog` alone never populates `reset_counts`; the router's
+/// `Task::perform` does that separately) and when the read failed. Never
+/// a placeholder zero either way.
+#[test]
+fn no_counts_no_line_before_they_arrive_or_on_failure() {
+    let _guard = iced_test_guard();
+    let mut state = storage_state(Locale::En);
+    state.update(&Message::AskResetCatalog);
+    assert_eq!(
+        state.reset_counts, None,
+        "AskResetCatalog alone does not populate counts"
+    );
+
+    let some_counts = fmt_reset_removes(Locale::En, 1, 1);
+    let zero_counts = fmt_reset_removes(Locale::En, 0, 0);
+    {
+        let mut ui = simulator(views::storage_view(&state));
+        assert!(
+            ui.find(zero_counts.as_str()).is_err(),
+            "never a placeholder zero while counts are missing"
+        );
+        // Nothing that looks like the reset-removes line at all.
+        assert!(ui.find(some_counts.as_str()).is_err());
+    }
+
+    state.update(&Message::ResetCountsFailed);
+    assert_eq!(state.reset_counts, None, "a failed read leaves it None");
+    let mut ui = simulator(views::storage_view(&state));
+    assert!(ui.find(some_counts.as_str()).is_err());
+}
+
+/// Task 092 test: once the counts arrive, the line renders with the exact
+/// owner-approved text, and disappears again on close (Cancel or a fresh
+/// `AskResetCatalog`), never lingering stale from a previous opening.
+#[test]
+fn the_line_renders_the_exact_counts_once_they_arrive() {
+    let _guard = iced_test_guard();
+    for locale in [Locale::En, Locale::Ja] {
+        let mut state = storage_state(locale);
+        state.update(&Message::AskResetCatalog);
+        state.update(&Message::ResetCountsReady(ResetCounts {
+            folders: 3,
+            files: 12,
+        }));
+        assert_eq!(
+            state.reset_counts,
+            Some(ResetCounts {
+                folders: 3,
+                files: 12
+            })
+        );
+
+        let expected = fmt_reset_removes(locale, 3, 12);
+        {
+            let mut ui = simulator(views::storage_view(&state));
+            assert!(
+                ui.find(expected.as_str()).is_ok(),
+                "{locale:?}: {expected:?} renders"
+            );
+        }
+
+        state.update(&Message::CancelResetCatalog);
+        assert_eq!(state.reset_counts, None, "closing clears it, not stale");
+    }
+}
+
+/// Task 092 test 5: Reset confirms immediately, whether or not the counts
+/// have arrived -- the button and Enter are never gated on them.
+#[test]
+fn reset_confirms_immediately_with_or_without_the_line() {
+    let mut state = storage_state(Locale::En);
+    state.update(&Message::AskResetCatalog);
+    assert_eq!(state.reset_counts, None, "counts have not arrived yet");
+
+    let ctx = KeyboardContext {
+        text_input_focused: false,
+        active_view: ViewId::Storage,
+        confirm_reset: state.confirm_reset,
+        confirm_remove_source: false,
+        confirm_clear_history: false,
+        wizard_kind: None,
+        selected_source_id: None,
+        selected_result: None,
+    };
+    assert!(
+        matches!(
+            key_to_message(&Key::Named(Named::Enter), Modifiers::default(), &ctx),
+            Some(Message::ConfirmResetCatalog)
+        ),
+        "Enter confirms even though the line has not appeared yet"
+    );
 }

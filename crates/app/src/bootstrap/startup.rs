@@ -285,6 +285,19 @@ pub fn get_health(catalog: &Catalog) -> orbok_ui::state::IndexHealth {
     }
 }
 
+/// Task 092: what a reset would remove, counted fresh when the
+/// confirmation opens. `?` propagates a read failure rather than
+/// substituting 0 for either count -- the dialog's own rule is that an
+/// unreadable count means no line, never a guess, so the caller must be
+/// able to tell "could not read" apart from "genuinely zero".
+pub fn get_reset_counts(catalog: &Catalog) -> OrbokResult<orbok_ui::state::ResetCounts> {
+    use orbok_core::FileStatus;
+    use orbok_db::repo::{FileRepository, SourceRepository};
+    let folders = SourceRepository::new(catalog).count()?;
+    let files = FileRepository::new(catalog).count_with_status(FileStatus::Indexed)?;
+    Ok(orbok_ui::state::ResetCounts { folders, files })
+}
+
 /// Load all registered sources for the Sources view.
 pub fn get_sources(catalog: &Catalog) -> OrbokResult<Vec<orbok_ui::state::SourceCard>> {
     use orbok_core::FileStatus;

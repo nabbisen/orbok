@@ -398,6 +398,20 @@ fn measure_storage_task(
     )
 }
 
+/// Task 092: what the reset confirmation will remove, counted fresh off
+/// the update thread the same way `measure_storage_task` measures storage
+/// -- the dialog itself renders in the same `update` pass that dispatches
+/// this; the line appears when the counts arrive.
+fn reset_counts_task(catalog: std::sync::Arc<orbok_db::Catalog>) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { bootstrap::get_reset_counts(&catalog) },
+        |result| match result {
+            Ok(counts) => Message::ResetCountsReady(counts),
+            Err(_) => Message::ResetCountsFailed,
+        },
+    )
+}
+
 /// Convert a `VerifyOutcome` into the file check list shown in the wizard.
 fn build_wizard_checks(outcome: &VerifyOutcome, _path: &str) -> (Vec<WizardFileCheck>, bool) {
     match outcome {

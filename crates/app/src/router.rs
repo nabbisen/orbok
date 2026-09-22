@@ -306,6 +306,14 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             );
             return crate::measure_storage_task(deps.runtime.clone(), deps.catalog.clone());
         }
+        // Task 092: the confirmation itself opens synchronously below (the
+        // generic `app.update` fallthrough); its own line is fetched off
+        // the update thread, the same `Task::perform` shape as Storage's
+        // own measurement.
+        Message::AskResetCatalog => {
+            app.update(message.clone());
+            return crate::reset_counts_task(deps.catalog.clone());
+        }
         Message::ConfirmResetCatalog => {
             backend_actions::reset_catalog(
                 &deps.catalog,

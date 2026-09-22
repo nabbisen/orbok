@@ -1,7 +1,7 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
 use crate::i18n::{
-    ALL_KEYS, Locale, files_ready_for_search, fmt_label_value, model_exact_size,
+    ALL_KEYS, Locale, files_ready_for_search, fmt_label_value, fmt_reset_removes, model_exact_size,
     model_file_position, model_transfer_progress, preparing_folder_for_search, source_summary, tr,
     wizard_file_size_mb,
 };
@@ -129,6 +129,37 @@ fn source_summary_appends_no_text_found_only_when_nonzero() {
     assert_eq!(
         source_summary(Locale::Ja, 812, 0, 0, 0),
         "インデックス済み 812 · 要更新 0 · 失敗 0"
+    );
+}
+
+/// Task 092 (owner-approved copy): the reset dialog's own line, in both
+/// locales, matching the task's exact singular/plural examples.
+#[test]
+fn fmt_reset_removes_matches_owner_approved_copy() {
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 1, 1),
+        "This removes 1 folder and 1 prepared file."
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::Ja, 1, 1),
+        "フォルダー 1 件、準備済みファイル 1 件を削除します。"
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 3, 12),
+        "This removes 3 folders and 12 prepared files."
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::Ja, 3, 12),
+        "フォルダー 3 件、準備済みファイル 12 件を削除します。"
+    );
+    // Mixed singular/plural: each count gets its own form independently.
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 1, 5),
+        "This removes 1 folder and 5 prepared files."
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 2, 1),
+        "This removes 2 folders and 1 prepared file."
     );
 }
 

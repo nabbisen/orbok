@@ -148,6 +148,21 @@ impl<'a> SourceRepository<'a> {
         ))
     }
 
+    /// Count of sources a user would see registered -- same `status !=
+    /// 'removed'` filter as [`Self::list`], so this is the number [`Self::list`]
+    /// would return the length of, without materializing every row.
+    pub fn count(&self) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sources WHERE status != 'removed'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
     fn query_records(&self, sql: &str) -> OrbokResult<Vec<SourceRecord>> {
         let conn = self.catalog.lock();
         let mut stmt = conn.prepare(sql).map_err(db_err)?;

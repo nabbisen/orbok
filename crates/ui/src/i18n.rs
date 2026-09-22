@@ -737,6 +737,27 @@ pub fn search_result_count(locale: Locale, count: usize) -> String {
     }
 }
 
+/// Task 092: the reset confirmation's own line -- counted, never
+/// estimated, from the catalog. English needs its own singular/plural per
+/// count, the same shape [`search_result_count`] already uses; Japanese
+/// does not distinguish.
+///
+/// Owner-approved copy covers a third variant, with a recent-searches
+/// clause, that this function does not implement -- Review Request 269
+/// found a reset does not currently clear `search_history`, so showing
+/// that clause today would claim something reset does not do. See Review
+/// Request 270 §2.
+pub fn fmt_reset_removes(locale: Locale, folders: u64, files: u64) -> String {
+    match locale {
+        Locale::En => format!(
+            "This removes {folders} folder{} and {files} prepared file{}.",
+            if folders == 1 { "" } else { "s" },
+            if files == 1 { "" } else { "s" },
+        ),
+        Locale::Ja => format!("フォルダー {folders} 件、準備済みファイル {files} 件を削除します。"),
+    }
+}
+
 /// Locale-aware byte/storage size formatting (RFC-035 §5.5).
 /// Routes views away from ad-hoc `format!("{gib:.3} GiB total")` calls.
 pub fn fmt_gib(locale: Locale, gib: f64) -> String {

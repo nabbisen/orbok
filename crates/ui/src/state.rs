@@ -76,6 +76,14 @@ pub struct IndexHealth {
     pub queued: u64,
 }
 
+/// Task 092: what a reset would remove, counted fresh each time the
+/// confirmation dialog opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResetCounts {
+    pub folders: u64,
+    pub files: u64,
+}
+
 /// One source card for the Sources view.
 ///
 /// `status` is `orbok_core::SourceStatus` directly (Task 035): the same
@@ -503,6 +511,11 @@ pub struct AppState {
     pub notice_action: Option<Box<Message>>,
     /// Awaiting user confirmation before running reset catalog.
     pub confirm_reset: bool,
+    /// Task 092: what the open reset confirmation will remove, fetched
+    /// fresh when it opens. `None` until the count arrives, on a failed
+    /// read, and after the dialog closes -- never a placeholder zero
+    /// (`storage_view` renders the line only when this is `Some`).
+    pub reset_counts: Option<ResetCounts>,
     /// Task 062: the folder whose removal confirmation is open, if any.
     /// Removal erases what orbok prepared for it (RFC-059), so it always
     /// asks first. At most one confirmation is open at a time.
@@ -558,6 +571,7 @@ impl Default for AppState {
             notice: None,
             notice_action: None,
             confirm_reset: false,
+            reset_counts: None,
             confirm_remove_source: None,
             remember_recent_searches: true,
             confirm_clear_history: false,
@@ -620,6 +634,12 @@ pub enum Message {
     /// storage rows now clear.
     CatalogResetSucceeded,
     CancelResetCatalog,
+    /// Task 092: the confirmation's own counts, fetched fresh when it
+    /// opens (the same `Task::perform` pattern `StorageDataReady` uses).
+    ResetCountsReady(ResetCounts),
+    /// Task 092: the count could not be read -- the dialog opens and works
+    /// regardless (Reset is never gated on this), it simply shows no line.
+    ResetCountsFailed,
     // Wizard navigation
     WizardBack,
     QueryChanged(String),
@@ -895,7 +915,14 @@ impl AppState {
             Message::AskResetCatalog => {
                 self.confirm_reset = true;
                 self.confirm_remove_source = None;
+                // Task 092: cleared, not left stale from a previous
+                // opening -- the router dispatches a fresh count
+                // alongside this; until it lands, the dialog shows no
+                // line rather than a number from before.
+                self.reset_counts = None;
             }
+            Message::ResetCountsReady(counts) => self.reset_counts = Some(*counts),
+            Message::ResetCountsFailed => self.reset_counts = None,
             Message::AskRemoveSource(id) => {
                 // Task 073: only a folder in the list can be asked about --
                 // otherwise there is no dialog to show, and nothing opens.
@@ -906,7 +933,10 @@ impl AppState {
             }
             Message::CancelRemoveSource => self.confirm_remove_source = None,
             Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
-            Message::CancelResetCatalog => self.confirm_reset = false,
+            Message::CancelResetCatalog => {
+                self.confirm_reset = false;
+                self.reset_counts = None;
+            }
             Message::ConfirmResetCatalog => {
                 // Task 075: a request. orbok resets the catalog, then sends
                 // `CatalogResetSucceeded`; nothing clears before that.
@@ -1367,6 +1397,7 @@ impl AppState {
                 self.selected_source = None;
                 self.health = crate::state::IndexHealth::default();
                 self.search_results.clear();
+                self.reset_counts = None;
                 // Task 081: cleared, not left stale -- `main.rs` follows
                 // this with `StorageMeasurementRequested` so the page
                 // shows the measured post-reset state, not the RFC-011

@@ -252,6 +252,32 @@ fn source_status_and_scan_touch() {
     );
 }
 
+// Task 092: `count()` agrees with `list()`'s own length -- same
+// `status != 'removed'` filter -- without materializing every row, and a
+// removed source drops out of the count the same way it already drops
+// out of `list()`.
+#[test]
+fn source_count_matches_list_len_and_excludes_removed() {
+    let catalog = Catalog::open_in_memory().unwrap();
+    let sources = SourceRepository::new(&catalog);
+    let a = sources.insert(new_source("/docs")).unwrap();
+    sources.insert(new_source("/reports")).unwrap();
+    assert_eq!(sources.count().unwrap(), 2);
+    assert_eq!(
+        sources.count().unwrap() as usize,
+        sources.list().unwrap().len()
+    );
+
+    sources
+        .set_status(&a.source_id, SourceStatus::Removed)
+        .unwrap();
+    assert_eq!(sources.count().unwrap(), 1);
+    assert_eq!(
+        sources.count().unwrap() as usize,
+        sources.list().unwrap().len()
+    );
+}
+
 #[test]
 fn job_queue_round_trip() {
     let catalog = Catalog::open_in_memory().unwrap();

@@ -16,8 +16,8 @@ use crate::components::{
 };
 use crate::i18n::{
     Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
-    fmt_query, fmt_storage_row, preparing_folder_for_search, search_location_chip,
-    search_result_count, source_summary, tr,
+    fmt_query, fmt_reset_removes, fmt_storage_row, preparing_folder_for_search,
+    search_location_chip, search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -824,11 +824,24 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
 
     if state.visible_confirmation() == Some(crate::state::Confirmation::ResetCatalog) {
-        let content = column![
+        let mut content = column![
             text(tr(locale, MessageKey::StorageResetConfirmTitle)).size(theme::title_s(tokens, sc)),
             text(tr(locale, MessageKey::StorageResetWarning))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
+        ]
+        .spacing(tokens.spacing.lg);
+        // Task 092: counted, never estimated -- absent while the count is
+        // in flight or unreadable (`reset_counts` is `None`), never a
+        // placeholder zero. Reset itself never waits on this.
+        if let Some(counts) = state.reset_counts {
+            content = content.push(
+                text(fmt_reset_removes(locale, counts.folders, counts.files))
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens)),
+            );
+        }
+        content = content.push(
             hrow![
                 components::ghost(
                     tokens,
@@ -842,8 +855,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 ),
             ]
             .spacing(tokens.spacing.md),
-        ]
-        .spacing(tokens.spacing.lg);
+        );
         return page(tokens, content);
     }
 
