@@ -3655,6 +3655,7 @@ name = "orbok-workers"
 version = "0.26.1"
 dependencies = [
  "dirs",
+ "fs4",
  "futures",
  "localcache",
  "orbok-bench",
@@ -3676,6 +3677,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "tract-onnx",
  "windows-sys 0.61.2",
  "zip",

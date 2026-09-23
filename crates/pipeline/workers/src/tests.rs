@@ -19,4 +19,5 @@ mod rfc059_cache_lifetime;
 mod rfc059_reset_erasure;
 mod task078_repair_cost;
 mod task078_requeue_discovered;
+mod task095_reset_gives_space_back;
 mod v092_features;

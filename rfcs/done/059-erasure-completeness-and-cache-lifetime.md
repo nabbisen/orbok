@@ -177,6 +177,33 @@ RFC's.
 
 ---
 
+## 2c. Amendment 3 (2026-09-23) — Reset now compacts; criterion 6 still holds for the action it names
+
+Task 095 (Review Request 273): after a successful Reset,
+`CleanupService::run_reset` now `VACUUM`s both the catalog and the cache
+file, guarded by free space (roughly the file's own size again, plus a
+10%-of-size margin floored at 1 MiB — `VACUUM` needs that much headroom
+while it runs), and logs rather than fails the reset if either is skipped
+or errors. **Confirmed empirically, not assumed**: under this catalog's
+own WAL journal mode, `VACUUM` alone left the on-disk file exactly its
+pre-`VACUUM` size in a real run — its rebuilt content landed in the WAL
+like any other write. `Catalog::vacuum()` also runs `PRAGMA
+wal_checkpoint(TRUNCATE)` afterward; only with that does the file (and the
+WAL sidecar) actually shrink on disk.
+
+**Criterion 6 itself still holds, unchanged.** It concerns "Remove
+replaced stale indexes" (`RemoveReplacedStaleIndexes`), a Safe-cleanup
+action, not Reset — Task 095 §1 named the Safe-cleanup actions explicitly
+out of scope, and did not touch that action's code. §2a.3's "nothing
+VACUUMs the catalog" is now true only of that one action, not of the
+catalog generally: Reset now does. Task 095 §1.5 checked the other three
+Safe-cleanup actions for the same gap (whether any leaves a comparable
+amount behind, uncompacted) and found none reclaim enough rows in the
+common case to make it worth asking the same question of them — see
+Review Request 273 §1.5 for the per-action accounting.
+
+---
+
 ## 3. Goals
 
 - Define what "erase" guarantees, in terms a user can check.

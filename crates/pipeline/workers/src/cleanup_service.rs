@@ -14,7 +14,7 @@ use orbok_db::repo::CleanupExecutor;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Combined cleanup outcome (catalog + cache sides).
 #[derive(Debug, Default)]
@@ -34,6 +34,13 @@ pub struct CleanupService<'a> {
     catalog: &'a Catalog,
     cache: &'a CacheService,
     cache_db_path: &'a Path,
+    /// Task 095: how post-reset compaction reads free space, swappable in
+    /// tests so the "not enough room" branch can be exercised without
+    /// filling a real disk (`with_available_space_reader`). Production
+    /// always uses `fs4::available_space`, the same `statvfs`/
+    /// `GetDiskFreeSpaceExW` call `orbok-models` already links for its
+    /// model-store locking -- no new dependency.
+    available_space: fn(&Path) -> std::io::Result<u64>,
 }
 
 impl<'a> CleanupService<'a> {
@@ -42,7 +49,21 @@ impl<'a> CleanupService<'a> {
             catalog,
             cache,
             cache_db_path,
+            available_space: real_available_space,
         }
+    }
+
+    /// Task 095 test-only seam: override the free-space reader so a test
+    /// can force the "not enough room" branch deterministically. Never
+    /// used in production, where [`Self::new`]'s `fs4::available_space`
+    /// always applies.
+    #[cfg(test)]
+    pub(crate) fn with_available_space_reader(
+        mut self,
+        reader: fn(&Path) -> std::io::Result<u64>,
+    ) -> Self {
+        self.available_space = reader;
+        self
     }
 
     /// Safe cleanup: validates the plan cannot touch persistent data, then
@@ -89,11 +110,38 @@ impl<'a> CleanupService<'a> {
             "catalog reset completed"
         );
 
+        // Task 095: give the space back. Reset has already succeeded by
+        // this point -- its data is gone either way -- so both files are
+        // compacted independently, each only if its own filesystem has
+        // room, and neither's failure (or skip) changes the outcome below.
+        self.compact_catalog_after_reset();
+        self.compact_cache_after_reset();
+
         Ok(FullCleanupOutcome {
             catalog_rows_deleted: catalog_outcome.deleted_rows,
             cache_bytes_freed,
             catalog_bytes_reclaimed: catalog_outcome.bytes_reclaimed,
         })
+    }
+
+    /// Task 095 §1: `VACUUM` needs roughly the file's own size again in
+    /// free space while it runs (a fresh copy is built before the
+    /// original is replaced) -- exactly the resource a user resetting
+    /// *because* the disk is full is short on. Guarded, logged, and never
+    /// allowed to affect the reset's own already-decided outcome.
+    fn compact_catalog_after_reset(&self) {
+        compact_if_room("catalog", self.catalog.path(), self.available_space, || {
+            self.catalog.vacuum()
+        });
+    }
+
+    /// Same guard, the cache file. `CacheService::shrink` already VACUUMs
+    /// the whole file via any live namespace's engine handle -- reused
+    /// here rather than duplicated.
+    fn compact_cache_after_reset(&self) {
+        compact_if_room("cache", self.cache_db_path, self.available_space, || {
+            self.cache.shrink(self.catalog)
+        });
     }
 
     fn run_cache_side(&self, plan: &CleanupPlan) -> OrbokResult<u64> {
@@ -154,7 +202,10 @@ impl<'a> CleanupService<'a> {
                     &OrbokCacheNamespace::ExtractSegments,
                     OrbokCacheNamespace::ExtractSegments.default_engine_options(),
                 )?;
-                erase_engine_namespace(&engine)?;
+                // Task 095: this button's own VACUUM is unguarded, same as
+                // before -- out of scope (§1 "Not in scope"); only Reset's
+                // compaction gained the free-space guard.
+                erase_engine_namespace(&engine, true)?;
             }
             CleanupAction::RemoveReplacedStaleIndexes => {
                 // Task 093: `ChunkBundle`, this arm's other former target,
@@ -221,7 +272,11 @@ impl<'a> CleanupService<'a> {
         let engine =
             self.cache
                 .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
-        let removed = erase_engine_namespace(&engine)?;
+        // Task 095: shrink deferred (`shrink_after: false`) -- `run_reset`
+        // compacts the cache file itself afterward, guarded by free space,
+        // rather than this unconditional VACUUM every namespace erase used
+        // to trigger.
+        let removed = erase_engine_namespace(&engine, false)?;
         info!(
             namespace = ns.as_namespace(),
             entries_removed = removed,
@@ -291,15 +346,19 @@ pub fn trim_engine_namespace_to<T: Serialize + DeserializeOwned>(
     Ok(evicted)
 }
 
-/// Remove every entry in one engine's namespace, then reclaim the freed
-/// pages. Shared by `purge_all_cache_namespaces` (Reset, every namespace)
-/// and the `ClearTemporaryExtraction` branch (Review 214 §4 Q1, owner
-/// decision 2026-09-12: the button erases `ExtractSegments` outright,
-/// rather than only expiring entries older than the TTL -- the label says
-/// "clear", and the cache is rebuildable by RFC-059 §7's own argument).
-/// Returns the number of entries actually removed.
+/// Remove every entry in one engine's namespace, then optionally reclaim
+/// the freed pages. Shared by `purge_all_cache_namespaces` (Reset, every
+/// namespace, `shrink_after: false` since Task 095 -- `run_reset` compacts
+/// the file itself afterward, guarded by free space) and the
+/// `ClearTemporaryExtraction` branch (Review 214 §4 Q1, owner decision
+/// 2026-09-12: the button erases `ExtractSegments` outright, rather than
+/// only expiring entries older than the TTL -- the label says "clear", and
+/// the cache is rebuildable by RFC-059 §7's own argument; `shrink_after:
+/// true`, unguarded, out of Task 095's scope). Returns the number of
+/// entries actually removed.
 fn erase_engine_namespace<T: Serialize + DeserializeOwned>(
     engine: &CacheEngine<T>,
+    shrink_after: bool,
 ) -> OrbokResult<u64> {
     let keys = engine
         .keys(None)
@@ -313,8 +372,98 @@ fn erase_engine_namespace<T: Serialize + DeserializeOwned>(
             removed += 1;
         }
     }
-    engine
-        .shrink_database()
-        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    if shrink_after {
+        engine
+            .shrink_database()
+            .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
+    }
     Ok(removed)
+}
+
+/// Task 095: production `available_space` reader -- a monomorphized
+/// wrapper, since `fs4::available_space` is generic over `P: AsRef<Path>`
+/// and can't be named directly as the plain `fn(&Path) -> ...` pointer
+/// [`CleanupService::available_space`] holds.
+fn real_available_space(path: &Path) -> std::io::Result<u64> {
+    fs4::available_space(path)
+}
+
+/// Task 095 §1.2: the free-space margin required before compacting a file
+/// of `file_size` bytes -- 10% of the file's own size, floored at 1 MiB.
+/// `VACUUM` needs roughly the file's own size again while it runs (a fresh
+/// copy is built before the original is replaced); the 10% is headroom for
+/// what that copy needs beyond the plain page count -- SQLite's own
+/// temporary rollback journal for the new file, plus filesystem block
+/// rounding -- not a number this project measured precisely, but one that
+/// scales with the file rather than a fixed constant that would be
+/// negligible at 2 GB and wasteful at 1 MB. The 1 MiB floor keeps a tiny
+/// catalog from requiring an unmeasurably small margin.
+pub(crate) fn compaction_margin(file_size: u64) -> u64 {
+    const MARGIN_FLOOR_BYTES: u64 = 1024 * 1024;
+    (file_size / 10).max(MARGIN_FLOOR_BYTES)
+}
+
+/// Task 095 §1.1/§1.2: true when `available` bytes are enough to compact a
+/// file of `file_size` bytes -- the file's own size plus
+/// [`compaction_margin`]. A pure function so the guard itself is testable
+/// with synthetic numbers, independent of a real disk or a real `VACUUM`.
+pub(crate) fn has_room_to_compact(available: u64, file_size: u64) -> bool {
+    available >= file_size.saturating_add(compaction_margin(file_size))
+}
+
+/// Task 095 §1.3/§1.4: compact `path` via `vacuum`, but only if
+/// `available_space` reports enough room for it (§1.1/§1.2), and never let
+/// the outcome escape as an error -- by construction, not by care: this
+/// returns `()`, so nothing it does can flow into `run_reset`'s `Result`.
+/// Not enough room logs at `info!` and skips (an ordinary outcome: the
+/// reset's data is gone either way). A `vacuum` failure -- room was there,
+/// `VACUUM` itself errored -- logs at `warn!`. Both branches, and the
+/// `available_space` read itself, are injectable so tests can exercise
+/// each without filling a real disk or corrupting a real file
+/// (`CleanupService::with_available_space_reader`, and `vacuum` is a
+/// plain closure at each call site).
+pub(crate) fn compact_if_room(
+    label: &str,
+    path: &Path,
+    available_space: impl FnOnce(&Path) -> std::io::Result<u64>,
+    vacuum: impl FnOnce() -> OrbokResult<()>,
+) {
+    let file_size = match std::fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(e) => {
+            info!(
+                file = %path.display(),
+                error = %e,
+                "could not read {label} file size after reset; skipping compaction"
+            );
+            return;
+        }
+    };
+    let available = match available_space(path) {
+        Ok(a) => a,
+        Err(e) => {
+            info!(
+                file = %path.display(),
+                error = %e,
+                "could not read free space after reset; skipping {label} compaction"
+            );
+            return;
+        }
+    };
+    if !has_room_to_compact(available, file_size) {
+        info!(
+            file = %path.display(),
+            file_size,
+            available,
+            "not enough free space to compact the {label} after reset; skipping"
+        );
+        return;
+    }
+    if let Err(e) = vacuum() {
+        warn!(
+            file = %path.display(),
+            error = %e,
+            "{label} compaction failed after reset"
+        );
+    }
 }

@@ -114,6 +114,34 @@ impl Catalog {
         &self.path
     }
 
+    /// Compact the file via `VACUUM` (Task 095: a reset gives the space
+    /// back). Plain `DELETE` never shrinks a SQLite file -- freed pages
+    /// stay allocated until something rebuilds it (RFC-059 §10 criterion
+    /// 6). Safe against the current connection outside any transaction:
+    /// `VACUUM` cannot run inside one, and every caller of this (`Reset`'s
+    /// own transaction in `CleanupExecutor::run_reset_catalog`) has
+    /// already committed by the time this runs. The caller is expected to
+    /// have already checked there is enough free space -- this only
+    /// issues the statement.
+    ///
+    /// **`VACUUM` alone does not give the space back under this catalog's
+    /// own settings** -- confirmed empirically, not assumed: this
+    /// connection runs WAL (`from_connection`), and `VACUUM`'s rebuilt
+    /// content lands in the WAL like any other write rather than in the
+    /// main file, so the file this project measures (and the user sees on
+    /// disk) stayed exactly its pre-`VACUUM` size in a real run until a
+    /// checkpoint moved that content back. `wal_checkpoint(TRUNCATE)`
+    /// forces that checkpoint and truncates the WAL file itself back down
+    /// -- without it, `VACUUM` still shrinks the *logical* database but
+    /// not the bytes actually occupying the disk, which is the entire
+    /// point of this task.
+    pub fn vacuum(&self) -> OrbokResult<()> {
+        let conn = self.lock();
+        conn.execute_batch("VACUUM;").map_err(db_err)?;
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(db_err)
+    }
+
     /// Current schema version (0 when no migration has been applied).
     pub fn schema_version(&self) -> OrbokResult<i64> {
         let conn = self.lock();

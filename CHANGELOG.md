@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Resetting saved app data now actually gives the space back** (Task
+  095). A reset deleted every row but never shrank either database file on
+  disk — deleting a 600 MB catalog left it 600 MB. Reset now compacts both
+  the catalog and the cache file afterward, only when the disk has enough
+  free room to do it safely (compacting itself needs headroom, roughly the
+  file's own size again); if there isn't enough, or compaction itself
+  fails, the reset still succeeds — the data is gone either way, and
+  nothing about this is shown to the user.
 - **Resetting saved app data now actually clears recent searches** (Task
   094). The warning has always said a reset removes "all search data",
   but the recent-searches list survived a reset untouched, in the catalog
