@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fresh from the catalog each time the dialog opens. Reset itself never
   waits on the count; if it cannot be read, the dialog shows no line
   rather than a guess.
+- **One word per thing: the two search methods and the promise about your
+  files each now have a single name, in both languages** (Task 100). The
+  keyword method was called "Basic search", "Keyword search" and "Keyword"
+  depending on where you were; the meaning method was "Conceptual" in the
+  mode picker but "By meaning" and "search by meaning" everywhere else.
+  Both are now "keyword search" (short: "Keyword") and "search by meaning"
+  (short: "By meaning") everywhere — the mode picker, notices, hints and
+  the FAQ. Five different sentences reassuring you that your files are
+  never changed also become one: "Your files are never changed or
+  deleted." Nothing about what orbok actually does has changed — this is
+  copy only.
 
 ## [0.26.1] — 2026-09-22
 

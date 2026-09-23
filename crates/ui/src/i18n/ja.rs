@@ -23,7 +23,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchAddSource => "フォルダーを追加",
         SearchNoResults => "結果が見つかりません",
         SearchKeywordOnlyNotice => {
-            "意味による検索はまだ設定されていません。基本検索は引き続き使用できます。"
+            "意味による検索はまだ設定されていません。キーワード検索は引き続き使用できます。"
         }
         SearchRunning => "検索中…",
         SearchSnippetUnavailable => "(プレビューを利用できません)",
@@ -62,7 +62,7 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageResetCatalog => "保存されたアプリデータをリセット...",
         StorageResetWarning => {
             "登録済みフォルダーとすべての検索データを削除します。\
-             元のファイルが削除されることはありません。"
+             ファイルは変更も削除もされません。"
         }
         // Task 091 (owner-approved 2026-09-23).
         StorageResetConfirmTitle => "保存されたアプリデータをリセットしますか?",
@@ -86,7 +86,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelsStatusAvailable => "利用可能",
         ModelsStatusMissing => "未導入",
         ModelsKeywordOnlyHint => {
-            "基本検索は使用できます。意味による検索も使うには、\
+            "キーワード検索は使用できます。意味による検索も使うには、\
              モデルを追加してください。"
         }
         ModelsVerification => "検証状態",
@@ -100,8 +100,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsPrivacyLocalOnly => "文書はこのコンピューター上でのみ処理されます。",
         SearchModeLabel => "モード",
         SearchModeAuto => "自動",
-        SearchModeExact => "完全一致",
-        SearchModeConceptual => "意味検索",
+        SearchModeExact => "キーワード",
+        SearchModeConceptual => "意味",
         SearchModeFast => "高速",
         BadgeKeyword => "キーワード",
         BadgeSemantic => "意味",
@@ -207,7 +207,7 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeSearchCacheClearedTitle => "古い検索結果を削除しました",
         NoticeExtractedTextClearedTitle => "抽出したテキストを削除しました",
         NoticeReplacedDataRemovedTitle => "更新されたファイルの古いデータを削除しました",
-        NoticeCleanupBody => "ファイルはそのままです。",
+        NoticeCleanupBody => "ファイルは変更も削除もされません。",
         NoticeActionTryAgain => "もう一度試す",
         NoticeActionChooseFolder => "別のフォルダーを選ぶ",
         NoticeActionGoToFolders => "フォルダー一覧へ",
@@ -242,7 +242,8 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeRecentSearchNotRemovedBody => "一覧に残っています。もう一度お試しください。",
         NoticeCleanupDidNotFinishTitle => "クリーンアップが完了しませんでした",
         NoticeCleanupDidNotFinishBody => {
-            "一部が削除されていない可能性があります。ファイルはそのままです。もう一度お試しください。"
+            "一部が削除されていない可能性があります。ファイルは変更も削除もされません。\
+             もう一度お試しください。"
         }
         NoticeFolderNotCheckedTitle => "フォルダーを確認できませんでした",
         NoticeFolderNotCheckedBody => {
@@ -321,7 +322,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceActionChooseFolderAgain => "フォルダーを選び直す",
         SourceActionRemoveFromOrbok => "orbokから削除",
         SourceRemoveConfirmBody => {
-            "ファイルはそのまま残ります。このフォルダーの検索の準備内容は削除され、もう一度追加すると準備し直します。"
+            "ファイルは変更も削除もされません。このフォルダーの検索の準備内容は削除され、\
+             もう一度追加すると準備し直します。"
         }
         SourceRemoveConfirm => "削除",
         SourceFolderNotFoundDetail => {
@@ -365,7 +367,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDownloadFailed => "ダウンロードが完了しませんでした",
         ModelDownloadRetry => "もう一度試す",
         ModelRepairingFiles => "修復が必要なファイルのみダウンロードします。",
-        ModelBasicSearchAvailable => "基本検索は使えます。意味による検索は後で追加できます。",
+        ModelBasicSearchAvailable => "キーワード検索は使えます。意味による検索は後で追加できます。",
         ModelDownloadingWhatNeeded => "必要なものをダウンロード中...",
         // RFC-039: Privacy modes
         PrivacyTitle => "プライバシー",
@@ -389,7 +391,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         PrivacyTurnOn => "有効にする",
         PrivacyTurnOnAndClear => "有効にして消去",
-        PrivacyFilesNotDeleted => "あなたのファイルは削除されません。",
+        PrivacyFilesNotDeleted => "ファイルは変更も削除もされません。",
         PrivacyModelDownloadNote => {
             "orbokはモデルをダウンロードしますが、あなたのドキュメントはアップロードされません。"
         }

@@ -231,29 +231,6 @@ fn locale_from_env_english_fallback() {
     assert_eq!(detected, Some(Locale::En));
 }
 
-/// Task 066: one Japanese word for "folder" -- 「フォルダー」. Scans every
-/// Japanese catalog value (the generated `ALL_KEYS`, as the forbidden-terms
-/// test does) and fails on any 「フォルダ」 not immediately followed by 「ー」,
-/// including at the end of a value, naming each offending key.
-#[test]
-fn japanese_copy_spells_folder_one_way() {
-    let mut offenders = Vec::new();
-    for &key in crate::i18n::ALL_KEYS {
-        let copy = crate::i18n::tr(crate::i18n::Locale::Ja, key);
-        let mut rest = copy;
-        while let Some(at) = rest.find("フォルダ") {
-            let after = &rest[at + "フォルダ".len()..];
-            if !after.starts_with('ー') {
-                offenders.push(format!("{key:?}: {copy:?}"));
-                break;
-            }
-            rest = after;
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "{} Japanese value(s) spell folder 「フォルダ」 instead of 「フォルダー」:\n{}",
-        offenders.len(),
-        offenders.join("\n")
-    );
-}
+// Task 066's "one Japanese word for folder" property (「フォルダー」, not
+// 「フォルダ」) is now one row in `crate::tests::glossary`'s `GLOSSARY`,
+// checked by `default_ui_copy_follows_the_glossary` (Task 100).

@@ -206,14 +206,14 @@ fn the_confirmation_renders_the_approved_copy() {
         (
             Locale::En,
             "Remove \"Docs\" from orbok?",
-            "Your files stay where they are. orbok removes what it prepared to search this folder, and prepares it again if you add it back.",
+            "Your files are never changed or deleted. orbok removes what it prepared to search this folder, and prepares it again if you add it back.",
             "Cancel",
             "Remove",
         ),
         (
             Locale::Ja,
             "「Docs」を orbok から削除しますか?",
-            "ファイルはそのまま残ります。このフォルダーの検索の準備内容は削除され、もう一度追加すると準備し直します。",
+            "ファイルは変更も削除もされません。このフォルダーの検索の準備内容は削除され、もう一度追加すると準備し直します。",
             "キャンセル",
             "削除",
         ),

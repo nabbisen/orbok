@@ -20,7 +20,9 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchNoSourcesBody => "Add a folder or file so orbok can search it.",
         SearchAddSource => "Add folder",
         SearchNoResults => "No results found",
-        SearchKeywordOnlyNotice => "Search by meaning is not set up yet. Basic search still works.",
+        SearchKeywordOnlyNotice => {
+            "Search by meaning is not set up yet. Keyword search still works."
+        }
         SearchRunning => "Searching…",
         SearchSnippetUnavailable => "(preview unavailable)",
         SearchResultOpenFile => "Open file",
@@ -58,7 +60,7 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageResetCatalog => "Reset saved app data...",
         StorageResetWarning => {
             "This removes registered folders and all search data. \
-             Your files are never deleted."
+             Your files are never changed or deleted."
         }
         // Task 091 (owner-approved 2026-09-23).
         StorageResetConfirmTitle => "Reset saved app data?",
@@ -82,7 +84,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelsStatusAvailable => "Available",
         ModelsStatusMissing => "Missing",
         ModelsKeywordOnlyHint => {
-            "Basic search still works. Add a model to also \
+            "Keyword search still works. Add a model to also \
              search by meaning."
         }
         ModelsVerification => "Verification",
@@ -98,8 +100,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsPrivacyLocalOnly => "Documents are processed on this computer only.",
         SearchModeLabel => "Mode",
         SearchModeAuto => "Auto",
-        SearchModeExact => "Exact",
-        SearchModeConceptual => "Conceptual",
+        SearchModeExact => "Keyword",
+        SearchModeConceptual => "By meaning",
         SearchModeFast => "Fast",
         BadgeKeyword => "Keyword",
         BadgeSemantic => "By meaning",
@@ -199,7 +201,7 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeSearchCacheClearedTitle => "Old search results cleared",
         NoticeExtractedTextClearedTitle => "Extracted text cleared",
         NoticeReplacedDataRemovedTitle => "Old data from updated files removed",
-        NoticeCleanupBody => "Your files are untouched.",
+        NoticeCleanupBody => "Your files are never changed or deleted.",
         NoticeActionTryAgain => "Try again",
         NoticeActionChooseFolder => "Choose another folder",
         NoticeActionGoToFolders => "Go to Folders",
@@ -230,7 +232,8 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeRecentSearchNotRemovedBody => "It is still in the list. Try again.",
         NoticeCleanupDidNotFinishTitle => "Cleanup didn't finish",
         NoticeCleanupDidNotFinishBody => {
-            "Some of it may not have been removed. Your files are untouched. Try again."
+            "Some of it may not have been removed. Your files are never changed or deleted. \
+             Try again."
         }
         NoticeFolderNotCheckedTitle => "Folder not checked",
         NoticeFolderNotCheckedBody => "orbok could not check this folder for changes. Try again.",
@@ -305,8 +308,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceActionChooseFolderAgain => "Choose folder again",
         SourceActionRemoveFromOrbok => "Remove from orbok",
         SourceRemoveConfirmBody => {
-            "Your files stay where they are. orbok removes what it prepared to search \
-             this folder, and prepares it again if you add it back."
+            "Your files are never changed or deleted. orbok removes what it prepared to \
+             search this folder, and prepares it again if you add it back."
         }
         SourceRemoveConfirm => "Remove",
         SourceFolderNotFoundDetail => {
@@ -348,7 +351,9 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDownloadFailed => "Download did not finish",
         ModelDownloadRetry => "Try again",
         ModelRepairingFiles => "Only the files needing repair are downloaded.",
-        ModelBasicSearchAvailable => "Basic search is ready. Search by meaning can be added later.",
+        ModelBasicSearchAvailable => {
+            "Keyword search is ready. Search by meaning can be added later."
+        }
         ModelDownloadingWhatNeeded => "Downloading what is needed...",
         // RFC-039: Privacy modes
         PrivacyTitle => "Privacy",
@@ -374,7 +379,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         PrivacyTurnOn => "Turn on",
         PrivacyTurnOnAndClear => "Turn on and clear",
-        PrivacyFilesNotDeleted => "Your files will not be deleted.",
+        PrivacyFilesNotDeleted => "Your files are never changed or deleted.",
         PrivacyModelDownloadNote => {
             "orbok downloads the model, but your documents are not uploaded."
         }

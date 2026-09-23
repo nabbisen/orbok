@@ -7,7 +7,7 @@ inference runs on your computer only.
 **Can I search encrypted files?**
 Not in v0.x. Encrypted files are skipped with an `unsupported_format` error.
 
-**Why is semantic search unavailable?**
+**Why is search by meaning unavailable?**
 No embedding model is registered. Use the Models view to locate or
 install one. Keyword search always works without a model.
 

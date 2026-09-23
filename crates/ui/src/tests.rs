@@ -5,6 +5,7 @@
 //! | Module | Coverage |
 //! |---|---|
 //! | `i18n` | i18n catalog completeness, locale detection, parameterized messages |
+//! | `glossary` | Task 100: one glossary of drifted terms/promises, read by one guard |
 //! | `state` | AppState transitions, theme/scale/motion, navigation, notices |
 //! | `components` | RFC-033 adapter smoke tests and tone-mapping |
 //! | `notice` | Task 037 §2: `UserNotice` text never relies on tone alone |
@@ -20,6 +21,7 @@
 
 pub mod a11y;
 pub mod components;
+mod glossary;
 mod handoff038_trust_display;
 mod handoff041_open_result;
 pub mod i18n;
