@@ -666,83 +666,44 @@ use crate::state::SearchFolderScope;
 
 type Sampler = fn(Locale) -> Vec<String>;
 
+/// One `FORMATTERS` entry: the function's name and its sampler, written once.
+/// `sampled!(fmt_query: ("notes"))` expands to the name `"fmt_query"` and a
+/// sampler that calls `crate::i18n::fmt_query(locale, "notes")` -- the same
+/// identifier is both, so an entry cannot name one function and call another,
+/// and at least one argument list is required (`()` for a formatter taking
+/// only the locale), so a sampler cannot be empty (Review 282 §2).
+macro_rules! sampled {
+    ($name:ident : $( ( $($arg:expr),* ) ),+ $(,)?) => {
+        (
+            stringify!($name),
+            (|locale: Locale| vec![ $( crate::i18n::$name(locale $(, $arg)*) ),+ ]) as Sampler,
+        )
+    };
+}
+
 /// Every `pub fn … -> String` in `i18n.rs`, by name, with its samples. The
 /// exhaustiveness test below compares this list with the file itself.
 const FORMATTERS: &[(&str, Sampler)] = &[
-    ("fmt_label_value", |l| {
-        vec![crate::i18n::fmt_label_value(l, "Label", "Value")]
-    }),
-    ("wizard_file_size_mb", |l| {
-        vec![crate::i18n::wizard_file_size_mb(l, 1.5)]
-    }),
-    ("preparing_folder_for_search", |l| {
-        vec![crate::i18n::preparing_folder_for_search(l, "Docs")]
-    }),
-    ("files_ready_for_search", |l| {
-        vec![
-            crate::i18n::files_ready_for_search(l, 1),
-            crate::i18n::files_ready_for_search(l, 3),
-        ]
-    }),
-    ("startup_failed_data_folder_body", |l| {
-        vec![crate::i18n::startup_failed_data_folder_body(l, "/data")]
-    }),
-    ("model_exact_size", |l| {
-        vec![crate::i18n::model_exact_size(l, 1_234_567)]
-    }),
-    ("model_file_position", |l| {
-        vec![
-            crate::i18n::model_file_position(l, 1, 3),
-            crate::i18n::model_file_position(l, 0, 0),
-        ]
-    }),
-    ("model_transfer_progress", |l| {
-        vec![
-            crate::i18n::model_transfer_progress(l, 1_000_000, 5_000_000),
-            crate::i18n::model_transfer_progress(l, 1_000_000, 0),
-        ]
-    }),
-    ("source_summary", |l| {
-        vec![
-            crate::i18n::source_summary(l, 12, 0, 0, 0),
-            crate::i18n::source_summary(l, 12, 1, 2, 3),
-        ]
-    }),
-    ("search_result_count", |l| {
-        vec![
-            crate::i18n::search_result_count(l, 1),
-            crate::i18n::search_result_count(l, 3),
-        ]
-    }),
-    ("fmt_reset_removes", |l| {
-        vec![
-            crate::i18n::fmt_reset_removes(l, 2, 3, false),
-            crate::i18n::fmt_reset_removes(l, 1, 1, true),
-        ]
-    }),
-    ("fmt_rebuild_prepares", |l| {
-        vec![
-            crate::i18n::fmt_rebuild_prepares(l, 1),
-            crate::i18n::fmt_rebuild_prepares(l, 3),
-        ]
-    }),
-    ("fmt_gib", |l| vec![crate::i18n::fmt_gib(l, 1.5)]),
-    ("fmt_mib_bucket", |l| {
-        vec![crate::i18n::fmt_mib_bucket(l, "Sample", 1.5)]
-    }),
-    ("fmt_storage_row", |l| {
-        vec![crate::i18n::fmt_storage_row(l, "Sample", 1.5, 3)]
-    }),
-    ("fmt_remove_source_title", |l| {
-        vec![crate::i18n::fmt_remove_source_title(l, "Docs")]
-    }),
-    ("fmt_query", |l| vec![crate::i18n::fmt_query(l, "notes")]),
-    ("search_location_chip", |l| {
-        vec![
-            crate::i18n::search_location_chip(l, "Docs", SearchFolderScope::FolderAndSubfolders),
-            crate::i18n::search_location_chip(l, "Docs", SearchFolderScope::FolderOnly),
-        ]
-    }),
+    sampled!(fmt_label_value: ("Label", "Value")),
+    sampled!(wizard_file_size_mb: (1.5)),
+    sampled!(preparing_folder_for_search: ("Docs")),
+    sampled!(files_ready_for_search: (1), (3)),
+    sampled!(startup_failed_data_folder_body: ("/data")),
+    sampled!(model_exact_size: (1_234_567)),
+    sampled!(model_file_position: (1, 3), (0, 0)),
+    sampled!(model_transfer_progress: (1_000_000, 5_000_000), (1_000_000, 0)),
+    sampled!(source_summary: (12, 0, 0, 0), (12, 1, 2, 3)),
+    sampled!(search_result_count: (1), (3)),
+    sampled!(fmt_reset_removes: (2, 3, false), (1, 1, true)),
+    sampled!(fmt_rebuild_prepares: (1), (3)),
+    sampled!(fmt_gib: (1.5)),
+    sampled!(fmt_mib_bucket: ("Sample", 1.5)),
+    sampled!(fmt_storage_row: ("Sample", 1.5, 3)),
+    sampled!(fmt_remove_source_title: ("Docs")),
+    sampled!(fmt_query: ("notes")),
+    sampled!(search_location_chip:
+        ("Docs", SearchFolderScope::FolderAndSubfolders),
+        ("Docs", SearchFolderScope::FolderOnly)),
 ];
 
 /// The other `pub fn`s in `i18n.rs`, each accounted for by *not* being a
