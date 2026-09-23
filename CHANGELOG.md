@@ -68,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never changed also become one: "Your files are never changed or
   deleted." Nothing about what orbok actually does has changed — this is
   copy only.
+- **The user guide now names things as the app does** (Task 101): Keyword
+  and By meaning, not Exact, Conceptual or semantic.
 
 ## [0.26.1] — 2026-09-22
 

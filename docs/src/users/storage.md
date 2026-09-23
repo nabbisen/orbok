@@ -33,6 +33,6 @@ never touched. This action requires confirmation.
 
 | Mode | Index size | Features |
 |---|---|---|
-| Balanced | Moderate | Keyword + semantic |
+| Balanced | Moderate | Keyword search and search by meaning |
 | High Accuracy | Larger | Richer chunking |
 | Space Saving | Smallest | Quantized vectors (future) |

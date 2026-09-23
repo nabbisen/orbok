@@ -32,6 +32,22 @@ struct GlossaryTerm {
     /// be removed in the same change, not left as a stale permission nobody
     /// re-examines.
     exemptions: &'static [(MessageKey, &'static str, &'static str)],
+    /// Task 101: whether the user guide (`docs/src/users/`) is scanned for
+    /// this row's forbidden terms too. Set only on rows that name a
+    /// canonical term -- never on row 1, whose jargon ban does not apply to
+    /// docs (explaining what an embedding model is, is what user docs are
+    /// for). Maintainer docs are never scanned: they discuss the code,
+    /// where "semantic" and "exact" are real technical words.
+    applies_to_docs: bool,
+    /// Task 101: spellings forbidden in the user guide *in addition to*
+    /// `forbidden`, for a word another row already owns in the catalogs
+    /// (row 1 bans "semantic" there; repeating it in `forbidden` would make
+    /// two rows own one word). Only read when `applies_to_docs` is set.
+    doc_forbidden: &'static [(Locale, &'static str)],
+    /// Task 101: `(file relative to docs/src/users/, term, why)` -- the docs
+    /// counterpart of `exemptions`, and covered by the same load-bearing
+    /// check.
+    doc_exemptions: &'static [(&'static str, &'static str, &'static str)],
 }
 
 impl GlossaryTerm {
@@ -83,6 +99,109 @@ impl GlossaryTerm {
         }
         out
     }
+}
+
+impl GlossaryTerm {
+    fn doc_term_hits(&self, prose: &str, locale: Locale, term: &str) -> bool {
+        match (locale, self.allowed_if_followed_by) {
+            (Locale::Ja, Some(suffix)) => contains_not_followed_by(prose, term, suffix),
+            (Locale::Ja, None) => prose.contains(term),
+            (Locale::En, _) => contains_word(prose, term),
+        }
+    }
+
+    fn doc_is_exempt(&self, file: &str, term: &str) -> bool {
+        self.doc_exemptions
+            .iter()
+            .any(|&(f, t, _)| f == file && t == term)
+    }
+
+    /// Task 101: one user-guide file's violations of this row. `prose` is
+    /// the file with code spans and fenced blocks already removed
+    /// (`prose_only`). English terms match case-sensitively as whole words
+    /// -- "Exact" the mode name, not "exactly" or "an exact term" -- since
+    /// prose, unlike a catalog value, is full of ordinary words that merely
+    /// contain a banned one. Japanese terms keep the catalog's plain
+    /// substring rule.
+    fn doc_violations(&self, file: &str, prose: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        if !self.applies_to_docs {
+            return out;
+        }
+        for &(locale, term) in self.forbidden.iter().chain(self.doc_forbidden) {
+            if !self.doc_term_hits(prose, locale, term) || self.doc_is_exempt(file, term) {
+                continue;
+            }
+            let canon = self.canonical_forms(locale);
+            let replacement = match canon.as_slice() {
+                [] => format!("forbidden for \"{}\"", self.concept),
+                [long] => format!("forbidden for \"{}\"; use {long:?} instead", self.concept),
+                [long, short, ..] => format!(
+                    "forbidden for \"{}\"; the term is {long:?} (short: {short:?})",
+                    self.concept
+                ),
+            };
+            out.push(format!(
+                "docs/src/users/{file} contains {term:?}, {replacement}"
+            ));
+        }
+        out
+    }
+}
+
+/// Task 101: `markdown` with fenced code blocks and inline code spans
+/// removed, so a config value or identifier in backticks is never mistaken
+/// for a vocabulary violation. A fence is a line starting with three
+/// backticks (toggling); an inline span is text between two single
+/// backticks on one line. Removed text is replaced by a space so words on
+/// either side do not fuse.
+fn prose_only(markdown: &str) -> String {
+    let mut out = String::new();
+    let mut in_fence = false;
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut in_span = false;
+        for ch in line.chars() {
+            if ch == '`' {
+                in_span = !in_span;
+                out.push(' ');
+            } else if !in_span {
+                out.push(ch);
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Case-sensitive whole-word match: `term` at a position where the
+/// character before and after (if any) is not alphanumeric. Multi-word
+/// terms ("Basic search") match as a unit.
+fn contains_word(text: &str, term: &str) -> bool {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find(term) {
+        let start = from + rel;
+        let end = start + term.len();
+        let before_ok = text[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = text[end..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+        if before_ok && after_ok {
+            return true;
+        }
+        from = start + term.chars().next().map_or(1, char::len_utf8);
+    }
+    false
 }
 
 fn contains_term(locale: Locale, copy: &str, term: &str) -> bool {
@@ -295,6 +414,9 @@ const GLOSSARY: &[GlossaryTerm] = &[
         forbidden: RFC041_FORBIDDEN,
         allowed_if_followed_by: None,
         exemptions: RFC041_EXEMPTIONS,
+        applies_to_docs: false,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
     },
     GlossaryTerm {
         concept: "the keyword method",
@@ -307,6 +429,9 @@ const GLOSSARY: &[GlossaryTerm] = &[
         forbidden: KEYWORD_METHOD_FORBIDDEN,
         allowed_if_followed_by: None,
         exemptions: KEYWORD_METHOD_EXEMPTIONS,
+        applies_to_docs: true,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
     },
     GlossaryTerm {
         concept: "the meaning method",
@@ -319,6 +444,11 @@ const GLOSSARY: &[GlossaryTerm] = &[
         forbidden: MEANING_METHOD_FORBIDDEN,
         allowed_if_followed_by: None,
         exemptions: &[],
+        applies_to_docs: true,
+        // Row 1 bans "semantic" in the catalogs; the user guide is not under
+        // row 1, so the meaning row carries it for docs only.
+        doc_forbidden: &[(Locale::En, "semantic"), (Locale::En, "Semantic")],
+        doc_exemptions: &[],
     },
     GlossaryTerm {
         concept: "the promise that files are safe",
@@ -329,6 +459,9 @@ const GLOSSARY: &[GlossaryTerm] = &[
         forbidden: FILES_PROMISE_FORBIDDEN,
         allowed_if_followed_by: None,
         exemptions: &[],
+        applies_to_docs: true,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
     },
     GlossaryTerm {
         concept: "the Japanese word for \"folder\" (Task 066)",
@@ -336,6 +469,9 @@ const GLOSSARY: &[GlossaryTerm] = &[
         forbidden: FOLDER_FORBIDDEN,
         allowed_if_followed_by: Some("ー"),
         exemptions: &[],
+        applies_to_docs: true,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
     },
 ];
 
@@ -373,6 +509,82 @@ fn every_glossary_exemption_is_load_bearing() {
                 matches_somewhere,
                 "exemption ({key:?}, {forbidden_term:?}) for \"{concept}\" does not \
                  match any locale's copy any more -- remove it",
+                concept = term.concept
+            );
+        }
+    }
+}
+
+/// Task 101: every Markdown file directly under `docs/src/users/`, as
+/// `(file name, prose-only text)`, sorted. Fails loudly if the directory is
+/// missing or empty -- a scan that finds no files must not pass by finding
+/// nothing.
+fn user_docs() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/src/users");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|x| x == "md"))
+        .map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let text = std::fs::read_to_string(entry.path())
+                .unwrap_or_else(|e| panic!("cannot read {name}: {e}"));
+            (name, prose_only(&text))
+        })
+        .collect();
+    files.sort();
+    assert!(
+        !files.is_empty(),
+        "docs/src/users/ holds no Markdown files -- the scan would prove nothing"
+    );
+    files
+}
+
+/// Task 101: the user guide uses the same words as the app. Applies every
+/// row with `applies_to_docs`; code spans and fenced blocks are skipped
+/// (`prose_only`), and only `docs/src/users/` is read -- maintainer docs and
+/// `docs/src/intermediate/settings.md` (which documents the stored `exact`/
+/// `conceptual` setting values, not labels) are outside it.
+#[test]
+fn user_docs_follow_the_glossary() {
+    let mut violations = Vec::new();
+    for (file, prose) in user_docs() {
+        for term in GLOSSARY {
+            violations.extend(term.doc_violations(&file, &prose));
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "\n{}\n{} violation(s) in the user guide -- Task 101. Fix the sentence, or add a \
+         justified entry to the row's `doc_exemptions`.",
+        violations.join("\n"),
+        violations.len()
+    );
+}
+
+/// Task 101: a docs exemption that no longer matches anything is a stale
+/// permission -- same rule as the catalog exemptions above.
+#[test]
+fn every_glossary_doc_exemption_is_load_bearing() {
+    let docs = user_docs();
+    for term in GLOSSARY {
+        for &(file, forbidden_term, _reason) in term.doc_exemptions {
+            let prose = docs
+                .iter()
+                .find(|(name, _)| name == file)
+                .map(|(_, prose)| prose.as_str())
+                .unwrap_or_else(|| {
+                    panic!("doc exemption names {file}, which is not in docs/src/users/")
+                });
+            let matches = term
+                .forbidden
+                .iter()
+                .chain(term.doc_forbidden)
+                .any(|&(locale, t)| t == forbidden_term && term.doc_term_hits(prose, locale, t));
+            assert!(
+                matches,
+                "doc exemption ({file:?}, {forbidden_term:?}) for \"{concept}\" does not match \
+                 any more -- remove it",
                 concept = term.concept
             );
         }

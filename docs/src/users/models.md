@@ -2,7 +2,7 @@
 
 ## Why models?
 
-Keyword search works without any models. Semantic search requires a
+Keyword search works without any models. Search by meaning requires a
 local embedding model.
 
 ## Privacy guarantee
@@ -19,9 +19,9 @@ inference. Documents are **never** sent to the model provider's servers.
 
 ## Changing the embedding model
 
-If you switch embedding models, existing semantic indexes become
-incompatible. orbok does not currently invalidate or rebuild them
-automatically — vectors indexed under the previous model remain and are
+If you switch embedding models, what orbok already prepared for search
+by meaning becomes incompatible. orbok does not currently invalidate or
+rebuild it automatically — vectors indexed under the previous model remain and are
 not used by the new one. Re-index manually after a model change.
 
 ## Recommended models

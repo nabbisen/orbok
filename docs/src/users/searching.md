@@ -4,16 +4,16 @@
 
 | Mode | Best for |
 |---|---|
-| **Auto** | General queries (keyword + semantic + RRF) |
-| **Exact** | Identifiers, error codes, code symbols |
-| **Conceptual** | Natural-language questions |
+| **Auto** | General queries — uses keyword search, and search by meaning when it is set up |
+| **Keyword** | Identifiers, error codes, code symbols |
+| **By meaning** | Natural-language questions |
 | **Fast** | Quick lookup, smaller candidate set |
 
-## Exact match tips
+## Keyword tips
 
 - Use the full identifier: `ERR-4042`, `client_secret`, `refresh_token`
 - Quote multi-word phrases are not yet supported in v0.x
-- Use Exact mode for source code and log searches
+- Use Keyword mode for source code and log searches
 
 ## Japanese search
 
@@ -26,7 +26,7 @@ characters (Ａ, Ｂ, Ｃ) are normalized to half-width before matching.
 | Badge | Meaning |
 |---|---|
 | Keyword | Matched by the FTS5 keyword index |
-| Semantic | Matched by the vector embedding index |
+| By meaning | Matched by search by meaning, using a local model |
 | Needs update | Source file changed since this chunk was indexed |
 | Missing source | Source file is currently unavailable |
 

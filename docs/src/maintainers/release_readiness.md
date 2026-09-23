@@ -232,7 +232,7 @@ development one.
 - [ ] Keyword search returns results for exact terms
 - [ ] Identifier search (`ERR-4042`, `client_secret`) returns results
 - [ ] Empty query state shows add-source prompt when no sources exist
-- [ ] Search mode selector switches between Auto / Exact / Conceptual
+- [ ] Search mode selector switches between Auto / Keyword / By meaning / Fast
 - [ ] Source-missing badge appears when a source file is deleted
 
 ### Storage
