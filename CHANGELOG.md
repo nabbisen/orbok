@@ -11,18 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Resetting saved app data now actually gives the space back, without
-  freezing the window** (Tasks 095/096). A reset deleted every row but
+- **Resetting saved app data now actually gives the space back, and never
+  freezes the window** (Tasks 095/096/097). A reset deleted every row but
   never shrank either database file on disk — deleting a 600 MB catalog
-  left it 600 MB. Reset now compacts both the catalog and the cache file
-  afterward, only when the disk has enough free room to do it safely
-  (compacting itself needs headroom, roughly the file's own size again);
+  left it 600 MB — and the delete itself ran on the window's own thread,
+  so confirming a reset on a large profile could freeze the window for a
+  real, size-dependent amount of time right after pressing a destructive
+  button. A confirmed reset's entire own work — deleting, then compacting
+  both files (only when the disk has enough free room to do it safely;
   if there isn't enough, or compaction itself fails, the reset still
-  succeeds — the data is gone either way, and nothing about this is shown
-  to the user. Compaction runs after the reset itself completes, off the
-  window's own thread and on its own connection, so it cannot freeze the
-  window even when another background task is briefly contending for the
-  database at the same moment.
+  succeeds regardless — the data is gone either way, and nothing about
+  compaction is shown to the user), then measuring what's left — now runs
+  off the window's own thread and on its own connection, so it cannot
+  freeze the window even when another background task is briefly
+  contending for the database at the same moment.
 - **Resetting saved app data now actually clears recent searches** (Task
   094). The warning has always said a reset removes "all search data",
   but the recent-searches list survived a reset untouched, in the catalog

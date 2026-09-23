@@ -198,6 +198,15 @@ runs off the update thread, on its own short-lived `Catalog` connection
 (RFC-061 §5's own amendment records the exception) — `run_reset` itself
 still only deletes, synchronously, as it always did.
 
+**Amended once more (Task 097, Review Request 275).** The delete turned
+out to be the larger of the two costs, not the smaller — 727.9 ms against
+compaction's 56.8 ms on a 600 MB catalog (Review Request 274 §4) — and
+`CleanupService::run_reset` (the delete itself, unchanged) was still being
+called from the update thread. It no longer is: a confirmed reset's
+delete, compaction, and measurement now all happen off that thread, in
+that order, on one connection opened for that purpose alone
+(`reset_catalog_delete_compact_and_measure`, `main.rs`).
+
 **Criterion 6 itself still holds, unchanged.** It concerns "Remove
 replaced stale indexes" (`RemoveReplacedStaleIndexes`), a Safe-cleanup
 action, not Reset — Task 095 §1 named the Safe-cleanup actions explicitly

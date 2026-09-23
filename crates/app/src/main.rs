@@ -398,67 +398,88 @@ fn measure_storage_task(
     )
 }
 
-/// Task 096: post-reset compaction (Task 095) itself -- a plain function
-/// so a test can call it directly, on its own thread, and prove the
-/// shared connection stays free while it runs (Review 273 §4.1's own
-/// hazard: a background thread holding the *shared* connection would
-/// freeze the update thread just the same, only from a different stack).
+/// Task 097: what a confirmed reset returns, once it either committed and
+/// was compacted and measured, or did not commit at all. Kept separate
+/// from `Message` so `reset_catalog_delete_compact_and_measure` stays a
+/// plain, directly-testable function -- `reset_outcome_to_messages` is the
+/// only place this gets turned into messages, itself also plain and
+/// directly-testable for the same reason.
+#[derive(Debug)]
+enum ResetOutcome {
+    Succeeded {
+        rows: Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+        cache_file_bytes: Option<u64>,
+    },
+    /// The catalog or cache could not even be opened. Nothing was
+    /// attempted, so nothing changed -- the case
+    /// `notice_retry::reset_storage_unavailable` names.
+    NotAttempted,
+    /// The delete itself failed after a real attempt. `sources` is the
+    /// reload `bootstrap::get_sources` produced against the same
+    /// connection, `None` only if that read failed too, in which case the
+    /// list stays exactly as it was before the request.
+    Failed {
+        sources: Option<Vec<orbok_ui::state::SourceCard>>,
+    },
+}
+
+/// Task 097: a confirmed reset's entire own work -- delete, then (only if
+/// the delete committed) compact and measure -- as a plain function, on
+/// its own connection, off the update thread. A test can call this
+/// directly under forced contention, the same reason `compact_reset_files`
+/// was one (Task 096) before this task folded it in here.
 ///
 /// Opens its own catalog and cache -- the same deliberate exception to
-/// RFC-061 §5's one-catalog rule `scheduler_host.rs` already is -- so a
-/// contended `wal_checkpoint` (Review Request 273 §0a: up to the full 5 s
-/// busy timeout) never holds the mutex the update thread needs for its
-/// next catalog access. `shared_catalog` is the update thread's own
-/// handle, passed through for the caller's convenience and deliberately
-/// never touched here -- that is the whole property this function exists
-/// to hold (Task 096 §2 test 2's own mutation: use it for compaction
-/// instead of a fresh handle, and watch that test fail). Neither handle
-/// failing to open is shown to the user -- compaction is already a
-/// best-effort step (Task 095 §1.4), so this only logs and skips, the
-/// same as a failed `VACUUM` itself does.
-fn compact_reset_files(
+/// RFC-061 §5's one-catalog rule `scheduler_host.rs` already is, and Task
+/// 096 already extended to compaction: the update thread's shared
+/// connection must never be held across work this slow. Measured
+/// (Review Request 274 §4): the delete alone took 727.9 ms on a 600 MB
+/// catalog, against compaction's 56.8 ms -- the delete was always the
+/// dominant cost, and it now runs here, off that thread, instead of
+/// inline in `router::route`.
+fn reset_catalog_delete_compact_and_measure(
     runtime: &orbok::runtime_context::RuntimeContext,
-    _shared_catalog: &orbok_db::Catalog,
-) {
+) -> ResetOutcome {
     let Ok(fresh_catalog) = bootstrap::open_catalog(runtime) else {
-        tracing::warn!("post-reset compaction: catalog unavailable, skipping");
-        return;
+        tracing::error!("reset catalog failed: catalog unavailable");
+        return ResetOutcome::NotAttempted;
     };
     let Ok(cache) = bootstrap::cache_service(runtime) else {
-        tracing::warn!("post-reset compaction: cache unavailable, skipping");
-        return;
+        tracing::error!("reset catalog failed: cache unavailable");
+        return ResetOutcome::NotAttempted;
     };
-    bootstrap::compact_after_reset(&fresh_catalog, &cache);
+    match bootstrap::reset_catalog(&fresh_catalog, &cache) {
+        Ok(()) => {
+            bootstrap::compact_after_reset(&fresh_catalog, &cache);
+            let (rows, cache_file_bytes) = bootstrap::measure_storage(runtime, &fresh_catalog);
+            ResetOutcome::Succeeded {
+                rows,
+                cache_file_bytes,
+            }
+        }
+        Err(e) => {
+            tracing::error!("reset catalog failed: {e}");
+            ResetOutcome::Failed {
+                sources: bootstrap::get_sources(&fresh_catalog).ok(),
+            }
+        }
+    }
 }
 
-/// Task 096 §2 test 4: `compact_reset_files` then `measure_storage`, in
-/// that plain sequential order -- a plain function, not two chained
-/// `Task`s, so the order is guaranteed by ordinary Rust control flow
-/// (testable directly) rather than by `Task::then`'s own semantics (not
-/// independently drivable from outside `iced`'s runtime -- its `Action`
-/// output is private to that crate). Measuring first would read the
-/// pre-compaction file size; this is the one place that order is decided.
-fn compact_then_measure(
-    runtime: &orbok::runtime_context::RuntimeContext,
-    catalog: &orbok_db::Catalog,
-) -> (
-    Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
-    Option<u64>,
-) {
-    compact_reset_files(runtime, catalog);
-    bootstrap::measure_storage(runtime, catalog)
-}
-
-/// Task 096: `compact_then_measure` off the update thread, so the numbers
-/// the Storage page shows next are the compacted file sizes, not whatever
-/// was on disk before compaction ran.
-fn compact_reset_and_measure_task(
-    runtime: orbok::runtime_context::RuntimeContext,
-    catalog: std::sync::Arc<orbok_db::Catalog>,
-) -> iced::Task<Message> {
-    iced::Task::perform(
-        async move { compact_then_measure(&runtime, &catalog) },
-        |(rows, cache_file_bytes)| {
+/// Task 097: the messages a `ResetOutcome` becomes -- a plain function, not
+/// inline in `reset_task`'s `.then()`, so a test can call it directly
+/// (`Task::batch`'s own inputs aren't independently drivable from outside
+/// `iced`'s runtime, the same reason `compact_then_measure` was split out
+/// in Task 096). One outcome can mean two messages: the reset result
+/// itself, then either the measurement a success is followed by or the
+/// reload a failure is followed by.
+fn reset_outcome_to_messages(outcome: ResetOutcome) -> Vec<Message> {
+    match outcome {
+        ResetOutcome::Succeeded {
+            rows,
+            cache_file_bytes,
+        } => vec![
+            Message::CatalogResetSucceeded,
             if bootstrap::storage_measurement_is_failure(&rows, cache_file_bytes) {
                 Message::StorageMeasurementFailed
             } else {
@@ -466,9 +487,33 @@ fn compact_reset_and_measure_task(
                     rows,
                     cache_file_bytes,
                 }
+            },
+        ],
+        ResetOutcome::NotAttempted => vec![notice_retry::reset_storage_unavailable()],
+        ResetOutcome::Failed { sources } => {
+            let mut messages = vec![notice_retry::reset_failed()];
+            if let Some(cards) = sources {
+                messages.push(Message::SourcesLoaded(cards));
             }
-        },
+            messages
+        }
+    }
+}
+
+/// Task 097: `reset_catalog_delete_compact_and_measure` off the update
+/// thread, mapped through `reset_outcome_to_messages`.
+fn reset_task(runtime: orbok::runtime_context::RuntimeContext) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { reset_catalog_delete_compact_and_measure(&runtime) },
+        |outcome| outcome,
     )
+    .then(|outcome| {
+        iced::Task::batch(
+            reset_outcome_to_messages(outcome)
+                .into_iter()
+                .map(iced::Task::done),
+        )
+    })
 }
 
 /// Task 092: what the reset confirmation will remove, counted fresh off

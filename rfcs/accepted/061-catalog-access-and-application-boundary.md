@@ -265,21 +265,26 @@ is what makes that contention a wait instead of an error.
 > inherited default explicit and load-bearing in orbok's own source rather than
 > introducing behaviour. Keep it for that reason, and only that reason.
 
-> **Amended 2026-09-23 (Task 096).** This decision already had one deliberate
-> exception before this: `scheduler_host.rs` opens its own `Catalog`, not the
-> shared one, since it runs on its own task with its own lifetime. Task 095/096
-> add a second: post-reset compaction (`Catalog::vacuum`'s `PRAGMA
-> wal_checkpoint(TRUNCATE)`) can hold a connection's mutex for up to the full
-> busy timeout when another connection is mid-read (Review Request 273 §0a
-> measured 5 s). Running that on the shared connection — even off the update
-> thread — would hold its mutex for that whole window and block the update
-> thread's *next* access just the same (Review 273 §4.1). Compaction opens its
-> own short-lived `Catalog` for exactly this reason (`main.rs`'s
-> `compact_reset_files`), proven by
-> `the_shared_connection_stays_free_while_compaction_runs_on_its_own`
-> (`crates/app/src/router/tests.rs`). Both exceptions share the same shape: a
-> caller whose own connection would otherwise be held across a cost the update
-> thread cannot afford to wait on.
+> **Amended 2026-09-23 (Task 096, extended by Task 097).** This decision
+> already had one deliberate exception before this: `scheduler_host.rs`
+> opens its own `Catalog`, not the shared one, since it runs on its own task
+> with its own lifetime. Task 096 added a second, for post-reset compaction:
+> `Catalog::vacuum`'s `PRAGMA wal_checkpoint(TRUNCATE)` can hold a
+> connection's mutex for up to the full busy timeout when another connection
+> is mid-read (Review Request 273 §0a measured 5 s), and running that on the
+> shared connection — even off the update thread — would hold its mutex for
+> that whole window and block the update thread's *next* access just the
+> same (Review 273 §4.1). Task 097 folded the reset's own delete into the
+> same exception: it turned out to be the larger cost (727.9 ms against
+> compaction's 56.8 ms on a 600 MB catalog, Review Request 274 §4), and it
+> was still running on the update thread when Task 096 landed. A confirmed
+> reset now does its whole own work — delete, compact, measure — on one
+> connection it opens for that purpose alone
+> (`reset_catalog_delete_compact_and_measure`, `main.rs`), proven by
+> `the_shared_connection_stays_free_while_the_reset_runs_on_its_own`
+> (`crates/app/src/router/tests.rs`). All three exceptions share the same
+> shape: a caller whose own connection would otherwise be held across a cost
+> the update thread cannot afford to wait on.
 
 ## 6. Decision 2 — one embedding model for the process
 

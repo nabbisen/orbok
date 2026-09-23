@@ -314,30 +314,19 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             app.update(message.clone());
             return crate::reset_counts_task(deps.catalog.clone());
         }
+        // Task 097: the request itself only closes the confirmation
+        // (`AppState`'s own `ConfirmResetCatalog` reducer) -- nothing
+        // clears before the result is known. The reset's own work (Task
+        // 096 measured the delete alone at 727.9 ms on a 600 MB catalog,
+        // the dominant cost, not compaction's 56.8 ms) now runs entirely
+        // off this thread, on its own connection, via `reset_task`; it
+        // dispatches `CatalogResetSucceeded` (the reducer clears
+        // `storage_rows` among the rest -- RFC-011 §13.1's empty state,
+        // Task 081) followed by the measurement on success, or the
+        // existing retry notice plus a reload on failure.
         Message::ConfirmResetCatalog => {
-            let succeeded = backend_actions::reset_catalog(
-                &deps.catalog,
-                bootstrap::cache_service(&deps.runtime),
-                &mut app.state,
-            );
-            // Task 081: reset clears `storage_rows` (the reducer's
-            // own `CatalogResetSucceeded` arm); this replaces the
-            // RFC-011 §13.1 empty state that would otherwise leave
-            // with the real measured post-reset numbers.
-            //
-            // Task 096: compaction (Task 095) only when the delete work
-            // actually committed -- the same gate the old combined
-            // `CleanupService::run_reset` had structurally, via its own
-            // `?` short-circuiting before reaching compaction on a
-            // failed delete. It runs off this thread, on its own
-            // connection, then chains the same measurement either way.
-            if succeeded {
-                return crate::compact_reset_and_measure_task(
-                    deps.runtime.clone(),
-                    deps.catalog.clone(),
-                );
-            }
-            return crate::measure_storage_task(deps.runtime.clone(), deps.catalog.clone());
+            app.update(Message::ConfirmResetCatalog);
+            return crate::reset_task(deps.runtime.clone());
         }
         // Task 081: "Calculate now", and every switch to the
         // Storage view (so the numbers shown are current, not

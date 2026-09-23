@@ -31,6 +31,7 @@
 //! named here and in the review request instead of hidden.
 
 use super::*;
+use crate::ResetOutcome;
 use crate::bootstrap;
 use orbok::runtime_context::{PlatformRuntimePaths, RuntimeSelection};
 use orbok_ui::i18n::Locale;
@@ -355,16 +356,15 @@ fn hold_a_read_transaction(path: &std::path::Path) -> rusqlite::Connection {
     reader
 }
 
-/// Task 096 §2 test 1: with a reader forcing the busy path, `route` itself
+/// Task 096/097 test 1: with a reader forcing the busy path, `route` itself
 /// -- the update thread -- must still return promptly. Before Task 096,
-/// compaction ran inline inside this same call, so this contention alone
-/// made it take the full 5 s busy timeout (confirmed directly: reverting
-/// `ConfirmResetCatalog`'s arm to call `compact_reset_files` synchronously
-/// before returning reproduces exactly that). 500 ms is the bound: an
+/// compaction ran inline inside this same call; before Task 097, the
+/// delete itself still did (727.9 ms on a 600 MB catalog, Review 274 §4 --
+/// the dominant cost, not compaction's 56.8 ms). 500 ms is the bound: an
 /// order of magnitude below the 5 s timeout a synchronous checkpoint would
 /// hit, and two orders above what deleting a handful of seeded rows
 /// genuinely costs, so it cannot pass by accident on a slow CI runner --
-/// only by compaction genuinely not running inline.
+/// only by the whole reset genuinely not running inline.
 #[test]
 fn confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction() {
     let temp = tempfile::tempdir().unwrap();
@@ -383,37 +383,47 @@ fn confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction
     assert!(
         elapsed < std::time::Duration::from_millis(500),
         "route() must return promptly regardless of checkpoint contention \
-         -- compaction must not run inline; took {elapsed:?}"
+         -- the reset's own work must not run inline; took {elapsed:?}"
     );
     assert_eq!(
         task.units(),
         1,
-        "compaction (then measurement) must still be dispatched as a \
-         real task, just not run synchronously here"
+        "the reset (then compaction, then measurement) must still be \
+         dispatched as a real task, just not run synchronously here"
     );
 }
 
-/// Task 096 §2 test 2: the §0 second-half hazard -- moving compaction off
-/// the update thread is not enough if it still takes the *shared*
-/// connection's mutex, since a background thread holding that mutex for
-/// the busy timeout blocks the update thread's next catalog access just
-/// the same. Forces `compact_reset_files`'s own contention (the reader),
-/// runs it on a background thread against a *fresh* handle, and proves
-/// `deps.catalog` -- the shared one -- answers an ordinary read promptly
-/// throughout.
+/// Task 097 §3 test 2: the §0 second-half hazard, extended from Task 096's
+/// own compaction-only proof to the whole reset -- moving work off the
+/// update thread is not enough if it still takes the *shared* connection's
+/// mutex, since a background thread holding that mutex for the busy
+/// timeout blocks the update thread's next catalog access just the same.
+/// Runs `reset_catalog_delete_compact_and_measure` (the exact function
+/// `reset_task` wraps) on a background thread under forced contention, and
+/// proves `deps.catalog` -- the shared one -- answers an ordinary read
+/// promptly throughout.
+///
+/// **No corresponding mutation**, deliberately: unlike Task 096's
+/// `compact_reset_files` (which took the shared catalog as a parameter it
+/// promised never to touch -- Review 274 §3 flagged that as an invitation
+/// for a future edit to "fix" the unused parameter and reintroduce the
+/// freeze), `reset_catalog_delete_compact_and_measure` never receives the
+/// shared catalog at all. There is no reference to misuse, so this
+/// property is enforced by the function's own signature, not by a test
+/// that could be deleted alongside a regression.
 #[test]
-fn the_shared_connection_stays_free_while_compaction_runs_on_its_own() {
+fn the_shared_connection_stays_free_while_the_reset_runs_on_its_own() {
     let temp = tempfile::tempdir().unwrap();
     let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 50);
 
     let reader = hold_a_read_transaction(deps.catalog.path());
 
     let runtime = deps.runtime.clone();
-    let shared = Arc::clone(&deps.catalog);
-    let compaction_thread =
-        std::thread::spawn(move || crate::compact_reset_files(&runtime, &shared));
+    let reset_thread =
+        std::thread::spawn(move || crate::reset_catalog_delete_compact_and_measure(&runtime));
 
-    // Give the compaction thread time to actually reach the checkpoint and
+    // Give the reset thread time to actually reach the checkpoint and
     // start contending, so the read below measures real overlap rather
     // than a race at start-up.
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -422,47 +432,48 @@ fn the_shared_connection_stays_free_while_compaction_runs_on_its_own() {
     let _: i64 = deps
         .catalog
         .lock()
-        .query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
         .unwrap();
     let elapsed = start.elapsed();
 
     reader.execute_batch("COMMIT;").unwrap();
-    compaction_thread.join().unwrap();
+    reset_thread.join().unwrap();
 
     assert!(
         elapsed < std::time::Duration::from_millis(500),
-        "the shared connection's own read must not be blocked while \
-         compaction contends on its own, separate connection; took {elapsed:?}"
+        "the shared connection's own read must not be blocked while the \
+         reset contends on its own, separate connection; took {elapsed:?}"
     );
 }
 
-/// Task 096 §2 test 4: the Storage measurement taken after a reset must
-/// reflect the *compacted* file size, not whatever was on disk the
-/// instant compaction started.
+/// Task 096/097 test 4: the Storage measurement taken after a reset must
+/// reflect the *compacted* file size, not whatever was on disk before
+/// compaction ran -- still true now that the delete moved off-thread too,
+/// since `reset_catalog_delete_compact_and_measure` runs all three steps
+/// in that plain sequential order, on the one connection it opens.
 #[test]
 fn the_post_reset_measurement_sees_the_compacted_catalog_size() {
     let temp = tempfile::tempdir().unwrap();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 4000);
 
-    // The real sequence: delete (what `bootstrap::reset_catalog` does,
-    // synchronously, on the update thread), *then* compact -- a plain
-    // `DELETE` never shrinks the file on its own (RFC-059 §10 criterion
-    // 6), so `before` here is deliberately measured after the delete, not
-    // before it, to isolate what compaction alone changes.
-    let cache = bootstrap::cache_service(&deps.runtime).unwrap();
-    bootstrap::reset_catalog(&deps.catalog, &cache).unwrap();
-
     let before = std::fs::metadata(deps.catalog.path()).unwrap().len();
     assert!(
         before > 512 * 1024,
-        "baseline: must be meaningfully large before compaction, or this \
-         test proves nothing (was {before} bytes)"
+        "baseline: must be meaningfully large before reset, or this test \
+         proves nothing (was {before} bytes)"
     );
 
-    // The exact function `compact_reset_and_measure_task` wraps -- proves
-    // the real wiring's order, not a reimplementation of it.
-    let (rows, _cache_file_bytes) = crate::compact_then_measure(&deps.runtime, &deps.catalog);
+    // The exact function `reset_task` wraps -- proves the real wiring's
+    // order, not a reimplementation of it.
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+    let ResetOutcome::Succeeded {
+        rows,
+        cache_file_bytes: _,
+    } = outcome
+    else {
+        panic!("expected a successful reset, got {outcome:?}");
+    };
 
     let after = std::fs::metadata(deps.catalog.path()).unwrap().len();
     assert!(
@@ -484,5 +495,144 @@ fn the_post_reset_measurement_sees_the_compacted_catalog_size() {
         },
         "the measurement must reflect the compacted file size ({after} bytes), \
          not the pre-compaction one ({before} bytes)"
+    );
+}
+
+// ── Task 097 §3 test 3: the outcome is unchanged (migrated from
+// `backend_actions/tests.rs`'s own Row 2, Review 253 §2.4 -- the write-lock
+// scenario there is dropped: the fresh connection this task opens per
+// attempt uses the standard 5 s busy timeout, not the 50 ms
+// `Profile::new()` set on its own, single, long-lived connection there, so
+// reusing that mechanism here would make an equivalent test ~5 s slower
+// for coverage `orbok-db`'s own busy-checkpoint test already provides) ──
+
+/// (a) The reload read fails too: the `sources` table is moved aside by a
+/// second connection, so the reset fails on it and so does the reload. No
+/// list to show.
+#[test]
+fn a_reset_whose_reload_also_fails_reports_no_sources_to_show() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    bootstrap::add_source_expect_added(&deps.catalog, &source_dir.to_string_lossy()).unwrap();
+
+    let mover = rusqlite::Connection::open(deps.catalog.path()).unwrap();
+    mover
+        .execute_batch("ALTER TABLE sources RENAME TO sources_moved_aside;")
+        .unwrap();
+
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+
+    let read_failed = bootstrap::get_sources(&deps.catalog).is_err();
+    mover
+        .execute_batch("ALTER TABLE sources_moved_aside RENAME TO sources;")
+        .unwrap();
+    assert!(
+        read_failed,
+        "control: the reload's read fails while the table is aside"
+    );
+
+    match outcome {
+        ResetOutcome::Failed { sources: None } => {}
+        other => panic!("expected Failed {{ sources: None }}, got {other:?}"),
+    }
+}
+
+/// (b) The catalog step commits and the cache purge fails: a directory
+/// sits where the cache database file belongs, so the purge cannot open
+/// it. The reset reports failure, and the reload shows the truth -- the
+/// catalog no longer holds the folder, so the list is empty.
+#[test]
+fn a_reset_that_fails_after_the_catalog_step_reports_what_the_catalog_holds() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    bootstrap::add_source_expect_added(&deps.catalog, &source_dir.to_string_lossy()).unwrap();
+    let cache_db = temp.path().join(orbok_db::CACHE_FILE_NAME);
+    std::fs::create_dir_all(&cache_db).unwrap();
+
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+
+    assert!(
+        bootstrap::get_sources(&deps.catalog).unwrap().is_empty(),
+        "control: the catalog step committed"
+    );
+    match outcome {
+        ResetOutcome::Failed {
+            sources: Some(cards),
+        } => {
+            assert!(
+                cards.is_empty(),
+                "the reload shows what the catalog holds: no folders"
+            );
+        }
+        other => panic!("expected Failed {{ sources: Some([]) }}, got {other:?}"),
+    }
+}
+
+/// (c) A reset that succeeds clears everything.
+#[test]
+fn a_reset_that_succeeds_reports_success_and_an_empty_catalog() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    bootstrap::add_source_expect_added(&deps.catalog, &source_dir.to_string_lossy()).unwrap();
+
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+
+    assert!(matches!(outcome, ResetOutcome::Succeeded { .. }));
+    assert!(bootstrap::get_sources(&deps.catalog).unwrap().is_empty());
+}
+
+/// Task 097 §3 mutation target ("success dispatched before the delete
+/// completes"): a genuine failure (the table-moved-aside trick above) must
+/// never be reported as `Succeeded`. Mutating
+/// `reset_catalog_delete_compact_and_measure` to ignore
+/// `bootstrap::reset_catalog`'s `Result` and always proceed as if it were
+/// `Ok` makes this fail -- see the review request for the mutation run.
+#[test]
+fn a_failed_delete_is_never_reported_as_succeeded() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mover = rusqlite::Connection::open(deps.catalog.path()).unwrap();
+    mover
+        .execute_batch("ALTER TABLE sources RENAME TO sources_moved_aside;")
+        .unwrap();
+
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+
+    mover
+        .execute_batch("ALTER TABLE sources_moved_aside RENAME TO sources;")
+        .unwrap();
+
+    assert!(
+        !matches!(outcome, ResetOutcome::Succeeded { .. }),
+        "a delete that never committed must not be reported as succeeded; got {outcome:?}"
+    );
+}
+
+// ── Task 097 §2 measurement: how long the window is in the in-flight
+// state, on the same 100,000-file profile Task 095/096 measured -- not a
+// gate, `#[ignore]`d. Run:
+// `cargo test -p orbok --release --bin orbok router::tests::task097_measure_the_in_flight_window -- --ignored --nocapture`
+
+#[test]
+#[ignore = "measurement; run with --ignored --nocapture"]
+fn task097_measure_the_in_flight_window() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 100_000);
+
+    let start = std::time::Instant::now();
+    let outcome = crate::reset_catalog_delete_compact_and_measure(&deps.runtime);
+    let elapsed = start.elapsed();
+
+    assert!(matches!(outcome, ResetOutcome::Succeeded { .. }));
+    println!(
+        "reset_catalog_delete_compact_and_measure (delete + compact + measure, off the \
+         update thread) took {elapsed:?} on a 100,000-file profile"
     );
 }

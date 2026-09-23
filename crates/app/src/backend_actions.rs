@@ -4,6 +4,13 @@
 //! action's whole sequence -- the backend call, then what the state and
 //! notices become -- lives here as a plain function, as `source_removal`
 //! and `notice_retry` do.
+//!
+//! Row 2, reset, moved out (Task 097): its own work runs off the update
+//! thread now, on its own connection, so it no longer fits this file's own
+//! shape (a plain function taking `&mut AppState` to mutate synchronously).
+//! It lives in `main.rs` as `reset_catalog_delete_compact_and_measure` /
+//! `reset_outcome_to_messages`; its own real-failure tests moved to
+//! `router/tests.rs` alongside Task 096's.
 
 use crate::{bootstrap, history, notice_retry};
 use orbok::runtime_context::RuntimeContext;
@@ -40,51 +47,6 @@ pub(crate) fn remove_recent_search(catalog: &Catalog, state: &mut AppState, id: 
         Err(e) => {
             tracing::error!("remove search history entry failed: {e}");
             state.update(&notice_retry::recent_search_not_removed(id));
-        }
-    }
-}
-
-/// Row 2 (Review 253): reset was confirmed. Nothing clears before the
-/// result is known. On failure the list is reloaded from the catalog -- a
-/// partial reset may have changed it, and only the catalog knows -- unless
-/// that read fails too, in which case the list stays as it was before the
-/// request.
-///
-/// Returns whether the reset actually succeeded (Task 096): the caller
-/// uses this to decide whether to run post-reset compaction at all --
-/// there is nothing to compact after a reset that never committed, and
-/// the old combined `CleanupService::run_reset` never reached compaction
-/// on that path either (the catalog delete's own `?` short-circuited
-/// first).
-pub(crate) fn reset_catalog(
-    catalog: &Catalog,
-    cache: std::io::Result<ProfileCache>,
-    state: &mut AppState,
-) -> bool {
-    // The request itself: closes the confirmation, changes nothing else.
-    state.update(&Message::ConfirmResetCatalog);
-    let cache = match cache {
-        Ok(cache) => cache,
-        Err(e) => {
-            // Nothing was attempted, so nothing changed.
-            tracing::error!("cache handle unavailable for reset: {e}");
-            state.update(&notice_retry::reset_storage_unavailable());
-            return false;
-        }
-    };
-    match bootstrap::reset_catalog(catalog, &cache) {
-        Ok(()) => {
-            state.update(&Message::CatalogResetSucceeded);
-            true
-        }
-        Err(e) => {
-            tracing::error!("reset catalog failed: {e}");
-            state.update(&notice_retry::reset_failed());
-            match bootstrap::get_sources(catalog) {
-                Ok(cards) => state.update(&Message::SourcesLoaded(cards)),
-                Err(e) => tracing::error!("reload after a failed reset failed: {e}"),
-            }
-            false
         }
     }
 }
