@@ -2406,23 +2406,54 @@ async fn a_model_the_host_cannot_load_is_reported_once() {
         .try_send(ResourceObservation::EmbeddingModelChanged)
         .unwrap();
 
-    let mut notices = 0;
+    // Two halves with different shapes, because they ask different questions.
+    // "The notice arrives" is an event: wait for it, with a deadline far past
+    // any honest latency (it arrives after one `IDLE_POLL`, ~300 ms), so a
+    // stalled runner is slow rather than wrong. A fixed 3 s observation here
+    // -- what this test used to do -- reads "nothing arrived in the window" as
+    // "nothing was sent" whenever the single-threaded runtime stalls for 3 s,
+    // a stall that makes the timer and the notice ready together and lets
+    // `select!` pick the timer (a Windows CI failure, `left: 0`).
+    let is_the_notice = |message: &orbok_ui::Message| -> bool {
+        match message {
+            orbok_ui::Message::ShowNoticeWithAction {
+                notice: UserNotice::ModelCouldNotBeLoaded,
+                action,
+            } => {
+                assert!(
+                    matches!(**action, orbok_ui::Message::RetryModelLoad),
+                    "Task 060: its Try again loads the model again"
+                );
+                true
+            }
+            _ => false,
+        }
+    };
+    let first = tokio::time::timeout(Duration::from_secs(30), async {
+        while let Some(message) = rx.next().await {
+            if is_the_notice(&message) {
+                return true;
+            }
+        }
+        false
+    })
+    .await;
+    assert!(
+        matches!(first, Ok(true)),
+        "a model the host cannot load must be reported to the UI"
+    );
+
+    // "...and only once" is an absence, which can only be shown over a window
+    // -- but measured from the first notice, so the window is always about ten
+    // idle polls of repeat-watching however long the first one took.
+    let mut repeats = 0;
     let window = tokio::time::sleep(Duration::from_secs(3));
     tokio::pin!(window);
     loop {
         tokio::select! {
             () = &mut window => break,
             message = rx.next() => match message {
-                Some(orbok_ui::Message::ShowNoticeWithAction {
-                    notice: UserNotice::ModelCouldNotBeLoaded,
-                    action,
-                }) => {
-                    assert!(
-                        matches!(*action, orbok_ui::Message::RetryModelLoad),
-                        "Task 060: its Try again loads the model again"
-                    );
-                    notices += 1;
-                }
+                Some(message) if is_the_notice(&message) => repeats += 1,
                 Some(_) => {}
                 None => break,
             },
@@ -2430,7 +2461,7 @@ async fn a_model_the_host_cannot_load_is_reported_once() {
     }
     handle.abort();
     assert_eq!(
-        notices, 1,
+        repeats, 0,
         "one failed load produces one notice, not one per poll"
     );
 }
