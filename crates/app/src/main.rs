@@ -530,6 +530,178 @@ fn reset_counts_task(catalog: std::sync::Arc<orbok_db::Catalog>) -> iced::Task<M
     )
 }
 
+/// Task 099: what a confirmed rebuild action (delete the keyword or vector
+/// index, then mark its files for re-preparation) returns -- the same
+/// three-way shape as `ResetOutcome`, without the compaction step (this
+/// action does not run `VACUUM`, so there is nothing to guard on free
+/// space here).
+#[derive(Debug)]
+enum RebuildOutcome {
+    Succeeded {
+        rows: Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+        cache_file_bytes: Option<u64>,
+    },
+    /// The catalog or cache could not even be opened. Nothing was
+    /// attempted.
+    NotAttempted,
+    /// The delete itself failed after a real attempt.
+    Failed,
+}
+
+/// Task 099 (RFC-011 §14 criterion 6): delete the keyword index and mark
+/// its files for re-preparation, off the update thread, on its own
+/// connection -- Task 097's shape, for the same reason: this deletes from
+/// the same tables a reset does, at a comparable scale.
+fn delete_keyword_index_and_measure(
+    runtime: &orbok::runtime_context::RuntimeContext,
+) -> RebuildOutcome {
+    let Ok(fresh_catalog) = bootstrap::open_catalog(runtime) else {
+        tracing::error!("rebuild keyword index failed: catalog unavailable");
+        return RebuildOutcome::NotAttempted;
+    };
+    let Ok(cache) = bootstrap::cache_service(runtime) else {
+        tracing::error!("rebuild keyword index failed: cache unavailable");
+        return RebuildOutcome::NotAttempted;
+    };
+    match bootstrap::delete_keyword_index(&fresh_catalog, &cache) {
+        Ok(()) => {
+            let (rows, cache_file_bytes) = bootstrap::measure_storage(runtime, &fresh_catalog);
+            RebuildOutcome::Succeeded {
+                rows,
+                cache_file_bytes,
+            }
+        }
+        Err(e) => {
+            tracing::error!("rebuild keyword index failed: {e}");
+            RebuildOutcome::Failed
+        }
+    }
+}
+
+/// Task 099 (RFC-011 §14 criterion 5): delete the vector index and, if a
+/// model is configured, mark its files for re-embedding. Same shape as
+/// [`delete_keyword_index_and_measure`].
+fn delete_vector_index_and_measure(
+    runtime: &orbok::runtime_context::RuntimeContext,
+    model_id: Option<orbok_core::ModelId>,
+) -> RebuildOutcome {
+    let Ok(fresh_catalog) = bootstrap::open_catalog(runtime) else {
+        tracing::error!("rebuild vector index failed: catalog unavailable");
+        return RebuildOutcome::NotAttempted;
+    };
+    let Ok(cache) = bootstrap::cache_service(runtime) else {
+        tracing::error!("rebuild vector index failed: cache unavailable");
+        return RebuildOutcome::NotAttempted;
+    };
+    match bootstrap::delete_vector_index(&fresh_catalog, &cache, model_id) {
+        Ok(()) => {
+            let (rows, cache_file_bytes) = bootstrap::measure_storage(runtime, &fresh_catalog);
+            RebuildOutcome::Succeeded {
+                rows,
+                cache_file_bytes,
+            }
+        }
+        Err(e) => {
+            tracing::error!("rebuild vector index failed: {e}");
+            RebuildOutcome::Failed
+        }
+    }
+}
+
+/// Task 099: the messages a `RebuildOutcome` becomes. `retry` is the
+/// `AskDelete*` message a failure notice's "Try again" re-opens -- never
+/// the `ConfirmDelete*` that would silently re-run the destructive half
+/// without asking again (matches `notice_retry::reset_failed`'s own rule).
+fn rebuild_outcome_to_messages(outcome: RebuildOutcome, retry: Message) -> Vec<Message> {
+    match outcome {
+        RebuildOutcome::Succeeded {
+            rows,
+            cache_file_bytes,
+        } => vec![
+            if bootstrap::storage_measurement_is_failure(&rows, cache_file_bytes) {
+                Message::StorageMeasurementFailed
+            } else {
+                Message::StorageDataReady {
+                    rows,
+                    cache_file_bytes,
+                }
+            },
+        ],
+        RebuildOutcome::NotAttempted | RebuildOutcome::Failed => {
+            vec![notice_retry::cleanup_did_not_finish(&retry)]
+        }
+    }
+}
+
+/// Task 099: [`delete_keyword_index_and_measure`] off the update thread.
+fn delete_keyword_index_task(
+    runtime: orbok::runtime_context::RuntimeContext,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { delete_keyword_index_and_measure(&runtime) },
+        |outcome| outcome,
+    )
+    .then(|outcome| {
+        iced::Task::batch(
+            rebuild_outcome_to_messages(outcome, Message::AskDeleteKeywordIndex)
+                .into_iter()
+                .map(iced::Task::done),
+        )
+    })
+}
+
+/// Task 099: [`delete_vector_index_and_measure`] off the update thread.
+fn delete_vector_index_task(
+    runtime: orbok::runtime_context::RuntimeContext,
+    model_id: Option<orbok_core::ModelId>,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { delete_vector_index_and_measure(&runtime, model_id) },
+        |outcome| outcome,
+    )
+    .then(|outcome| {
+        iced::Task::batch(
+            rebuild_outcome_to_messages(outcome, Message::AskDeleteVectorIndex)
+                .into_iter()
+                .map(iced::Task::done),
+        )
+    })
+}
+
+/// Task 099: either rebuild confirmation's own counted line, fetched fresh
+/// off the update thread when it opens -- the same `Task::perform` shape
+/// as `reset_counts_task`.
+fn keyword_rebuild_counts_task(catalog: std::sync::Arc<orbok_db::Catalog>) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { bootstrap::get_keyword_rebuild_count(&catalog) },
+        |result| match result {
+            Ok(count) => Message::RebuildCountsReady(count),
+            Err(_) => Message::RebuildCountsFailed,
+        },
+    )
+}
+
+/// Task 099: the vector rebuild's own counted line. `None` model means no
+/// model is configured, so there is nothing to count against -- `Ok(0)`,
+/// same rendered result ("no line") as a genuine zero.
+fn vector_rebuild_counts_task(
+    catalog: std::sync::Arc<orbok_db::Catalog>,
+    model_id: Option<orbok_core::ModelId>,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move {
+            match model_id {
+                Some(id) => bootstrap::get_vector_rebuild_count(&catalog, &id),
+                None => Ok(0),
+            }
+        },
+        |result| match result {
+            Ok(count) => Message::RebuildCountsReady(count),
+            Err(_) => Message::RebuildCountsFailed,
+        },
+    )
+}
+
 /// Convert a `VerifyOutcome` into the file check list shown in the wizard.
 fn build_wizard_checks(outcome: &VerifyOutcome, _path: &str) -> (Vec<WizardFileCheck>, bool) {
     match outcome {

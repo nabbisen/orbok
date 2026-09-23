@@ -328,6 +328,46 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             app.update(Message::ConfirmResetCatalog);
             return crate::reset_task(deps.runtime.clone());
         }
+        // Task 099 (RFC-011 §14 criterion 6): same shape as
+        // `AskResetCatalog` -- the confirmation opens synchronously, its
+        // own counted line is fetched off the update thread.
+        Message::AskDeleteKeywordIndex => {
+            app.update(message.clone());
+            return crate::keyword_rebuild_counts_task(deps.catalog.clone());
+        }
+        // Task 099: same shape as `ConfirmResetCatalog` -- the request
+        // only closes the confirmation; the delete and rebuild-marking run
+        // off the update thread (Task 097's shape), landing as the
+        // storage measurement on success or `CleanupDidNotFinish` with its
+        // retry on failure.
+        Message::ConfirmDeleteKeywordIndex => {
+            app.update(Message::ConfirmDeleteKeywordIndex);
+            return crate::delete_keyword_index_task(deps.runtime.clone());
+        }
+        // Task 099 (RFC-011 §14 criterion 5): the counted line needs the
+        // currently configured embedding model -- `None` when none is
+        // configured, in which case the count is simply 0 (nothing to
+        // rebuild against).
+        Message::AskDeleteVectorIndex => {
+            app.update(message.clone());
+            let model_id = deps
+                .search_model
+                .current()
+                .as_ref()
+                .as_ref()
+                .map(|parts| parts.model_id.clone());
+            return crate::vector_rebuild_counts_task(deps.catalog.clone(), model_id);
+        }
+        Message::ConfirmDeleteVectorIndex => {
+            app.update(Message::ConfirmDeleteVectorIndex);
+            let model_id = deps
+                .search_model
+                .current()
+                .as_ref()
+                .as_ref()
+                .map(|parts| parts.model_id.clone());
+            return crate::delete_vector_index_task(deps.runtime.clone(), model_id);
+        }
         // Task 081: "Calculate now", and every switch to the
         // Storage view (so the numbers shown are current, not
         // whatever was last measured).

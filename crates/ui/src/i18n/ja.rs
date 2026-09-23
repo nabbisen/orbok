@@ -80,6 +80,15 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageCategoryModelFiles => "モデル",
         StorageCategoryLogs => "ログ",
         StorageCacheFileSize => "キャッシュファイル（ディスク上）",
+        StorageRebuildKeywordButton => "キーワード検索を準備し直す",
+        StorageRebuildVectorButton => "意味による検索を準備し直す",
+        RebuildKeywordConfirmTitle => "キーワード検索を準備し直しますか?",
+        RebuildVectorConfirmTitle => "意味による検索を準備し直しますか?",
+        RebuildConfirmBody => {
+            "orbok は準備済みのデータを削除し、もう一度準備します。\
+             ファイルは変更も削除もされません。完了するまで検索結果が不完全になることがあります。"
+        }
+        RebuildConfirm => "準備し直す",
         ModelsTitle => "モデル",
         ModelsEmbeddingRole => "意味による検索",
         ModelsRerankerRole => "リランカー",

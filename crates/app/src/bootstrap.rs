@@ -30,7 +30,7 @@ mod tests;
 
 pub use cleanup::{
     clean_search_cache, clean_snippets, clean_temporary_extraction, compact_after_reset,
-    remove_replaced_stale_indexes, reset_catalog,
+    delete_keyword_index, delete_vector_index, remove_replaced_stale_indexes, reset_catalog,
 };
 pub use preferences::{
     persist_locale, persist_model_dir, persist_reduced_motion, persist_text_scale, persist_theme,
@@ -54,7 +54,10 @@ pub use sources::{
 // handler in `main.rs` needs to re-fetch the sources list after a refresh
 // (the status it may have just changed), the same reach `get_health` has
 // long had for the equivalent reason.
-pub use startup::{get_health, get_reset_counts, get_sources, load_initial_state, run_check};
+pub use startup::{
+    get_health, get_keyword_rebuild_count, get_reset_counts, get_sources, get_vector_rebuild_count,
+    load_initial_state, run_check,
+};
 #[cfg(test)]
 pub(crate) use startup::{load_initial_state_with, run_check_with};
 

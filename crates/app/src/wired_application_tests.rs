@@ -2659,3 +2659,273 @@ async fn opening_a_found_result_launches_its_canonical_path_once() {
         "exactly one launch, with the found file's canonical path"
     );
 }
+
+/// Task 099 §5 test 4: the rebuild really happens, end to end, through the
+/// real application entry points -- index a folder, delete the keyword
+/// index (`bootstrap::delete_keyword_index`, the exact function
+/// `ConfirmDeleteKeywordIndex` calls), drain the real hosted scheduler
+/// again, and search finds the content again.
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_the_keyword_index_and_draining_the_scheduler_makes_search_find_it_again() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\nrebuildkeywordmarker content.\n",
+    );
+
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let baseline = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "rebuildkeywordmarker",
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        !baseline.is_empty(),
+        "baseline: the content must be findable before the keyword index is deleted"
+    );
+
+    // The exact call `ConfirmDeleteKeywordIndex`'s router arm makes.
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::delete_keyword_index(&catalog, &cache).unwrap();
+
+    let after_delete = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "rebuildkeywordmarker",
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        after_delete.is_empty(),
+        "control: the keyword index really is gone right after the delete"
+    );
+
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let after_rebuild = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "rebuildkeywordmarker",
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        !after_rebuild.is_empty(),
+        "the scheduler picked up the rebuild-marking and re-prepared the file; search finds it \
+         again without any second manual action"
+    );
+}
+
+/// Task 099 §5 test 4, mutation target ("the rebuild marking is skipped,
+/// so nothing re-prepares"): calling `delete_keyword_index` twice in a row
+/// must not queue a second round of `Extract` jobs for files the first
+/// call already marked -- proves the marking is real (idempotent, not a
+/// no-op that happens to look idempotent because it never marks anything).
+#[tokio::test(flavor = "multi_thread")]
+async fn delete_keyword_index_marks_files_for_rebuild_exactly_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\nonemarkonly content.\n",
+    );
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(20)).await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::delete_keyword_index(&catalog, &cache).unwrap();
+    let queued_first: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'extract' AND status = 'queued'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(queued_first, 1, "the one file is marked for rebuild once");
+
+    bootstrap::delete_keyword_index(&catalog, &cache).unwrap();
+    let queued_second: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'extract' AND status = 'queued'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        queued_second, 1,
+        "a second delete (already-queued job unfinished) must not queue a duplicate"
+    );
+}
+
+/// Task 099 §5 test 4, the meaning half: with a real embedding model, the
+/// same proof as `deleting_the_keyword_index_and_draining_the_scheduler_makes_search_find_it_again`
+/// for `DeleteVectorIndex` -- index a folder with a real model wired in,
+/// delete the vector index, drain the scheduler again with the same model,
+/// and confirm the vector-only signal finds the content again (the
+/// keyword-only baseline would still find it regardless, so this searches
+/// `SearchMode::Conceptual` specifically to isolate the half that was
+/// actually deleted and rebuilt).
+///
+/// **Not run as part of this task** -- no `RFC013_MODEL_DIR` available in
+/// this environment, the same honest gap
+/// `two_identical_searches_return_identical_orders` already reports for
+/// the same reason. Whoever next has it available should run it once
+/// (`RFC013_MODEL_DIR=~/.local/share/orbok/models/multilingual-e5-small
+/// cargo test -p orbok --bin orbok --features orbok-embed/tract --release
+/// -- deleting_the_vector_index_and_draining_the_scheduler --ignored
+/// --nocapture`), confirm it passes, then mutate
+/// `orbok_db::repo::jobs::IndexJobRepository::enqueue_embedding_backfill`'s
+/// call inside `CleanupExecutor::delete_vector_index` away (skip the
+/// backfill call entirely) and confirm it goes red, the same way this
+/// task's keyword-side mutation was carried out and recorded.
+#[tokio::test]
+#[ignore = "requires the real embedding model on disk; see RFC013_MODEL_DIR"]
+async fn deleting_the_vector_index_and_draining_the_scheduler_makes_search_find_it_again() {
+    let model_dir = std::env::var("RFC013_MODEL_DIR").expect(
+        "RFC013_MODEL_DIR must point at the multilingual-e5-small model directory \
+         (e.g. ~/.local/share/orbok/models/multilingual-e5-small)",
+    );
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    crate::settings::save_settings(
+        &temp.path().join("settings.json"),
+        &crate::settings::OrbokSettings {
+            embedding_model_dir: Some(model_dir),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\nrebuildvectormarker content about local document preparation.\n",
+    );
+
+    let settings = bootstrap::load_runtime_settings(&context).unwrap();
+    let model_id = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        let indexing_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &settings,
+        )
+        .expect("RFC013_MODEL_DIR must resolve to a loadable embedding model");
+        let model_id = indexing_model.model_id.clone();
+        drain_scheduler_until_idle_with_embedding(
+            &context,
+            Duration::from_secs(60),
+            Some(indexing_model),
+        )
+        .await;
+        model_id
+    };
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let search_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+        &context,
+        &AllowRuntimePathProbe,
+        &catalog,
+        &settings,
+    )
+    .expect("resolves again for the search half");
+    let baseline = bootstrap::run_search(
+        &catalog,
+        Some(&search_model),
+        None,
+        "rebuildvectormarker",
+        orbok_search::SearchMode::Conceptual,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        !baseline.is_empty(),
+        "baseline: meaning-only search must find the content before the vector index is deleted"
+    );
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    bootstrap::delete_vector_index(&catalog, &cache, Some(model_id.clone())).unwrap();
+
+    let after_delete = bootstrap::run_search(
+        &catalog,
+        Some(&search_model),
+        None,
+        "rebuildvectormarker",
+        orbok_search::SearchMode::Conceptual,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        after_delete.is_empty(),
+        "control: the vector index really is gone right after the delete"
+    );
+
+    let rebuild_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+        &context,
+        &AllowRuntimePathProbe,
+        &catalog,
+        &settings,
+    )
+    .expect("resolves again for the rebuild half");
+    drain_scheduler_until_idle_with_embedding(
+        &context,
+        Duration::from_secs(60),
+        Some(rebuild_model),
+    )
+    .await;
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let after_rebuild = bootstrap::run_search(
+        &catalog,
+        Some(&search_model),
+        None,
+        "rebuildvectormarker",
+        orbok_search::SearchMode::Conceptual,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        !after_rebuild.is_empty(),
+        "the scheduler picked up the rebuild-marking and re-embedded the file; meaning-only \
+         search finds it again"
+    );
+}

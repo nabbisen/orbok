@@ -636,3 +636,100 @@ fn task097_measure_the_in_flight_window() {
          update thread) took {elapsed:?} on a 100,000-file profile"
     );
 }
+
+// ── Task 099 §5 test 5: rebuild actions run off the update thread ──────
+// (RFC-011 §14 criteria 5/6, Task 097's shape) ─────────────────────────
+
+/// `route()` itself must return promptly for `ConfirmDeleteKeywordIndex`
+/// even under checkpoint/write contention -- the delete-then-backfill work
+/// must not run inline on the update thread. Same bound and reasoning as
+/// `confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction`.
+#[test]
+fn confirming_a_keyword_rebuild_returns_promptly_even_when_a_reader_would_block() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 50);
+
+    let reader = hold_a_read_transaction(deps.catalog.path());
+
+    let mut app = OrbokApp::with_state(AppState::default());
+    let start = std::time::Instant::now();
+    let task = route(&mut app, Message::ConfirmDeleteKeywordIndex, &deps);
+    let elapsed = start.elapsed();
+
+    reader.execute_batch("COMMIT;").unwrap();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "route() must return promptly regardless of checkpoint contention -- the keyword \
+         rebuild's own work must not run inline; took {elapsed:?}"
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "the delete-then-backfill (then measurement) must still be dispatched as a real task"
+    );
+}
+
+/// Same proof, `ConfirmDeleteVectorIndex`.
+#[test]
+fn confirming_a_vector_rebuild_returns_promptly_even_when_a_reader_would_block() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 50);
+
+    let reader = hold_a_read_transaction(deps.catalog.path());
+
+    let mut app = OrbokApp::with_state(AppState::default());
+    let start = std::time::Instant::now();
+    let task = route(&mut app, Message::ConfirmDeleteVectorIndex, &deps);
+    let elapsed = start.elapsed();
+
+    reader.execute_batch("COMMIT;").unwrap();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "route() must return promptly regardless of checkpoint contention -- the vector \
+         rebuild's own work must not run inline; took {elapsed:?}"
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "the delete-then-backfill (then measurement) must still be dispatched as a real task"
+    );
+}
+
+/// §5 test 6 / Task 075: a failed rebuild (a moved-aside table forces the
+/// delete itself to fail) raises `CleanupDidNotFinish` with `Try again`
+/// re-opening the confirmation -- never silently swallowed, never
+/// reported as if it had succeeded.
+#[test]
+fn a_failed_keyword_rebuild_raises_cleanup_did_not_finish_with_retry() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mover = rusqlite::Connection::open(deps.catalog.path()).unwrap();
+    mover
+        .execute_batch("ALTER TABLE keyword_index_records RENAME TO keyword_index_records_moved;")
+        .unwrap();
+
+    let outcome = crate::delete_keyword_index_and_measure(&deps.runtime);
+
+    mover
+        .execute_batch("ALTER TABLE keyword_index_records_moved RENAME TO keyword_index_records;")
+        .unwrap();
+
+    assert!(
+        matches!(outcome, crate::RebuildOutcome::Failed),
+        "a delete that could not run must be reported as Failed, got {outcome:?}"
+    );
+    let messages = crate::rebuild_outcome_to_messages(outcome, Message::AskDeleteKeywordIndex);
+    assert!(
+        messages.iter().any(|m| matches!(
+            m,
+            Message::ShowNoticeWithAction { notice, action }
+                if *notice == orbok_ui::notice::UserNotice::CleanupDidNotFinish
+                    && matches!(action.as_ref(), Message::AskDeleteKeywordIndex)
+        )),
+        "expected a CleanupDidNotFinish notice retrying AskDeleteKeywordIndex, got {messages:?}"
+    );
+}

@@ -636,6 +636,8 @@ mod tests {
             active_view: orbok_ui::state::ViewId::Search,
             confirm_reset: false,
             confirm_clear_history: false,
+            confirm_delete_keyword_index: false,
+            confirm_delete_vector_index: false,
             wizard_kind: state.wizard.as_ref().map(WizardState::kind),
             selected_source_id: None,
             selected_result: None,

@@ -10,7 +10,9 @@ use localcache::CacheEngine;
 use orbok_cache::CacheService;
 use orbok_core::{CleanupAction, CleanupPlan, OrbokResult};
 use orbok_db::Catalog;
-use orbok_db::repo::CleanupExecutor;
+use orbok_db::repo::{CleanupExecutor, FileRepository, IndexJobRepository, SourceRepository};
+use orbok_extract::ExtractOutput;
+use orbok_fs::{GuardedSource, PathGuard};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::path::Path;
@@ -70,6 +72,22 @@ impl<'a> CleanupService<'a> {
     /// runs catalog-side and cache-side operations atomically in intent
     /// (RFC-011 §8 "lifecycle-aware cleanup").
     pub fn run_safe(&self, plan: &CleanupPlan) -> OrbokResult<FullCleanupOutcome> {
+        // Task 099: a keyword-index rebuild re-queues `Extract` for every
+        // affected file -- but a file whose content has not changed would
+        // otherwise hit `ExtractionWorker::run`'s own freshness shortcut
+        // and re-chunk under the *same* `extraction_id` its still-active
+        // chunks already occupy, failing the whole rebuild on a UNIQUE
+        // constraint rather than reindexing anything (found by this task's
+        // own end-to-end test, not assumed). Evicting each candidate's
+        // extraction-cache entry first forces a genuine cache miss, so the
+        // subsequent `Extract` job re-extracts for real and gets a fresh
+        // `extraction_id` -- must run *before* the catalog step below,
+        // while the candidate query's "no unfinished extract/chunk job
+        // queued" half still matches every one of them.
+        if plan.action == CleanupAction::DeleteKeywordIndex {
+            self.evict_extraction_cache_for_keyword_rebuild()?;
+        }
+
         // Catalog side.
         let catalog_outcome = CleanupExecutor::new(self.catalog).run_safe(plan)?;
         info!(
@@ -89,6 +107,45 @@ impl<'a> CleanupService<'a> {
             cache_bytes_freed,
             catalog_bytes_reclaimed: catalog_outcome.bytes_reclaimed,
         })
+    }
+
+    /// Task 099: evict the extraction-cache entry for every file
+    /// `IndexJobRepository::enqueue_extraction_backfill` is about to
+    /// re-queue -- see the call site's own comment for why. A file whose
+    /// source or path no longer validates is skipped (logged, not fatal):
+    /// its `Extract` job will fail on its own merits once it runs, the
+    /// same as any other file with a validation problem.
+    fn evict_extraction_cache_for_keyword_rebuild(&self) -> OrbokResult<()> {
+        use orbok_cache::OrbokCacheNamespace;
+        let file_ids =
+            IndexJobRepository::new(self.catalog).extraction_backfill_candidate_file_ids()?;
+        if file_ids.is_empty() {
+            return Ok(());
+        }
+        let files = FileRepository::new(self.catalog);
+        let sources = SourceRepository::new(self.catalog);
+        let engine = self.cache.engine::<ExtractOutput>(
+            self.catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )?;
+        for file_id in &file_ids {
+            let Some(record) = files.get_by_id(file_id)? else {
+                continue;
+            };
+            let Some(source) = sources.get(&record.source_id)? else {
+                continue;
+            };
+            let guard = PathGuard::new(vec![GuardedSource::from_record(&source)]);
+            let Ok(validated) = guard.validate(Path::new(&record.canonical_path)) else {
+                warn!(file_id = %file_id, "keyword rebuild: path no longer validates, skipping cache eviction");
+                continue;
+            };
+            if let Err(e) = CacheService::remove(&engine, &validated) {
+                warn!(file_id = %file_id, error = %e, "keyword rebuild: could not evict extraction cache entry");
+            }
+        }
+        Ok(())
     }
 
     /// Destructive catalog reset (requires confirmed ResetCatalog plan).

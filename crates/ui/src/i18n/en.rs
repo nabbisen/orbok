@@ -78,6 +78,15 @@ pub fn message(key: MessageKey) -> &'static str {
         StorageCategoryModelFiles => "Models",
         StorageCategoryLogs => "Logs",
         StorageCacheFileSize => "Cache file on disk",
+        StorageRebuildKeywordButton => "Prepare keyword search again",
+        StorageRebuildVectorButton => "Prepare search by meaning again",
+        RebuildKeywordConfirmTitle => "Prepare keyword search again?",
+        RebuildVectorConfirmTitle => "Prepare search by meaning again?",
+        RebuildConfirmBody => {
+            "orbok removes what it prepared and prepares it again. Your files are never \
+             changed or deleted. Search may be incomplete until it finishes."
+        }
+        RebuildConfirm => "Prepare again",
         ModelsTitle => "Models",
         ModelsEmbeddingRole => "Search by meaning",
         ModelsRerankerRole => "Reranker",

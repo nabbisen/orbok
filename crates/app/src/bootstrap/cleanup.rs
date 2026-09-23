@@ -48,6 +48,33 @@ pub fn reset_catalog(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()>
     Ok(())
 }
 
+/// Task 099 (RFC-011 §14 criterion 6): delete the keyword index and mark
+/// every file that has one for re-preparation. Advanced-view only; the
+/// UI's own confirmation has already been shown and confirmed.
+pub fn delete_keyword_index(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()> {
+    use orbok_core::{CleanupAction, CleanupPlan};
+    let plan = CleanupPlan::for_action(CleanupAction::DeleteKeywordIndex, 0);
+    cache.run_safe_cleanup(catalog, &plan)
+}
+
+/// Task 099 (RFC-011 §14 criterion 5): delete the vector index and, if
+/// `model_id` names one, mark every affected file for re-embedding.
+/// `model_id` is `None` when no embedding model is currently configured --
+/// the index is still deleted; nothing is marked to rebuild it, since
+/// nothing could pick the job up.
+pub fn delete_vector_index(
+    catalog: &Catalog,
+    cache: &ProfileCache,
+    model_id: Option<orbok_core::ModelId>,
+) -> OrbokResult<()> {
+    use orbok_core::{CleanupAction, CleanupPlan};
+    let mut plan = CleanupPlan::for_action(CleanupAction::DeleteVectorIndex, 0);
+    if let Some(id) = model_id {
+        plan = plan.with_model(id);
+    }
+    cache.run_safe_cleanup(catalog, &plan)
+}
+
 /// Task 096: post-reset compaction, on whatever `catalog`/`cache` the
 /// caller passes -- `main.rs`'s post-reset task passes handles it opened
 /// just for this call (RFC-061 §5's deliberate exception), never the

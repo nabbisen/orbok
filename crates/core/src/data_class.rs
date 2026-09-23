@@ -6,6 +6,7 @@
 //! should run without first producing a `CleanupPlan`"). Ordinary (safe)
 //! cleanup must never touch [`DataClass::PersistentCatalog`].
 
+use crate::id::ModelId;
 use serde::{Deserialize, Serialize};
 
 /// The five lifecycle classes of RFC-001 §14.
@@ -168,6 +169,13 @@ pub struct CleanupPlan {
     pub estimated_recovered_bytes: u64,
     pub requires_rebuild: bool,
     pub requires_confirmation: bool,
+    /// Task 099: the embedding model `DeleteVectorIndex` rebuilds against
+    /// -- the file(s) it deletes get re-embedded only once a model is
+    /// known, so the executor needs one to mark the rebuild. `None` for
+    /// every other action, and `None` here too when no model is currently
+    /// configured (the executor still deletes the index; it just cannot
+    /// queue anything to rebuild it against).
+    pub model_id: Option<ModelId>,
 }
 
 impl CleanupPlan {
@@ -179,7 +187,15 @@ impl CleanupPlan {
             estimated_recovered_bytes,
             requires_rebuild: action.requires_rebuild(),
             requires_confirmation: action.requires_confirmation(),
+            model_id: None,
         }
+    }
+
+    /// Task 099: attach the embedding model a `DeleteVectorIndex` plan
+    /// rebuilds against. A no-op field on every other action's plan.
+    pub fn with_model(mut self, model_id: ModelId) -> Self {
+        self.model_id = Some(model_id);
+        self
     }
 
     /// Safe cleanup must never include the persistent catalog. Executors

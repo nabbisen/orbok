@@ -196,6 +196,16 @@ message_keys! {
     /// live inside it and it does not shrink to match them until a
     /// VACUUM (Task 079 §2).
     StorageCacheFileSize,
+    // Task 099 (RFC-011 §14 criteria 5/6): the two rebuild actions --
+    // Advanced view only. `RebuildConfirmBody` and `RebuildConfirm` are
+    // shared by both dialogs; the title and button are the only parts
+    // that name which index.
+    StorageRebuildKeywordButton,
+    StorageRebuildVectorButton,
+    RebuildKeywordConfirmTitle,
+    RebuildVectorConfirmTitle,
+    RebuildConfirmBody,
+    RebuildConfirm,
     // Models view
     ModelsTitle,
     ModelsEmbeddingRole,
@@ -766,6 +776,19 @@ pub fn fmt_reset_removes(
         (Locale::Ja, true) => format!(
             "フォルダー {folders} 件、準備済みファイル {files} 件、最近の検索を削除します。"
         ),
+    }
+}
+
+/// Task 099: either rebuild confirmation's own counted line -- "never a
+/// zero" (§2.3), so the caller never invokes this for `files == 0`; it
+/// only formats the sentence, the caller (`storage_view`) decides whether
+/// to show it. English needs its own singular/plural, the same shape
+/// [`fmt_reset_removes`] already uses; Japanese does not distinguish.
+pub fn fmt_rebuild_prepares(locale: Locale, files: u64) -> String {
+    let file_s = if files == 1 { "" } else { "s" };
+    match locale {
+        Locale::En => format!("This prepares {files} file{file_s} again."),
+        Locale::Ja => format!("ファイル {files} 件を準備し直します。"),
     }
 }
 

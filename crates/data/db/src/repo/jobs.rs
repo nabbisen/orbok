@@ -36,6 +36,26 @@ pub(crate) const EMBEDDING_BACKFILL_FILES_SQL: &str = "SELECT f.file_id, f.sourc
         AND j.status IN ('queued', 'running', 'paused', 'blocked', \
                          'waiting_for_dependency'))";
 
+/// Task 099: files with an active chunk and no unfinished extract/chunk
+/// job -- the candidates for a keyword-index rebuild. `chunk_fts` is
+/// contentless (RFC-007 §8.1: "stores no retrievable source text"), and
+/// `normalized_text` is never persisted anywhere else in the catalog
+/// (`ChunkSpec`'s own doc comment), so once `keyword_index_records`/
+/// `chunk_fts`/`chunk_fts_trigram` are deleted, re-extraction is the only
+/// way to regenerate the text those tables need -- `ChunkRepository::insert_bundle`
+/// rebuilds the keyword index as a byproduct of chunking a fresh
+/// extraction, the same path every ordinary index run already takes. Same
+/// `+` prefix trick as `EMBEDDING_BACKFILL_FILES_SQL`, for the same reason
+/// (Task 055's own comment on that constant): without it this goes
+/// quadratic on an already-fully-indexed catalog, which is every ordinary
+/// call here.
+pub(crate) const EXTRACTION_BACKFILL_FILES_SQL: &str = "SELECT f.file_id, f.source_id FROM files f \
+     WHERE EXISTS (SELECT 1 FROM chunks c WHERE c.file_id = f.file_id AND +c.chunk_status = 'active') \
+     AND NOT EXISTS (SELECT 1 FROM index_jobs j \
+        WHERE j.file_id = f.file_id AND j.job_type IN ('extract', 'chunk') \
+        AND j.status IN ('queued', 'running', 'paused', 'blocked', \
+                         'waiting_for_dependency'))";
+
 pub struct IndexJobRepository<'a> {
     catalog: &'a Catalog,
 }
@@ -112,6 +132,97 @@ impl<'a> IndexJobRepository<'a> {
         }
         tx.commit().map_err(db_err)?;
         Ok(files.len())
+    }
+
+    /// Task 099: queue one `Extract` job for every file matching
+    /// [`EXTRACTION_BACKFILL_FILES_SQL`] -- the state change that makes a
+    /// keyword-index rebuild happen: `CleanupExecutor::delete_keyword_index`
+    /// calls this right after deleting the index tables, and the scheduler
+    /// picks the queued jobs up the same as any other. Idempotent, the same
+    /// way [`Self::enqueue_embedding_backfill`] is: a file with an unfinished
+    /// extract/chunk job already queued is skipped, so a second call queues
+    /// nothing new. Returns how many jobs were queued.
+    pub fn enqueue_extraction_backfill(&self) -> OrbokResult<usize> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let files: Vec<(String, String)> = {
+            let mut stmt = tx.prepare(EXTRACTION_BACKFILL_FILES_SQL).map_err(db_err)?;
+            stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(db_err)?
+                .collect::<Result<_, _>>()
+                .map_err(db_err)?
+        };
+        let now = now_iso8601();
+        for (file_id, source_id) in &files {
+            tx.execute(
+                "INSERT INTO index_jobs (job_id, source_id, file_id, job_type, status, \
+                 created_at, updated_at) VALUES (?1,?2,?3,?4,'queued',?5,?5)",
+                params![
+                    JobId::generate().as_str(),
+                    source_id,
+                    file_id,
+                    JobType::Extract.as_str(),
+                    now,
+                ],
+            )
+            .map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(files.len())
+    }
+
+    /// Task 099: the file ids [`Self::enqueue_extraction_backfill`] would
+    /// queue right now. `orbok_workers::CleanupService` reads this
+    /// *before* calling the executor (while the predicate's "no unfinished
+    /// extract/chunk job" half still matches every candidate) to evict
+    /// each file's extraction-cache entry first -- without that, a file
+    /// whose content has not changed hits `ExtractionWorker::run`'s own
+    /// freshness shortcut, which re-queues a `Chunk` job against the
+    /// *same* `extraction_id` its still-active chunks already occupy,
+    /// and `insert_bundle` then fails the whole rebuild on a UNIQUE
+    /// constraint (`chunks(file_id, extraction_id, chunk_ordinal)`)
+    /// rather than reindexing anything.
+    pub fn extraction_backfill_candidate_file_ids(&self) -> OrbokResult<Vec<FileId>> {
+        let conn = self.catalog.lock();
+        let mut stmt = conn
+            .prepare(EXTRACTION_BACKFILL_FILES_SQL)
+            .map_err(db_err)?;
+        stmt.query_map([], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .map(|r| r.map(FileId::from_string).map_err(db_err))
+            .collect()
+    }
+
+    /// Task 099: how many files [`Self::enqueue_extraction_backfill`] would
+    /// queue right now -- the Storage page's "prepare keyword search again"
+    /// confirmation counts this fresh when it opens, the same way
+    /// [`Self::count_embedding_backfill_candidates`] and
+    /// `bootstrap::get_reset_counts` count their own dialogs' lines.
+    pub fn count_extraction_backfill_candidates(&self) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n: i64 = conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM ({EXTRACTION_BACKFILL_FILES_SQL})"),
+                [],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
+    /// Task 099: how many files [`Self::enqueue_embedding_backfill`] would
+    /// queue right now, for `model_id` -- the "prepare search by meaning
+    /// again" confirmation's own counted line.
+    pub fn count_embedding_backfill_candidates(&self, model_id: &ModelId) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n: i64 = conn
+            .query_row(
+                &format!("SELECT COUNT(*) FROM ({EMBEDDING_BACKFILL_FILES_SQL})"),
+                params![model_id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
     }
 
     /// Task 056: queue an `Extract` job for `file_id` so its extracted text

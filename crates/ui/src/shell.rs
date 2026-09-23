@@ -39,6 +39,10 @@ pub struct KeyboardContext {
     /// Task 062: the folder removal confirmation is open.
     pub confirm_remove_source: bool,
     pub confirm_clear_history: bool,
+    /// Task 099: the "prepare keyword search again" confirmation is open.
+    pub confirm_delete_keyword_index: bool,
+    /// Task 099: the "prepare search by meaning again" confirmation is open.
+    pub confirm_delete_vector_index: bool,
     /// `None` when the startup wizard is not active.
     pub wizard_kind: Option<WizardKind>,
     /// The source `Enter` would remove, if the Sources view has one
@@ -124,6 +128,8 @@ pub fn key_to_message(
                 && !ctx.confirm_reset
                 && !ctx.confirm_remove_source
                 && !ctx.confirm_clear_history
+                && !ctx.confirm_delete_keyword_index
+                && !ctx.confirm_delete_vector_index
                 && ctx.wizard_kind.is_none() =>
         {
             ctx.selected_source_id.clone().map(Message::AskRemoveSource)
@@ -215,6 +221,12 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     // confirm at all (RFC-034 §5.3 amendment).
     if ctx.confirm_remove_source {
         return Some(Message::ConfirmRemoveSource);
+    }
+    if ctx.confirm_delete_keyword_index {
+        return Some(Message::ConfirmDeleteKeywordIndex);
+    }
+    if ctx.confirm_delete_vector_index {
+        return Some(Message::ConfirmDeleteVectorIndex);
     }
     if ctx.confirm_clear_history {
         return Some(Message::ConfirmClearRecentSearches);
@@ -310,6 +322,10 @@ impl OrbokApp {
             confirm_remove_source: state.visible_confirmation() == Some(Confirmation::RemoveSource),
             confirm_clear_history: state.visible_confirmation()
                 == Some(Confirmation::ClearRecentSearches),
+            confirm_delete_keyword_index: state.visible_confirmation()
+                == Some(Confirmation::DeleteKeywordIndex),
+            confirm_delete_vector_index: state.visible_confirmation()
+                == Some(Confirmation::DeleteVectorIndex),
             wizard_kind: state.wizard.as_ref().map(crate::state::WizardState::kind),
             selected_source_id: state
                 .selected_source

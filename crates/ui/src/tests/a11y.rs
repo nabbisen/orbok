@@ -20,6 +20,8 @@ fn ctx(text_input_focused: bool) -> KeyboardContext {
         confirm_reset: false,
         confirm_remove_source: false,
         confirm_clear_history: false,
+        confirm_delete_keyword_index: false,
+        confirm_delete_vector_index: false,
         wizard_kind: None,
         selected_source_id: None,
         selected_result: None,
@@ -260,6 +262,8 @@ fn key_map_enter_confirms_by_context() {
                 none,
                 &KeyboardContext {
                     confirm_clear_history: true,
+                    confirm_delete_keyword_index: false,
+                    confirm_delete_vector_index: false,
                     ..ctx(false)
                 }
             ),

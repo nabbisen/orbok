@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Storage now offers "Prepare keyword search again" and "Prepare search
+  by meaning again"** (Task 099, Advanced view). Deleting either search
+  index used to be unreachable — the button existed nowhere, and the one
+  code path that could run it returned a misleading "would touch
+  persistent data" error. Both now ask first, say how many files will be
+  prepared again, and — once confirmed — remove what was prepared and
+  start preparing it again by themselves; search may be incomplete until
+  that finishes. Deleting one never affects the other.
+
 ### Fixed
 
 - **Resetting saved app data now actually gives the space back, and never

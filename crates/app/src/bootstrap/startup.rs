@@ -304,6 +304,23 @@ pub fn get_reset_counts(catalog: &Catalog) -> OrbokResult<orbok_ui::state::Reset
     })
 }
 
+/// Task 099: how many files the "prepare keyword search again"
+/// confirmation's own line names, counted fresh when it opens.
+pub fn get_keyword_rebuild_count(catalog: &Catalog) -> OrbokResult<u64> {
+    use orbok_db::repo::IndexJobRepository;
+    IndexJobRepository::new(catalog).count_extraction_backfill_candidates()
+}
+
+/// Task 099: the "prepare search by meaning again" confirmation's own
+/// counted line, for the currently configured model.
+pub fn get_vector_rebuild_count(
+    catalog: &Catalog,
+    model_id: &orbok_core::ModelId,
+) -> OrbokResult<u64> {
+    use orbok_db::repo::IndexJobRepository;
+    IndexJobRepository::new(catalog).count_embedding_backfill_candidates(model_id)
+}
+
 /// Load all registered sources for the Sources view.
 pub fn get_sources(catalog: &Catalog) -> OrbokResult<Vec<orbok_ui::state::SourceCard>> {
     use orbok_core::FileStatus;

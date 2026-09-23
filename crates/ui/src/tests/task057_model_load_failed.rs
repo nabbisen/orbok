@@ -78,6 +78,8 @@ fn enter_on_the_load_failed_step_retries_loading() {
             confirm_reset: false,
             confirm_remove_source: false,
             confirm_clear_history: false,
+            confirm_delete_keyword_index: false,
+            confirm_delete_vector_index: false,
             wizard_kind: Some(WizardKind::ReadyLoadFailed),
             selected_source_id: None,
             selected_result: None,

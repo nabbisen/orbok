@@ -7,3 +7,4 @@ mod rfc059_erasure_invariant;
 mod rfc060_source_status;
 mod task034_ranking_fusion;
 mod task034_snippet_robustness;
+mod task099_independent_rebuild;

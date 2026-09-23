@@ -440,6 +440,10 @@ pub enum Confirmation {
     ResetCatalog,
     /// Clear recent searches -- Settings (`settings_view`).
     ClearRecentSearches,
+    /// Task 099: "Prepare keyword search again" -- Storage, Advanced view.
+    DeleteKeywordIndex,
+    /// Task 099: "Prepare search by meaning again" -- Storage, Advanced view.
+    DeleteVectorIndex,
 }
 
 impl Confirmation {
@@ -449,6 +453,8 @@ impl Confirmation {
             Self::RemoveSource => ViewId::Sources,
             Self::ResetCatalog => ViewId::Storage,
             Self::ClearRecentSearches => ViewId::Settings,
+            Self::DeleteKeywordIndex => ViewId::Storage,
+            Self::DeleteVectorIndex => ViewId::Storage,
         }
     }
 }
@@ -521,6 +527,17 @@ pub struct AppState {
     /// read, and after the dialog closes -- never a placeholder zero
     /// (`storage_view` renders the line only when this is `Some`).
     pub reset_counts: Option<ResetCounts>,
+    /// Task 099: awaiting confirmation before deleting the keyword index.
+    pub confirm_delete_keyword_index: bool,
+    /// Task 099: awaiting confirmation before deleting the vector index.
+    pub confirm_delete_vector_index: bool,
+    /// Task 099: what the open rebuild confirmation (either one -- at most
+    /// one is open at a time) will prepare again, fetched fresh when it
+    /// opens. `None` until the count arrives, on a failed read, after the
+    /// dialog closes, and when the count is genuinely zero (§2.3: "never
+    /// a zero" -- `storage_view` renders the line only when this is
+    /// `Some` and non-zero).
+    pub rebuild_file_count: Option<u64>,
     /// Task 062: the folder whose removal confirmation is open, if any.
     /// Removal erases what orbok prepared for it (RFC-059), so it always
     /// asks first. At most one confirmation is open at a time.
@@ -577,6 +594,9 @@ impl Default for AppState {
             notice_action: None,
             confirm_reset: false,
             reset_counts: None,
+            confirm_delete_keyword_index: false,
+            confirm_delete_vector_index: false,
+            rebuild_file_count: None,
             confirm_remove_source: None,
             remember_recent_searches: true,
             confirm_clear_history: false,
@@ -645,6 +665,27 @@ pub enum Message {
     /// Task 092: the count could not be read -- the dialog opens and works
     /// regardless (Reset is never gated on this), it simply shows no line.
     ResetCountsFailed,
+    /// Task 099: open the "prepare keyword search again" confirmation
+    /// (Storage, Advanced view).
+    AskDeleteKeywordIndex,
+    /// Task 099: that confirmation's own action button (or Enter while
+    /// visible). Closes the dialog; the delete and rebuild-marking run off
+    /// the update thread (Task 097's shape).
+    ConfirmDeleteKeywordIndex,
+    CancelDeleteKeywordIndex,
+    /// Task 099: open the "prepare search by meaning again" confirmation.
+    AskDeleteVectorIndex,
+    ConfirmDeleteVectorIndex,
+    CancelDeleteVectorIndex,
+    /// Task 099: how many files either rebuild confirmation's own line
+    /// will name, fetched fresh when it opens -- shared by both dialogs,
+    /// since only one can be open at a time (RFC-011 §14, Task 062's
+    /// dialog shape).
+    RebuildCountsReady(u64),
+    /// Task 099: the count could not be read -- same rule as
+    /// `ResetCountsFailed`, and "never a zero" (Task 099 §2.3): a
+    /// genuinely zero count also shows no line, not just an unreadable one.
+    RebuildCountsFailed,
     // Wizard navigation
     WizardBack,
     QueryChanged(String),
@@ -947,6 +988,47 @@ impl AppState {
                 // `CatalogResetSucceeded`; nothing clears before that.
                 self.confirm_reset = false;
             }
+            Message::AskDeleteKeywordIndex => {
+                self.confirm_delete_keyword_index = true;
+                self.confirm_delete_vector_index = false;
+                self.confirm_reset = false;
+                self.confirm_remove_source = None;
+                // Task 099 (mirrors Task 092): cleared, not left stale from
+                // a previous opening -- the router dispatches a fresh count
+                // alongside this.
+                self.rebuild_file_count = None;
+            }
+            Message::AskDeleteVectorIndex => {
+                self.confirm_delete_vector_index = true;
+                self.confirm_delete_keyword_index = false;
+                self.confirm_reset = false;
+                self.confirm_remove_source = None;
+                self.rebuild_file_count = None;
+            }
+            Message::RebuildCountsReady(count) => {
+                // §2.3: "never a zero" -- a genuinely zero count shows no
+                // line, the same as an unreadable one.
+                self.rebuild_file_count = (*count > 0).then_some(*count);
+            }
+            Message::RebuildCountsFailed => self.rebuild_file_count = None,
+            Message::CancelDeleteKeywordIndex => {
+                self.confirm_delete_keyword_index = false;
+                self.rebuild_file_count = None;
+            }
+            Message::CancelDeleteVectorIndex => {
+                self.confirm_delete_vector_index = false;
+                self.rebuild_file_count = None;
+            }
+            Message::ConfirmDeleteKeywordIndex => {
+                // The request itself only closes the confirmation -- the
+                // delete and rebuild-marking run off the update thread
+                // (Task 097's shape), landing as `RebuildIndexSucceeded`
+                // or a `CleanupDidNotFinish` notice.
+                self.confirm_delete_keyword_index = false;
+            }
+            Message::ConfirmDeleteVectorIndex => {
+                self.confirm_delete_vector_index = false;
+            }
             Message::CleanSnippets
             | Message::CleanSearchCache
             | Message::CleanTemporaryExtraction
@@ -1086,6 +1168,12 @@ impl AppState {
                     self.confirm_remove_source = None;
                 } else if self.confirm_reset {
                     self.confirm_reset = false;
+                } else if self.confirm_delete_keyword_index {
+                    self.confirm_delete_keyword_index = false;
+                    self.rebuild_file_count = None;
+                } else if self.confirm_delete_vector_index {
+                    self.confirm_delete_vector_index = false;
+                    self.rebuild_file_count = None;
                 } else if self.confirm_clear_history {
                     self.confirm_clear_history = false;
                 } else if self.notice.is_some() {
@@ -1524,6 +1612,14 @@ impl AppState {
             (
                 self.confirm_clear_history,
                 Confirmation::ClearRecentSearches,
+            ),
+            (
+                self.confirm_delete_keyword_index,
+                Confirmation::DeleteKeywordIndex,
+            ),
+            (
+                self.confirm_delete_vector_index,
+                Confirmation::DeleteVectorIndex,
             ),
         ]
         .into_iter()

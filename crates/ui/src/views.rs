@@ -16,8 +16,8 @@ use crate::components::{
 };
 use crate::i18n::{
     Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
-    fmt_query, fmt_reset_removes, fmt_storage_row, preparing_folder_for_search,
-    search_location_chip, search_result_count, source_summary, tr,
+    fmt_query, fmt_rebuild_prepares, fmt_reset_removes, fmt_storage_row,
+    preparing_folder_for_search, search_location_chip, search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -869,6 +869,58 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         return page(tokens, content);
     }
 
+    // Task 099: the two rebuild confirmations share one shape, differing
+    // only in title/button key and which message they send -- both read
+    // `state.rebuild_file_count`, cleared and re-fetched whenever either
+    // opens (`Message::AskDeleteKeywordIndex`/`AskDeleteVectorIndex`).
+    for (confirmation, title_key, cancel_msg, confirm_msg) in [
+        (
+            crate::state::Confirmation::DeleteKeywordIndex,
+            MessageKey::RebuildKeywordConfirmTitle,
+            Message::CancelDeleteKeywordIndex,
+            Message::ConfirmDeleteKeywordIndex,
+        ),
+        (
+            crate::state::Confirmation::DeleteVectorIndex,
+            MessageKey::RebuildVectorConfirmTitle,
+            Message::CancelDeleteVectorIndex,
+            Message::ConfirmDeleteVectorIndex,
+        ),
+    ] {
+        if state.visible_confirmation() != Some(confirmation) {
+            continue;
+        }
+        let mut content = column![
+            text(tr(locale, title_key)).size(theme::title_s(tokens, sc)),
+            text(tr(locale, MessageKey::RebuildConfirmBody))
+                .size(theme::body_s(tokens, sc))
+                .line_height(theme::body_lh(tokens)),
+        ]
+        .spacing(tokens.spacing.lg);
+        // §2.3: counted, never estimated; no count (in flight, unreadable,
+        // or genuinely zero -- `rebuild_file_count` is already `None` for
+        // all three), no line.
+        if let Some(files) = state.rebuild_file_count {
+            content = content.push(
+                text(fmt_rebuild_prepares(locale, files))
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens)),
+            );
+        }
+        content = content.push(
+            hrow![
+                components::ghost(tokens, tr(locale, MessageKey::Cancel), Some(cancel_msg)),
+                components::danger(
+                    tokens,
+                    tr(locale, MessageKey::RebuildConfirm),
+                    Some(confirm_msg)
+                ),
+            ]
+            .spacing(tokens.spacing.md),
+        );
+        return page(tokens, content);
+    }
+
     let mut breakdown = column![
         text(tr(locale, MessageKey::StorageTitle)).size(theme::heading_s(tokens, sc)),
         text(tr(locale, MessageKey::StorageIntro))
@@ -993,7 +1045,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         }
     }
 
-    let content = column![
+    let mut content = column![
         breakdown,
         text(tr(locale, MessageKey::StorageSafeCleanupHeading)).size(theme::body_s(tokens, sc)),
         hrow![
@@ -1020,16 +1072,41 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         ]
         .spacing(tokens.spacing.sm)
         .wrap(),
-        text(tr(locale, MessageKey::StorageDangerHeading)).size(theme::body_s(tokens, sc)),
-        components::danger(
+    ];
+
+    // Task 099 (RFC-011 §14 criteria 5/6): rebuild actions, Advanced view
+    // only -- they force hours of work on a large corpus (§2.1), so they
+    // do not belong beside the ordinary Safe cleanup row. Keyword search
+    // always works, so its button is unconditional; "search by meaning"
+    // only has an index to rebuild when a model is actually configured.
+    if state.show_advanced {
+        let mut rebuild_row = hrow![components::secondary(
             tokens,
-            tr(locale, MessageKey::StorageResetCatalog),
-            Some(Message::AskResetCatalog)
-        ),
+            tr(locale, MessageKey::StorageRebuildKeywordButton),
+            Some(Message::AskDeleteKeywordIndex)
+        )];
+        if state.capability != SearchCapability::KeywordOnly {
+            rebuild_row = rebuild_row.push(components::secondary(
+                tokens,
+                tr(locale, MessageKey::StorageRebuildVectorButton),
+                Some(Message::AskDeleteVectorIndex),
+            ));
+        }
+        content = content.push(rebuild_row.spacing(tokens.spacing.sm).wrap());
+    }
+
+    content = content
+        .push(text(tr(locale, MessageKey::StorageDangerHeading)).size(theme::body_s(tokens, sc)));
+    content = content.push(components::danger(
+        tokens,
+        tr(locale, MessageKey::StorageResetCatalog),
+        Some(Message::AskResetCatalog),
+    ));
+    content = content.push(
         text(tr(locale, MessageKey::StorageResetWarning))
             .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
-    ];
+    );
     page(tokens, content)
 }
 
