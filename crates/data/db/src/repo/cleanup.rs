@@ -85,6 +85,12 @@ impl<'a> CleanupExecutor<'a> {
             // catalog. Preserve them until reset is integrated with the
             // exclusive model-store guard in a later RFC-050 phase.
             "models",
+            // Task 094: this doc comment already claimed "and search
+            // history" -- it did not, until this line. No FK links this
+            // table to anything else deleted here (migration
+            // 0004_search_history.sql has no REFERENCES clause at all), so
+            // it needs its own name, not a cascade.
+            "search_history",
         ] {
             deleted += tx
                 .execute(&format!("DELETE FROM {table}"), [])

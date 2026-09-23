@@ -136,30 +136,45 @@ fn source_summary_appends_no_text_found_only_when_nonzero() {
 /// locales, matching the task's exact singular/plural examples.
 #[test]
 fn fmt_reset_removes_matches_owner_approved_copy() {
+    // Without history.
     assert_eq!(
-        fmt_reset_removes(Locale::En, 1, 1),
+        fmt_reset_removes(Locale::En, 1, 1, false),
         "This removes 1 folder and 1 prepared file."
     );
     assert_eq!(
-        fmt_reset_removes(Locale::Ja, 1, 1),
+        fmt_reset_removes(Locale::Ja, 1, 1, false),
         "フォルダー 1 件、準備済みファイル 1 件を削除します。"
     );
     assert_eq!(
-        fmt_reset_removes(Locale::En, 3, 12),
+        fmt_reset_removes(Locale::En, 3, 12, false),
         "This removes 3 folders and 12 prepared files."
     );
     assert_eq!(
-        fmt_reset_removes(Locale::Ja, 3, 12),
+        fmt_reset_removes(Locale::Ja, 3, 12, false),
         "フォルダー 3 件、準備済みファイル 12 件を削除します。"
     );
     // Mixed singular/plural: each count gets its own form independently.
     assert_eq!(
-        fmt_reset_removes(Locale::En, 1, 5),
+        fmt_reset_removes(Locale::En, 1, 5, false),
         "This removes 1 folder and 5 prepared files."
     );
     assert_eq!(
-        fmt_reset_removes(Locale::En, 2, 1),
+        fmt_reset_removes(Locale::En, 2, 1, false),
         "This removes 2 folders and 1 prepared file."
+    );
+
+    // Task 094: with history -- the owner-approved third variant.
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 3, 12, true),
+        "This removes 3 folders, 12 prepared files, and your recent searches."
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::Ja, 3, 12, true),
+        "フォルダー 3 件、準備済みファイル 12 件、最近の検索を削除します。"
+    );
+    assert_eq!(
+        fmt_reset_removes(Locale::En, 1, 1, true),
+        "This removes 1 folder, 1 prepared file, and your recent searches."
     );
 }
 

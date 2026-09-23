@@ -62,6 +62,38 @@ fn clear_confirmation_flow() {
     assert!(!app.confirm_clear_history);
 }
 
+/// Task 094 tests 2/3: a catalog reset empties the on-screen list too
+/// (the catalog-side half is `CleanupExecutor::run_reset_catalog`,
+/// covered separately by `orbok-workers`'s
+/// `reset_clears_search_history`), and closes the panel if it was open --
+/// but leaves the "Remember recent searches" setting itself untouched.
+/// That setting lives in `settings.json`, a file reset never opens
+/// (`reset_never_touches_settings_or_model_artifacts`,
+/// `crates/pipeline/workers/src/tests/rfc059_reset_erasure.rs`); this is
+/// the UI-state half of the same guarantee.
+#[test]
+fn catalog_reset_clears_the_on_screen_history_but_not_the_setting() {
+    let mut app = AppState::default();
+    app.search_ui.history = vec![entry("a"), entry("b")];
+    app.search_ui.history_panel_open = true;
+    app.remember_recent_searches = true;
+
+    app.update(&Message::CatalogResetSucceeded);
+
+    assert!(
+        app.search_ui.history.is_empty(),
+        "a reset must clear the on-screen list too"
+    );
+    assert!(
+        !app.search_ui.history_panel_open,
+        "a reset closes the panel, the same as RecentSearchesCleared"
+    );
+    assert!(
+        app.remember_recent_searches,
+        "the setting is not history -- a reset must not touch it"
+    );
+}
+
 /// Task 075: turning the setting off shows at once, but the visible list
 /// empties only when orbok reports the catalog cleared it.
 #[test]

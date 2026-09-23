@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resetting saved app data now actually clears recent searches** (Task
+  094). The warning has always said a reset removes "all search data",
+  but the recent-searches list survived a reset untouched, in the catalog
+  and on screen. A reset now clears it in both places; the "Remember
+  recent searches" setting itself is unaffected. The reset dialog's own
+  line gains a third clause, "...and your recent searches.", shown only
+  when the setting is on and there is something to clear.
+
 ### Changed
 
 - **The reset-catalog dialog now asks a question, and its button names the

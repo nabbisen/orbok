@@ -11,11 +11,12 @@ use crate::{ChunkAndIndexWorker, CleanupService, ExtractionWorker, run_pending};
 use orbok_cache::{CacheService, EngineOptions, OrbokCacheNamespace};
 use orbok_core::{
     CleanupAction, CleanupPlan, FileStatus, HiddenFilePolicy, IndexMode, JobType, PersistenceMode,
-    SourceType, SymlinkPolicy,
+    SearchHistorySettings, SourceType, SymlinkPolicy,
 };
 use orbok_db::Catalog;
 use orbok_db::repo::{
-    FileRepository, IndexJobRepository, NewFile, NewSource, ObservedMetadata, SourceRepository,
+    FileRepository, IndexJobRepository, NewFile, NewSource, ObservedMetadata,
+    SearchHistoryRepository, SourceRepository,
 };
 use orbok_extract::ExtractOutput;
 use orbok_fs::{GuardedSource, PathGuard};
@@ -338,6 +339,50 @@ fn clear_extracted_text_leaves_no_fresh_entry_retrievable_through_cache_service(
         retired_engine_after.keys(None).unwrap().is_empty(),
         "Clear extracted text must also leave the retired extract-segments:v1 \
          namespace empty (Task 079)"
+    );
+}
+
+/// Task 094 test 1/6: Reset now clears `search_history` too -- extending
+/// this file's own erasure-completeness coverage, the same shape as
+/// criterion 1's trigram-index test, rather than a parallel file.
+/// `search_history` has no FK to anything else Reset deletes (migration
+/// `0004_search_history.sql`), so before this task's fix it survived
+/// silently.
+#[test]
+fn reset_clears_search_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let (catalog, cache) = setup(dir.path());
+    let cache_path = cache_db_path(dir.path());
+
+    let history = SearchHistoryRepository::new(&catalog);
+    history
+        .upsert(
+            "zephyrgraph",
+            &[],
+            Some(1),
+            "en",
+            &SearchHistorySettings::default(),
+        )
+        .unwrap();
+
+    assert!(
+        history.count().unwrap() > 0,
+        "the seeded search must be recorded before Reset, or this test \
+         proves nothing"
+    );
+
+    let svc = CleanupService::new(&catalog, &cache, &cache_path);
+    svc.run_reset(
+        &CleanupPlan::for_action(CleanupAction::ResetCatalog, 0),
+        true,
+    )
+    .unwrap();
+
+    assert_eq!(
+        history.count().unwrap(),
+        0,
+        "Reset must clear search_history -- it has no FK to anything else \
+         Reset deletes, so nothing did this before Task 094"
     );
 }
 

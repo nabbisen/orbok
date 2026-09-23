@@ -831,14 +831,24 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 .line_height(theme::body_lh(tokens)),
         ]
         .spacing(tokens.spacing.lg);
-        // Task 092: counted, never estimated -- absent while the count is
-        // in flight or unreadable (`reset_counts` is `None`), never a
-        // placeholder zero. Reset itself never waits on this.
+        // Task 092/094: counted, never estimated -- absent while the count
+        // is in flight or unreadable (`reset_counts` is `None`), never a
+        // placeholder zero. Reset itself never waits on this. The history
+        // clause needs both a non-zero count and the "Remember recent
+        // searches" setting itself -- a count alone cannot tell whether
+        // the list showing is one reset is about to clear or one that
+        // was already off and stale.
         if let Some(counts) = state.reset_counts {
+            let includes_history = state.remember_recent_searches && counts.history > 0;
             content = content.push(
-                text(fmt_reset_removes(locale, counts.folders, counts.files))
-                    .size(theme::body_s(tokens, sc))
-                    .line_height(theme::body_lh(tokens)),
+                text(fmt_reset_removes(
+                    locale,
+                    counts.folders,
+                    counts.files,
+                    includes_history,
+                ))
+                .size(theme::body_s(tokens, sc))
+                .line_height(theme::body_lh(tokens)),
             );
         }
         content = content.push(

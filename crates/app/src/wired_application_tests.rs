@@ -1797,12 +1797,14 @@ async fn numbers_reflect_reality_after_a_reset() {
     );
 }
 
-/// Task 092 test 1: the reset confirmation's own counts match independent
-/// `COUNT(*)` reads, taken separately from the code under test -- two
-/// registered folders, a known number of indexed files.
+/// Task 092/094 test 1: the reset confirmation's own counts match
+/// independent `COUNT(*)` reads, taken separately from the code under
+/// test -- two registered folders, a known number of indexed files, and
+/// (Task 094) a known number of recorded searches.
 #[tokio::test]
 async fn reset_counts_match_independent_reads() {
-    use orbok_db::repo::{FileRepository, SourceRepository};
+    use orbok_core::SearchHistorySettings;
+    use orbok_db::repo::{FileRepository, SearchHistoryRepository, SourceRepository};
 
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
@@ -1815,6 +1817,12 @@ async fn reset_counts_match_independent_reads() {
             .unwrap_or_else(|_| panic!("{name} must be a newly added source"));
         bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
     }
+    let history = SearchHistoryRepository::new(&catalog);
+    for text in ["zephyrgraph", "marlinquartz"] {
+        history
+            .upsert(text, &[], Some(1), "en", &SearchHistorySettings::default())
+            .unwrap();
+    }
     drop(catalog);
     drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
 
@@ -1825,17 +1833,23 @@ async fn reset_counts_match_independent_reads() {
     let independent_files = FileRepository::new(&catalog)
         .count_with_status(orbok_core::FileStatus::Indexed)
         .unwrap();
+    let independent_history = SearchHistoryRepository::new(&catalog).count().unwrap() as u64;
     assert_eq!(counts.folders, independent_folders);
     assert_eq!(counts.files, independent_files);
+    assert_eq!(counts.history, independent_history);
     assert_eq!(counts.folders, 2, "baseline: two registered folders");
     assert_eq!(counts.files, 2, "baseline: two indexed files");
+    assert_eq!(counts.history, 2, "baseline: two recorded searches");
 }
 
-/// Task 092 test 6: after a real reset, the folder count really is
+/// Task 092/094 test 6: after a real reset, the folder count really is
 /// zero -- the number the dialog showed was the one actually removed, not
-/// a number recomputed to match after the fact.
+/// a number recomputed to match after the fact. Extended for history.
 #[tokio::test]
 async fn reset_counts_are_zero_after_a_real_reset() {
+    use orbok_core::SearchHistorySettings;
+    use orbok_db::repo::SearchHistoryRepository;
+
     let temp = tempfile::tempdir().unwrap();
     let context = test_context(temp.path());
     let source_dir = temp.path().join("source");
@@ -1844,6 +1858,15 @@ async fn reset_counts_are_zero_after_a_real_reset() {
     let (card, _) =
         bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    SearchHistoryRepository::new(&catalog)
+        .upsert(
+            "zephyrgraph",
+            &[],
+            Some(1),
+            "en",
+            &SearchHistorySettings::default(),
+        )
+        .unwrap();
     drop(catalog);
     drain_scheduler_until_idle(&context, Duration::from_secs(30)).await;
 
@@ -1851,6 +1874,7 @@ async fn reset_counts_are_zero_after_a_real_reset() {
     let before = bootstrap::get_reset_counts(&catalog).unwrap();
     assert_eq!(before.folders, 1, "baseline: one registered folder");
     assert_eq!(before.files, 1, "baseline: one indexed file");
+    assert_eq!(before.history, 1, "baseline: one recorded search");
 
     let cache = bootstrap::cache_service(&context).unwrap();
     bootstrap::reset_catalog(&catalog, &cache).unwrap();
@@ -1858,6 +1882,33 @@ async fn reset_counts_are_zero_after_a_real_reset() {
     let after = bootstrap::get_reset_counts(&catalog).unwrap();
     assert_eq!(after.folders, 0, "a real reset must remove every folder");
     assert_eq!(after.files, 0, "a real reset must remove every file");
+    assert_eq!(after.history, 0, "a real reset must remove every search");
+}
+
+/// Task 094 test 5: a failed history read fails the whole count, not just
+/// its own clause -- `get_reset_counts` propagates every count with `?`
+/// in one function, so a `search_history`-specific read failure (here,
+/// the table itself is gone) must surface as `Err`, the same as a failed
+/// folders or files read already does, never a line missing only the
+/// history clause.
+#[tokio::test]
+async fn a_failed_history_read_fails_the_whole_count_not_just_its_clause() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+
+    // Folders/files reads would still succeed; only history's own table
+    // is gone -- proving this specific count's failure, not a general
+    // catalog failure, is what must surface.
+    catalog
+        .lock()
+        .execute("DROP TABLE search_history", [])
+        .unwrap();
+
+    assert!(
+        bootstrap::get_reset_counts(&catalog).is_err(),
+        "a history-specific read failure must fail the whole result"
+    );
 }
 
 /// Task 081 test 5's classifier, in isolation: only "every category

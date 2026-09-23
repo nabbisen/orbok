@@ -737,24 +737,35 @@ pub fn search_result_count(locale: Locale, count: usize) -> String {
     }
 }
 
-/// Task 092: the reset confirmation's own line -- counted, never
+/// Task 092/094: the reset confirmation's own line -- counted, never
 /// estimated, from the catalog. English needs its own singular/plural per
 /// count, the same shape [`search_result_count`] already uses; Japanese
-/// does not distinguish.
-///
-/// Owner-approved copy covers a third variant, with a recent-searches
-/// clause, that this function does not implement -- Review Request 269
-/// found a reset does not currently clear `search_history`, so showing
-/// that clause today would claim something reset does not do. See Review
-/// Request 270 §2.
-pub fn fmt_reset_removes(locale: Locale, folders: u64, files: u64) -> String {
-    match locale {
-        Locale::En => format!(
-            "This removes {folders} folder{} and {files} prepared file{}.",
-            if folders == 1 { "" } else { "s" },
-            if files == 1 { "" } else { "s" },
+/// does not distinguish. `includes_history` is a plain bool, decided by
+/// the caller (`storage_view`) from both the "Remember recent searches"
+/// setting and a non-zero history count -- this function only knows
+/// which sentence to render, not why.
+pub fn fmt_reset_removes(
+    locale: Locale,
+    folders: u64,
+    files: u64,
+    includes_history: bool,
+) -> String {
+    let folder_s = if folders == 1 { "" } else { "s" };
+    let file_s = if files == 1 { "" } else { "s" };
+    match (locale, includes_history) {
+        (Locale::En, false) => {
+            format!("This removes {folders} folder{folder_s} and {files} prepared file{file_s}.")
+        }
+        (Locale::En, true) => format!(
+            "This removes {folders} folder{folder_s}, {files} prepared file{file_s}, \
+             and your recent searches."
         ),
-        Locale::Ja => format!("フォルダー {folders} 件、準備済みファイル {files} 件を削除します。"),
+        (Locale::Ja, false) => {
+            format!("フォルダー {folders} 件、準備済みファイル {files} 件を削除します。")
+        }
+        (Locale::Ja, true) => format!(
+            "フォルダー {folders} 件、準備済みファイル {files} 件、最近の検索を削除します。"
+        ),
     }
 }
 

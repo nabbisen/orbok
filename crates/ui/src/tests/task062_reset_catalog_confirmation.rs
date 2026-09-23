@@ -111,8 +111,8 @@ fn no_counts_no_line_before_they_arrive_or_on_failure() {
         "AskResetCatalog alone does not populate counts"
     );
 
-    let some_counts = fmt_reset_removes(Locale::En, 1, 1);
-    let zero_counts = fmt_reset_removes(Locale::En, 0, 0);
+    let some_counts = fmt_reset_removes(Locale::En, 1, 1, false);
+    let zero_counts = fmt_reset_removes(Locale::En, 0, 0, false);
     {
         let mut ui = simulator(views::storage_view(&state));
         assert!(
@@ -141,16 +141,18 @@ fn the_line_renders_the_exact_counts_once_they_arrive() {
         state.update(&Message::ResetCountsReady(ResetCounts {
             folders: 3,
             files: 12,
+            history: 0,
         }));
         assert_eq!(
             state.reset_counts,
             Some(ResetCounts {
                 folders: 3,
-                files: 12
+                files: 12,
+                history: 0,
             })
         );
 
-        let expected = fmt_reset_removes(locale, 3, 12);
+        let expected = fmt_reset_removes(locale, 3, 12, false);
         {
             let mut ui = simulator(views::storage_view(&state));
             assert!(
@@ -161,6 +163,41 @@ fn the_line_renders_the_exact_counts_once_they_arrive() {
 
         state.update(&Message::CancelResetCatalog);
         assert_eq!(state.reset_counts, None, "closing clears it, not stale");
+    }
+}
+
+/// Task 094 test 4: the history clause appears only when both halves say
+/// it should -- a non-zero count is not enough on its own if the setting
+/// is off (a stale list from before it was turned off), and the setting
+/// being on is not enough on its own if there is genuinely nothing to
+/// clear. Both locales.
+#[test]
+fn the_history_clause_appears_only_when_on_and_non_empty() {
+    let _guard = iced_test_guard();
+    for locale in [Locale::En, Locale::Ja] {
+        for (remember, history, expect_clause) in [
+            (true, 3, true),
+            (true, 0, false),
+            (false, 3, false),
+            (false, 0, false),
+        ] {
+            let mut state = storage_state(locale);
+            state.remember_recent_searches = remember;
+            state.update(&Message::AskResetCatalog);
+            state.update(&Message::ResetCountsReady(ResetCounts {
+                folders: 1,
+                files: 1,
+                history,
+            }));
+
+            let expected = fmt_reset_removes(locale, 1, 1, expect_clause);
+            let mut ui = simulator(views::storage_view(&state));
+            assert!(
+                ui.find(expected.as_str()).is_ok(),
+                "{locale:?} remember={remember} history={history}: \
+                 expected {expected:?} (clause={expect_clause}) to render"
+            );
+        }
     }
 }
 

@@ -76,12 +76,17 @@ pub struct IndexHealth {
     pub queued: u64,
 }
 
-/// Task 092: what a reset would remove, counted fresh each time the
+/// Task 092/094: what a reset would remove, counted fresh each time the
 /// confirmation dialog opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResetCounts {
     pub folders: u64,
     pub files: u64,
+    /// Task 094: the number of stored recent searches. Whether the
+    /// dialog's line mentions them also depends on the "Remember recent
+    /// searches" setting, which this count alone cannot see -- the
+    /// renderer combines the two (`storage_view`).
+    pub history: u64,
 }
 
 /// One source card for the Sources view.
@@ -1403,6 +1408,15 @@ impl AppState {
                 // shows the measured post-reset state, not the RFC-011
                 // §13.1 empty state a plain clear would leave it in.
                 self.storage_rows.clear();
+                // Task 094: a reset now clears recent searches in the
+                // catalog too (`CleanupExecutor::run_reset_catalog`); this
+                // is the on-screen half, the same shape
+                // `RecentSearchesCleared` already uses. The "Remember
+                // recent searches" setting itself is untouched -- it lives
+                // in `settings.json`, a file reset never opens, not in
+                // this catalog.
+                self.search_ui.history.clear();
+                self.search_ui.history_panel_open = false;
             }
             Message::HistoryLoaded(entries) => {
                 self.search_ui.history = entries.clone();
