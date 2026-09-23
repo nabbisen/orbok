@@ -20,4 +20,5 @@ mod rfc059_reset_erasure;
 mod task078_repair_cost;
 mod task078_requeue_discovered;
 mod task095_reset_gives_space_back;
+mod task098_reset_and_scheduler;
 mod v092_features;
