@@ -135,11 +135,33 @@ impl Catalog {
     /// -- without it, `VACUUM` still shrinks the *logical* database but
     /// not the bytes actually occupying the disk, which is the entire
     /// point of this task.
+    ///
+    /// **The checkpoint itself can be refused, silently, and Task 095's
+    /// review caught it**: `PRAGMA wal_checkpoint(TRUNCATE)` returns a row
+    /// -- `(busy, log_frames, checkpointed_frames)` -- rather than erroring
+    /// when another connection still holds an open read against the WAL;
+    /// `busy` is then non-zero and the WAL is not truncated. A running
+    /// profile has more than one connection to this file (the router's and
+    /// the scheduler host's own, `scheduler_host.rs`), so this is read and
+    /// logged rather than discarded via `execute_batch` as before.
     pub fn vacuum(&self) -> OrbokResult<()> {
         let conn = self.lock();
         conn.execute_batch("VACUUM;").map_err(db_err)?;
-        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-            .map_err(db_err)
+        let (busy, log_frames, checkpointed_frames): (i64, i64, i64) = conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .map_err(db_err)?;
+        if busy != 0 {
+            tracing::warn!(
+                log_frames,
+                checkpointed_frames,
+                "wal checkpoint could not fully truncate after VACUUM -- \
+                 another connection was still reading, so the catalog file \
+                 may not have shrunk on disk"
+            );
+        }
+        Ok(())
     }
 
     /// Current schema version (0 when no migration has been applied).
@@ -233,5 +255,69 @@ mod tests {
                 migrations::latest_version()
             ),
         }
+    }
+
+    #[derive(Clone)]
+    struct SharedBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for SharedBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SharedBuf {
+        type Writer = SharedBuf;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn capture_logs(f: impl FnOnce()) -> String {
+        let buf = SharedBuf(std::sync::Arc::new(std::sync::Mutex::new(Vec::new())));
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(buf.clone())
+            .with_ansi(false)
+            .without_time()
+            .finish();
+        tracing::subscriber::with_default(subscriber, f);
+        String::from_utf8(buf.0.lock().unwrap().clone()).unwrap()
+    }
+
+    /// Task 095 review (Review 273 §3): `wal_checkpoint(TRUNCATE)` does not
+    /// error when it cannot finish -- it returns `busy = 1` and leaves the
+    /// WAL untruncated, silently, unless the caller reads and reports that.
+    /// The real-app shape this guards: a running profile has more than one
+    /// connection to the same catalog file (the router's and the scheduler
+    /// host's own, `scheduler_host.rs`), so this opens a genuine second
+    /// connection to the same file and holds an open read transaction on
+    /// it -- not a mock, the actual condition that produces `busy`.
+    #[test]
+    fn vacuum_logs_a_warning_when_another_connection_blocks_the_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("catalog.sqlite3");
+        let catalog = Catalog::open(&path).unwrap();
+
+        let reader = Connection::open(&path).unwrap();
+        reader
+            .execute_batch("BEGIN; SELECT * FROM schema_migrations LIMIT 1;")
+            .unwrap();
+
+        let log = capture_logs(|| {
+            catalog
+                .vacuum()
+                .expect("VACUUM itself must still succeed alongside a concurrent reader")
+        });
+
+        reader.execute_batch("COMMIT;").unwrap();
+
+        assert!(
+            log.contains("wal checkpoint could not fully truncate"),
+            "a blocked checkpoint must be logged, not silently swallowed; got: {log}"
+        );
     }
 }
