@@ -10,19 +10,34 @@ local embedding model.
 Model files are stored on your computer. They are used only for local
 inference. Documents are **never** sent to the model provider's servers.
 
-## Registering a model
+## Setting up a model
 
-1. Download or obtain the model weights file (`.onnx` or safetensors).
-2. Open the **Models** view.
-3. Click **Locate** and point to the file.
-4. orbok validates the file and records the dimension.
+Until a model is set up, orbok opens **Set up search by meaning** each time
+it starts. You can choose **Skip — use keyword search only**; the screen
+comes back the next time orbok starts.
+
+- **Download from HuggingFace:** orbok shows what it will download (the
+  provider, the exact size and the license) under **Review model
+  download**. **Agree and download** starts it, and orbok verifies the
+  files before it uses them.
+- **Files you already have:** type the path of the folder that contains
+  `onnx/model.onnx` and `tokenizer.json` into **Folder path…**, then
+  choose **Validate**, and **Use this model** when orbok has found the
+  files.
+
+When the model is ready, orbok says **Search by meaning is ready**.
+
+The **Models** view only shows the state: **Search by meaning** is
+**Available** or **Missing**. It has no buttons.
 
 ## Changing the embedding model
 
 If you switch embedding models, what orbok already prepared for search
 by meaning becomes incompatible. orbok does not currently invalidate or
 rebuild it automatically — vectors indexed under the previous model remain and are
-not used by the new one. Re-index manually after a model change.
+not used by the new one. After a model change, choose **Prepare search by
+meaning again** (turn on **Advanced view** in **Settings**, then open
+**Storage**).
 
 ## Recommended models
 

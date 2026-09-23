@@ -73,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both, with a folder's line showing only the counts that are not zero.
 - **The user guide now names things as the app does** (Task 101): Keyword
   and By meaning, not Exact, Conceptual or semantic.
+- **The user guide matches the app's pages and controls** (Task 107): it
+  names the Folders and Preparing pages and the buttons the app really shows.
 
 ## [0.26.1] — 2026-09-22
 

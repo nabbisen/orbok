@@ -6,7 +6,7 @@
 
 - [Features](users/features.md)
 - [Quick Start](users/quick_start.md)
-- [Sources and Indexing](users/sources.md)
+- [Folders and Preparing](users/sources.md)
 - [Searching](users/searching.md)
 - [Storage and Cleanup](users/storage.md)
 - [Local AI Models](users/models.md)

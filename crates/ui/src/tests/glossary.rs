@@ -122,8 +122,12 @@ impl GlossaryTerm {
                     "forbidden for \"{concept}\"; use {long:?} instead",
                     concept = self.concept
                 ),
-                [long, short, ..] => format!(
+                [long, short] => format!(
                     "forbidden for \"{concept}\"; the term is {long:?} (short: {short:?})",
+                    concept = self.concept
+                ),
+                all => format!(
+                    "forbidden for \"{concept}\"; the names are {all:?}",
                     concept = self.concept
                 ),
             };
@@ -170,10 +174,11 @@ impl GlossaryTerm {
             let replacement = match canon.as_slice() {
                 [] => format!("forbidden for \"{}\"", self.concept),
                 [long] => format!("forbidden for \"{}\"; use {long:?} instead", self.concept),
-                [long, short, ..] => format!(
+                [long, short] => format!(
                     "forbidden for \"{}\"; the term is {long:?} (short: {short:?})",
                     self.concept
                 ),
+                all => format!("forbidden for \"{}\"; the names are {all:?}", self.concept),
             };
             out.push(format!(
                 "docs/src/users/{file} contains {term:?}, {replacement}"
@@ -211,7 +216,12 @@ fn prose_only(markdown: &str) -> String {
         }
         out.push('\n');
     }
-    out
+    // Task 107: a phrase must not slip through by being bold or by falling
+    // across a hard wrap ("the Sources\nview", "**Sources** view").
+    out.replace("**", "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Case-sensitive whole-word match: `term` at a position where the
@@ -531,7 +541,53 @@ const GLOSSARY: &[GlossaryTerm] = &[
         formatter_exemptions: &[],
         whole_word: true,
     },
+    GlossaryTerm {
+        concept: "a page of the app (Task 107)",
+        canonical: &[
+            (Locale::En, "Search"),
+            (Locale::En, "Folders"),
+            (Locale::En, "Preparing"),
+            (Locale::En, "Storage"),
+            (Locale::En, "Models"),
+            (Locale::En, "Settings"),
+        ],
+        // The catalogs already use the `Nav*` labels, and row 1 already
+        // forbids "source" there, so this row forbids nothing in them.
+        forbidden: &[],
+        allowed_if_followed_by: None,
+        exemptions: &[],
+        applies_to_docs: true,
+        doc_forbidden: &[(Locale::En, "Sources view"), (Locale::En, "Indexing view")],
+        doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
+    },
 ];
+
+/// Task 107: the page-name row's canonical list is the `Nav*` labels, not a
+/// copy of them that can drift. Renaming a page in the catalog fails here
+/// until the row (and the user guide) follow.
+#[test]
+fn the_page_name_row_lists_exactly_the_nav_labels() {
+    let nav = [
+        MessageKey::NavSearch,
+        MessageKey::NavSources,
+        MessageKey::NavIndexing,
+        MessageKey::NavStorage,
+        MessageKey::NavModels,
+        MessageKey::NavSettings,
+    ];
+    let row = GLOSSARY
+        .iter()
+        .find(|t| t.concept.starts_with("a page of the app"))
+        .expect("the page-name row exists");
+    let listed = row.canonical_forms(Locale::En);
+    let labels: Vec<String> = nav.iter().map(|&k| tr(Locale::En, k).to_string()).collect();
+    assert_eq!(
+        listed, labels,
+        "the page-name row's canonical list must be the EN Nav* labels, in order"
+    );
+}
 
 #[test]
 fn default_ui_copy_follows_the_glossary() {

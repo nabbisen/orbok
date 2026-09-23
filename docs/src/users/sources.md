@@ -1,12 +1,13 @@
-# Sources and Indexing
+# Folders and Preparing
 
 ## Registering sources
 
-Add folders or files from the **Sources** view. orbok never scans your
+Add folders or files from the **Folders** view. orbok never scans your
 whole computer automatically.
 
 When you add a folder near sensitive directories (`.ssh`, `.gnupg`,
-`.aws`), orbok shows a warning.
+`.aws`), orbok adds it and shows the notice "This folder may contain
+private files". Remove the folder if you did not mean to search it.
 
 ## Hidden files
 
@@ -19,17 +20,36 @@ The default **Ignore** policy skips symlinks. Use
 **Follow within source** to follow links that stay inside the source
 root; external links are always rejected.
 
-## Indexing lifecycle
+## What you see while a folder is prepared
 
-Each file goes through:
+A folder's card on the **Folders** view shows its state: **Ready**,
+**Needs update**, **Folder not found** or **Cannot open**. Under it, a
+line counts the folder's files that are **Ready**, **Needs update**,
+**Failed** or have **No text**. The **Preparing** view adds up **Ready**,
+**Needs update** and **Failed** for every folder and shows how many files
+are **Queued**.
 
-1. **Discovered** — found by the scanner
-2. **Extracted** — text pulled from the file
-3. **Indexed** — chunks in the keyword and vector indexes
-4. **Needs update** — file changed since indexing
-5. **Missing** — file not found during the last scan
+- **Ready** — the file is prepared for search.
+- **Needs update** — the file changed after orbok prepared it.
+- **Failed** — orbok could not read the file.
+- **No text** — the file has no text orbok can search.
 
-## Force reindex
+A file orbok can no longer find shows **File not found** in search
+results.
 
-Pause and resume a source from the Sources view, or use
-**Rescan All** from the Indexing view.
+## Preparing again
+
+orbok checks every folder each time it starts, so most changes are picked
+up on their own. To ask sooner:
+
+- **A folder:** press **Prepare again** on its card, or `Ctrl/Cmd+R` with
+  the folder selected on the **Folders** view. orbok checks the folder for
+  changes and prepares what changed. When the card says **Folder not
+  found** or **Cannot open**, it offers **Check again** instead.
+- **One result:** a result that shows **Needs update** offers **Prepare
+  again**.
+- **All search data:** turn on **Advanced view** in **Settings**, then open
+  **Storage** and choose **Prepare keyword search again** or **Prepare
+  search by meaning again**. orbok asks first, removes what it prepared
+  and prepares it again. Your files are never changed or deleted, and
+  search may be incomplete until it finishes.

@@ -2,6 +2,10 @@
 
 ## Search modes
 
+The **Mode** choice appears when **Advanced view** is on (**Settings**). By
+default orbok uses **Auto**. **By meaning** stays unavailable until search
+by meaning is set up.
+
 | Mode | Best for |
 |---|---|
 | **Auto** | General queries — uses keyword search, and search by meaning when it is set up |
@@ -23,12 +27,15 @@ characters (Ａ, Ｂ, Ｃ) are normalized to half-width before matching.
 
 ## Result badges
 
+Needs update and File not found always show. **Keyword** and **By meaning**
+show when **Advanced view** is on.
+
 | Badge | Meaning |
 |---|---|
 | Keyword | Matched by the FTS5 keyword index |
 | By meaning | Matched by search by meaning, using a local model |
 | Needs update | Source file changed since this chunk was indexed |
-| Missing source | Source file is currently unavailable |
+| File not found | orbok cannot find the source file (moved, deleted, or its drive is disconnected) |
 
 ## Snippets
 
