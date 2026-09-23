@@ -11,6 +11,7 @@
 pub mod en;
 pub mod ja;
 
+use crate::state::FileCountState;
 use crate::state::location::SearchFolderScope;
 use serde::{Deserialize, Serialize};
 
@@ -158,6 +159,9 @@ message_keys! {
     IndexingHealthStale,
     IndexingHealthFailed,
     IndexingHealthQueued,
+    // Task 104: a file orbok read but found no text in -- the Folders card's
+    // fourth count (`FileCountState::NoText`).
+    IndexingHealthNoText,
     IndexingRunning,
     // Storage view
     StorageTitle,
@@ -716,9 +720,12 @@ fn model_bytes(locale: Locale, bytes: u64) -> String {
     }
 }
 
-/// Parameterized: source card summary line. Task 080 (owner-approved
-/// copy): the "with no text" segment is appended only when `no_text_found`
-/// is non-zero, so an ordinary folder's line is unchanged.
+/// Parameterized: source card summary line. Built from the Preparing page's
+/// own labels (`FileCountState::label_key`), label then number -- one word
+/// per state, in one place, for both screens (Task 104). "Ready" is always
+/// shown; any other segment only when its count is non-zero, the rule the
+/// Preparing page already follows outside Advanced view. (Task 080 added the
+/// no-text segment under the same rule.)
 pub fn source_summary(
     locale: Locale,
     indexed: u64,
@@ -726,17 +733,17 @@ pub fn source_summary(
     failed: u64,
     no_text_found: u64,
 ) -> String {
-    let base = match locale {
-        Locale::En => format!("{indexed} indexed · {stale} stale · {failed} failed"),
-        Locale::Ja => format!("インデックス済み {indexed} · 要更新 {stale} · 失敗 {failed}"),
-    };
-    if no_text_found == 0 {
-        return base;
-    }
-    match locale {
-        Locale::En => format!("{base} · {no_text_found} with no text"),
-        Locale::Ja => format!("{base} · テキストなし {no_text_found}"),
-    }
+    [
+        (FileCountState::Ready, indexed),
+        (FileCountState::NeedsUpdate, stale),
+        (FileCountState::Failed, failed),
+        (FileCountState::NoText, no_text_found),
+    ]
+    .into_iter()
+    .filter(|&(state, count)| state == FileCountState::Ready || count > 0)
+    .map(|(state, count)| format!("{} {count}", tr(locale, state.label_key())))
+    .collect::<Vec<_>>()
+    .join(" · ")
 }
 
 /// Parameterized: "3 results".
@@ -829,7 +836,7 @@ pub fn fmt_remove_source_title(locale: Locale, folder: &str) -> String {
 
 pub fn fmt_query(locale: Locale, query: &str) -> String {
     match locale {
-        Locale::En => format!("Query: {query}"),
+        Locale::En => format!("Search terms: {query}"),
         Locale::Ja => format!("検索語: {query}"),
     }
 }

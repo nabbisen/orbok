@@ -1,9 +1,9 @@
 //! i18n catalog completeness, locale detection, and parameterized message tests.
 
 use crate::i18n::{
-    ALL_KEYS, Locale, files_ready_for_search, fmt_label_value, fmt_reset_removes, model_exact_size,
-    model_file_position, model_transfer_progress, preparing_folder_for_search, source_summary, tr,
-    wizard_file_size_mb,
+    ALL_KEYS, Locale, files_ready_for_search, fmt_label_value, fmt_query, fmt_reset_removes,
+    model_exact_size, model_file_position, model_transfer_progress, preparing_folder_for_search,
+    source_summary, tr, wizard_file_size_mb,
 };
 
 // RFC-031 §9: every key resolves to a non-empty string in every locale.
@@ -103,33 +103,63 @@ fn parameterized_messages_localize() {
         "source_summary should include counts: {s}"
     );
     assert!(
-        !s.contains("no text"),
+        !s.contains("No text"),
         "no_text_found = 0 must not append the segment: {s}"
     );
 }
 
-/// Task 080 (owner-approved copy): the "with no text" segment appears
-/// only when the count is non-zero, in both locales, matching the
-/// task's own example line exactly.
+/// Task 104 (owner-approved copy): the Folders line is built from the
+/// Preparing page's labels, label then number. "Ready" is always shown; any
+/// other segment only when its count is non-zero. Exact strings, both
+/// locales: everything zero but Ready, each segment alone, and all together
+/// (Task 080's no-text segment follows the same rule as the others).
 #[test]
-fn source_summary_appends_no_text_found_only_when_nonzero() {
-    assert_eq!(
-        source_summary(Locale::En, 812, 0, 0, 3),
-        "812 indexed · 0 stale · 0 failed · 3 with no text"
-    );
-    assert_eq!(
-        source_summary(Locale::Ja, 812, 0, 0, 3),
-        "インデックス済み 812 · 要更新 0 · 失敗 0 · テキストなし 3"
-    );
-    assert_eq!(
-        source_summary(Locale::En, 812, 0, 0, 0),
-        "812 indexed · 0 stale · 0 failed",
-        "zero must leave the line exactly as it was before this task"
-    );
-    assert_eq!(
-        source_summary(Locale::Ja, 812, 0, 0, 0),
-        "インデックス済み 812 · 要更新 0 · 失敗 0"
-    );
+fn source_summary_shows_ready_always_and_other_segments_only_when_nonzero() {
+    // (ready, needs update, failed, no text) -> English, Japanese
+    let cases = [
+        ((12, 0, 0, 0), "Ready 12", "準備済み 12"),
+        (
+            (12, 1, 0, 0),
+            "Ready 12 · Needs update 1",
+            "準備済み 12 · 要更新 1",
+        ),
+        ((12, 0, 2, 0), "Ready 12 · Failed 2", "準備済み 12 · 失敗 2"),
+        (
+            (12, 0, 0, 2),
+            "Ready 12 · No text 2",
+            "準備済み 12 · テキストなし 2",
+        ),
+        (
+            (12, 1, 0, 2),
+            "Ready 12 · Needs update 1 · No text 2",
+            "準備済み 12 · 要更新 1 · テキストなし 2",
+        ),
+        (
+            (12, 1, 2, 3),
+            "Ready 12 · Needs update 1 · Failed 2 · No text 3",
+            "準備済み 12 · 要更新 1 · 失敗 2 · テキストなし 3",
+        ),
+    ];
+    for ((ready, stale, failed, no_text), en, ja) in cases {
+        assert_eq!(
+            source_summary(Locale::En, ready, stale, failed, no_text),
+            en
+        );
+        assert_eq!(
+            source_summary(Locale::Ja, ready, stale, failed, no_text),
+            ja
+        );
+    }
+    // Ready is shown even at zero -- the one segment that is.
+    assert_eq!(source_summary(Locale::En, 0, 0, 0, 0), "Ready 0");
+}
+
+/// Task 104 (owner-approved copy): the search-results "no results" line says
+/// "Search terms", which is what the Japanese already said.
+#[test]
+fn fmt_query_says_search_terms() {
+    assert_eq!(fmt_query(Locale::En, "notes"), "Search terms: notes");
+    assert_eq!(fmt_query(Locale::Ja, "notes"), "検索語: notes");
 }
 
 /// Task 092 (owner-approved copy): the reset dialog's own line, in both

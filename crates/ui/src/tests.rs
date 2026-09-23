@@ -51,6 +51,7 @@ mod task073_removal_confirmation_matches_the_list;
 mod task081_storage_page;
 mod task088_toggle_labels;
 mod task099_rebuild_confirmation;
+mod task104_folders_and_preparing_agree;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

@@ -19,7 +19,7 @@ The **Storage** view shows usage per category. Safe cleanup removes:
 - Expired snippet and search caches
 - All extracted-text cache entries (rebuilt automatically the next time a
   file needs it)
-- Superseded stale index entries
+- Old data from files that have since been updated
 
 Safe cleanup **never** deletes your source files or source registrations.
 

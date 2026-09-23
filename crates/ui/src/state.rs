@@ -67,6 +67,32 @@ impl ViewId {
     }
 }
 
+/// Task 104: the states a folder's files are counted in, on the Folders card
+/// and the Preparing page alike. One label per state, in one place -- the
+/// card composes its line from these, and the Preparing page's cells read the
+/// same keys, so the two screens cannot name a state differently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileCountState {
+    /// Prepared and searchable.
+    Ready,
+    /// Changed since orbok prepared it.
+    NeedsUpdate,
+    Failed,
+    /// Read, but no text found in it. Counted on the Folders card only.
+    NoText,
+}
+
+impl FileCountState {
+    pub fn label_key(self) -> MessageKey {
+        match self {
+            Self::Ready => MessageKey::IndexingHealthIndexed,
+            Self::NeedsUpdate => MessageKey::IndexingHealthStale,
+            Self::Failed => MessageKey::IndexingHealthFailed,
+            Self::NoText => MessageKey::IndexingHealthNoText,
+        }
+    }
+}
+
 /// Sidebar index-health summary.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IndexHealth {

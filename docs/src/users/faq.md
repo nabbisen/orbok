@@ -16,7 +16,7 @@ Open the Storage view and run Safe Cleanup. There is no separate control for
 deleting the vector index; Reset catalog clears the whole derived index and
 re-indexes from your source files.
 
-**My source is showing as Stale. What does that mean?**
+**My source is showing as Needs update. What does that mean?**
 The source file changed after it was indexed. orbok re-scans every
 registered folder each time it starts, and you can refresh a folder on
 demand from the Sources view (`[Check again]`/`[Prepare again]`, or

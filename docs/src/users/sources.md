@@ -26,7 +26,7 @@ Each file goes through:
 1. **Discovered** — found by the scanner
 2. **Extracted** — text pulled from the file
 3. **Indexed** — chunks in the keyword and vector indexes
-4. **Stale** — file changed since indexing
+4. **Needs update** — file changed since indexing
 5. **Missing** — file not found during the last scan
 
 ## Force reindex

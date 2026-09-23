@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never changed also become one: "Your files are never changed or
   deleted." Nothing about what orbok actually does has changed — this is
   copy only.
+- **The folder list and the preparation page now use the same words**
+  (Task 104): "Ready", "Needs update", "Failed", "No text", the same on
+  both, with a folder's line showing only the counts that are not zero.
 - **The user guide now names things as the app does** (Task 101): Keyword
   and By meaning, not Exact, Conceptual or semantic.
 

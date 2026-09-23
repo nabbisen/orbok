@@ -19,7 +19,7 @@ use crate::i18n::{
     fmt_query, fmt_rebuild_prepares, fmt_reset_removes, fmt_storage_row,
     preparing_folder_for_search, search_location_chip, search_result_count, source_summary, tr,
 };
-use crate::state::{AppState, Message, ResultTrustDisplay, SearchFolderScope};
+use crate::state::{AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
 use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
 use iced::{Element, Length, Padding};
@@ -734,7 +734,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
 
     let mut cells = hrow![health_cell(
         tokens,
-        tr(locale, MessageKey::IndexingHealthIndexed),
+        tr(locale, FileCountState::Ready.label_key()),
         h.indexed
     )]
     .spacing(tokens.spacing.sm);
@@ -748,14 +748,14 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     if h.stale > 0 || state.show_advanced {
         cells = cells.push(health_cell(
             tokens,
-            tr(locale, MessageKey::IndexingHealthStale),
+            tr(locale, FileCountState::NeedsUpdate.label_key()),
             h.stale,
         ));
     }
     if h.failed > 0 || state.show_advanced {
         cells = cells.push(health_cell(
             tokens,
-            tr(locale, MessageKey::IndexingHealthFailed),
+            tr(locale, FileCountState::Failed.label_key()),
             h.failed,
         ));
     }

@@ -48,6 +48,32 @@ struct GlossaryTerm {
     /// counterpart of `exemptions`, and covered by the same load-bearing
     /// check.
     doc_exemptions: &'static [(&'static str, &'static str, &'static str)],
+    /// Task 104: `(formatter function name, term, why)` -- the same shape as
+    /// `doc_exemptions`, with the `pub fn` in `i18n.rs` as the `where`. Covered
+    /// by the same load-bearing check.
+    formatter_exemptions: &'static [(&'static str, &'static str, &'static str)],
+    /// Task 104: match `forbidden` as whole words (case-insensitively in the
+    /// catalogs and formatters, as the other rows do), not as substrings. For
+    /// a short ordinary word -- "stale" -- whose substring would also hit
+    /// longer words.
+    whole_word: bool,
+}
+
+/// Where a checked sentence came from -- a catalog key or a formatter
+/// function -- for exemptions and failure messages.
+#[derive(Clone, Copy)]
+enum Source {
+    Key(MessageKey),
+    Formatter(&'static str),
+}
+
+impl std::fmt::Debug for Source {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Source::Key(key) => write!(f, "{key:?}"),
+            Source::Formatter(name) => write!(f, "{name}()"),
+        }
+    }
 }
 
 impl GlossaryTerm {
@@ -59,26 +85,34 @@ impl GlossaryTerm {
             .collect()
     }
 
-    fn is_exempt(&self, key: MessageKey, term: &str) -> bool {
-        self.exemptions
-            .iter()
-            .any(|&(k, t, _)| k == key && t == term)
+    fn is_exempt(&self, source: Source, term: &str) -> bool {
+        match source {
+            Source::Key(key) => self
+                .exemptions
+                .iter()
+                .any(|&(k, t, _)| k == key && t == term),
+            Source::Formatter(name) => self
+                .formatter_exemptions
+                .iter()
+                .any(|&(f, t, _)| f == name && t == term),
+        }
     }
 
     fn matches(&self, locale: Locale, copy: &str, term: &str) -> bool {
         match self.allowed_if_followed_by {
             Some(suffix) => contains_not_followed_by(copy, term, suffix),
+            None if self.whole_word => contains_word(&copy.to_lowercase(), &term.to_lowercase()),
             None => contains_term(locale, copy, term),
         }
     }
 
-    fn violations(&self, locale: Locale, key: MessageKey, copy: &str) -> Vec<String> {
+    fn violations(&self, locale: Locale, source: Source, copy: &str) -> Vec<String> {
         let mut out = Vec::new();
         for &(term_locale, term) in self.forbidden {
             if term_locale != locale || !self.matches(locale, copy, term) {
                 continue;
             }
-            if self.is_exempt(key, term) {
+            if self.is_exempt(source, term) {
                 continue;
             }
             let canon = self.canonical_forms(locale);
@@ -94,7 +128,7 @@ impl GlossaryTerm {
                 ),
             };
             out.push(format!(
-                "{locale:?} {key:?} says {copy:?} -- contains {term:?}, {replacement}"
+                "{locale:?} {source:?} says {copy:?} -- contains {term:?}, {replacement}"
             ));
         }
         out
@@ -417,6 +451,8 @@ const GLOSSARY: &[GlossaryTerm] = &[
         applies_to_docs: false,
         doc_forbidden: &[],
         doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
     },
     GlossaryTerm {
         concept: "the keyword method",
@@ -432,6 +468,8 @@ const GLOSSARY: &[GlossaryTerm] = &[
         applies_to_docs: true,
         doc_forbidden: &[],
         doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
     },
     GlossaryTerm {
         concept: "the meaning method",
@@ -449,6 +487,8 @@ const GLOSSARY: &[GlossaryTerm] = &[
         // row 1, so the meaning row carries it for docs only.
         doc_forbidden: &[(Locale::En, "semantic"), (Locale::En, "Semantic")],
         doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
     },
     GlossaryTerm {
         concept: "the promise that files are safe",
@@ -462,6 +502,8 @@ const GLOSSARY: &[GlossaryTerm] = &[
         applies_to_docs: true,
         doc_forbidden: &[],
         doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
     },
     GlossaryTerm {
         concept: "the Japanese word for \"folder\" (Task 066)",
@@ -472,6 +514,22 @@ const GLOSSARY: &[GlossaryTerm] = &[
         applies_to_docs: true,
         doc_forbidden: &[],
         doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
+    },
+    GlossaryTerm {
+        concept: "a file that changed since orbok prepared it",
+        canonical: &[(Locale::En, "Needs update"), (Locale::Ja, "要更新")],
+        forbidden: &[(Locale::En, "stale")],
+        allowed_if_followed_by: None,
+        exemptions: &[],
+        applies_to_docs: true,
+        // Docs match case-sensitively as whole words, so the capitalised
+        // spelling is listed too.
+        doc_forbidden: &[(Locale::En, "Stale")],
+        doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: true,
     },
 ];
 
@@ -482,7 +540,7 @@ fn default_ui_copy_follows_the_glossary() {
         for &key in crate::i18n::ALL_KEYS {
             let copy = tr(locale, key);
             for term in GLOSSARY {
-                violations.extend(term.violations(locale, key, copy));
+                violations.extend(term.violations(locale, Source::Key(key), copy));
             }
         }
     }
@@ -585,6 +643,252 @@ fn every_glossary_doc_exemption_is_load_bearing() {
                 matches,
                 "doc exemption ({file:?}, {forbidden_term:?}) for \"{concept}\" does not match \
                  any more -- remove it",
+                concept = term.concept
+            );
+        }
+    }
+}
+
+// ── Task 104: the formatted sentences ─────────────────────────────────────
+//
+// `ALL_KEYS` is every fixed string; `i18n.rs` also holds formatter functions
+// whose sentences are `format!` literals, which the catalog scan never sees.
+// Each is called here with fixed sample arguments, in both locales, and its
+// output goes through the same rows.
+//
+// **User-supplied parts** (a folder name, a query, a path) are sample values
+// that break no row ("Docs", "notes", "/data"), so a violation can only come
+// from orbok's own words. **Variants** (a singular and a plural, a segment
+// present and absent) are each sampled: one formatter can hold several
+// sentences.
+
+use crate::state::SearchFolderScope;
+
+type Sampler = fn(Locale) -> Vec<String>;
+
+/// Every `pub fn … -> String` in `i18n.rs`, by name, with its samples. The
+/// exhaustiveness test below compares this list with the file itself.
+const FORMATTERS: &[(&str, Sampler)] = &[
+    ("fmt_label_value", |l| {
+        vec![crate::i18n::fmt_label_value(l, "Label", "Value")]
+    }),
+    ("wizard_file_size_mb", |l| {
+        vec![crate::i18n::wizard_file_size_mb(l, 1.5)]
+    }),
+    ("preparing_folder_for_search", |l| {
+        vec![crate::i18n::preparing_folder_for_search(l, "Docs")]
+    }),
+    ("files_ready_for_search", |l| {
+        vec![
+            crate::i18n::files_ready_for_search(l, 1),
+            crate::i18n::files_ready_for_search(l, 3),
+        ]
+    }),
+    ("startup_failed_data_folder_body", |l| {
+        vec![crate::i18n::startup_failed_data_folder_body(l, "/data")]
+    }),
+    ("model_exact_size", |l| {
+        vec![crate::i18n::model_exact_size(l, 1_234_567)]
+    }),
+    ("model_file_position", |l| {
+        vec![
+            crate::i18n::model_file_position(l, 1, 3),
+            crate::i18n::model_file_position(l, 0, 0),
+        ]
+    }),
+    ("model_transfer_progress", |l| {
+        vec![
+            crate::i18n::model_transfer_progress(l, 1_000_000, 5_000_000),
+            crate::i18n::model_transfer_progress(l, 1_000_000, 0),
+        ]
+    }),
+    ("source_summary", |l| {
+        vec![
+            crate::i18n::source_summary(l, 12, 0, 0, 0),
+            crate::i18n::source_summary(l, 12, 1, 2, 3),
+        ]
+    }),
+    ("search_result_count", |l| {
+        vec![
+            crate::i18n::search_result_count(l, 1),
+            crate::i18n::search_result_count(l, 3),
+        ]
+    }),
+    ("fmt_reset_removes", |l| {
+        vec![
+            crate::i18n::fmt_reset_removes(l, 2, 3, false),
+            crate::i18n::fmt_reset_removes(l, 1, 1, true),
+        ]
+    }),
+    ("fmt_rebuild_prepares", |l| {
+        vec![
+            crate::i18n::fmt_rebuild_prepares(l, 1),
+            crate::i18n::fmt_rebuild_prepares(l, 3),
+        ]
+    }),
+    ("fmt_gib", |l| vec![crate::i18n::fmt_gib(l, 1.5)]),
+    ("fmt_mib_bucket", |l| {
+        vec![crate::i18n::fmt_mib_bucket(l, "Sample", 1.5)]
+    }),
+    ("fmt_storage_row", |l| {
+        vec![crate::i18n::fmt_storage_row(l, "Sample", 1.5, 3)]
+    }),
+    ("fmt_remove_source_title", |l| {
+        vec![crate::i18n::fmt_remove_source_title(l, "Docs")]
+    }),
+    ("fmt_query", |l| vec![crate::i18n::fmt_query(l, "notes")]),
+    ("search_location_chip", |l| {
+        vec![
+            crate::i18n::search_location_chip(l, "Docs", SearchFolderScope::FolderAndSubfolders),
+            crate::i18n::search_location_chip(l, "Docs", SearchFolderScope::FolderOnly),
+        ]
+    }),
+];
+
+/// The other `pub fn`s in `i18n.rs`, each accounted for by *not* being a
+/// formatter: they return a catalog string or a struct of them, which
+/// `default_ui_copy_follows_the_glossary` already reads through `ALL_KEYS`.
+const NOT_FORMATTERS: &[(&str, &str)] = &[
+    ("tr", "the catalog lookup itself"),
+    (
+        "dialog_title_add_source",
+        "returns tr(DialogAddSourceTitle), a catalog key",
+    ),
+    (
+        "dialog_title_choose_search_folder",
+        "returns tr(DialogChooseSearchFolderTitle), a catalog key",
+    ),
+    (
+        "diagnostics_bundle_labels",
+        "a struct of tr(Diagnostics*) catalog keys",
+    ),
+];
+
+/// `(name, returns_string)` for every top-level `pub fn` / `pub(crate) fn` in
+/// `i18n.rs`, read from the file itself. A signature runs from `fn` to the
+/// first `{`; it may span lines.
+fn i18n_pub_fns() -> Vec<(String, bool)> {
+    let source = include_str!("../i18n.rs");
+    let mut out = Vec::new();
+    let mut lines = source.lines();
+    while let Some(line) = lines.next() {
+        let Some(rest) = line
+            .strip_prefix("pub fn ")
+            .or_else(|| line.strip_prefix("pub(crate) fn "))
+        else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let mut signature = line.to_string();
+        while !signature.contains('{') {
+            match lines.next() {
+                Some(next) => {
+                    signature.push(' ');
+                    signature.push_str(next.trim());
+                }
+                None => break,
+            }
+        }
+        let returns_string = signature
+            .split_once("->")
+            .is_some_and(|(_, ret)| ret.split('{').next().unwrap_or("").trim() == "String");
+        out.push((name, returns_string));
+    }
+    out
+}
+
+/// Exhaustiveness is enforced, not trusted: `FORMATTERS` must be exactly the
+/// `-> String` functions in `i18n.rs`, and every other `pub fn` must be
+/// accounted for in `NOT_FORMATTERS`. Add a formatter without listing it and
+/// this fails; delete one and leave its entry and this fails.
+#[test]
+fn every_formatter_in_i18n_is_in_the_glossary_scan() {
+    let found = i18n_pub_fns();
+    assert!(
+        found.len() >= 20,
+        "the signature scan of i18n.rs found only {} pub fns -- the parser is broken",
+        found.len()
+    );
+    let listed: std::collections::BTreeSet<&str> = FORMATTERS.iter().map(|&(n, _)| n).collect();
+    let others: std::collections::BTreeSet<&str> = NOT_FORMATTERS.iter().map(|&(n, _)| n).collect();
+    let mut problems = Vec::new();
+    for (name, returns_string) in &found {
+        let n = name.as_str();
+        if *returns_string && !listed.contains(n) {
+            problems.push(format!(
+                "`{n}` returns String but is not in FORMATTERS -- add it with sample arguments"
+            ));
+        }
+        if !*returns_string && !others.contains(n) {
+            problems.push(format!(
+                "`{n}` does not return String and is not in NOT_FORMATTERS -- say why it is not a formatter"
+            ));
+        }
+    }
+    let names: std::collections::BTreeSet<&str> = found.iter().map(|(n, _)| n.as_str()).collect();
+    for n in listed.iter().chain(others.iter()) {
+        if !names.contains(n) {
+            problems.push(format!(
+                "`{n}` is listed but is not a pub fn in i18n.rs any more"
+            ));
+        }
+    }
+    assert!(problems.is_empty(), "\n{}", problems.join("\n"));
+}
+
+/// Every formatter's sentences, both locales, through every row.
+#[test]
+fn formatted_sentences_follow_the_glossary() {
+    let mut violations = Vec::new();
+    for &locale in Locale::ALL {
+        for &(name, sample) in FORMATTERS {
+            for text in sample(locale) {
+                for term in GLOSSARY {
+                    violations.extend(term.violations(locale, Source::Formatter(name), &text));
+                }
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "\n{}\n{} violation(s) in formatted sentences -- Task 104. Either fix the copy or add a \
+         justified entry to the row's `formatter_exemptions`.",
+        violations.join("\n"),
+        violations.len()
+    );
+}
+
+/// Task 104: a formatter exemption that no longer matches anything is a stale
+/// permission -- same rule as the catalog and docs exemptions above. The
+/// exempted formatter must exist in `FORMATTERS`, and at least one of its
+/// samples, in some locale, must still contain the exempted term.
+#[test]
+fn every_glossary_formatter_exemption_is_load_bearing() {
+    for term in GLOSSARY {
+        for &(function, forbidden_term, _reason) in term.formatter_exemptions {
+            let sample = FORMATTERS
+                .iter()
+                .find(|&&(name, _)| name == function)
+                .map(|&(_, sample)| sample)
+                .unwrap_or_else(|| {
+                    panic!("formatter exemption names {function}, which is not in FORMATTERS")
+                });
+            let matches = Locale::ALL.iter().any(|&locale| {
+                sample(locale).iter().any(|text| {
+                    term.forbidden.iter().any(|&(term_locale, t)| {
+                        term_locale == locale
+                            && t == forbidden_term
+                            && term.matches(locale, text, t)
+                    })
+                })
+            });
+            assert!(
+                matches,
+                "formatter exemption ({function:?}, {forbidden_term:?}) for \"{concept}\" does not \
+                 match any more -- remove it",
                 concept = term.concept
             );
         }
