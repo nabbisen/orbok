@@ -97,24 +97,32 @@ impl<'a> CleanupService<'a> {
     }
 
     fn run_cache_side(&self, plan: &CleanupPlan) -> OrbokResult<u64> {
-        use orbok_cache::{EngineOptions, OrbokCacheNamespace};
+        use orbok_cache::OrbokCacheNamespace;
 
         let size_before = self.cache_db_path.metadata().map(|m| m.len()).unwrap_or(0);
 
         match plan.action {
             CleanupAction::ClearSnippetCache | CleanupAction::ClearExpiredSearchCache => {
-                // Purge the preview-cache namespace.
-                let engine = self.cache.engine::<Vec<u8>>(
+                // Task 093: this arm's former target, `PreviewCache`, was
+                // retired -- it never had a producer (Review Request 270
+                // §3, Review 270 §3). Both actions' real work is
+                // catalog-side (`CleanupExecutor::clear_snippet_cache`/
+                // `clear_expired_search_cache`, run unconditionally by
+                // `run_safe` before this function, which never touches the
+                // cache *file*), so this arm no longer has namespace work
+                // to do -- but it still opens a real engine handle, rather
+                // than skipping the cache file entirely, because RFC-061
+                // criterion 8 depends on this action failing (not silently
+                // succeeding) when the cache file itself is unavailable
+                // (`criterion_8_clean_snippets_surfaces_an_error_when_the_cache_path_is_unavailable`
+                // occupies the cache DB's path with a directory). Without
+                // this open, that failure would go unnoticed by either
+                // button, since the catalog side never sees it.
+                self.cache.engine::<Vec<u8>>(
                     self.catalog,
-                    &OrbokCacheNamespace::PreviewCache,
-                    EngineOptions::default(),
+                    &OrbokCacheNamespace::ExtractSegments,
+                    OrbokCacheNamespace::ExtractSegments.default_engine_options(),
                 )?;
-                engine
-                    .cleanup_expired()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                engine
-                    .shrink_database()
-                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
             }
             CleanupAction::ClearTemporaryExtraction
             | CleanupAction::RemoveTemporarySourceIndexes => {
@@ -149,24 +157,19 @@ impl<'a> CleanupService<'a> {
                 erase_engine_namespace(&engine)?;
             }
             CleanupAction::RemoveReplacedStaleIndexes => {
-                // Clean up chunk and embedding bundle caches. Per-namespace
-                // options (RFC-059 §7 Slice 3), not a blanket default --
-                // see `OrbokCacheNamespace::default_engine_options`'s own
-                // doc comment for why a mismatched default here would
-                // corrupt ExtractSegments' registered ttl/max_entries.
-                for ns in [
-                    OrbokCacheNamespace::ChunkBundle,
-                    OrbokCacheNamespace::ExtractSegments,
-                ] {
-                    let engine = self.cache.engine::<Vec<u8>>(
-                        self.catalog,
-                        &ns,
-                        ns.default_engine_options(),
-                    )?;
-                    engine
-                        .cleanup_missing_files()
-                        .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
-                }
+                // Task 093: `ChunkBundle`, this arm's other former target,
+                // was retired (never had a producer). The catalog-side half
+                // of this action (`CleanupExecutor::remove_replaced_stale_indexes`,
+                // the `chunks`/FTS tables) is unaffected and still real
+                // work, so this stays a real cache-side action too, just
+                // against the one namespace left.
+                let ns = OrbokCacheNamespace::ExtractSegments;
+                let engine =
+                    self.cache
+                        .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
+                engine
+                    .cleanup_missing_files()
+                    .map_err(|e| orbok_core::OrbokError::Cache(e.to_string()))?;
             }
             _ => {}
         }
@@ -207,26 +210,23 @@ impl<'a> CleanupService<'a> {
                 "retired cache namespaces erased"
             );
         }
-        for ns in [
-            OrbokCacheNamespace::ExtractSegments,
-            OrbokCacheNamespace::ChunkBundle,
-            OrbokCacheNamespace::PreviewCache,
-        ] {
-            // Per-namespace options (RFC-059 §7 Slice 3), not a blanket
-            // default -- passing the wrong ones here on a purge would
-            // still corrupt ExtractSegments' registered ttl/max_entries
-            // (`CacheService::register_engine` upserts on every open),
-            // even though this call only ever deletes rows.
-            let engine =
-                self.cache
-                    .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
-            let removed = erase_engine_namespace(&engine)?;
-            info!(
-                namespace = ns.as_namespace(),
-                entries_removed = removed,
-                "cache namespace erased"
-            );
-        }
+        // Task 093: `ChunkBundle` and `PreviewCache`, this loop's other
+        // former members, were retired -- neither ever had a producer, so
+        // a reset never actually erased anything under either name; the
+        // retired-namespace purge just above already covers their strings
+        // (`RETIRED_NAMESPACES`) for the defensive case that verification
+        // is wrong for some profile this project never saw. `ExtractSegments`
+        // is the only namespace left, so this is no longer a loop.
+        let ns = OrbokCacheNamespace::ExtractSegments;
+        let engine =
+            self.cache
+                .engine::<Vec<u8>>(self.catalog, &ns, ns.default_engine_options())?;
+        let removed = erase_engine_namespace(&engine)?;
+        info!(
+            namespace = ns.as_namespace(),
+            entries_removed = removed,
+            "cache namespace erased"
+        );
         let size_after = self.cache_db_path.metadata().map(|m| m.len()).unwrap_or(0);
         Ok(size_before.saturating_sub(size_after))
     }

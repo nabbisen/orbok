@@ -1571,6 +1571,52 @@ async fn measuring_storage_reports_real_numbers_that_match_independent_reads() {
     );
 }
 
+/// Task 093 test 3: the Storage page still reports the `snippet_cache`
+/// category from the catalog's own table, now that the `PreviewCache`
+/// namespace half is gone. Seeds a real row directly (the same shape
+/// `crates/data/db/src/tests.rs`'s own test uses -- nothing writes this
+/// table in production, per Task 093's research) and cross-checks against
+/// an independent `COUNT(*)` read.
+#[tokio::test]
+async fn snippet_cache_category_reports_the_catalog_table_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    {
+        let conn = catalog.lock();
+        conn.execute(
+            "INSERT INTO snippet_cache (snippet_id, snippet_text, created_at, \
+             last_accessed_at, size_bytes) VALUES ('s1','some snippet text','t','t',18)",
+            [],
+        )
+        .unwrap();
+    }
+
+    let (rows, _) = bootstrap::measure_storage(&context, &catalog);
+    let snippet_cache = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::SnippetCache)
+        .map(|(_, m)| *m)
+        .unwrap();
+    let expected_items: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM snippet_cache", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        expected_items, 1,
+        "the one seeded row must be independently readable"
+    );
+    match snippet_cache {
+        orbok_core::StorageMeasurement::Measured { items, bytes } => {
+            assert_eq!(items, 1, "must count the one seeded catalog row");
+            assert!(bytes > 0, "a real row must report non-zero bytes");
+        }
+        orbok_core::StorageMeasurement::Unknown => {
+            panic!("snippet_cache must be measured, not Unknown, on a readable catalog")
+        }
+    }
+}
+
 /// Task 081 test 2 (retired-namespace fold-in): a Task 079 retired-
 /// namespace row (`extract-segments:v1`) is counted inside
 /// `temporary_extraction`, not left invisible the way it was before Task

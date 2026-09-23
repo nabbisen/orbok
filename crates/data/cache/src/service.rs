@@ -138,12 +138,19 @@ impl CacheService {
         plan: &CleanupPlan,
     ) -> OrbokResult<CacheCleanupOutcome> {
         plan.assert_safe_for_ordinary_cleanup()?;
+        // Task 093: `ClearSnippetCache`'s and `RemoveReplacedStaleIndexes`'s
+        // former targets here (`PreviewCache`, `ChunkBundle`) were retired
+        // -- neither ever had a producer. This function is unreachable in
+        // production today (`ProfileCache::run_safe_cleanup` delegates to
+        // `orbok_workers::CleanupService::run_safe` instead, not this one;
+        // Review Request 270's research), so these two now map to no
+        // namespace work here, same as `ClearExpiredSearchCache` already
+        // did -- their real work happens catalog-side either way.
         let namespaces: Vec<OrbokCacheNamespace> = match plan.action {
             CleanupAction::ClearTemporaryExtraction => vec![OrbokCacheNamespace::ExtractSegments],
-            CleanupAction::ClearSnippetCache => vec![OrbokCacheNamespace::PreviewCache],
-            CleanupAction::RemoveReplacedStaleIndexes => vec![OrbokCacheNamespace::ChunkBundle],
-            // Search cache lives in the catalog, not in localcache.
-            CleanupAction::ClearExpiredSearchCache => vec![],
+            CleanupAction::ClearSnippetCache
+            | CleanupAction::RemoveReplacedStaleIndexes
+            | CleanupAction::ClearExpiredSearchCache => vec![],
             _ => return Err(OrbokError::CleanupWouldTouchPersistentData),
         };
         let mut outcome = CacheCleanupOutcome::default();
@@ -226,9 +233,12 @@ impl CacheService {
     }
 
     /// Reclaim file space after large deletions (storage dashboard's
-    /// explicit "shrink" action; Appendix A §12).
+    /// explicit "shrink" action; Appendix A §12). `shrink_database` VACUUMs
+    /// the whole cache file, not just one namespace -- any live namespace's
+    /// engine handle reaches it; `ExtractSegments` is the only one left
+    /// (Task 093).
     pub fn shrink(&self, catalog: &Catalog) -> OrbokResult<()> {
-        let engine = self.maintenance_engine(catalog, &OrbokCacheNamespace::PreviewCache)?;
+        let engine = self.maintenance_engine(catalog, &OrbokCacheNamespace::ExtractSegments)?;
         engine.shrink_database().map_err(cache_err)
     }
 

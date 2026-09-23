@@ -306,6 +306,26 @@ Cleanup must call:
 - namespace deletion;
 - database shrink where appropriate.
 
+## 10a. Amendment 2 (2026-09-23) — the mapping above was mostly namespaces that were never built
+
+Task 093 (Review Request 270 §3, Review 270 §3, Appendix A's own amendment
+of the same date): `chunk-bundle:*`, `embedding-bundle:*` and
+`preview-cache:*` never had a producer — declared, exercised only by
+cleanup code and this dashboard's own measurement, never written by any
+released version. `normalized-text:*` was never even declared as a
+namespace. Only `extract-segments:*` → Temporary extraction cache was
+ever real.
+
+`ChunkBundle`, `EmbeddingBundle` and `PreviewCache` are removed from
+`OrbokCacheNamespace`. The Storage page's Snippet cache category now
+reports only the catalog's own `snippet_cache` table — the number does
+not change in any profile this project checked, since the namespace half
+was always zero; a cache-open failure can no longer spuriously blank the
+whole category (it previously could, since summing an `Unknown`
+namespace measurement demoted an otherwise-successful catalog reading).
+The mapping above is left as written for its one still-real row, rather
+than rewritten, with this amendment as the record for the other four.
+
 ---
 
 ## 11. Storage Accounting

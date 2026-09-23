@@ -356,6 +356,10 @@ Do not load embedding model at app startup unless needed.
 
 ## 17. localcache Integration
 
+**Never built, retired 2026-09-23 (Task 093, Appendix A's own amendment
+of the same date).** No production code ever wrote an `embedding-bundle:*`
+payload; the design below is unimplemented, not deprecated.
+
 `localcache` may cache per-file or per-chunk embedding bundles.
 
 Recommended namespace:

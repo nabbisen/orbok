@@ -46,11 +46,7 @@ const EXTRACTION_CACHE_TTL: Duration = Duration::from_secs(90 * 24 * 60 * 60); /
 /// original measurement; only the enforcement point moved.
 pub const EXTRACTION_CACHE_CLEANUP_ENTRY_CAP: usize = 20_000;
 
-/// Namespace strings this project no longer writes, because a payload
-/// shape change bumped the namespace that replaced them (Task 079,
-/// Review Request 255 §6: nothing deleted these on its own, so an
-/// upgraded profile kept every old-shape row forever, invisible to the
-/// storage dashboard and to *Clear temporary extraction*).
+/// Namespace strings this project no longer writes.
 ///
 /// `localcache`'s `keys`/`list_entries`/`remove` filter by namespace
 /// string alone, with no requirement that the namespace be one
@@ -68,23 +64,43 @@ pub const RETIRED_NAMESPACES: &[&str] = &[
     // wrong shape under `:v2`'s current layout. Replaced by
     // `extract-segments:v2`.
     "extract-segments:v1",
+    // Task 093 (2026-09-23, Review Request 270 §3 / Review 270 §3):
+    // `ChunkBundle` (RFC-006) was specified in Appendix A §5/§10 and never
+    // built -- no production code ever wrote it, confirmed both on a real,
+    // used profile (one indexed folder, a search run, a result expanded:
+    // zero rows under this namespace) and across this project's entire git
+    // history (no commit ever added a write call). Listed here anyway, not
+    // just removed from the enum below: the same defensive reasoning as
+    // `extract-segments:v1` applies if that verification is ever wrong for
+    // some profile this project never saw.
+    "chunk-bundle:v1",
+    // Task 093: `PreviewCache` (RFC-013's preview pane) -- same finding,
+    // same verification. Search snippets have always been rendered from
+    // `ExtractSegments` (`crates/search/engine/src/snippet.rs`), never
+    // from a separate preview cache.
+    "preview-cache:v1",
+    // `EmbeddingBundle` (RFC-008) is also retired in the same sense --
+    // never written, anywhere, ever -- but it cannot be listed here: it is
+    // parameterized by model id and vector format
+    // (`embedding-bundle:<model_id>:<vector_format>:v1`), and no concrete
+    // instance of that pattern was ever produced to retire. There is
+    // nothing for `purge_retired_namespaces` to address by name.
 ];
 
-/// The orbok cache namespaces. Embedding bundles are parameterized by
-/// model and vector format so different models never collide.
+/// The orbok cache namespaces.
+///
+/// Task 093 (2026-09-23): this project's original design (Appendix A §5,
+/// RFC-006, RFC-008) specified four namespaces. Only this one -- extracted
+/// text, read by both the chunking and embedding stages -- ever got a
+/// producer (`crates/pipeline/workers/src/extract.rs`). `ChunkBundle`,
+/// `EmbeddingBundle` and `PreviewCache` were declared, exercised only by
+/// cleanup code, storage measurement and tests, and never written by any
+/// released version; see `RETIRED_NAMESPACES` above and Appendix A's dated
+/// amendment for how that was verified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrbokCacheNamespace {
     /// Extracted, normalized segments per source file (RFC-005 output).
     ExtractSegments,
-    /// Chunk bundles per source file (RFC-006 output).
-    ChunkBundle,
-    /// Embedding bundles per source file for one model+format (RFC-008).
-    EmbeddingBundle {
-        model_id: String,
-        vector_format: String,
-    },
-    /// Rendered preview/snippet payloads (RFC-013 preview pane).
-    PreviewCache,
 }
 
 impl OrbokCacheNamespace {
@@ -98,12 +114,6 @@ impl OrbokCacheNamespace {
             // makes a `v1` entry a miss (the chunk job then re-extracts, Task
             // 056) instead of relying on it decoding wrongly.
             Self::ExtractSegments => "extract-segments:v2".to_string(),
-            Self::ChunkBundle => "chunk-bundle:v1".to_string(),
-            Self::EmbeddingBundle {
-                model_id,
-                vector_format,
-            } => format!("embedding-bundle:{model_id}:{vector_format}:v1"),
-            Self::PreviewCache => "preview-cache:v1".to_string(),
         }
     }
 
@@ -113,13 +123,10 @@ impl OrbokCacheNamespace {
     }
 
     /// Lifecycle class of the payloads (RFC-001 §5, Appendix A §6):
-    /// derived pipeline payloads are rebuildable; previews are ephemeral.
+    /// derived pipeline payloads are rebuildable.
     pub fn data_class(&self) -> DataClass {
         match self {
-            Self::ExtractSegments | Self::ChunkBundle | Self::EmbeddingBundle { .. } => {
-                DataClass::RebuildableIndex
-            }
-            Self::PreviewCache => DataClass::EphemeralCache,
+            Self::ExtractSegments => DataClass::RebuildableIndex,
         }
     }
 
@@ -143,21 +150,16 @@ impl OrbokCacheNamespace {
                 ttl: Some(EXTRACTION_CACHE_TTL),
                 max_entries: None,
             },
-            Self::ChunkBundle | Self::EmbeddingBundle { .. } | Self::PreviewCache => {
-                EngineOptions::default()
-            }
         }
     }
 
     /// The entry cap for this namespace, if any (RFC-059 Amendment 1
     /// §2a.2, Amendment 2 §2b) -- applied only when the indexing pipeline
     /// is idle, by the scheduler host's idle branch, never at write time
-    /// and not inside a cleanup action. `None` for every namespace but
-    /// `ExtractSegments`.
+    /// and not inside a cleanup action.
     pub fn cleanup_time_entry_cap(&self) -> Option<usize> {
         match self {
             Self::ExtractSegments => Some(EXTRACTION_CACHE_CLEANUP_ENTRY_CAP),
-            Self::ChunkBundle | Self::EmbeddingBundle { .. } | Self::PreviewCache => None,
         }
     }
 }

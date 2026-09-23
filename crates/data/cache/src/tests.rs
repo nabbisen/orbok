@@ -4,7 +4,7 @@
 
 use crate::{CacheService, EngineOptions, OrbokCacheNamespace};
 use orbok_core::SourceId;
-use orbok_core::{CleanupAction, CleanupPlan, DataClass};
+use orbok_core::{CleanupAction, CleanupPlan};
 use orbok_db::{CACHE_FILE_NAME, CATALOG_FILE_NAME, Catalog};
 use orbok_fs::ValidatedPath;
 use serde::{Deserialize, Serialize};
@@ -89,25 +89,12 @@ fn get_fresh_misses_after_source_change() {
     assert_eq!(CacheService::get_fresh(&engine, &path).unwrap(), None);
 }
 
-// Appendix A §7: embedding namespaces are parameterized per model and
-// never collide; classes are as designed.
-#[test]
-fn namespaces_are_distinct_and_classed() {
-    let a = OrbokCacheNamespace::EmbeddingBundle {
-        model_id: "model-a".into(),
-        vector_format: "fp32".into(),
-    };
-    let b = OrbokCacheNamespace::EmbeddingBundle {
-        model_id: "model-b".into(),
-        vector_format: "fp32".into(),
-    };
-    assert_ne!(a.as_namespace(), b.as_namespace());
-    assert_eq!(a.data_class(), DataClass::RebuildableIndex);
-    assert_eq!(
-        OrbokCacheNamespace::PreviewCache.data_class(),
-        DataClass::EphemeralCache
-    );
-}
+// Task 093: `namespaces_are_distinct_and_classed` removed -- it asserted
+// `EmbeddingBundle`'s per-model namespace strings stayed distinct and
+// compared its class against `PreviewCache`'s. Both variants are retired
+// (neither ever had a producer; Review Request 270 §3, Review 270 §3),
+// and `ExtractSegments` -- the only namespace left -- is not parameterized,
+// so there is nothing left for this test to assert.
 
 // RFC-001 §14 carried into the cache layer: destructive plans rejected;
 // safe plans clean payloads while the catalog is untouched.
@@ -150,7 +137,7 @@ fn usage_reports_entries_and_bytes() {
     let engine = service
         .engine::<Segments>(
             &catalog,
-            &OrbokCacheNamespace::ChunkBundle,
+            &OrbokCacheNamespace::ExtractSegments,
             EngineOptions::default(),
         )
         .unwrap();
@@ -167,12 +154,12 @@ fn usage_reports_entries_and_bytes() {
     .unwrap();
 
     let usage = service
-        .usage(&catalog, &[OrbokCacheNamespace::ChunkBundle])
+        .usage(&catalog, &[OrbokCacheNamespace::ExtractSegments])
         .unwrap();
     assert_eq!(usage.len(), 1);
     assert_eq!(usage[0].entries, 1);
     assert!(usage[0].payload_bytes > 0);
-    assert_eq!(usage[0].namespace, "chunk-bundle:v1");
+    assert_eq!(usage[0].namespace, "extract-segments:v2");
 }
 
 // Regression for the defect fixed in localcache 0.20.0 (schema v5):
@@ -241,8 +228,11 @@ fn raw_engine(
         .unwrap()
 }
 
-/// Task 079 test 1: `purge_retired_namespaces` deletes every entry under a
-/// retired namespace and leaves the current, live namespace untouched.
+/// Task 079 test 1, extended by Task 093: `purge_retired_namespaces`
+/// deletes every entry under every retired namespace -- all three now
+/// (`extract-segments:v1` from Task 077, `chunk-bundle:v1`/
+/// `preview-cache:v1` from Task 093) -- and leaves the current, live
+/// namespace untouched.
 #[test]
 fn purging_retired_namespaces_deletes_them_and_leaves_the_live_namespace_alone() {
     let dir = tempfile::tempdir().unwrap();
@@ -250,10 +240,16 @@ fn purging_retired_namespaces_deletes_them_and_leaves_the_live_namespace_alone()
     let service = CacheService::new(dir.path());
     let db_path = dir.path().join(CACHE_FILE_NAME);
 
-    let old_file = dir.path().join("old.md");
-    fs::write(&old_file, "old").unwrap();
-    let old_canonical = fs::canonicalize(&old_file).unwrap();
-    write_raw_entry(&db_path, "extract-segments:v1", &old_canonical);
+    for (retired_namespace, file_name) in [
+        ("extract-segments:v1", "old-extract.md"),
+        ("chunk-bundle:v1", "old-chunk.md"),
+        ("preview-cache:v1", "old-preview.md"),
+    ] {
+        let old_file = dir.path().join(file_name);
+        fs::write(&old_file, "old").unwrap();
+        let old_canonical = fs::canonicalize(&old_file).unwrap();
+        write_raw_entry(&db_path, retired_namespace, &old_canonical);
+    }
 
     let live_file = dir.path().join("live.md");
     fs::write(&live_file, "live").unwrap();
@@ -275,13 +271,18 @@ fn purging_retired_namespaces_deletes_them_and_leaves_the_live_namespace_alone()
     .unwrap();
 
     let removed = service.purge_retired_namespaces().unwrap();
-    assert_eq!(removed, 1, "exactly the one v1 entry must be removed");
-
-    let v1 = raw_engine(&db_path, "extract-segments:v1");
-    assert!(
-        v1.keys(None).unwrap().is_empty(),
-        "the retired namespace must be empty after purging"
+    assert_eq!(
+        removed, 3,
+        "exactly the three seeded entries must be removed"
     );
+
+    for retired_namespace in ["extract-segments:v1", "chunk-bundle:v1", "preview-cache:v1"] {
+        let raw = raw_engine(&db_path, retired_namespace);
+        assert!(
+            raw.keys(None).unwrap().is_empty(),
+            "{retired_namespace} must be empty after purging"
+        );
+    }
     assert_eq!(
         CacheService::get_fresh(&engine, &live_path).unwrap(),
         Some(Segments {
@@ -309,14 +310,26 @@ fn retired_namespace_usage_reports_bytes_before_purge_and_zero_after() {
         );
     }
 
+    // Task 093: `RETIRED_NAMESPACES` grew to three entries
+    // (`chunk-bundle:v1`/`preview-cache:v1` retired alongside
+    // `extract-segments:v1`); this test only seeds the first, so the other
+    // two report zero entries throughout -- asserted below rather than
+    // assumed.
     let before = service.retired_namespace_usage().unwrap();
-    assert_eq!(before.len(), 1, "one retired namespace is currently listed");
+    assert_eq!(before.len(), 3, "three retired namespaces are now listed");
     assert_eq!(before[0].namespace, "extract-segments:v1");
     assert_eq!(before[0].entries, 3);
     assert!(
         before[0].payload_bytes > 0,
         "three real payloads must report a non-zero byte total"
     );
+    for unseeded in &before[1..] {
+        assert_eq!(
+            unseeded.entries, 0,
+            "{} was never seeded in this test",
+            unseeded.namespace
+        );
+    }
 
     service.purge_retired_namespaces().unwrap();
 
@@ -328,25 +341,19 @@ fn retired_namespace_usage_reports_bytes_before_purge_and_zero_after() {
 /// Task 079 test 4: a typo in `RETIRED_NAMESPACES` that names a namespace
 /// this project still produces would delete live data on the next purge.
 /// This asserts every retired string is distinct from every namespace
-/// [`OrbokCacheNamespace`] can currently produce, including the whole
-/// `EmbeddingBundle` family (parameterized by model and vector format, so
-/// checked by prefix rather than by one instance).
+/// [`OrbokCacheNamespace`] can currently produce.
+///
+/// Task 093: `EmbeddingBundle`'s own prefix check is gone along with the
+/// variant -- it is retired too (never had a producer), just not listed
+/// in `RETIRED_NAMESPACES` itself, since no concrete `model_id`/
+/// `vector_format` instance of it was ever written for this to address.
 #[test]
 fn retired_namespaces_are_never_a_live_namespace() {
-    let live_fixed = [
-        OrbokCacheNamespace::ExtractSegments.as_namespace(),
-        OrbokCacheNamespace::ChunkBundle.as_namespace(),
-        OrbokCacheNamespace::PreviewCache.as_namespace(),
-    ];
+    let live_fixed = [OrbokCacheNamespace::ExtractSegments.as_namespace()];
     for retired in crate::RETIRED_NAMESPACES {
         assert!(
             !live_fixed.iter().any(|live| live == retired),
             "{retired} is a live namespace -- purging it would delete current data"
-        );
-        assert!(
-            !retired.starts_with("embedding-bundle:"),
-            "{retired} looks like an EmbeddingBundle namespace, which is still live \
-             for every model/format pair"
         );
     }
 }

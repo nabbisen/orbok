@@ -389,6 +389,10 @@ Version changes are required when:
 
 ## 14. localcache Integration
 
+**Never built, retired 2026-09-23 (Task 093, Appendix A's own amendment
+of the same date).** No production code ever wrote a `chunk-bundle:*`
+payload; the design below is unimplemented, not deprecated.
+
 `localcache` may be used to cache chunk bundles.
 
 Recommended namespace:

@@ -81,34 +81,13 @@ fn extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap() {
     );
 }
 
-/// Every namespace *other* than ExtractSegments must keep its existing,
-/// unbounded default -- this slice bounds the one namespace RFC-059's
-/// summary singles out ("holds the complete extracted text of every
-/// document"), not every cache in the product.
-#[test]
-fn other_namespaces_are_unaffected() {
-    let dir = tempfile::tempdir().unwrap();
-    let (catalog, cache) = setup(dir.path());
-
-    for ns in [
-        OrbokCacheNamespace::ChunkBundle,
-        OrbokCacheNamespace::PreviewCache,
-    ] {
-        let _engine = cache
-            .engine::<Vec<u8>>(&catalog, &ns, ns.default_engine_options())
-            .unwrap();
-        let (ttl_seconds, max_entries): (Option<i64>, Option<i64>) = catalog
-            .lock()
-            .query_row(
-                "SELECT ttl_seconds, max_entries FROM cache_engines WHERE namespace = ?1",
-                [ns.as_namespace()],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(ttl_seconds, None, "{:?} must stay unbounded", ns);
-        assert_eq!(max_entries, None, "{:?} must stay unbounded", ns);
-    }
-}
+// Task 093: `other_namespaces_are_unaffected` removed. It asserted that
+// every namespace other than `ExtractSegments` kept an unbounded default
+// -- `ChunkBundle` and `PreviewCache`, the only two it exercised. Both are
+// retired (neither ever had a producer; Review Request 270 §3, Review 270
+// §3), and `ExtractSegments` is now the only namespace this project
+// produces, so "every namespace other than ExtractSegments" is the empty
+// set -- nothing left for this test to iterate.
 
 /// The underlying mechanism criterion 5 depends on: `cleanup_expired`
 /// (`localcache` 0.21.1) is a structural no-op whenever an engine's own

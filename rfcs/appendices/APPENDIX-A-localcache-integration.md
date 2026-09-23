@@ -639,3 +639,25 @@ default detection mode (`MetadataThenFullHash`, §10) is hardened by
 the same fix on filesystems with sub-second timestamp resolution.
 `localcache` 0.20.0 keeps rusqlite 0.40, so the workspace pin in
 RFC-002 §16 is unchanged.
+
+### Amendment (2026-09-23): §5, §10 and §11 recommended three namespaces that were never built
+
+Task 093 (Review Request 270 §3, Review 270 §3): of §5's six recommended
+namespaces, only `extract-segments:*` was ever implemented.
+`normalized-text:*` and `document-analysis:*` were never even declared as
+an `OrbokCacheNamespace` variant. `chunk-bundle:*` (§10.2),
+`embedding-bundle:*` (§10.3) and `preview-cache:*` were declared, but no
+production code path ever wrote to any of them — confirmed both on a
+real, used profile (one indexed folder, a search run, a result expanded:
+zero rows under any of the three) and across this project's entire git
+history (no commit ever added a write call). §10.1's `ExtractedSegmentBundle`
+is the only payload candidate this appendix describes that was actually
+built, under `extract-segments:v2` (the `:v1` shape retired separately,
+Task 077).
+
+`ChunkBundle`, `EmbeddingBundle` and `PreviewCache` are removed from
+`OrbokCacheNamespace` (Task 093). §10.2 and §10.3 are left as written
+below, unrewritten — a later RFC may still want either payload — with
+this amendment as the record that neither shipped. §11's mapping table
+is now effectively one row: `extract-segments:*` → temporary extraction.
+The other four rows named a namespace this project never produced.

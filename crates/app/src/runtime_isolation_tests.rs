@@ -565,7 +565,7 @@ fn exercise_lazy_cache_open(
     let engine = cache
         .engine::<serde_json::Value>(
             catalog,
-            &orbok_cache::OrbokCacheNamespace::PreviewCache,
+            &orbok_cache::OrbokCacheNamespace::ExtractSegments,
             orbok_cache::EngineOptions::default(),
         )
         .unwrap();

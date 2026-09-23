@@ -222,31 +222,24 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
             ),
         ));
 
-        // snippet_cache: two real backing stores are cleared by one
-        // action (`ClearSnippetCache`, `cleanup.rs`'s `clear_snippet_cache`
-        // plus `cleanup_service.rs`'s cache-side purge of `PreviewCache`)
-        // -- the catalog's own `snippet_cache` table (dbstat) and the
-        // separate localcache `PreviewCache` namespace
-        // (`CacheService::usage`). Summed: both are real space that one
-        // button reclaims.
-        let snippet_table = storage_measurement::dbstat(
-            catalog,
-            "name LIKE 'snippet_cache%'",
-            "SELECT COUNT(*) FROM snippet_cache",
-        );
-        let snippet_namespace = self
-            .cache()
-            .ok()
-            .and_then(|cache| {
-                cache
-                    .usage(catalog, &[OrbokCacheNamespace::PreviewCache])
-                    .ok()
-            })
-            .map(storage_measurement::from_namespace_usage)
-            .unwrap_or(orbok_core::StorageMeasurement::Unknown);
+        // snippet_cache: the catalog's own `snippet_cache` table.
+        //
+        // Task 093: this used to also sum the localcache `PreviewCache`
+        // namespace's usage -- retired, since it never had a producer
+        // (Review Request 270 §3, Review 270 §3). No reported number
+        // changes in practice: `PreviewCache` was always empty on every
+        // profile checked, so the sum already equaled this table alone.
+        // What does change: a cache-open failure could previously demote
+        // this whole category to `Unknown` even when the real (dbstat)
+        // half succeeded, since `add` treats `Unknown` as infectious --
+        // that spurious failure mode is gone along with the namespace.
         out.push((
             Cat::SnippetCache,
-            storage_measurement::add(snippet_table, snippet_namespace),
+            storage_measurement::dbstat(
+                catalog,
+                "name LIKE 'snippet_cache%'",
+                "SELECT COUNT(*) FROM snippet_cache",
+            ),
         ));
 
         // search_cache: the catalog's own tables -- `ClearExpiredSearchCache`
