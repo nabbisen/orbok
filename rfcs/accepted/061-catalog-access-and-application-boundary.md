@@ -265,6 +265,22 @@ is what makes that contention a wait instead of an error.
 > inherited default explicit and load-bearing in orbok's own source rather than
 > introducing behaviour. Keep it for that reason, and only that reason.
 
+> **Amended 2026-09-23 (Task 096).** This decision already had one deliberate
+> exception before this: `scheduler_host.rs` opens its own `Catalog`, not the
+> shared one, since it runs on its own task with its own lifetime. Task 095/096
+> add a second: post-reset compaction (`Catalog::vacuum`'s `PRAGMA
+> wal_checkpoint(TRUNCATE)`) can hold a connection's mutex for up to the full
+> busy timeout when another connection is mid-read (Review Request 273 §0a
+> measured 5 s). Running that on the shared connection — even off the update
+> thread — would hold its mutex for that whole window and block the update
+> thread's *next* access just the same (Review 273 §4.1). Compaction opens its
+> own short-lived `Catalog` for exactly this reason (`main.rs`'s
+> `compact_reset_files`), proven by
+> `the_shared_connection_stays_free_while_compaction_runs_on_its_own`
+> (`crates/app/src/router/tests.rs`). Both exceptions share the same shape: a
+> caller whose own connection would otherwise be held across a cost the update
+> thread cannot afford to wait on.
+
 ## 6. Decision 2 — one embedding model for the process
 
 `bootstrap/search.rs:43` calls `create_embedding_model` inside every search:

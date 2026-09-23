@@ -180,16 +180,23 @@ RFC's.
 ## 2c. Amendment 3 (2026-09-23) — Reset now compacts; criterion 6 still holds for the action it names
 
 Task 095 (Review Request 273): after a successful Reset,
-`CleanupService::run_reset` now `VACUUM`s both the catalog and the cache
-file, guarded by free space (roughly the file's own size again, plus a
-10%-of-size margin floored at 1 MiB — `VACUUM` needs that much headroom
-while it runs), and logs rather than fails the reset if either is skipped
-or errors. **Confirmed empirically, not assumed**: under this catalog's
-own WAL journal mode, `VACUUM` alone left the on-disk file exactly its
-pre-`VACUUM` size in a real run — its rebuilt content landed in the WAL
-like any other write. `Catalog::vacuum()` also runs `PRAGMA
+`CleanupService::compact_after_reset` now `VACUUM`s both the catalog and
+the cache file, guarded by free space (roughly the file's own size again,
+plus a 10%-of-size margin floored at 1 MiB — `VACUUM` needs that much
+headroom while it runs), and logs rather than fails the reset if either is
+skipped or errors. **Confirmed empirically, not assumed**: under this
+catalog's own WAL journal mode, `VACUUM` alone left the on-disk file
+exactly its pre-`VACUUM` size in a real run — its rebuilt content landed
+in the WAL like any other write. `Catalog::vacuum()` also runs `PRAGMA
 wal_checkpoint(TRUNCATE)` afterward; only with that does the file (and the
 WAL sidecar) actually shrink on disk.
+
+**Amended further, same date (Task 096, Review Request 274).** That
+checkpoint can itself block for the full busy timeout when another
+connection is mid-read, so compaction was split out of `run_reset` and now
+runs off the update thread, on its own short-lived `Catalog` connection
+(RFC-061 §5's own amendment records the exception) — `run_reset` itself
+still only deletes, synchronously, as it always did.
 
 **Criterion 6 itself still holds, unchanged.** It concerns "Remove
 replaced stale indexes" (`RemoveReplacedStaleIndexes`), a Safe-cleanup

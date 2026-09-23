@@ -47,3 +47,13 @@ pub fn reset_catalog(catalog: &Catalog, cache: &ProfileCache) -> OrbokResult<()>
     cache.run_reset(catalog, &plan, true)?;
     Ok(())
 }
+
+/// Task 096: post-reset compaction, on whatever `catalog`/`cache` the
+/// caller passes -- `main.rs`'s post-reset task passes handles it opened
+/// just for this call (RFC-061 §5's deliberate exception), never the
+/// router's shared ones, so a contended checkpoint never blocks the
+/// update thread. Never fails outward -- see
+/// `ProfileCache::compact_after_reset`'s own doc comment.
+pub fn compact_after_reset(catalog: &Catalog, cache: &ProfileCache) {
+    cache.compact_after_reset(catalog);
+}

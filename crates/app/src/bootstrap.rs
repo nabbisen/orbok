@@ -29,8 +29,8 @@ mod startup;
 mod tests;
 
 pub use cleanup::{
-    clean_search_cache, clean_snippets, clean_temporary_extraction, remove_replaced_stale_indexes,
-    reset_catalog,
+    clean_search_cache, clean_snippets, clean_temporary_extraction, compact_after_reset,
+    remove_replaced_stale_indexes, reset_catalog,
 };
 pub use preferences::{
     persist_locale, persist_model_dir, persist_reduced_motion, persist_text_scale, persist_theme,

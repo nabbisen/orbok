@@ -398,6 +398,79 @@ fn measure_storage_task(
     )
 }
 
+/// Task 096: post-reset compaction (Task 095) itself -- a plain function
+/// so a test can call it directly, on its own thread, and prove the
+/// shared connection stays free while it runs (Review 273 §4.1's own
+/// hazard: a background thread holding the *shared* connection would
+/// freeze the update thread just the same, only from a different stack).
+///
+/// Opens its own catalog and cache -- the same deliberate exception to
+/// RFC-061 §5's one-catalog rule `scheduler_host.rs` already is -- so a
+/// contended `wal_checkpoint` (Review Request 273 §0a: up to the full 5 s
+/// busy timeout) never holds the mutex the update thread needs for its
+/// next catalog access. `shared_catalog` is the update thread's own
+/// handle, passed through for the caller's convenience and deliberately
+/// never touched here -- that is the whole property this function exists
+/// to hold (Task 096 §2 test 2's own mutation: use it for compaction
+/// instead of a fresh handle, and watch that test fail). Neither handle
+/// failing to open is shown to the user -- compaction is already a
+/// best-effort step (Task 095 §1.4), so this only logs and skips, the
+/// same as a failed `VACUUM` itself does.
+fn compact_reset_files(
+    runtime: &orbok::runtime_context::RuntimeContext,
+    _shared_catalog: &orbok_db::Catalog,
+) {
+    let Ok(fresh_catalog) = bootstrap::open_catalog(runtime) else {
+        tracing::warn!("post-reset compaction: catalog unavailable, skipping");
+        return;
+    };
+    let Ok(cache) = bootstrap::cache_service(runtime) else {
+        tracing::warn!("post-reset compaction: cache unavailable, skipping");
+        return;
+    };
+    bootstrap::compact_after_reset(&fresh_catalog, &cache);
+}
+
+/// Task 096 §2 test 4: `compact_reset_files` then `measure_storage`, in
+/// that plain sequential order -- a plain function, not two chained
+/// `Task`s, so the order is guaranteed by ordinary Rust control flow
+/// (testable directly) rather than by `Task::then`'s own semantics (not
+/// independently drivable from outside `iced`'s runtime -- its `Action`
+/// output is private to that crate). Measuring first would read the
+/// pre-compaction file size; this is the one place that order is decided.
+fn compact_then_measure(
+    runtime: &orbok::runtime_context::RuntimeContext,
+    catalog: &orbok_db::Catalog,
+) -> (
+    Vec<(orbok_core::StorageCategory, orbok_core::StorageMeasurement)>,
+    Option<u64>,
+) {
+    compact_reset_files(runtime, catalog);
+    bootstrap::measure_storage(runtime, catalog)
+}
+
+/// Task 096: `compact_then_measure` off the update thread, so the numbers
+/// the Storage page shows next are the compacted file sizes, not whatever
+/// was on disk before compaction ran.
+fn compact_reset_and_measure_task(
+    runtime: orbok::runtime_context::RuntimeContext,
+    catalog: std::sync::Arc<orbok_db::Catalog>,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move { compact_then_measure(&runtime, &catalog) },
+        |(rows, cache_file_bytes)| {
+            if bootstrap::storage_measurement_is_failure(&rows, cache_file_bytes) {
+                Message::StorageMeasurementFailed
+            } else {
+                Message::StorageDataReady {
+                    rows,
+                    cache_file_bytes,
+                }
+            }
+        },
+    )
+}
+
 /// Task 092: what the reset confirmation will remove, counted fresh off
 /// the update thread the same way `measure_storage_task` measures storage
 /// -- the dialog itself renders in the same `update` pass that dispatches

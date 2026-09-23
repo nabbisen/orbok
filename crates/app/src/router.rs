@@ -315,7 +315,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             return crate::reset_counts_task(deps.catalog.clone());
         }
         Message::ConfirmResetCatalog => {
-            backend_actions::reset_catalog(
+            let succeeded = backend_actions::reset_catalog(
                 &deps.catalog,
                 bootstrap::cache_service(&deps.runtime),
                 &mut app.state,
@@ -324,6 +324,19 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             // own `CatalogResetSucceeded` arm); this replaces the
             // RFC-011 §13.1 empty state that would otherwise leave
             // with the real measured post-reset numbers.
+            //
+            // Task 096: compaction (Task 095) only when the delete work
+            // actually committed -- the same gate the old combined
+            // `CleanupService::run_reset` had structurally, via its own
+            // `?` short-circuiting before reaching compaction on a
+            // failed delete. It runs off this thread, on its own
+            // connection, then chains the same measurement either way.
+            if succeeded {
+                return crate::compact_reset_and_measure_task(
+                    deps.runtime.clone(),
+                    deps.catalog.clone(),
+                );
+            }
             return crate::measure_storage_task(deps.runtime.clone(), deps.catalog.clone());
         }
         // Task 081: "Calculate now", and every switch to the

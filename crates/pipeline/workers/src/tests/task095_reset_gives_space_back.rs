@@ -1,8 +1,15 @@
 //! Task 095: a reset gives the space back. Plain `DELETE` never shrinks a
 //! SQLite file (RFC-059 §10 criterion 6); after a successful reset,
-//! `CleanupService::run_reset` now compacts both the catalog and the cache
-//! file via `VACUUM`, guarded by free space, and never lets a compaction
-//! failure -- or a skip -- change the reset's own already-decided outcome.
+//! `CleanupService::compact_after_reset` compacts both the catalog and the
+//! cache file via `VACUUM`, guarded by free space, and never lets a
+//! compaction failure -- or a skip -- change the reset's own
+//! already-decided outcome. Task 096 split this out of `run_reset` itself
+//! (that method's own doc comment says why) -- every call site below now
+//! calls both in sequence, the shape `main.rs`'s post-reset task uses in
+//! production, just on the same connection here rather than a fresh one
+//! (this file's own tests are about the guard and the file sizes, not the
+//! threading -- `catalog::tests` in `orbok-db` covers the connection
+//! half, and `wired_application_tests.rs` covers the threading).
 
 use crate::cleanup_service::{compact_if_room, compaction_margin, has_room_to_compact};
 use crate::{ChunkAndIndexWorker, CleanupService, ExtractionWorker, run_pending};
@@ -229,12 +236,18 @@ fn reset_shrinks_the_catalog_file() {
 
     let before = file_len(&catalog_path);
 
+    // Task 096: `run_reset` no longer compacts (that would still be the
+    // shared connection, held across a multi-second checkpoint on the
+    // real update thread) -- `compact_after_reset` is now the caller's own
+    // separate step, the same as `main.rs`'s post-reset task runs it, on
+    // its own connection.
     let svc = CleanupService::new(&catalog, &cache, &cache_path);
     svc.run_reset(
         &CleanupPlan::for_action(CleanupAction::ResetCatalog, 0),
         true,
     )
     .unwrap();
+    svc.compact_after_reset();
 
     let after = file_len(&catalog_path);
     assert!(
@@ -269,6 +282,7 @@ fn reset_shrinks_the_cache_file() {
         true,
     )
     .unwrap();
+    svc.compact_after_reset();
 
     let after = file_len(&cache_path);
     assert!(
@@ -309,6 +323,7 @@ fn a_reset_with_no_room_still_succeeds() {
             true,
         )
         .expect("a reset must succeed even when there is no room to compact");
+    svc.compact_after_reset();
 
     assert!(
         outcome.catalog_rows_deleted > 0,
@@ -338,8 +353,8 @@ fn a_reset_with_no_room_still_succeeds() {
 // ---------------------------------------------------------------------
 // Test 3 (guard + log), and test 4 (a failed compaction is never a failed
 // reset): both exercise `compact_if_room` directly -- the exact function
-// `run_reset` calls -- with injected closures, so neither needs a real
-// disk near-full or a real corrupted file.
+// `compact_after_reset` calls, on both files -- with injected closures, so
+// neither needs a real disk near-full or a real corrupted file.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -419,6 +434,7 @@ fn a_reset_that_compacted_leaves_a_usable_catalog() {
         true,
     )
     .unwrap();
+    svc.compact_after_reset();
 
     assert!(
         file_len(&catalog_path) < before,
@@ -502,13 +518,20 @@ fn task095_measure_real_reset_compaction() {
     let cache_before = file_len(&cache_path);
 
     let svc = CleanupService::new(&catalog, &cache, &cache_path);
-    let start = Instant::now();
+    // Task 096 §3: reported separately now that they are separate calls --
+    // `run_reset` (the delete work, still synchronous on the real update
+    // thread in production) versus `compact_after_reset` (moved off it).
+    let delete_start = Instant::now();
     svc.run_reset(
         &CleanupPlan::for_action(CleanupAction::ResetCatalog, 0),
         true,
     )
     .unwrap();
-    let elapsed = start.elapsed();
+    let delete_elapsed = delete_start.elapsed();
+
+    let compact_start = Instant::now();
+    svc.compact_after_reset();
+    let compact_elapsed = compact_start.elapsed();
 
     let catalog_after = file_len(&catalog_path);
     let cache_after = file_len(&cache_path);
@@ -516,6 +539,7 @@ fn task095_measure_real_reset_compaction() {
     println!(
         "catalog: {catalog_before} -> {catalog_after} bytes\n\
          cache:   {cache_before} -> {cache_after} bytes\n\
-         run_reset (deletes + both compactions) took {elapsed:?}"
+         run_reset (deletes only, stays on the update thread) took {delete_elapsed:?}\n\
+         compact_after_reset (both files, now off it) took {compact_elapsed:?}"
     );
 }

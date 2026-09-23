@@ -290,3 +290,199 @@ fn storage_measurement_is_requested_by_switching_cleaning_and_resetting() {
         "finishing a reset must dispatch a measurement"
     );
 }
+
+// ── Task 096: compaction never freezes the window ──────────────────────
+
+/// Inflate the catalog with schema-valid file rows, fast -- one source,
+/// `count` files, one transaction, padded columns. The same shape Task
+/// 095's own `seed_bulk_files` uses (`orbok-workers`'s tests), duplicated
+/// here rather than shared across crates for one small helper.
+fn seed_bulk_files(catalog: &orbok_db::Catalog, count: usize) {
+    let source_id = orbok_db::repo::SourceRepository::new(catalog)
+        .insert(orbok_db::repo::NewSource {
+            source_type: orbok_core::SourceType::File,
+            persistence_mode: orbok_core::PersistenceMode::Persistent,
+            display_name: Some("bulk".into()),
+            original_path: "/bulk".into(),
+            canonical_path: "/bulk".into(),
+            index_mode: orbok_core::IndexMode::Balanced,
+            include_patterns: vec![],
+            exclude_patterns: vec![],
+            hidden_file_policy: orbok_core::HiddenFilePolicy::Exclude,
+            symlink_policy: orbok_core::SymlinkPolicy::Ignore,
+            max_file_size_bytes: None,
+        })
+        .unwrap()
+        .source_id;
+
+    let padding = "x".repeat(600);
+    let mut conn = catalog.lock();
+    let tx = conn.transaction().unwrap();
+    for i in 0..count {
+        tx.execute(
+            "INSERT INTO files (file_id, source_id, original_path, canonical_path, \
+             display_path, extension, file_size_bytes, modified_at, platform_file_key, \
+             content_hash, hash_algorithm, file_status, last_seen_at, last_scanned_at, \
+             created_at, updated_at) \
+             VALUES (?1,?2,?3,?4,?5,'md',1024,'2026-01-01T00:00:00Z',NULL,?6,'sha256', \
+             'indexed','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z', \
+             '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",
+            rusqlite::params![
+                format!("file_{i}_{padding}"),
+                source_id.as_str(),
+                format!("/bulk/file_{i}_{padding}.md"),
+                format!("/bulk/file_{i}_{padding}.md"),
+                format!("file_{i}.md"),
+                format!("{padding}{i}"),
+            ],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+}
+
+/// Force whichever connection next attempts a `wal_checkpoint(TRUNCATE)`
+/// against `path` into the busy path -- the same mechanism
+/// `orbok-db`'s own `vacuum_logs_a_warning_when_another_connection_blocks_the_checkpoint`
+/// uses: a genuine second connection to the same on-disk file, holding an
+/// open read transaction. Not a mock -- this is the real condition a
+/// lingering scheduler-host query produces.
+fn hold_a_read_transaction(path: &std::path::Path) -> rusqlite::Connection {
+    let reader = rusqlite::Connection::open(path).unwrap();
+    reader
+        .execute_batch("BEGIN; SELECT * FROM schema_migrations LIMIT 1;")
+        .unwrap();
+    reader
+}
+
+/// Task 096 §2 test 1: with a reader forcing the busy path, `route` itself
+/// -- the update thread -- must still return promptly. Before Task 096,
+/// compaction ran inline inside this same call, so this contention alone
+/// made it take the full 5 s busy timeout (confirmed directly: reverting
+/// `ConfirmResetCatalog`'s arm to call `compact_reset_files` synchronously
+/// before returning reproduces exactly that). 500 ms is the bound: an
+/// order of magnitude below the 5 s timeout a synchronous checkpoint would
+/// hit, and two orders above what deleting a handful of seeded rows
+/// genuinely costs, so it cannot pass by accident on a slow CI runner --
+/// only by compaction genuinely not running inline.
+#[test]
+fn confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 50);
+
+    let reader = hold_a_read_transaction(deps.catalog.path());
+
+    let mut app = OrbokApp::with_state(AppState::default());
+    let start = std::time::Instant::now();
+    let task = route(&mut app, Message::ConfirmResetCatalog, &deps);
+    let elapsed = start.elapsed();
+
+    reader.execute_batch("COMMIT;").unwrap();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "route() must return promptly regardless of checkpoint contention \
+         -- compaction must not run inline; took {elapsed:?}"
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "compaction (then measurement) must still be dispatched as a \
+         real task, just not run synchronously here"
+    );
+}
+
+/// Task 096 §2 test 2: the §0 second-half hazard -- moving compaction off
+/// the update thread is not enough if it still takes the *shared*
+/// connection's mutex, since a background thread holding that mutex for
+/// the busy timeout blocks the update thread's next catalog access just
+/// the same. Forces `compact_reset_files`'s own contention (the reader),
+/// runs it on a background thread against a *fresh* handle, and proves
+/// `deps.catalog` -- the shared one -- answers an ordinary read promptly
+/// throughout.
+#[test]
+fn the_shared_connection_stays_free_while_compaction_runs_on_its_own() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+
+    let reader = hold_a_read_transaction(deps.catalog.path());
+
+    let runtime = deps.runtime.clone();
+    let shared = Arc::clone(&deps.catalog);
+    let compaction_thread =
+        std::thread::spawn(move || crate::compact_reset_files(&runtime, &shared));
+
+    // Give the compaction thread time to actually reach the checkpoint and
+    // start contending, so the read below measures real overlap rather
+    // than a race at start-up.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let start = std::time::Instant::now();
+    let _: i64 = deps
+        .catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0))
+        .unwrap();
+    let elapsed = start.elapsed();
+
+    reader.execute_batch("COMMIT;").unwrap();
+    compaction_thread.join().unwrap();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "the shared connection's own read must not be blocked while \
+         compaction contends on its own, separate connection; took {elapsed:?}"
+    );
+}
+
+/// Task 096 §2 test 4: the Storage measurement taken after a reset must
+/// reflect the *compacted* file size, not whatever was on disk the
+/// instant compaction started.
+#[test]
+fn the_post_reset_measurement_sees_the_compacted_catalog_size() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    seed_bulk_files(&deps.catalog, 4000);
+
+    // The real sequence: delete (what `bootstrap::reset_catalog` does,
+    // synchronously, on the update thread), *then* compact -- a plain
+    // `DELETE` never shrinks the file on its own (RFC-059 §10 criterion
+    // 6), so `before` here is deliberately measured after the delete, not
+    // before it, to isolate what compaction alone changes.
+    let cache = bootstrap::cache_service(&deps.runtime).unwrap();
+    bootstrap::reset_catalog(&deps.catalog, &cache).unwrap();
+
+    let before = std::fs::metadata(deps.catalog.path()).unwrap().len();
+    assert!(
+        before > 512 * 1024,
+        "baseline: must be meaningfully large before compaction, or this \
+         test proves nothing (was {before} bytes)"
+    );
+
+    // The exact function `compact_reset_and_measure_task` wraps -- proves
+    // the real wiring's order, not a reimplementation of it.
+    let (rows, _cache_file_bytes) = crate::compact_then_measure(&deps.runtime, &deps.catalog);
+
+    let after = std::fs::metadata(deps.catalog.path()).unwrap().len();
+    assert!(
+        after < before / 4,
+        "baseline: compaction must have actually shrunk the file, or this \
+         test proves nothing (before={before} after={after})"
+    );
+
+    let persistent = rows
+        .iter()
+        .find(|(cat, _)| *cat == orbok_core::StorageCategory::PersistentCatalog)
+        .map(|(_, m)| *m)
+        .unwrap();
+    assert_eq!(
+        persistent,
+        orbok_core::StorageMeasurement::Measured {
+            bytes: after,
+            items: 0,
+        },
+        "the measurement must reflect the compacted file size ({after} bytes), \
+         not the pre-compaction one ({before} bytes)"
+    );
+}

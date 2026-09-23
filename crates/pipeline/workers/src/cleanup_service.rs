@@ -92,6 +92,19 @@ impl<'a> CleanupService<'a> {
     }
 
     /// Destructive catalog reset (requires confirmed ResetCatalog plan).
+    ///
+    /// **Task 096: no longer compacts.** It used to run
+    /// [`Self::compact_after_reset`] inline, on whatever connection `self`
+    /// was built on; that connection is the process's one shared catalog
+    /// mutex (RFC-061 §5), and a contended post-`VACUUM` checkpoint can
+    /// hold it for the full busy timeout (Review Request 273 §0a's
+    /// measurement: 5 s). Since this method's own caller
+    /// (`backend_actions::reset_catalog`) runs on the UI update thread,
+    /// that meant a reset could freeze the window. Callers now invoke
+    /// [`Self::compact_after_reset`] separately, on a `CleanupService`
+    /// built from its own short-lived connection, off that thread --
+    /// `crate` root's `compact_reset_and_measure_task` in the `orbok`
+    /// binary is the only production caller.
     pub fn run_reset(
         &self,
         plan: &CleanupPlan,
@@ -110,18 +123,23 @@ impl<'a> CleanupService<'a> {
             "catalog reset completed"
         );
 
-        // Task 095: give the space back. Reset has already succeeded by
-        // this point -- its data is gone either way -- so both files are
-        // compacted independently, each only if its own filesystem has
-        // room, and neither's failure (or skip) changes the outcome below.
-        self.compact_catalog_after_reset();
-        self.compact_cache_after_reset();
-
         Ok(FullCleanupOutcome {
             catalog_rows_deleted: catalog_outcome.deleted_rows,
             cache_bytes_freed,
             catalog_bytes_reclaimed: catalog_outcome.bytes_reclaimed,
         })
+    }
+
+    /// Task 095: give the space back after a reset -- Task 096 split this
+    /// out of [`Self::run_reset`] itself (see that method's own doc
+    /// comment for why) so a caller can run it on a separate, short-lived
+    /// `CleanupService`/`Catalog` rather than the one that just did the
+    /// deleting. Both files are compacted independently, each only if its
+    /// own filesystem has room, and neither's failure (or skip) is
+    /// visible to the caller -- this returns nothing to fail.
+    pub fn compact_after_reset(&self) {
+        self.compact_catalog_after_reset();
+        self.compact_cache_after_reset();
     }
 
     /// Task 095 §1: `VACUUM` needs roughly the file's own size again in

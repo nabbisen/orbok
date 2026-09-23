@@ -784,6 +784,21 @@ impl ProfileCache {
             .map(|_: FullCleanupOutcome| ())
     }
 
+    /// Task 096: give the space back a reset just made possible (Task
+    /// 095), split from `run_reset` itself so it can run separately from
+    /// the delete work -- see
+    /// `orbok_workers::CleanupService::run_reset`'s own doc comment for
+    /// why a contended checkpoint inside that call would otherwise hold
+    /// the caller's connection for the busy timeout. `catalog` here is
+    /// deliberately whatever the caller passes: `main.rs`'s post-reset
+    /// task passes one it opened just for this, never the router's
+    /// shared handle. Never fails outward -- see
+    /// `CleanupService::compact_after_reset`'s own doc comment.
+    pub fn compact_after_reset(&self, catalog: &Catalog) {
+        orbok_workers::CleanupService::new(catalog, &self.service, &self.db_path)
+            .compact_after_reset();
+    }
+
     /// Trim the extraction cache to `cap` entries, least recently accessed
     /// first (RFC-059 Amendment 2 §2b). Scheduler-idle maintenance only --
     /// see `orbok_workers::CleanupService::trim_extraction_cache_to` for why
