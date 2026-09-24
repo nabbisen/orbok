@@ -652,6 +652,12 @@ pub(crate) async fn run_with_context(
             report_health(&catalog, &mut output).await;
             last_health_report = Some(Instant::now());
             health_report_pending = false;
+            // Task 108: hand control back so the window receives the report
+            // now. `iced::stream::channel` runs this loop and hands out its
+            // messages from one task, and a message is delivered only when
+            // the loop yields; without this the whole backlog arrived when
+            // the queue went idle, and progress never showed while it ran.
+            tokio::task::yield_now().await;
         }
     }
 }
@@ -708,6 +714,13 @@ async fn report_health(catalog: &Catalog, output: &mut Sender<Message>) {
     // stop indexing -- it only silences progress reporting, matching
     // `download.rs`'s `ui_open` idiom.
     let _ = output.send(Message::HealthUpdated(health)).await;
+    // Task 108: the folder cards follow the same report, under the same
+    // throttle and the same final flush, so a card says what is true now
+    // rather than what was true when it was built. A card list that cannot
+    // be read is skipped; the next report tries again.
+    if let Ok(cards) = crate::bootstrap::get_sources(catalog) {
+        let _ = output.send(Message::SourceCardsRefreshed(cards)).await;
+    }
 }
 
 /// Load every catalog `queued` row the in-memory scheduler doesn't already

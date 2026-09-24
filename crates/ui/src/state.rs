@@ -137,8 +137,35 @@ pub struct SourceCard {
     /// the common case) -- a finished, distinct state, not counted as
     /// `indexed` and not left pending as `discovered`.
     pub no_text_found: u64,
+    /// Task 108: this folder's jobs that are queued or running. Non-zero is
+    /// what makes an Active folder's card say "Preparing"; it is read with
+    /// the counts above, so it is as fresh as they are.
+    pub unfinished_jobs: u64,
     pub status: SourceStatus,
     pub source_id: String,
+}
+
+impl SourceCard {
+    /// Task 108: the card's state label, in the order RFC-037 §17 and Task
+    /// 108 give: a folder that cannot be reached says so first (whatever work
+    /// is queued), then Preparing, then Needs update, then Ready.
+    pub fn state_label_key(&self) -> MessageKey {
+        use SourceStatus::*;
+        match self.status {
+            Missing => MessageKey::SourceStateFolderNotFound,
+            PermissionDenied => MessageKey::SourceStateCannotOpen,
+            Paused => MessageKey::SourceStatePaused,
+            Removed => MessageKey::SourceStateRemoved,
+            Active if self.unfinished_jobs > 0 => MessageKey::SourceStatePreparing,
+            Active if self.stale > 0 => MessageKey::SourceStateNeedsUpdate,
+            Active => MessageKey::SourceStateReady,
+        }
+    }
+
+    /// Whether this folder is an Active one with work still to do.
+    pub fn is_preparing(&self) -> bool {
+        self.status == SourceStatus::Active && self.unfinished_jobs > 0
+    }
 }
 
 /// A search result ready for display — pure data, no backend types
@@ -881,6 +908,12 @@ pub enum Message {
     // Startup population
     HealthUpdated(IndexHealth),
     SourcesLoaded(Vec<SourceCard>),
+    /// Task 108: fresh counts and states for folders already on screen,
+    /// sent while preparation runs. Unlike `SourcesLoaded` it replaces a card
+    /// only where the folder is already listed, in place: it adds no card,
+    /// removes none and never touches the selection, so a read that raced a
+    /// removal cannot bring the folder back.
+    SourceCardsRefreshed(Vec<SourceCard>),
     // RFC-043: model readiness
     ModelReadinessChecked {
         ready: bool,
@@ -1403,6 +1436,17 @@ impl AppState {
             Message::SourcesLoaded(cards) => {
                 self.sources = cards.clone();
                 self.selected_source = None;
+            }
+            Message::SourceCardsRefreshed(cards) => {
+                for fresh in cards {
+                    if let Some(card) = self
+                        .sources
+                        .iter_mut()
+                        .find(|c| c.source_id == fresh.source_id)
+                    {
+                        *card = fresh.clone();
+                    }
+                }
             }
             // RFC-043: model readiness
             Message::ModelReadinessChecked { .. } => {} // handled by orbok

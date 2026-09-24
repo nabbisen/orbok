@@ -37,6 +37,15 @@ pub(crate) struct AppDeps {
     pub(crate) active_download_cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
 }
 
+/// Task 108: a scan has just been queued, so the folder cards are re-read
+/// now. Without this a folder just added would say Ready until the first job
+/// finished and the scheduler's next report arrived.
+fn cards_follow_the_queue(app: &mut OrbokApp, catalog: &Catalog) {
+    if let Ok(cards) = bootstrap::get_sources(catalog) {
+        app.update(Message::SourceCardsRefreshed(cards));
+    }
+}
+
 /// The message router: every message `iced` delivers to the running app
 /// passes through here exactly once. A mechanical extraction of what used
 /// to be `main.rs`'s `update` closure body -- see that commit's review
@@ -268,7 +277,10 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                     let source_id = card.source_id.clone();
                     app.update(Message::SourceAdded(card));
                     match bootstrap::scan_and_index_source(&deps.catalog, &source_id) {
-                        Ok(health) => app.update(Message::HealthUpdated(health)),
+                        Ok(health) => {
+                            app.update(Message::HealthUpdated(health));
+                            cards_follow_the_queue(app, &deps.catalog);
+                        }
                         Err(e) => {
                             tracing::error!("scan failed: {e}");
                             app.update(notice_retry::add_folder_failed());
@@ -579,7 +591,10 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             // Begin background preparation and immediately search
             // whatever is already indexed (RFC-045 §14, §8.1).
             match bootstrap::scan_and_index_source(&deps.catalog, source_id.as_str()) {
-                Ok(health) => app.update(Message::HealthUpdated(health)),
+                Ok(health) => {
+                    app.update(Message::HealthUpdated(health));
+                    cards_follow_the_queue(app, &deps.catalog);
+                }
                 Err(e) => tracing::warn!("initial scan failed: {e}"),
             }
 

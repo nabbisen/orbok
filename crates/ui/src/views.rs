@@ -659,34 +659,19 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     } else {
         for (i, card) in state.sources.iter().enumerate() {
             // RFC-037 §7/§17 (Task 035): the source's persisted status
-            // decides the label and which refresh action applies.
-            // `NeedsUpdate` has no catalog column of its own (§7.3 is
-            // UI-derived, from `stale`) -- Active-with-stale-files reads
-            // as "Needs update" rather than "Ready", the one place this
-            // card's already-present `stale` count changes which label an
-            // Active source gets.
+            // decides which refresh action applies. The state label is
+            // `SourceCard::state_label_key` (Task 108): unreachable first,
+            // then Preparing, Needs update, Ready. "Prepare again" stays
+            // while a folder prepares -- asking twice is harmless, and the
+            // button should not come and go.
             use orbok_core::SourceStatus;
-            let (status_label, refresh_action) = match card.status {
-                SourceStatus::Active if card.stale > 0 => (
-                    tr(locale, MessageKey::SourceStateNeedsUpdate),
-                    Some(MessageKey::SourceActionPrepareAgain),
-                ),
-                SourceStatus::Active => (
-                    tr(locale, MessageKey::SourceStateReady),
-                    Some(MessageKey::SourceActionPrepareAgain),
-                ),
-                SourceStatus::Paused => (tr(locale, MessageKey::SourceStatePaused), None),
-                SourceStatus::Missing => (
-                    tr(locale, MessageKey::SourceStateFolderNotFound),
-                    Some(MessageKey::SourceActionCheckAgain),
-                ),
-                SourceStatus::PermissionDenied => (
-                    tr(locale, MessageKey::SourceStateCannotOpen),
-                    Some(MessageKey::SourceActionCheckAgain),
-                ),
-                // Removed sources are deleted from the catalog outright
-                // (`remove_source`), never listed here.
-                SourceStatus::Removed => (tr(locale, MessageKey::SourceStateRemoved), None),
+            let status_label = tr(locale, card.state_label_key());
+            let refresh_action = match card.status {
+                SourceStatus::Active => Some(MessageKey::SourceActionPrepareAgain),
+                SourceStatus::Missing | SourceStatus::PermissionDenied => {
+                    Some(MessageKey::SourceActionCheckAgain)
+                }
+                SourceStatus::Paused | SourceStatus::Removed => None,
             };
             let refresh_action = refresh_action.map(|key| {
                 (
@@ -763,15 +748,14 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     // RFC-036 §14.1 (RFC-056 Slice 4): the literal "preparing"/"ready"
     // copy, not RFC-041's abandoned `SearchPreparingFolder`/
     // `SearchPartialReadiness` (removed -- see `i18n.rs`). Named to a
-    // specific folder only when exactly one source exists: `SourceCard`'s
-    // per-source counts are never updated after creation, so with more
-    // than one source there is no honest way to say *which* is still
-    // preparing.
+    // specific folder when exactly one folder has unfinished work (Task 108:
+    // the cards follow preparation now, so which one is known).
     let status = if h.queued == 0 {
         files_ready_for_search(locale, h.indexed)
     } else {
-        match state.sources.as_slice() {
-            [only] => preparing_folder_for_search(locale, &only.display_name),
+        let mut preparing = state.sources.iter().filter(|c| c.is_preparing());
+        match (preparing.next(), preparing.next()) {
+            (Some(only), None) => preparing_folder_for_search(locale, &only.display_name),
             _ => tr(locale, MessageKey::IndexingRunning).to_string(),
         }
     };

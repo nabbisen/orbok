@@ -321,40 +321,13 @@ pub fn get_vector_rebuild_count(
     IndexJobRepository::new(catalog).count_embedding_backfill_candidates(model_id)
 }
 
-/// Load all registered sources for the Sources view.
+/// Load all registered sources for the Folders view. Each card is built by
+/// `sources::source_card`, the one builder (Task 108).
 pub fn get_sources(catalog: &Catalog) -> OrbokResult<Vec<orbok_ui::state::SourceCard>> {
-    use orbok_core::FileStatus;
-    use orbok_db::repo::{FileRepository, SourceRepository};
+    use orbok_db::repo::SourceRepository;
     Ok(SourceRepository::new(catalog)
         .list()?
         .into_iter()
-        .map(|src| {
-            // A per-folder count that cannot be read shows as 0 beside a card
-            // that exists. That is not a claim about which folders the catalog
-            // holds, which is what the `?` above guards (Task 075).
-            let files = FileRepository::new(catalog);
-            let indexed = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Indexed)
-                .unwrap_or(0);
-            let stale = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Stale)
-                .unwrap_or(0);
-            let failed = files
-                .count_for_source_with_status(&src.source_id, FileStatus::Failed)
-                .unwrap_or(0);
-            let no_text_found = files
-                .count_for_source_with_status(&src.source_id, FileStatus::NoTextFound)
-                .unwrap_or(0);
-            orbok_ui::state::SourceCard {
-                display_name: src.display_name.unwrap_or_else(|| "source".into()),
-                display_path: src.canonical_path,
-                indexed,
-                stale,
-                failed,
-                no_text_found,
-                status: src.status,
-                source_id: src.source_id.as_str().to_string(),
-            }
-        })
+        .map(|src| super::sources::source_card(catalog, src))
         .collect())
 }

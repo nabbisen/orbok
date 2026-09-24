@@ -356,6 +356,24 @@ impl<'a> IndexJobRepository<'a> {
         Ok(n as u64)
     }
 
+    /// Task 108: jobs of one folder that are queued or running -- the work
+    /// that makes its card say "Preparing". A blocked or failed job is not
+    /// unfinished work in progress, and is left out. Every job type sets
+    /// `source_id` (checked by `every_job_a_folder_creates_carries_that_folder`), so this
+    /// misses none; the `idx_index_jobs_source_id` index serves the lookup.
+    pub fn count_unfinished_for_source(&self, source_id: &SourceId) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM index_jobs \
+                 WHERE source_id = ?1 AND status IN ('queued', 'running')",
+                params![source_id.as_str()],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
     /// `Blocked` jobs in priority/FIFO order (RFC-036 §20.2): a retry whose
     /// in-memory re-queue was skipped under backpressure, recorded honestly
     /// rather than as `queued` with no in-memory copy to match. Rehydration

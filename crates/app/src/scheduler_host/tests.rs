@@ -2813,3 +2813,201 @@ async fn a_second_clear_in_the_same_session_is_repaired_too() {
         "a legitimate second clear must not be declared unavailable"
     );
 }
+
+/// Task 108 §2.1: a folder card follows preparation as it happens. Add a
+/// folder of three files through the same functions the router uses, run the
+/// hosted scheduler, and feed every message it sends to the UI state. The
+/// card must reach "Ready 3" with no Prepare again and no restart.
+#[tokio::test]
+async fn a_folder_card_follows_preparation_without_a_restart() {
+    use orbok_ui::AppState;
+    use orbok_ui::state::Message;
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let mut state = AppState::default();
+    state.update(&Message::SourceAdded(card));
+    // What the router does right after it queues the scan.
+    state.update(&Message::SourceCardsRefreshed(
+        bootstrap::get_sources(&ui_catalog).unwrap(),
+    ));
+    assert_eq!(
+        state.sources[0].state_label_key(),
+        orbok_ui::i18n::MessageKey::SourceStatePreparing,
+        "while its jobs are queued, the card says Preparing"
+    );
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, mut rx) = futures::channel::mpsc::channel(256);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        super::EmbeddingSource::fixed(None),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+
+    let start = Instant::now();
+    while state.sources[0].indexed != 3 && start.elapsed() < Duration::from_secs(10) {
+        while let Ok(message) = rx.try_recv() {
+            state.update(&message);
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    handle.abort();
+
+    assert_eq!(
+        indexed_count(&ui_catalog),
+        3,
+        "the files themselves were prepared"
+    );
+    assert_eq!(
+        state.sources[0].indexed, 3,
+        "the card still says Ready {} after preparation finished",
+        state.sources[0].indexed
+    );
+    // The last report is the final flush: nothing is left to prepare, so the
+    // card is Ready and its line reads "Ready 3".
+    let start = Instant::now();
+    while state.sources[0].is_preparing() && start.elapsed() < Duration::from_secs(10) {
+        while let Ok(message) = rx.try_recv() {
+            state.update(&message);
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let card = &state.sources[0];
+    assert_eq!(
+        card.state_label_key(),
+        orbok_ui::i18n::MessageKey::SourceStateReady
+    );
+    let c = card;
+    assert_eq!(
+        orbok_ui::i18n::source_summary(
+            orbok_ui::i18n::Locale::En,
+            c.indexed,
+            c.stale,
+            c.failed,
+            c.no_text_found
+        ),
+        "Ready 3"
+    );
+}
+
+/// Task 108 §4: the "Preparing" state attributes work to a folder through
+/// `index_jobs.source_id`. That is only honest if no job type leaves it null:
+/// add a folder, run everything it queues, and look for a row without one.
+#[tokio::test]
+async fn every_job_a_folder_creates_carries_that_folder() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        loop_catalog,
+        loop_cache,
+        super::EmbeddingSource::fixed(None),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    wait_until(Duration::from_secs(20), "all 3 files indexed", || {
+        indexed_count(&ui_catalog) == 3
+    })
+    .await;
+    handle.abort();
+
+    let (total, unattributed, types): (i64, i64, String) = ui_catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*), SUM(source_id IS NULL), \
+             group_concat(DISTINCT job_type) FROM index_jobs",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert!(total > 3, "the run created jobs of several types: {types}");
+    assert_eq!(
+        unattributed, 0,
+        "every job carries its folder; types seen: {types}"
+    );
+}
+
+/// Task 108 (found in the manual check): progress reports must reach the
+/// window while preparation runs, not only when the queue goes idle.
+/// `iced::stream::channel` runs the loop and hands out its messages from one
+/// task, so a message reaches the window only when the loop yields; a loop
+/// that never awaits anything pending delivers its whole backlog at the end.
+/// This drives the loop exactly as `run_stream` does and asks for messages
+/// until one reports work under way: it must arrive while work is unfinished.
+/// (Reports are throttled to one per 250 ms, so the run is long enough to
+/// have several.)
+#[tokio::test]
+async fn progress_reaches_the_window_while_preparation_is_running() {
+    use futures::StreamExt;
+    use orbok_ui::state::Message;
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 500);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let stream = iced::stream::channel::<Message>(64, async move |output| {
+        run_with_context(
+            loop_catalog,
+            loop_cache,
+            super::EmbeddingSource::fixed(None),
+            true,
+            true,
+            no_resource_signals(),
+            output,
+            None,
+        )
+        .await;
+    });
+    futures::pin_mut!(stream);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let message = tokio::time::timeout_at(deadline.into(), stream.next())
+            .await
+            .expect("a report reporting work under way arrives")
+            .expect("the stream is open");
+        if let Message::HealthUpdated(health) = message
+            && health.indexed > 0
+            && health.queued > 0
+        {
+            assert!(
+                bootstrap::get_health(&ui_catalog).queued > 0,
+                "a report of work under way arrived only after all the work was done"
+            );
+            return;
+        }
+    }
+}

@@ -62,6 +62,7 @@ fn opened_on_its_view(confirmation: Confirmation) -> AppState {
             stale: 0,
             failed: 0,
             no_text_found: 0,
+            unfinished_jobs: 0,
             status: orbok_core::SourceStatus::Active,
             source_id: "src-1".into(),
         }],

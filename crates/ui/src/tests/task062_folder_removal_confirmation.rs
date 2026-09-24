@@ -48,6 +48,7 @@ fn card(id: &str, name: &str) -> SourceCard {
         stale: 0,
         failed: 0,
         no_text_found: 0,
+        unfinished_jobs: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: id.into(),
     }

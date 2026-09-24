@@ -60,15 +60,12 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
     } else {
         SourceType::File
     };
-    let display_name = Path::new(&canonical)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "source".to_string());
+    let display_name = folder_display_name(&canonical);
 
     let src = SourceRepository::new(catalog).insert(NewSource {
         source_type,
         persistence_mode: PersistenceMode::Persistent,
-        display_name: Some(display_name.clone()),
+        display_name: Some(display_name),
         original_path: expanded,
         canonical_path: canonical.clone(),
         index_mode: IndexMode::Balanced,
@@ -86,16 +83,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
     }
 
     Ok(AddSourceOutcome::Added {
-        card: orbok_ui::state::SourceCard {
-            display_name,
-            display_path: canonical,
-            indexed: 0,
-            stale: 0,
-            failed: 0,
-            no_text_found: 0,
-            status: orbok_core::SourceStatus::Active,
-            source_id: src.source_id.as_str().to_string(),
-        },
+        card: source_card(catalog, src),
         sensitive,
     })
 }
@@ -224,34 +212,50 @@ pub fn find_source_by_canonical_path(
         .map(|src| source_card(catalog, src))
 }
 
-fn source_card(
+/// A folder's name as the user sees it when the catalog holds none: the last
+/// component of its path, never a word of ours. A path with no last component
+/// (a filesystem root) is shown whole.
+pub(super) fn folder_display_name(canonical_path: &str) -> String {
+    std::path::Path::new(canonical_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| canonical_path.to_string())
+}
+
+/// The one place a folder card is built (Task 108): the folder's own status
+/// and its counts, read together, so every caller shows the same card for the
+/// same record. A count that cannot be read shows as 0 beside a card that
+/// exists; that is not a claim about which folders the catalog holds, which
+/// the caller's own read of the folder list guards (Task 075).
+pub(super) fn source_card(
     catalog: &Catalog,
     src: orbok_db::repo::SourceRecord,
 ) -> orbok_ui::state::SourceCard {
     use orbok_core::FileStatus;
-    use orbok_db::repo::FileRepository;
+    use orbok_db::repo::{FileRepository, IndexJobRepository};
     let files = FileRepository::new(catalog);
-    let indexed = files
-        .count_for_source_with_status(&src.source_id, FileStatus::Indexed)
+    let count = |status| {
+        files
+            .count_for_source_with_status(&src.source_id, status)
+            .unwrap_or(0)
+    };
+    let unfinished_jobs = IndexJobRepository::new(catalog)
+        .count_unfinished_for_source(&src.source_id)
         .unwrap_or(0);
-    let stale = files
-        .count_for_source_with_status(&src.source_id, FileStatus::Stale)
-        .unwrap_or(0);
-    let failed = files
-        .count_for_source_with_status(&src.source_id, FileStatus::Failed)
-        .unwrap_or(0);
-    let no_text_found = files
-        .count_for_source_with_status(&src.source_id, FileStatus::NoTextFound)
-        .unwrap_or(0);
-    let display_name = src.display_name.unwrap_or_else(|| "folder".to_string());
+    let display_name = src
+        .display_name
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| folder_display_name(&src.canonical_path));
     orbok_ui::state::SourceCard {
         display_name,
-        display_path: src.canonical_path,
-        indexed,
-        stale,
-        failed,
-        no_text_found,
-        status: orbok_core::SourceStatus::Active,
+        indexed: count(FileStatus::Indexed),
+        stale: count(FileStatus::Stale),
+        failed: count(FileStatus::Failed),
+        no_text_found: count(FileStatus::NoTextFound),
+        unfinished_jobs,
+        status: src.status,
         source_id: src.source_id.as_str().to_string(),
+        display_path: src.canonical_path,
     }
 }

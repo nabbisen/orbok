@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Folder cards show preparation as it happens** (Task 108): a folder says
+  "Preparing" while it has work to do, and its counts rise until it says
+  "Ready", instead of showing "Ready 0" until the next restart.
 - **Resetting saved app data now actually gives the space back, and never
   freezes the window** (Tasks 095/096/097). A reset deleted every row but
   never shrank either database file on disk — deleting a 600 MB catalog

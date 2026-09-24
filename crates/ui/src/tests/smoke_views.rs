@@ -73,6 +73,7 @@ fn sources_view_renders_both_states() {
         stale: 0,
         failed: 0,
         no_text_found: 0,
+        unfinished_jobs: 0,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
@@ -100,6 +101,7 @@ fn sources_view_shows_folder_not_found_detail_copy() {
         stale: 0,
         failed: 0,
         no_text_found: 0,
+        unfinished_jobs: 0,
         status: orbok_core::SourceStatus::Missing,
         source_id: "src-1".into(),
     });
@@ -126,6 +128,8 @@ fn indexing_view_shows_rfc036_preparing_and_ready_copy() {
         stale: 0,
         failed: 0,
         no_text_found: 0,
+        // Task 108: the page names the folder that has unfinished work.
+        unfinished_jobs: 5,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     });
@@ -133,7 +137,7 @@ fn indexing_view_shows_rfc036_preparing_and_ready_copy() {
     let mut ui = simulator(views::indexing_view(&preparing));
     assert!(
         ui.find("Preparing \"Docs\" for search").is_ok(),
-        "the sole source's name must be interpolated while it is preparing"
+        "the preparing folder's name must be interpolated while it is preparing"
     );
 
     let mut ready = AppState::default();

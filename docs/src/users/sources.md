@@ -22,9 +22,11 @@ root; external links are always rejected.
 
 ## What you see while a folder is prepared
 
-A folder's card on the **Folders** view shows its state: **Ready**,
-**Needs update**, **Folder not found** or **Cannot open**. Under it, a
-line counts the folder's files that are **Ready**, **Needs update**,
+A folder's card on the **Folders** view shows its state: **Preparing**
+while orbok still has work to do on it, then **Ready** or **Needs update**;
+or **Folder not found** or **Cannot open** when orbok cannot reach it. The
+card updates as orbok works, so you can watch the counts rise. Under the
+state, a line counts the folder's files that are **Ready**, **Needs update**,
 **Failed** or have **No text**. The **Preparing** view adds up **Ready**,
 **Needs update** and **Failed** for every folder and shows how many files
 are **Queued**.
