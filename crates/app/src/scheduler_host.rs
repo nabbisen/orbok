@@ -256,7 +256,7 @@ pub async fn run(
         battery::BATTERY_POLL_INTERVAL,
         resource_signal_tx,
     ));
-    run_with_context(
+    run_loop(
         catalog,
         cache,
         EmbeddingSource::resolving(embedding_parts, resolver),
@@ -265,6 +265,7 @@ pub async fn run(
         resource_signals,
         output,
         None,
+        true,
     )
     .await
 }
@@ -281,8 +282,39 @@ pub async fn run(
 // the first of several (Review 180 §3) -- if a second probe is ever
 // wanted, that is the signal to introduce a proper observation type, not
 // to add a ninth and tenth parameter.
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_with_context(
+    catalog: Catalog,
+    cache: ProfileCache,
+    embedding_source: EmbeddingSource,
+    background_indexing_enabled: bool,
+    pause_embedding_on_battery_enabled: bool,
+    resource_signals: Receiver<ResourceObservation>,
+    output: Sender<Message>,
+    event_count_probe: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+) {
+    run_loop(
+        catalog,
+        cache,
+        embedding_source,
+        background_indexing_enabled,
+        pause_embedding_on_battery_enabled,
+        resource_signals,
+        output,
+        event_count_probe,
+        false,
+    )
+    .await
+}
+
+/// [`run_with_context`] with the one option production sets and the tests
+/// mostly do not: `stop_when_closed`. When set, the loop returns, after the
+/// job it is in, as soon as the receiving end of `output` is gone (the
+/// window closed) -- Task 111. Off, it runs until the process ends, which is
+/// what every test that drops its receiver to make sends fail fast relies on.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_loop(
     catalog: Catalog,
     cache: ProfileCache,
     embedding_source: EmbeddingSource,
@@ -299,6 +331,7 @@ pub(crate) async fn run_with_context(
     // work done" actually asserts, not just the value at one arbitrary
     // instant.
     event_count_probe: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>,
+    stop_when_closed: bool,
 ) {
     let mut scheduler = Scheduler::with_defaults();
     if background_indexing_enabled {
@@ -393,6 +426,11 @@ pub(crate) async fn run_with_context(
     let mut trimmed_since_idle = false;
 
     loop {
+        // Task 111: the window is gone -- stop after the job just finished.
+        if stop_when_closed && output.is_closed() {
+            tracing::info!("the window closed: background preparation stops");
+            return;
+        }
         // RFC-057 §4.1: drain every observation queued since the last
         // iteration before deciding what to dispatch, so `resource_mode`
         // reflects reality before `tick()` reads it below. `try_recv`
@@ -970,9 +1008,68 @@ fn run_stream(data: &SchedulerSubscriptionData) -> impl futures::Stream<Item = M
         .take()
         .expect("scheduler subscription must only be built once");
     let resource_signal_tx = data.resource_signal_tx.clone();
-    iced::stream::channel(64, async move |output| {
-        run(portable, resource_signals, resource_signal_tx, output).await;
-    })
+    loop_stream(move |output| run(portable, resource_signals, resource_signal_tx, output))
+}
+
+/// Task 111: run the scheduler loop where it may block, and hand iced only
+/// its messages.
+///
+/// The loop runs every job synchronously (extraction, chunking, embedding, the
+/// catalog writes) and its only `.await` points while busy complete without
+/// returning `Pending`. Inside `iced::stream::channel` that meant one `poll`
+/// of the stream's future lasted the whole busy period, the stream could pass
+/// nothing on until the queue went idle, and the loop held one of iced's
+/// executor threads throughout (Review Request 286 §4: 67 messages sent over
+/// 17 s, all received in 4 ms after idle).
+///
+/// So the loop gets **its own OS thread and its own tokio runtime**, and the
+/// stream iced polls is just the receiving end of a channel: it never does
+/// work, so it is always ready to deliver. `make` builds the loop's future on
+/// the new thread, so the future need not be `Send`.
+///
+/// **Multi-thread runtime, two workers.** The loop's own future is driven by
+/// `block_on` on the dedicated thread and blocks there; what needs other
+/// threads is what it spawns (the battery poller) and `spawn_blocking`, which
+/// must keep running while the loop is busy inside a job. A current-thread
+/// runtime would starve them for exactly the time this task is about.
+///
+/// The thread is detached: when the process exits it goes with it, and
+/// `run_loop`'s `stop_when_closed` ends the loop after the job it is in when
+/// the window's end of the channel is dropped.
+pub(crate) fn spawn_loop_thread<F, Fut>(make: F) -> (Receiver<Message>, std::thread::JoinHandle<()>)
+where
+    F: FnOnce(Sender<Message>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()>,
+{
+    let (mut tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = std::thread::Builder::new()
+        .name("orbok-scheduler".into())
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("orbok-scheduler-worker")
+                .enable_all()
+                .build();
+            match runtime {
+                Ok(runtime) => runtime.block_on(make(tx)),
+                Err(error) => {
+                    tracing::error!(%error, "background preparation could not start: no runtime");
+                    let _ = tx.try_send(Message::ShowNotice(
+                        orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+                    ));
+                }
+            }
+        })
+        .expect("the scheduler thread can be spawned");
+    (rx, handle)
+}
+
+fn loop_stream<F, Fut>(make: F) -> impl futures::Stream<Item = Message> + use<F, Fut>
+where
+    F: FnOnce(Sender<Message>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()>,
+{
+    spawn_loop_thread(make).0
 }
 
 #[cfg(test)]

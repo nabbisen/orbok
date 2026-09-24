@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Preparation progress shows as it happens** (Task 111): the counts on the
+  Folders and Preparing pages now rise while a folder is being prepared, instead
+  of jumping to their final values when preparation finishes. Background
+  preparation runs on its own thread.
+
 - **Typing a folder's path and pressing Enter now adds it** (Task 105); before
   it opened the folder picker and ignored what you typed. A path that is not a
   folder is refused, and a path that could not be added stays in the box so you

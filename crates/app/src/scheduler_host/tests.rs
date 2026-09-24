@@ -2969,3 +2969,248 @@ async fn every_job_a_folder_creates_carries_that_folder() {
         "every job carries its folder; types seen: {types}"
     );
 }
+
+// ── Task 111: progress reaches the window as it happens ─────────────────
+
+/// A model whose `embed_batch` announces that it has started and then blocks
+/// until the test opens the gate -- a job that is "still running" for exactly
+/// as long as the test says, with no timing involved.
+struct GatedEmbeddingModel {
+    gate: Gate,
+    entered: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Closed until the test opens it (`open_gate`).
+type Gate = std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>;
+
+impl GatedEmbeddingModel {
+    fn new() -> (Self, Gate, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        let gate = std::sync::Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let entered = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        (
+            Self {
+                gate: gate.clone(),
+                entered: entered.clone(),
+            },
+            gate,
+            entered,
+        )
+    }
+}
+
+fn open_gate(gate: &(std::sync::Mutex<bool>, std::sync::Condvar)) {
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+}
+
+impl EmbeddingModel for GatedEmbeddingModel {
+    fn name(&self) -> &str {
+        "gated"
+    }
+    fn version(&self) -> &str {
+        "v1"
+    }
+    fn dimension(&self) -> u32 {
+        8
+    }
+    fn embed_batch(&self, texts: &[&str]) -> OrbokResult<Vec<Vec<f32>>> {
+        self.entered
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let (lock, cv) = &*self.gate;
+        let mut open = lock.lock().unwrap();
+        while !*open {
+            open = cv.wait(open).unwrap();
+        }
+        MockEmbeddingModel.embed_batch(texts)
+    }
+}
+
+/// A profile with a few documents, added and scanned, and the loop's
+/// arguments with a gated embedding model wired in.
+struct GatedRun {
+    _temp: tempfile::TempDir,
+    loop_catalog: Catalog,
+    loop_cache: orbok::runtime_storage::ProfileCache,
+    parts: EmbeddingWorkerParts,
+    gate: Gate,
+    entered: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+fn gated_run() -> GatedRun {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let ui_catalog = bootstrap::open_catalog(&context).unwrap();
+    let source_dir = temp.path().join("source");
+    seed_markdown_docs(&source_dir, 3);
+    let (card, _) =
+        bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
+    let loop_catalog = bootstrap::open_catalog(&context).unwrap();
+    let loop_cache = bootstrap::cache_service(&context).unwrap();
+    let model_id = register_mock_model(&loop_catalog, "gated");
+    let (model, gate, entered) = GatedEmbeddingModel::new();
+    let parts = EmbeddingWorkerParts::for_test(Box::new(model), model_id);
+    GatedRun {
+        _temp: temp,
+        loop_catalog,
+        loop_cache,
+        parts,
+        gate,
+        entered,
+    }
+}
+
+/// §2.1: a progress message reaches the window **while a job is still
+/// running** -- proven by an event, not a clock. A job blocks on a gate the
+/// test holds shut; the test receives a progress message from the stream and
+/// only then opens the gate. If delivery waits for the loop to go idle, the
+/// message cannot arrive (the loop cannot finish without the gate), and the
+/// test fails at a generous deadline saying so.
+///
+/// The stream is polled on its own thread and forwarded over a std channel:
+/// with the loop inside the stream's future (the old wiring) polling it
+/// *blocks* whoever polls, so a timeout on the same thread would never fire.
+#[test]
+fn a_progress_message_reaches_the_window_while_a_job_is_still_running() {
+    use futures::StreamExt;
+    let run = gated_run();
+    let gate = run.gate.clone();
+    let entered = run.entered.clone();
+    let (seen_tx, seen_rx) = std::sync::mpsc::channel::<orbok_ui::state::Message>();
+    let poller = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let stream = super::loop_stream(move |output| {
+                run_with_context(
+                    run.loop_catalog,
+                    run.loop_cache,
+                    super::EmbeddingSource::fixed(Some(run.parts)),
+                    true,
+                    true,
+                    no_resource_signals(),
+                    output,
+                    None,
+                )
+            });
+            futures::pin_mut!(stream);
+            while let Some(message) = stream.next().await {
+                if seen_tx.send(message).is_err() {
+                    break;
+                }
+            }
+        });
+    });
+
+    let arrived = loop {
+        match seen_rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(orbok_ui::state::Message::HealthUpdated(_)) => break true,
+            Ok(_) => continue,
+            Err(_) => break false,
+        }
+    };
+    let job_was_running = entered.load(std::sync::atomic::Ordering::SeqCst);
+    // Whatever happened, let the loop finish so the thread can end.
+    open_gate(&gate);
+    drop(seen_rx);
+    let _ = poller.join();
+
+    assert!(
+        arrived,
+        "no progress message reached the window within 30 s: it is delivered only when the \
+         loop goes idle, and the loop cannot go idle while a job it is running is blocked \
+         (the embedding job had started: {job_was_running})"
+    );
+}
+
+/// §2.2: the window closing ends the loop, **after the job it is in**: the
+/// job is not aborted (it is blocked on the gate the test holds), and once it
+/// finishes the thread exits. Joined with a deadline, so a loop that ignored
+/// the closed channel fails instead of hanging.
+#[test]
+fn the_window_closing_ends_the_loop_after_the_running_job() {
+    let run = gated_run();
+    let gate = run.gate.clone();
+    let entered = run.entered.clone();
+    let (rx, handle) = super::spawn_loop_thread(move |output| {
+        super::run_loop(
+            run.loop_catalog,
+            run.loop_cache,
+            super::EmbeddingSource::fixed(Some(run.parts)),
+            true,
+            true,
+            no_resource_signals(),
+            output,
+            None,
+            true,
+        )
+    });
+    let start = Instant::now();
+    while !entered.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            start.elapsed() < Duration::from_secs(30),
+            "the embedding job never started"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // The window closes while the job is running.
+    drop(rx);
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = handle.join();
+        let _ = done_tx.send(());
+    });
+    assert!(
+        done_rx.recv_timeout(Duration::from_millis(300)).is_err(),
+        "the running job is not abandoned: the thread is still in it"
+    );
+
+    // The job finishes; the loop notices the closed channel and returns.
+    open_gate(&gate);
+    assert!(
+        done_rx.recv_timeout(Duration::from_secs(30)).is_ok(),
+        "the loop did not stop after the window closed"
+    );
+}
+
+/// §2.3: exactly one loop. The subscription's identity is fixed (`portable`
+/// only), so iced builds the stream once; and a second build of the stream
+/// finds the resource receiver already taken and panics **before** it could
+/// start a second thread.
+#[test]
+fn a_second_build_of_the_stream_cannot_start_a_second_loop() {
+    use std::hash::{Hash, Hasher};
+    let data = |portable: bool| super::SchedulerSubscriptionData {
+        portable,
+        resource_signals: std::sync::Arc::new(std::sync::Mutex::new(Some(
+            futures::channel::mpsc::channel(1).1,
+        ))),
+        resource_signal_tx: futures::channel::mpsc::channel(1).0,
+    };
+    let hash = |d: &super::SchedulerSubscriptionData| {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        d.hash(&mut h);
+        h.finish()
+    };
+    assert_eq!(
+        hash(&data(false)),
+        hash(&data(false)),
+        "the same identity, however many times `.subscription()` is evaluated"
+    );
+
+    let spent = super::SchedulerSubscriptionData {
+        portable: false,
+        resource_signals: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        resource_signal_tx: futures::channel::mpsc::channel(1).0,
+    };
+    let second = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = super::run_stream(&spent);
+    }));
+    assert!(
+        second.is_err(),
+        "a second build must fail before it starts a thread"
+    );
+}
