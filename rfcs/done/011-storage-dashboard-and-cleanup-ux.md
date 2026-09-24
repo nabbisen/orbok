@@ -3,29 +3,18 @@
 **Project:** orbok  
 **RFC:** 011  
 **Title:** Storage Dashboard and Cleanup UX  
-**Status:** Accepted
+**Status:** Implemented (unreleased)
 **Target Milestone:** M10  
 **Date:** 2026-06-06  
 
-**Returned to `accepted/` 2026-09-22 (Task 083, Review Request 259 §6).**
-Carried `Implemented (v0.4.0)` while §14 criteria **5 and 6** are false:
-`DeleteKeywordIndex`/`DeleteVectorIndex` have no executor arm (the only
-`CleanupExecutor` methods are `run_safe` and `run_reset_catalog`; routing
-either action through `run_safe` returns
-`Err(CleanupWouldTouchPersistentData)`, a plan-shaped answer for an
-action the code never actually implements) and no caller anywhere in
-`crates/app` — deleting the keyword or semantic index independently is
-unreachable from the product, so nothing ever marks a rebuild required.
-**Criterion 7 held as of Task 086 (2026-09-23, §9a):** reset catalog's
-confirmation (Task 062's dialog: Escape cancels, Enter confirms while
-visible, Task 069 closes it on view change) is Cancel/Confirm, not the
-typed `Type RESET to confirm` §9 originally named — the owner decided the
-RFC changes to describe that dialog, not that the product grows a typing
-field. Criteria 2, 3, 4, 7 and 9 hold, each with an end-to-end test;
-criteria 1, 8 and 10 were evidenced by Task 081. No closure record: see
-`rfcs/closures/LEGACY-ALLOWLIST.txt` (`011` stays listed; removing it
-means writing the record, and there is no record until 5 and 6 are true or
-the RFC is amended to drop them).
+**Returned to `accepted/` 2026-09-22 (Task 083) and closed again 2026-09-24
+(Task 099 follow-up, Review 277 §4).** It carried `Implemented (v0.4.0)`
+while criteria **5 and 6** were false: `DeleteKeywordIndex` and
+`DeleteVectorIndex` had no executor arm and no caller. Task 099 built both
+(Advanced view, Storage: "Prepare keyword search again" and "Prepare search
+by meaning again"), and §9's typed-word confirmation was replaced by the
+Cancel/Confirm dialog the product actually has (§9a, Task 086). The evidence
+for every criterion is `rfcs/closures/011-storage-dashboard-and-cleanup-ux.md`.
 
 ---
 
@@ -404,16 +393,16 @@ You can rebuild cache data from source files.
 
 ## 14. Acceptance Criteria
 
-- Storage Dashboard shows all required categories.
-- Safe cleanup never deletes persistent catalog data.
-- Cleanup plan is generated before cleanup execution.
-- Source files are never deleted by cleanup.
-- Deleting semantic index marks rebuild required.
-- Deleting exact index marks rebuild required.
-- Reset catalog requires strong typed confirmation.
-- `localcache` stats appear in storage accounting.
-- Text-bearing caches can be deleted.
-- Model files are shown separately from indexes.
+1. Storage Dashboard shows all required categories.
+2. Safe cleanup never deletes persistent catalog data.
+3. Cleanup plan is generated before cleanup execution.
+4. Source files are never deleted by cleanup.
+5. Deleting semantic index marks rebuild required.
+6. Deleting exact index marks rebuild required.
+7. Reset catalog requires strong typed confirmation.
+8. `localcache` stats appear in storage accounting.
+9. Text-bearing caches can be deleted.
+10. Model files are shown separately from indexes.
 
 ---
 

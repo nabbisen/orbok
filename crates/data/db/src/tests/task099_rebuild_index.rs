@@ -105,6 +105,24 @@ fn job_count_of_type(catalog: &Catalog, job_type: &str) -> i64 {
         .unwrap()
 }
 
+/// Every row of `table`, every column, as text -- a snapshot to compare
+/// before and after, so "untouched" is asserted on content, not on a count.
+fn dump(catalog: &Catalog, table: &str) -> Vec<Vec<String>> {
+    let conn = catalog.lock();
+    let mut stmt = conn
+        .prepare(&format!("SELECT * FROM {table} ORDER BY 1"))
+        .unwrap();
+    let columns = stmt.column_count();
+    stmt.query_map([], |row| {
+        (0..columns)
+            .map(|i| row.get_ref(i).map(|v| format!("{v:?}")))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .unwrap()
+    .collect::<Result<_, _>>()
+    .unwrap()
+}
+
 /// §5 test 1 (keyword half) / §5 test 2: the executor arm exists, deletes
 /// the keyword index and nothing else, and queues a rebuild.
 #[test]
@@ -120,9 +138,18 @@ fn delete_keyword_index_removes_keyword_data_and_keeps_embeddings() {
         (FILES * CHUNKS_PER_FILE) as i64
     );
 
+    let sources_before = dump(&catalog, "sources");
+    let settings_before = dump(&catalog, "app_settings");
+    assert!(!sources_before.is_empty());
+
     let outcome = CleanupExecutor::new(&catalog)
         .delete_keyword_index()
         .unwrap();
+
+    // §15 test 4: the source settings (and the catalog's own settings) are
+    // exactly as they were, column for column.
+    assert_eq!(dump(&catalog, "sources"), sources_before);
+    assert_eq!(dump(&catalog, "app_settings"), settings_before);
 
     assert_eq!(table_count(&catalog, "keyword_index_records"), 0);
     assert_eq!(table_count(&catalog, "chunk_fts"), 0);
@@ -159,9 +186,17 @@ fn delete_vector_index_removes_embeddings_and_keeps_keyword_data() {
         (FILES * CHUNKS_PER_FILE) as i64
     );
 
+    let sources_before = dump(&catalog, "sources");
+    let settings_before = dump(&catalog, "app_settings");
+    assert!(!sources_before.is_empty());
+
     let outcome = CleanupExecutor::new(&catalog)
         .delete_vector_index(Some(&model_id))
         .unwrap();
+
+    // §15 test 3's symmetry for the source settings.
+    assert_eq!(dump(&catalog, "sources"), sources_before);
+    assert_eq!(dump(&catalog, "app_settings"), settings_before);
 
     assert_eq!(table_count(&catalog, "embeddings"), 0);
     // §2.7: the other index survives untouched.
