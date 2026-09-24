@@ -14,3 +14,5 @@ mod task047_duplicate_source;
 mod task105_only_folders;
 #[cfg(test)]
 mod task108_one_card_builder;
+#[cfg(test)]
+mod task110_rfc003_removal;

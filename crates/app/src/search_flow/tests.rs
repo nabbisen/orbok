@@ -101,13 +101,16 @@ fn the_folder_picked_handler_has_no_search_path_of_its_own() {
     // text move, so this test's own text-scanning approach just needed
     // its source file name updated, not its assertions.
     let router = include_str!("../router.rs");
+    // Task 110: the handler body is now the `folder_picked` function (the
+    // arm calls it, so the question can be asked before and after "Add
+    // anyway" through the same code) -- a second plain text move.
     let start = router
-        .find("Message::FolderPicked(path) =>")
+        .find("fn folder_picked(")
         .expect("the FolderPicked handler");
     let end = start
         + router[start..]
-            .find("Message::SearchAgain(id) =>")
-            .expect("the next handler");
+            .find("fn ask_about_private_folder(")
+            .expect("the next function");
     let handler = &router[start..end];
     assert!(
         !handler.contains("run_search("),

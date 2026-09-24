@@ -31,6 +31,7 @@ fn ctx_for(state: &AppState) -> KeyboardContext {
         confirm_clear_history: state.confirm_clear_history,
         confirm_delete_keyword_index: state.confirm_delete_keyword_index,
         confirm_delete_vector_index: state.confirm_delete_vector_index,
+        confirm_add_sensitive_folder: state.pending_folder_add.is_some(),
         wizard_kind: None,
         selected_source_id: None,
         selected_result: None,

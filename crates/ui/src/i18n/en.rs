@@ -264,10 +264,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsCvdNote => {
             "Status colors are always shown with a label and an icon, so they stay clear for every kind of color vision."
         }
-        NoticeSensitiveSourceTitle => "This folder may contain private files",
-        NoticeSensitiveSourceBody => {
-            "It may include SSH keys, browser profiles, or other sensitive data. The folder was added. Remove it if you did not intend to search it."
-        }
+        AddSensitiveTitle => "Add a folder that may contain private files?",
+        AddSensitiveConfirm => "Add anyway",
         NoticeDismiss => "Dismiss",
         Cancel => "Cancel",
         Confirm => "Confirm",
@@ -358,7 +356,6 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDownloadingWhatNeeded => "Downloading what is needed...",
         // RFC-039: Privacy modes
         PrivacyTitle => "Privacy",
-        PrivacyLocalOnlyStatement => "Documents are processed on this computer only.",
         PrivacyModeStandard => "Standard",
         PrivacyModeStrict => "Strict",
         PrivacyModePortable => "Portable",

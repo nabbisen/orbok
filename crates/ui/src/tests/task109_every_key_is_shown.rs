@@ -203,10 +203,6 @@ const UNREFERENCED: &[(MessageKey, &str)] = &[
         "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
     ),
     (
-        MessageKey::PrivacyLocalOnlyStatement,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
         MessageKey::PrivacyModeStandard,
         "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
     ),
@@ -401,7 +397,7 @@ fn every_unreferenced_key_exemption_is_load_bearing() {
 /// `UNREFERENCED` only shrinks (the rule of `LEGACY-ALLOWLIST.txt`, made
 /// mechanical): removing an entry lowers this number in the same commit, and
 /// nothing can raise it without editing it here, where a reviewer sees it.
-const UNREFERENCED_CEILING: usize = 74;
+const UNREFERENCED_CEILING: usize = 73;
 
 #[test]
 fn the_unreferenced_list_only_shrinks() {

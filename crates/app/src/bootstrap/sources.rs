@@ -26,6 +26,32 @@ pub(crate) fn expand_home(raw: &str, home: &str) -> String {
     }
 }
 
+/// Task 110: whether adding `raw_path` should first ask "add a folder that
+/// may contain private files?" -- it is a folder orbok would newly register
+/// and `orbok_fs::sensitive_warning` flags its location. A path that cannot
+/// be resolved, is not a folder, or is already registered is **not** asked
+/// about: the first two fail in `add_source` with the ordinary notice, and
+/// the third adds nothing. Reads only; nothing is saved.
+pub fn needs_private_folder_question(catalog: &Catalog, raw_path: &str) -> bool {
+    use orbok_db::repo::SourceRepository;
+    use std::path::Path;
+    let expanded = expand_home(raw_path.trim(), &std::env::var("HOME").unwrap_or_default());
+    let Ok(canonical) = Path::new(&expanded).canonicalize() else {
+        return false;
+    };
+    if !canonical.is_dir() {
+        return false;
+    }
+    let canonical = canonical.to_string_lossy().to_string();
+    if matches!(
+        SourceRepository::new(catalog).find_by_canonical_path(&canonical),
+        Ok(Some(_))
+    ) {
+        return false;
+    }
+    orbok_fs::sensitive_warning(Path::new(&canonical)).is_some()
+}
+
 /// Add a folder as a new searchable source, unless its canonical
 /// path is already registered.
 pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOutcome> {

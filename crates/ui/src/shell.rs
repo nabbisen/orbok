@@ -43,6 +43,9 @@ pub struct KeyboardContext {
     pub confirm_delete_keyword_index: bool,
     /// Task 099: the "prepare search by meaning again" confirmation is open.
     pub confirm_delete_vector_index: bool,
+    /// Task 110: the private-folder question is open **and on screen** (on
+    /// whichever page asked).
+    pub confirm_add_sensitive_folder: bool,
     /// `None` when the startup wizard is not active.
     pub wizard_kind: Option<WizardKind>,
     /// The source `Enter` would remove, if the Sources view has one
@@ -130,6 +133,7 @@ pub fn key_to_message(
                 && !ctx.confirm_clear_history
                 && !ctx.confirm_delete_keyword_index
                 && !ctx.confirm_delete_vector_index
+                && !ctx.confirm_add_sensitive_folder
                 && ctx.wizard_kind.is_none() =>
         {
             ctx.selected_source_id.clone().map(Message::AskRemoveSource)
@@ -227,6 +231,9 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     }
     if ctx.confirm_delete_vector_index {
         return Some(Message::ConfirmDeleteVectorIndex);
+    }
+    if ctx.confirm_add_sensitive_folder {
+        return Some(Message::ConfirmAddSensitiveFolder);
     }
     if ctx.confirm_clear_history {
         return Some(Message::ConfirmClearRecentSearches);
@@ -326,6 +333,13 @@ impl OrbokApp {
                 == Some(Confirmation::DeleteKeywordIndex),
             confirm_delete_vector_index: state.visible_confirmation()
                 == Some(Confirmation::DeleteVectorIndex),
+            confirm_add_sensitive_folder: matches!(
+                state.visible_confirmation(),
+                Some(
+                    Confirmation::AddSensitiveFolderOnFolders
+                        | Confirmation::AddSensitiveFolderOnSearch
+                )
+            ),
             wizard_kind: state.wizard.as_ref().map(crate::state::WizardState::kind),
             selected_source_id: state
                 .selected_source

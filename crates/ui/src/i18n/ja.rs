@@ -274,12 +274,8 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsCvdNote => {
             "ステータスカラーは常にラベルとアイコンとともに表示されるため、色覚に関わらず識別できます。"
         }
-        NoticeSensitiveSourceTitle => {
-            "このフォルダーには機密ファイルが含まれている可能性があります"
-        }
-        NoticeSensitiveSourceBody => {
-            "SSH鍵、ブラウザのプロフィール、またはその他の機密データが含まれている可能性があります。フォルダーは追加されました。意図しない場合は削除してください。"
-        }
+        AddSensitiveTitle => "機密ファイルを含む可能性のあるフォルダーを追加しますか?",
+        AddSensitiveConfirm => "追加する",
         NoticeDismiss => "閉じる",
         Cancel => "キャンセル",
         Confirm => "確認",
@@ -370,7 +366,6 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDownloadingWhatNeeded => "必要なものをダウンロード中...",
         // RFC-039: Privacy modes
         PrivacyTitle => "プライバシー",
-        PrivacyLocalOnlyStatement => "ドキュメントはこのコンピューターでのみ処理されます。",
         PrivacyModeStandard => "標準",
         PrivacyModeStrict => "厳格",
         PrivacyModePortable => "ポータブル",

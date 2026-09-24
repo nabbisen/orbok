@@ -21,6 +21,7 @@ may start" a checked state rather than an implicit convention.
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | v0.6.0 |
 | 001 | [Local Data Classification and Lifecycle](done/001-local-data-classification-and-lifecycle.md) | v0.1.0 |
 | 002 | [SQLite Catalog Schema and Migration Policy](done/002-sqlite-catalog-schema-and-migration-policy.md) | v0.1.0 |
+| 003 | [Source Registration and File Access Boundary](done/003-source-registration-and-file-access-boundary.md) | Implemented (unreleased) — closed 2026-09-24 (Task 110): §10.2's question before saving is built (picker, typed path and search-in-folder); Amendment 1 (§10a, Task 109) dropped single-file sources and the §10.1 controls. Closure record: [closures/003](closures/003-source-registration-and-file-access-boundary.md) |
 | 004 | [File Scanner and Change Detection](done/004-file-scanner-and-change-detection.md) | v0.1.0 |
 | 005 | [Document Extraction Pipeline](done/005-document-extraction-pipeline.md) | v0.1.0 |
 | 006 | [Adaptive Chunking and Location Metadata](done/006-adaptive-chunking-and-location-metadata.md) | v0.2.0 |
@@ -74,7 +75,6 @@ may start" a checked state rather than an implicit convention.
 
 | ID | Title | Status |
 |---|---|---|
-| 003 | [Source Registration and File Access Boundary](accepted/003-source-registration-and-file-access-boundary.md) | Returned from `done/` 2026-09-24 (Task 109) — open: §10.2's warning **before saving** is not built (orbok saves and queues the folder, then shows a notice); Task 110 builds it and writes the closure record. Amendment 1 (§10a): single-file sources, the persistent/temporary choice, and the hidden-file, symlink, index-mode and include/exclude controls are not offered (owner decision 2026-09-24: fixed safe defaults); §10.2 is kept without "add with exclusions". |
 | 040 | [Safe Diagnostics and Redacted Support Bundle](accepted/040-safe-diagnostics-and-redacted-support-bundle.md) | Returned from `done/` 2026-09-17 — open: no UI creates a support file and nothing writes one; `diagnostics.rs` is unwired under `#![allow(dead_code)]`. §22 criteria 1–7, 9, 10, 11 unmet or unobservable (Task 067) |
 | 041 | [Search, Narrow Results, and Browse Around](accepted/041-search-narrow-and-browse-around.md) | Returned from `done/` 2026-09-03 (Review 201 §2) — open: filters reach the query (RFC-060 Slice 4b) but no view emits `ApplySuggestedFilter`/`RemoveFilter`/`ClearFilters`/`OpenMoreWays`, the browse-around messages have no handler, and the search-mode control is ignored (`Auto` hardcoded). §25 criteria 2, 3, 5, 6, 7, 9 unmet (Task 052) |
 | 048 | [Real-Model Benchmark Performance Recovery](accepted/048-real-model-performance-recovery.md) | Accepted — open: timing breakdowns exist (`crates/bench/src/report.rs` `timing_ms`); the gate itself is unevidenced. Closing needs a guarded `--expect-mode hybrid-real-model` benchmark run (1,000 documents, `--features orbok-embed/tract`, `--model-dir` pointing at multilingual-e5-small) meeting RFC-047's p99 ≤ 200 ms and indexing ≥ 10 files/s, or a later RFC changing that policy — a machine with the model installed is required; CI cannot produce it |

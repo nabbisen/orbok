@@ -497,6 +497,31 @@ pub enum Confirmation {
     DeleteKeywordIndex,
     /// Task 099: "Prepare search by meaning again" -- Storage, Advanced view.
     DeleteVectorIndex,
+    /// Task 110: "Add a folder that may contain private files?", asked from
+    /// the Folders page (the picker or a typed path).
+    AddSensitiveFolderOnFolders,
+    /// Task 110: the same question, asked from the search page
+    /// (search-in-folder's picker).
+    AddSensitiveFolderOnSearch,
+}
+
+/// Task 110: which page asked to add a folder, so the question renders where
+/// the user is and cancelling puts that page back as it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderAddOrigin {
+    /// The Folders page: the Add folder picker or the typed path.
+    FoldersPage,
+    /// The search page: the search-in-folder picker (RFC-045).
+    SearchPage,
+}
+
+/// Task 110: a folder waiting for the user's answer to "add a folder that may
+/// contain private files?" -- nothing has been saved or queued for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingFolderAdd {
+    /// The path as the user gave it (picked or typed).
+    pub path: String,
+    pub origin: FolderAddOrigin,
 }
 
 impl Confirmation {
@@ -508,6 +533,8 @@ impl Confirmation {
             Self::ClearRecentSearches => ViewId::Settings,
             Self::DeleteKeywordIndex => ViewId::Storage,
             Self::DeleteVectorIndex => ViewId::Storage,
+            Self::AddSensitiveFolderOnFolders => ViewId::Sources,
+            Self::AddSensitiveFolderOnSearch => ViewId::Search,
         }
     }
 }
@@ -582,6 +609,8 @@ pub struct AppState {
     pub reset_counts: Option<ResetCounts>,
     /// Task 099: awaiting confirmation before deleting the keyword index.
     pub confirm_delete_keyword_index: bool,
+    /// Task 110: the private-folder question, when one is open.
+    pub pending_folder_add: Option<PendingFolderAdd>,
     /// Task 099: awaiting confirmation before deleting the vector index.
     pub confirm_delete_vector_index: bool,
     /// Task 099: what the open rebuild confirmation (either one -- at most
@@ -648,6 +677,7 @@ impl Default for AppState {
             confirm_reset: false,
             reset_counts: None,
             confirm_delete_keyword_index: false,
+            pending_folder_add: None,
             confirm_delete_vector_index: false,
             rebuild_file_count: None,
             confirm_remove_source: None,
@@ -866,6 +896,19 @@ pub enum Message {
     /// (an empty field does nothing); the Add folder button keeps opening the
     /// picker, so each control does one thing.
     SubmitSourcePath,
+    /// Task 110: a folder that may contain private files was picked or typed;
+    /// ask before adding. Raised by orbok; nothing is saved until the answer.
+    AskAddSensitiveFolder(PendingFolderAdd),
+    /// The answer was no: nothing is saved, no notice, the typed text and the
+    /// pending query are kept.
+    CancelAddSensitiveFolder,
+    /// The answer was "Add anyway": orbok takes the pending folder and adds it
+    /// (`take_confirmed_folder_add`).
+    ConfirmAddSensitiveFolder,
+    /// The Folders-page add, after the answer.
+    AddFolderConfirmed(String),
+    /// The search-in-folder add, after the answer.
+    FolderPickedConfirmed(std::path::PathBuf),
     RequestAddSource,
     /// RFC-061 §7 Slice 5: the OS folder picker `RequestAddSource` opens
     /// returned `path` -- mirrors RFC-045's `FolderPicked`, but for the
@@ -1004,6 +1047,7 @@ impl AppState {
             self.confirm_remove_source = None;
             self.confirm_reset = false;
             self.confirm_clear_history = false;
+            self.cancel_folder_add();
         }
         // Task 064: an info notice belongs to the view it was raised on, so a
         // view change clears it -- compared here, once, rather than in each
@@ -1231,7 +1275,9 @@ impl AppState {
                 // same "innermost open thing closes first" shape this
                 // arm already had, just with more things now able to be
                 // open.
-                if self.confirm_remove_source.is_some() {
+                if self.pending_folder_add.is_some() {
+                    self.cancel_folder_add();
+                } else if self.confirm_remove_source.is_some() {
                     self.confirm_remove_source = None;
                 } else if self.confirm_reset {
                     self.confirm_reset = false;
@@ -1413,7 +1459,14 @@ impl AppState {
             // return before this reducer runs, so they forward these three
             // messages here explicitly.
             Message::SubmitSourcePath => {} // handled by orbok (Task 105)
-            Message::ChooseSearchFolder => {} // handled by orbok (Task 105)
+            Message::AskAddSensitiveFolder(pending) => {
+                self.pending_folder_add = Some(pending.clone());
+                self.confirm_remove_source = None;
+            }
+            Message::CancelAddSensitiveFolder => self.cancel_folder_add(),
+            Message::ConfirmAddSensitiveFolder => {} // handled by orbok: take_confirmed_folder_add
+            Message::AddFolderConfirmed(_) | Message::FolderPickedConfirmed(_) => {} // orbok
+            Message::ChooseSearchFolder => {}        // handled by orbok (Task 105)
             Message::RequestAddSource => self.add_source_picker_in_progress = true,
             Message::AddSourceFolderPicked(_) => self.add_source_picker_in_progress = false,
             Message::AddSourceFolderPickerCancelled => self.add_source_picker_in_progress = false,
@@ -1701,10 +1754,49 @@ impl AppState {
                 self.confirm_delete_vector_index,
                 Confirmation::DeleteVectorIndex,
             ),
+            (
+                self.pending_folder_add
+                    .as_ref()
+                    .is_some_and(|p| p.origin == FolderAddOrigin::FoldersPage),
+                Confirmation::AddSensitiveFolderOnFolders,
+            ),
+            (
+                self.pending_folder_add
+                    .as_ref()
+                    .is_some_and(|p| p.origin == FolderAddOrigin::SearchPage),
+                Confirmation::AddSensitiveFolderOnSearch,
+            ),
         ]
         .into_iter()
         .find(|(open, confirmation)| *open && confirmation.view() == self.active_view)
         .map(|(_, confirmation)| confirmation)
+    }
+
+    /// Task 110: close the private-folder question without adding anything.
+    /// Cancelling is neutral (RFC-045 §8.2): for a search-in-folder question
+    /// the search page goes back to what it was before the picker (the typed
+    /// query stays in the box); for a Folders-page question the typed text
+    /// stays in the field.
+    pub fn cancel_folder_add(&mut self) {
+        if let Some(pending) = self.pending_folder_add.take()
+            && pending.origin == FolderAddOrigin::SearchPage
+        {
+            self.search_location.picker_in_progress = false;
+            self.search_location.pending_query = None;
+        }
+    }
+
+    /// Task 110: the question was answered "Add anyway". Returns the add to
+    /// dispatch for the folder it was about, and closes the dialog.
+    pub fn take_confirmed_folder_add(&mut self) -> Option<Message> {
+        self.pending_folder_add
+            .take()
+            .map(|pending| match pending.origin {
+                FolderAddOrigin::FoldersPage => Message::AddFolderConfirmed(pending.path),
+                FolderAddOrigin::SearchPage => {
+                    Message::FolderPickedConfirmed(std::path::PathBuf::from(pending.path))
+                }
+            })
     }
 
     /// Task 062: the removal confirmation was confirmed. Returns the removal

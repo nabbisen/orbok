@@ -3,16 +3,18 @@
 **Project:** orbok  
 **RFC:** 003  
 **Title:** Source Registration and File Access Boundary  
-**Status:** Accepted
+**Status:** Implemented (unreleased)
 **Target Milestone:** M2  
 **Date:** 2026-06-06  
 
-**Returned to `accepted/` 2026-09-24 (Task 109).** Carried `Implemented
-(v0.1.0)` while §10.2's warning **before saving** was not built: orbok saved
-the folder, queued its files, and only then showed a notice. Amendment 1
-(§10a) drops the controls owner decision 2026-09-24 chose not to offer and
-keeps §10.2 (without "add with exclusions"); Task 110 builds it, and its
-closure record is written then.
+**Returned to `accepted/` 2026-09-24 (Task 109) and closed again 2026-09-24
+(Task 110).** It carried `Implemented (v0.1.0)` while §10.2's warning **before
+saving** was not built: orbok saved the folder, queued its files, and only then
+showed a notice. Amendment 1 (§10a) dropped what the owner decided not to offer
+and kept §10.2 without "add with exclusions"; Task 110 built it: a folder that
+may contain private files is asked about before anything is saved, from the
+Add folder picker, a typed path and the search-in-folder picker. The evidence
+for every criterion is `rfcs/closures/003-source-registration-and-file-access-boundary.md`.
 
 ---
 
@@ -375,16 +377,16 @@ Mitigation:
 
 ## 13. Acceptance Criteria
 
-- User can add persistent folder source.
-- User can add temporary file source.
-- Backend canonicalizes paths.
-- Backend rejects file reads outside active sources.
-- Hidden files are excluded by default.
-- Symlinks are ignored by default.
-- Sensitive directory warning is shown.
-- Source removal does not delete source files.
-- Source status supports active, paused, missing, permission denied, removed.
-- Tests cover path traversal and symlink escape attempts.
+1. User can add persistent folder source.
+2. User can add temporary file source.
+3. Backend canonicalizes paths.
+4. Backend rejects file reads outside active sources.
+5. Hidden files are excluded by default.
+6. Symlinks are ignored by default.
+7. Sensitive directory warning is shown.
+8. Source removal does not delete source files.
+9. Source status supports active, paused, missing, permission denied, removed.
+10. Tests cover path traversal and symlink escape attempts.
 
 ---
 

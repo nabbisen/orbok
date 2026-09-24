@@ -283,6 +283,12 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
+    // Task 110: the private-folder question, when the search picker asked it.
+    if state.visible_confirmation() == Some(crate::state::Confirmation::AddSensitiveFolderOnSearch)
+    {
+        return private_folder_dialog(state);
+    }
+
     let input = text_input(tr(locale, MessageKey::SearchPlaceholder), &state.query)
         .on_input(Message::QueryChanged)
         .on_submit(Message::SubmitSearch)
@@ -587,10 +593,54 @@ fn trust_recovery<'a>(
 
 // ── Sources view ─────────────────────────────────────────────────────────
 
+/// Task 110: "Add a folder that may contain private files?" -- Task 062's
+/// dialog shape: the title asks, the confirm button names the action, Cancel
+/// (and Escape) add nothing. The folder's path is shown so the user knows
+/// which one is being asked about. Rendered by whichever page asked
+/// (`sources_view`, `search_view`).
+fn private_folder_dialog(state: &AppState) -> Element<'_, Message> {
+    let locale = state.locale;
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+    let path = state
+        .pending_folder_add
+        .as_ref()
+        .map(|p| p.path.as_str())
+        .unwrap_or_default();
+    let content = column![
+        text(tr(locale, MessageKey::AddSensitiveTitle)).size(theme::title_s(tokens, sc)),
+        text(path.to_string()).size(theme::meta_s(tokens, sc)),
+        text(crate::i18n::fmt_add_sensitive_body(locale))
+            .size(theme::body_s(tokens, sc))
+            .line_height(theme::body_lh(tokens)),
+        hrow![
+            components::ghost(
+                tokens,
+                tr(locale, MessageKey::Cancel),
+                Some(Message::CancelAddSensitiveFolder)
+            ),
+            components::secondary(
+                tokens,
+                tr(locale, MessageKey::AddSensitiveConfirm),
+                Some(Message::ConfirmAddSensitiveFolder)
+            ),
+        ]
+        .spacing(tokens.spacing.md),
+    ]
+    .spacing(tokens.spacing.lg);
+    page(tokens, content)
+}
+
 pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let locale = state.locale;
     let tokens = &state.tokens;
     let sc = state.text_scale;
+
+    // Task 110: the private-folder question, when the Folders page asked it.
+    if state.visible_confirmation() == Some(crate::state::Confirmation::AddSensitiveFolderOnFolders)
+    {
+        return private_folder_dialog(state);
+    }
 
     // Task 062: the removal confirmation, laid out like the reset one.
     // Task 073: the same `removal_target` lookup `visible_confirmation` uses.

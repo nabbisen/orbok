@@ -26,8 +26,6 @@ pub enum UserNotice {
     /// Task 070: the folder list could not be read to check the file; the
     /// same action can be tried again.
     FileCheckFailed,
-    /// The added folder may contain sensitive files (SSH keys, browser profiles, etc.).
-    SensitiveSourceAdded,
     // ── Confirmations ─────────────────────────────────────────────────
     FolderAdded,
     /// "Add folder" picked a folder that is already registered (Task 047);
@@ -122,8 +120,7 @@ impl UserNotice {
             Self::FileCouldNotBeFound
             | Self::FileCouldNotBeOpened
             | Self::FileNotAllowed
-            | Self::FileCheckFailed
-            | Self::SensitiveSourceAdded => Tone::Warning,
+            | Self::FileCheckFailed => Tone::Warning,
             // Positive confirmations.
             Self::FolderAdded | Self::SearchReady => Tone::Success,
             // Neutral/informational.
@@ -146,7 +143,6 @@ impl UserNotice {
             Self::FileCouldNotBeOpened | Self::FileNotAllowed | Self::FileCheckFailed => {
                 MessageKey::NoticeFileNotOpenedTitle
             }
-            Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceTitle,
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
             Self::SearchReady => MessageKey::NoticeSearchReadyTitle,
@@ -180,7 +176,6 @@ impl UserNotice {
             Self::FileCouldNotBeOpened => MessageKey::NoticeFileNotOpenedBody,
             Self::FileNotAllowed => MessageKey::NoticeFileNotAllowedBody,
             Self::FileCheckFailed => MessageKey::NoticeFileCheckFailedBody,
-            Self::SensitiveSourceAdded => MessageKey::NoticeSensitiveSourceBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
             Self::SearchReady => MessageKey::NoticeSearchReadyBody,
@@ -223,7 +218,6 @@ impl UserNotice {
             Self::FileNotAllowed => return None,
             // The same action on the same result.
             Self::FileCheckFailed => MessageKey::NoticeActionTryAgain,
-            Self::SensitiveSourceAdded => return None, // informational only
             Self::FolderAdded
             | Self::FolderAlreadyAdded
             | Self::SearchReady

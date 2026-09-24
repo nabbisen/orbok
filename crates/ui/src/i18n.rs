@@ -353,8 +353,8 @@ message_keys! {
     SettingsReduceMotion,
     SettingsReduceMotionHint,
     SettingsCvdNote,
-    NoticeSensitiveSourceTitle,
-    NoticeSensitiveSourceBody,
+    AddSensitiveTitle,
+    AddSensitiveConfirm,
     NoticeDismiss,
     Cancel,
     Confirm,
@@ -439,7 +439,6 @@ message_keys! {
     ModelDownloadingWhatNeeded,
     // RFC-039: Privacy modes
     PrivacyTitle,
-    PrivacyLocalOnlyStatement,
     PrivacyModeStandard,
     PrivacyModeStrict,
     PrivacyModePortable,
@@ -822,6 +821,30 @@ pub fn fmt_remove_source_title(locale: Locale, folder: &str) -> String {
     match locale {
         Locale::En => format!("Remove \"{folder}\" from orbok?"),
         Locale::Ja => format!("「{folder}」を orbok から削除しますか?"),
+    }
+}
+
+/// Task 110 (owner-approved 2026-09-24): what the "add a folder that may
+/// contain private files?" dialog tells the user. The first sentence is the
+/// old notice's, the third is `SettingsPrivacyLocalOnly` word for word, and
+/// the fourth names the real labels (`NavSources`, `SourceActionRemoveFromOrbok`)
+/// by reading them, so renaming a button cannot leave the dialog pointing at
+/// a label that no longer exists.
+pub fn fmt_add_sensitive_body(locale: Locale) -> String {
+    let folders = tr(locale, MessageKey::NavSources);
+    let remove = tr(locale, MessageKey::SourceActionRemoveFromOrbok);
+    let local_only = tr(locale, MessageKey::SettingsPrivacyLocalOnly);
+    match locale {
+        Locale::En => format!(
+            "It may include SSH keys, browser profiles, or other sensitive data. \
+             If you add it, what it contains can be found by searching in orbok. \
+             {local_only} You can remove it at any time with {remove} in {folders}."
+        ),
+        Locale::Ja => format!(
+            "SSH鍵、ブラウザのプロフィール、またはその他の機密データが含まれている可能性があります。\
+             追加すると、その内容を orbok で検索できるようになります。\
+             {local_only}「{folders}」の「{remove}」で、いつでも削除できます。"
+        ),
     }
 }
 

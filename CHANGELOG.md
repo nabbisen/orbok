@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **orbok asks before adding a folder that may contain private files** (Task
+  110), such as `.ssh` or `.aws`: nothing is saved or prepared until you choose
+  "Add anyway". Before, the folder was added and prepared first, and a notice
+  told you afterwards.
 - **The reset-catalog dialog now asks a question, and its button names the
   action** (Task 091). The dialog previously repeated "Reset saved app
   data..." as both its title and its confirm button; the title now reads

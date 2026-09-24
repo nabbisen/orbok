@@ -19,6 +19,7 @@ fn folders_ctx(selected: Option<&str>) -> KeyboardContext {
         confirm_clear_history: false,
         confirm_delete_keyword_index: false,
         confirm_delete_vector_index: false,
+        confirm_add_sensitive_folder: false,
         wizard_kind: None,
         selected_source_id: selected.map(str::to_string),
         selected_result: None,
@@ -73,6 +74,7 @@ fn ctx_for(state: &AppState, text_input_focused: bool) -> KeyboardContext {
         confirm_clear_history: state.confirm_clear_history,
         confirm_delete_keyword_index: false,
         confirm_delete_vector_index: false,
+        confirm_add_sensitive_folder: false,
         wizard_kind: None,
         selected_source_id: state
             .selected_source

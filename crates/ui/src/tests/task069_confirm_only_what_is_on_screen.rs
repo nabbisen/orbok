@@ -1,7 +1,9 @@
 //! Task 069: Enter confirms only a confirmation the user can see.
 
 use crate::shell::{OrbokApp, key_to_message};
-use crate::state::{AppState, Message, NavGroup, SourceCard, ViewId, WizardState};
+use crate::state::{
+    AppState, FolderAddOrigin, Message, NavGroup, PendingFolderAdd, SourceCard, ViewId, WizardState,
+};
 use iced::keyboard::{Key, Modifiers, key::Named};
 
 #[derive(Debug, Clone, Copy)]
@@ -9,10 +11,19 @@ enum Confirmation {
     Removal,
     Reset,
     ClearHistory,
+    /// Task 110: the private-folder question, from either page.
+    AddOnFolders,
+    AddOnSearch,
 }
 
 impl Confirmation {
-    const ALL: [Confirmation; 3] = [Self::Removal, Self::Reset, Self::ClearHistory];
+    const ALL: [Confirmation; 5] = [
+        Self::Removal,
+        Self::Reset,
+        Self::ClearHistory,
+        Self::AddOnFolders,
+        Self::AddOnSearch,
+    ];
 
     /// The one view each confirmation renders on.
     fn home(self) -> ViewId {
@@ -20,6 +31,8 @@ impl Confirmation {
             Self::Removal => ViewId::Sources,
             Self::Reset => ViewId::Storage,
             Self::ClearHistory => ViewId::Settings,
+            Self::AddOnFolders => ViewId::Sources,
+            Self::AddOnSearch => ViewId::Search,
         }
     }
 
@@ -28,6 +41,14 @@ impl Confirmation {
             Self::Removal => Message::AskRemoveSource("src-1".into()),
             Self::Reset => Message::AskResetCatalog,
             Self::ClearHistory => Message::AskClearRecentSearches,
+            Self::AddOnFolders => Message::AskAddSensitiveFolder(PendingFolderAdd {
+                path: "/home/u/.ssh".into(),
+                origin: FolderAddOrigin::FoldersPage,
+            }),
+            Self::AddOnSearch => Message::AskAddSensitiveFolder(PendingFolderAdd {
+                path: "/home/u/.ssh".into(),
+                origin: FolderAddOrigin::SearchPage,
+            }),
         }
     }
 
@@ -40,6 +61,10 @@ impl Confirmation {
                     Self::ClearHistory,
                     Some(Message::ConfirmClearRecentSearches)
                 )
+                | (
+                    Self::AddOnFolders | Self::AddOnSearch,
+                    Some(Message::ConfirmAddSensitiveFolder)
+                )
         )
     }
 
@@ -48,6 +73,7 @@ impl Confirmation {
             Self::Removal => state.confirm_remove_source.is_some(),
             Self::Reset => state.confirm_reset,
             Self::ClearHistory => state.confirm_clear_history,
+            Self::AddOnFolders | Self::AddOnSearch => state.pending_folder_add.is_some(),
         }
     }
 }

@@ -6,9 +6,11 @@ Add a folder from the **Folders** view with **Add folder**, or type its path
 into the box beside it and press Enter. orbok only searches folders you add;
 it never scans your whole computer automatically.
 
-When you add a folder near sensitive directories (`.ssh`, `.gnupg`,
-`.aws`), orbok adds it and shows the notice "This folder may contain
-private files". Remove the folder if you did not mean to search it.
+When a folder may contain private files (for example `.ssh`, `.gnupg` or
+`.aws`), orbok asks first: "Add a folder that may contain private files?".
+Nothing is saved or prepared until you choose **Add anyway**; **Cancel** (or
+Escape) adds nothing. You can remove a folder at any time with **Remove from
+orbok** in **Folders**.
 
 ## What orbok skips
 

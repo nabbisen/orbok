@@ -571,6 +571,21 @@ const GLOSSARY: &[GlossaryTerm] = &[
         whole_word: false,
     },
     GlossaryTerm {
+        concept: "the promise that documents are processed on this computer only (Task 110)",
+        canonical: &[
+            (Locale::En, "Documents are processed on this computer only."),
+            (Locale::Ja, "文書はこのコンピューター上でのみ処理されます。"),
+        ],
+        forbidden: &[(Locale::Ja, "ドキュメントはこのコンピューターでのみ")],
+        allowed_if_followed_by: None,
+        exemptions: &[],
+        applies_to_docs: false,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
+    },
+    GlossaryTerm {
         concept: "a page of the app (Task 107)",
         canonical: &[
             (Locale::En, "Search"),
@@ -785,6 +800,7 @@ const FORMATTERS: &[(&str, Sampler)] = &[
     sampled!(fmt_mib_bucket: ("Sample", 1.5)),
     sampled!(fmt_storage_row: ("Sample", 1.5, 3)),
     sampled!(fmt_remove_source_title: ("Docs")),
+    sampled!(fmt_add_sensitive_body: ()),
     sampled!(fmt_query: ("notes")),
     sampled!(search_location_chip:
         ("Docs", SearchFolderScope::FolderAndSubfolders),

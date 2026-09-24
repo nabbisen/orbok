@@ -279,11 +279,7 @@ fn notice_tone_mapping_is_consistent() {
         assert_eq!(n.tone(), Tone::Danger, "{n:?} must be Danger");
     }
     // Warning: cautions.
-    for n in [
-        UserNotice::FileNotAllowed,
-        UserNotice::FileCheckFailed,
-        UserNotice::SensitiveSourceAdded,
-    ] {
+    for n in [UserNotice::FileNotAllowed, UserNotice::FileCheckFailed] {
         assert_eq!(n.tone(), Tone::Warning, "{n:?} must be Warning");
     }
     // Success: positive confirmations.

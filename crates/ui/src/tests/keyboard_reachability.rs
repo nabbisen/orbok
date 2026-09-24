@@ -35,6 +35,7 @@ fn neutral_ctx(active_view: ViewId) -> KeyboardContext {
         confirm_clear_history: false,
         confirm_delete_keyword_index: false,
         confirm_delete_vector_index: false,
+        confirm_add_sensitive_folder: false,
         wizard_kind: None,
         selected_source_id: None,
         selected_result: None,

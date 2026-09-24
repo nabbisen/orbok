@@ -894,3 +894,155 @@ fn both_add_arms_call_the_one_routine() {
         );
     }
 }
+
+// ── Task 110: a private folder is asked about first ─────────────────────
+
+/// A directory the sensitive-folder check flags (`.ssh` is on its list).
+fn private_folder(root: &std::path::Path) -> std::path::PathBuf {
+    let folder = root.join(".ssh");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("notes.md"), "# keys\n").unwrap();
+    folder
+}
+
+fn job_rows(deps: &AppDeps) -> i64 {
+    deps.catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM index_jobs", [], |r| r.get(0))
+        .unwrap()
+}
+
+/// §3.1: each of the three ways to add a folder asks first for a private
+/// one, and **no row exists in `sources` or `index_jobs`** until the answer.
+#[test]
+fn every_way_of_adding_a_private_folder_asks_first_and_saves_nothing() {
+    use orbok_ui::state::FolderAddOrigin;
+    let temp = tempfile::tempdir().unwrap();
+    let folder = private_folder(temp.path());
+    let path = folder.to_string_lossy().to_string();
+
+    // The Add folder picker's answer.
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = route(
+        &mut app,
+        Message::AddSourceFolderPicked(folder.clone()),
+        &deps,
+    );
+    let pending = app.state.pending_folder_add.clone().expect("it asked");
+    assert_eq!(pending.origin, FolderAddOrigin::FoldersPage);
+    assert_eq!((source_rows(&deps), job_rows(&deps)), (0, 0), "picker");
+
+    // The typed path.
+    let deps = test_deps(&temp.path().join("typed"));
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = typed(&mut app, &deps, &path);
+    let pending = app.state.pending_folder_add.clone().expect("it asked");
+    assert_eq!(pending.origin, FolderAddOrigin::FoldersPage);
+    assert_eq!((source_rows(&deps), job_rows(&deps)), (0, 0), "typed path");
+
+    // The search-in-folder picker.
+    let deps = test_deps(&temp.path().join("search"));
+    let mut app = OrbokApp::with_state(AppState {
+        query: "keys".into(),
+        ..AppState::default()
+    });
+    let _ = route(&mut app, Message::ChooseSearchFolder, &deps);
+    let _ = route(&mut app, Message::FolderPicked(folder.clone()), &deps);
+    let pending = app.state.pending_folder_add.clone().expect("it asked");
+    assert_eq!(pending.origin, FolderAddOrigin::SearchPage);
+    assert_eq!((source_rows(&deps), job_rows(&deps)), (0, 0), "search");
+}
+
+/// §3.2: cancel is neutral -- nothing is saved or queued, no notice, and the
+/// typed text (Folders page) and the pending query (search page) are kept.
+#[test]
+fn cancelling_the_private_folder_question_changes_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let folder = private_folder(temp.path());
+    let path = folder.to_string_lossy().to_string();
+
+    // Typed path: the text stays in the field.
+    let deps = test_deps(&temp.path().join("typed"));
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = typed(&mut app, &deps, &path);
+    let _ = route(&mut app, Message::CancelAddSensitiveFolder, &deps);
+    assert!(app.state.pending_folder_add.is_none());
+    assert_eq!(app.state.source_path_input, path, "the typed text stays");
+    assert!(app.state.notice.is_none(), "no notice");
+    assert_eq!((source_rows(&deps), job_rows(&deps)), (0, 0));
+
+    // Search-in-folder: the query stays, the picker flag is released.
+    let deps = test_deps(&temp.path().join("search"));
+    let mut app = OrbokApp::with_state(AppState {
+        query: "keys".into(),
+        ..AppState::default()
+    });
+    let _ = route(&mut app, Message::ChooseSearchFolder, &deps);
+    let _ = route(&mut app, Message::FolderPicked(folder), &deps);
+    assert!(app.state.pending_folder_add.is_some());
+    let _ = route(&mut app, Message::CancelAddSensitiveFolder, &deps);
+    assert_eq!(app.state.query, "keys", "the query stays");
+    assert!(!app.state.search_location.picker_in_progress);
+    assert!(app.state.notice.is_none());
+    assert_eq!((source_rows(&deps), job_rows(&deps)), (0, 0));
+}
+
+/// §3.3: "Add anyway" adds and prepares the folder, and the old "the folder
+/// was added" notice does not appear (only the ordinary "Folder added").
+#[test]
+fn add_anyway_adds_and_prepares_the_folder_without_the_old_notice() {
+    let temp = tempfile::tempdir().unwrap();
+    let folder = private_folder(temp.path());
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let _ = typed(&mut app, &deps, &folder.to_string_lossy());
+    let task = route(&mut app, Message::ConfirmAddSensitiveFolder, &deps);
+    assert_eq!(task.units(), 1, "the confirmed add is dispatched");
+    // The dispatched message is what the runtime would deliver next.
+    let _ = route(
+        &mut app,
+        Message::AddFolderConfirmed(folder.to_string_lossy().to_string()),
+        &deps,
+    );
+
+    assert!(app.state.pending_folder_add.is_none());
+    assert_eq!(source_rows(&deps), 1, "the folder was added");
+    assert!(job_rows(&deps) >= 1, "and its scan was queued");
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderAdded),
+        "the ordinary notice, not a warning about the folder"
+    );
+}
+
+/// §3.4 / §3.5: an ordinary folder, and one already added, are not asked
+/// about.
+#[test]
+fn ordinary_and_already_added_folders_are_not_asked_about() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let ordinary = temp.path().join("notes");
+    std::fs::create_dir(&ordinary).unwrap();
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let _ = typed(&mut app, &deps, &ordinary.to_string_lossy());
+    assert!(app.state.pending_folder_add.is_none(), "an ordinary folder");
+    assert_eq!(source_rows(&deps), 1);
+
+    // A private folder registered earlier (through the confirmed path) is not
+    // asked about again: nothing would be added.
+    let private = private_folder(temp.path());
+    let _ = route(
+        &mut app,
+        Message::AddFolderConfirmed(private.to_string_lossy().to_string()),
+        &deps,
+    );
+    assert_eq!(source_rows(&deps), 2);
+    let _ = typed(&mut app, &deps, &private.to_string_lossy());
+    assert!(
+        app.state.pending_folder_add.is_none(),
+        "an already-added folder is reused without asking"
+    );
+}

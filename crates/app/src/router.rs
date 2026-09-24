@@ -37,12 +37,123 @@ pub(crate) struct AppDeps {
     pub(crate) active_download_cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
 }
 
+/// The search-in-folder picker returned `path`: create or reuse the
+/// remembered folder, promote it to the search location, prepare it and
+/// resume the search that opened the picker (RFC-045 §8.1). A private folder
+/// is asked about first (`ask_about_private_folder`), unless it was already
+/// confirmed.
+fn folder_picked(
+    app: &mut OrbokApp,
+    deps: &AppDeps,
+    path: &std::path::Path,
+    confirmed: bool,
+) -> iced::Task<Message> {
+    let path_str = path.to_string_lossy().to_string();
+    if !confirmed
+        && ask_about_private_folder(
+            app,
+            deps,
+            &path_str,
+            orbok_ui::state::FolderAddOrigin::SearchPage,
+        )
+    {
+        return iced::Task::none();
+    }
+    // Reuse an existing source if the canonical path already exists --
+    // never create duplicates (RFC-045 §19.3).
+    let card = if let Some(existing) =
+        bootstrap::find_source_by_canonical_path(&deps.catalog, &path_str)
+    {
+        existing
+    } else {
+        match bootstrap::add_source(&deps.catalog, &path_str) {
+            // The lookup above normally catches this; it differs only if
+            // `path_str` was not canonical.
+            Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => card,
+            Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
+                if let Some(warning) = sensitive {
+                    tracing::warn!("sensitive source: {warning}");
+                }
+                app.update(Message::SourceAdded(card.clone()));
+                card
+            }
+            Err(e) => {
+                tracing::error!("add source from search failed: {e}");
+                app.update(Message::FolderPickerCancelled);
+                app.update(notice_retry::search_folder_failed());
+                return iced::Task::none();
+            }
+        }
+    };
+
+    let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
+    let display_name = card.display_name.clone();
+
+    // Promote to selected search location and run the pending search --
+    // RFC-045 §8.1 "run search as soon as possible".
+    app.update(Message::SearchLocationSelected(
+        orbok_ui::SearchLocation::remembered(source_id.clone(), display_name),
+    ));
+
+    // Begin background preparation and immediately search whatever is
+    // already indexed (RFC-045 §14, §8.1).
+    match bootstrap::scan_and_index_source(&deps.catalog, source_id.as_str()) {
+        Ok(health) => {
+            app.update(Message::HealthUpdated(health));
+            cards_follow_the_queue(app, &deps.catalog);
+        }
+        Err(e) => tracing::warn!("initial scan failed: {e}"),
+    }
+
+    // Resume the search that triggered the picker (RFC-045 §8.1), through the
+    // ordinary path (Task 068): `RetrySearch` restores the query pending when
+    // the picker opened, then dispatches `SubmitSearch`, which now sees the
+    // selected location, sets `last_query`, runs the search and records
+    // history. There is no second search path here any more.
+    search_flow::after_folder_picked(&app.state).map_or_else(iced::Task::none, iced::Task::done)
+}
+
+/// Task 110: the one place the question "add a folder that may contain
+/// private files?" is decided. Returns whether it asked. It reads only, so
+/// nothing is saved or queued until the answer (RFC-003 §10.2: a warning
+/// **before** saving). Both add routines call it -- the Folders page's
+/// (picker and typed path) and search-in-folder's -- and an already-added
+/// folder, a path that is not a folder and a path that cannot be resolved
+/// are not asked about.
+fn ask_about_private_folder(
+    app: &mut OrbokApp,
+    deps: &AppDeps,
+    path: &str,
+    origin: orbok_ui::state::FolderAddOrigin,
+) -> bool {
+    if !bootstrap::needs_private_folder_question(&deps.catalog, path) {
+        return false;
+    }
+    app.update(Message::AskAddSensitiveFolder(
+        orbok_ui::state::PendingFolderAdd {
+            path: path.to_string(),
+            origin,
+        },
+    ));
+    true
+}
+
 /// Add a folder from the Folders page -- the picker's answer or a typed path
 /// (Task 105: one routine, so the sensitive-folder notice, "already added"
 /// and the scan cannot differ between them). A failure raises the failure
 /// notice; it never touches the path field, so a typed path stays for
 /// correction. Success clears the field (`SourceAdded`).
-fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str) {
+fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str, confirmed: bool) {
+    if !confirmed
+        && ask_about_private_folder(
+            app,
+            deps,
+            path,
+            orbok_ui::state::FolderAddOrigin::FoldersPage,
+        )
+    {
+        return;
+    }
     match bootstrap::add_source(&deps.catalog, path) {
         Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { .. }) => {
             app.update(Message::ShowNotice(
@@ -51,10 +162,8 @@ fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str) {
         }
         Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
             if let Some(warning) = sensitive {
+                // Added after the user answered "Add anyway"; logged, no notice.
                 tracing::warn!("sensitive source: {warning}");
-                app.update(Message::ShowNotice(
-                    orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                ));
             }
             let source_id = card.source_id.clone();
             app.update(Message::SourceAdded(card));
@@ -149,6 +258,14 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
     // Task 062: the removal confirmation was confirmed -- dispatch the
     // one existing removal path for the folder the dialog was opened
     // for.
+    // Task 110: "Add anyway" -- dispatch the add for the folder the question
+    // was about, and close it.
+    if matches!(message, Message::ConfirmAddSensitiveFolder) {
+        return app
+            .state
+            .take_confirmed_folder_add()
+            .map_or_else(iced::Task::none, iced::Task::done);
+    }
     if matches!(message, Message::ConfirmRemoveSource) {
         return app
             .state
@@ -327,7 +444,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         Message::AddSourceFolderPicked(folder) => {
             let path = folder.to_string_lossy().to_string();
             app.update(Message::SourcePathChanged(path.clone()));
-            add_folder_from_path(app, deps, &path);
+            add_folder_from_path(app, deps, &path, false);
             // Clears the picker flag whatever the outcome.
             app.update(message.clone());
             return iced::Task::none();
@@ -338,7 +455,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         Message::SubmitSourcePath => {
             let typed = app.state.source_path_input.trim().to_string();
             if !typed.is_empty() {
-                add_folder_from_path(app, deps, &typed);
+                add_folder_from_path(app, deps, &typed, false);
             }
             return iced::Task::none();
         }
@@ -578,66 +695,12 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             return iced::Task::none();
         }
         // RFC-045: folder picked — create or reuse the remembered folder.
-        Message::FolderPicked(path) => {
-            let path_str = path.to_string_lossy().to_string();
-            // Reuse an existing source if the canonical path already
-            // exists — never create duplicates (RFC-045 §19.3).
-            let card = if let Some(existing) =
-                bootstrap::find_source_by_canonical_path(&deps.catalog, &path_str)
-            {
-                existing
-            } else {
-                match bootstrap::add_source(&deps.catalog, &path_str) {
-                    // The lookup above normally catches this; it
-                    // differs only if `path_str` was not canonical.
-                    Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => card,
-                    Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
-                        if let Some(warning) = sensitive {
-                            tracing::warn!("sensitive source: {warning}");
-                            app.update(Message::ShowNotice(
-                                orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                            ));
-                        }
-                        app.update(Message::SourceAdded(card.clone()));
-                        card
-                    }
-                    Err(e) => {
-                        tracing::error!("add source from search failed: {e}");
-                        app.update(Message::FolderPickerCancelled);
-                        app.update(notice_retry::search_folder_failed());
-                        return iced::Task::none();
-                    }
-                }
-            };
-
-            let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
-            let display_name = card.display_name.clone();
-
-            // Promote to selected search location and run the
-            // pending search — RFC-045 §8.1 "run search as soon
-            // as possible".
-            app.update(Message::SearchLocationSelected(
-                orbok_ui::SearchLocation::remembered(source_id.clone(), display_name),
-            ));
-
-            // Begin background preparation and immediately search
-            // whatever is already indexed (RFC-045 §14, §8.1).
-            match bootstrap::scan_and_index_source(&deps.catalog, source_id.as_str()) {
-                Ok(health) => {
-                    app.update(Message::HealthUpdated(health));
-                    cards_follow_the_queue(app, &deps.catalog);
-                }
-                Err(e) => tracing::warn!("initial scan failed: {e}"),
-            }
-
-            // Resume the search that triggered the picker (RFC-045 §8.1),
-            // through the ordinary path (Task 068): `RetrySearch` restores
-            // the query pending when the picker opened, then dispatches
-            // `SubmitSearch`, which now sees the selected location, sets
-            // `last_query`, runs the search and records history. There is
-            // no second search path here any more.
-            return search_flow::after_folder_picked(&app.state)
-                .map_or_else(iced::Task::none, iced::Task::done);
+        Message::FolderPicked(path) => return folder_picked(app, deps, path, false),
+        // Task 110: the same, after "Add anyway".
+        Message::FolderPickedConfirmed(path) => return folder_picked(app, deps, path, true),
+        Message::AddFolderConfirmed(path) => {
+            add_folder_from_path(app, deps, path, true);
+            return iced::Task::none();
         }
         // RFC-042: Search again — restore text + valid filters, rerun.
         Message::SearchAgain(id) => {
