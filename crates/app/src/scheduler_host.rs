@@ -652,12 +652,6 @@ pub(crate) async fn run_with_context(
             report_health(&catalog, &mut output).await;
             last_health_report = Some(Instant::now());
             health_report_pending = false;
-            // Task 108: hand control back so the window receives the report
-            // now. `iced::stream::channel` runs this loop and hands out its
-            // messages from one task, and a message is delivered only when
-            // the loop yields; without this the whole backlog arrived when
-            // the queue went idle, and progress never showed while it ran.
-            tokio::task::yield_now().await;
         }
     }
 }
