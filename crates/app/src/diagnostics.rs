@@ -37,7 +37,9 @@ impl DiagnosticsManifest {
             app: "orbok",
             bundle_version: 1,
             created_at: orbok_core::now_iso8601(),
-            privacy_mode: policy.privacy_mode.as_str().to_string(),
+            // No privacy mode any more (RFC-039 amendment); RFC-040's bundle
+            // records the fixed default.
+            privacy_mode: "standard".to_string(),
             redacted: true,
             includes_document_contents: false,
             includes_search_text: false,

@@ -111,3 +111,142 @@ fn legacy_pause_on_battery_field_name_still_loads() {
          fall back to OrbokSettings::default() (true), not this file's `false`"
     );
 }
+
+// ── Task 115 (RFC-039 Amendment): the privacy mode leaves settings.json ──
+
+/// A complete settings file, as an older orbok wrote it, with `privacy_mode`
+/// and `remember_recent_searches` as given (`None` omits the field).
+fn old_settings_json(privacy_mode: Option<&str>, remember: bool) -> String {
+    let mode = privacy_mode
+        .map(|m| format!("\"privacy_mode\": \"{m}\","))
+        .unwrap_or_default();
+    format!(
+        r#"{{
+            "embedding_model_dir": null,
+            "reranker_model_dir": null,
+            "index_mode": "balanced",
+            "locale": "en",
+            "theme": "system",
+            "text_scale": "default",
+            "reduced_motion": false,
+            "rerank_enabled": false,
+            "background_indexing": true,
+            "pause_embedding_on_battery": true,
+            {mode}
+            "remember_recent_searches": {remember},
+            "persist_snippets": true,
+            "clear_temporary_previews_on_exit": false
+        }}"#
+    )
+}
+
+fn load_from(json: &str) -> OrbokSettings {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, json).unwrap();
+    load_settings(&path)
+}
+
+/// §5 test 1: a hand-edited `"strict"` is honoured once, as **Remember recent
+/// searches: Off** -- a user's effective choice is never silently reversed --
+/// and the next save no longer carries the field.
+#[test]
+fn a_strict_privacy_mode_loads_as_recent_searches_off_and_is_not_saved_again() {
+    let loaded = load_from(&old_settings_json(Some("strict"), true));
+    assert!(
+        !loaded.remember_recent_searches,
+        "\"strict\" loads with recent searches off"
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    save_settings(&path, &loaded).unwrap();
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !saved.contains("privacy_mode"),
+        "the saved file drops the field: {saved}"
+    );
+    // And it stays Off on the next load: the file now says so itself.
+    assert!(!load_settings(&path).remember_recent_searches);
+}
+
+/// Any other value, or no field, changes nothing -- the toggle's own value
+/// stands, on or off.
+#[test]
+fn any_other_privacy_mode_or_none_changes_nothing() {
+    for mode in [
+        None,
+        Some("standard"),
+        Some("portable"),
+        Some("diagnostics"),
+        Some("nonsense"),
+    ] {
+        for remember in [true, false] {
+            let loaded = load_from(&old_settings_json(mode, remember));
+            assert_eq!(
+                loaded.remember_recent_searches, remember,
+                "privacy_mode {mode:?}, toggle {remember}"
+            );
+            let saved = serde_json::to_string(&loaded).unwrap();
+            assert!(!saved.contains("privacy_mode"), "{mode:?}: {saved}");
+        }
+    }
+}
+
+/// The rest of the file is read as before (the compatibility rule must not
+/// cost a profile its other settings).
+#[test]
+fn a_strict_file_keeps_its_other_settings() {
+    let loaded =
+        load_from(&old_settings_json(Some("strict"), true).replace("\"system\"", "\"dark\""));
+    assert_eq!(loaded.theme, "dark");
+    assert!(loaded.background_indexing);
+}
+
+/// §5 test 2: the toggle is the whole truth. With it Off nothing is recorded;
+/// with it On one search is -- whatever any other setting (including a
+/// leftover privacy mode) says.
+#[test]
+fn recent_searches_follow_the_toggle_and_nothing_else() {
+    let catalog = orbok_db::Catalog::open_in_memory().unwrap();
+    for mode in [
+        None,
+        Some("standard"),
+        Some("portable"),
+        Some("diagnostics"),
+    ] {
+        for (remember, expected) in [(false, 0), (true, 1)] {
+            let settings = load_from(&old_settings_json(mode, remember));
+            crate::history::record_search(
+                &catalog,
+                &settings.privacy_settings(),
+                &settings.history_settings(),
+                &format!("query {mode:?} {remember}"),
+                &[],
+                1,
+                &settings.locale,
+            );
+            let recorded = crate::history::load_history(&catalog)
+                .iter()
+                .filter(|e| e.search_text == format!("query {mode:?} {remember}"))
+                .count();
+            assert_eq!(recorded, expected, "mode {mode:?}, toggle {remember}");
+        }
+    }
+    // A leftover "strict" is the toggle Off, so it records nothing either.
+    let strict = load_from(&old_settings_json(Some("strict"), true));
+    crate::history::record_search(
+        &catalog,
+        &strict.privacy_settings(),
+        &strict.history_settings(),
+        "kept private",
+        &[],
+        1,
+        &strict.locale,
+    );
+    assert!(
+        crate::history::load_history(&catalog)
+            .iter()
+            .all(|e| e.search_text != "kept private")
+    );
+}

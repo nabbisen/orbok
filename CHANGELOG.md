@@ -82,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The model download screen uses plain words** (Task 115): "Version" where it
+  said "Immutable revision", and "Vocabulary" where it said "Tokenizer".
+
 - **orbok asks before adding a folder that may contain private files** (Task
   110), such as `.ssh` or `.aws`: nothing is saved or prepared until you choose
   "Add anyway". Before, the folder was added and prepared first, and a notice
@@ -119,6 +122,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Task 109): adding a single file, per-folder hidden-file and symlink
   settings, storage modes and a Fast search mode. Japanese: the folder card
   now says 準備完了 and 要更新 like the rest of the app.
+
+### Removed
+
+- **An unused privacy mode setting** (Task 115): `settings.json` no longer has
+  `privacy_mode`. Nothing in the app could set it; a file that still says
+  `"strict"` keeps recent searches off. Remember recent searches is the one
+  privacy control.
 
 ## [0.26.1] — 2026-09-22
 

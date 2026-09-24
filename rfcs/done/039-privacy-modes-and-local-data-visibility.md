@@ -5,6 +5,7 @@
 **RFC:** 039  
 **Title:** Privacy Modes and Local Data Visibility  
 **Status:** Implemented (v0.19.0)
+**Amended:** 2026-09-25 (Amendment 1, §20a: privacy is the fixed defaults and one switch)
 **Target milestone:** Privacy UX / local-first trust  
 **Date:** 2026-06-18  
 **Related RFCs:** RFC-001 Local Data Classification and Lifecycle, RFC-011 Storage Dashboard and Cleanup UX, RFC-042 Search History and Reopen Recent Searches, RFC-043 Model Download Readiness Check and Bounded Concurrency, RFC-040 Safe Diagnostics and Redacted Support Bundle  
@@ -489,6 +490,53 @@ This RFC is accepted when:
 8. User files are never deleted by cleanup without explicit destructive reset.
 9. Default UI uses plain privacy language.
 10. Tests verify sensitive defaults.
+
+## 20a. Amendment 1 (2026-09-25) — privacy is the fixed defaults and one switch
+
+Task 115's origin: Task 112's audit (Review Request 290) found that the
+modes this RFC defines were never a product. `PrivacyMode` existed in
+`orbok-core` and in `settings.json`, no screen named or set a mode, and its one
+reachable effect (Strict turning recent searches off) needed a hand-edited
+file. A mode that no screen can set, and whose only effect is reachable that
+way, is worse than no mode: a user who set `"strict"` by hand got a Settings
+page whose **Remember recent searches** toggle might not describe what orbok
+did. The owner decided (2026-09-24, fixed safe defaults and few settings; and
+Review 290 §1) that the RFC changes, not the product.
+
+**What is true now.**
+
+- **Privacy is fixed safe defaults:** documents are processed on this computer
+  only; nothing is uploaded; files are never changed or deleted by cleanup.
+- **The one control is Remember recent searches** (Settings → Privacy). It is
+  the whole truth about whether a search is recorded.
+- **Text-bearing caches are cleared from Storage** (Safe cleanup, Task 081
+  and after), not from a privacy screen.
+- **Diagnostics wait for RFC-040** (accepted, unbuilt). Its policy type and
+  messages stay; with no mode to read, they behave as the Standard mode
+  always did (sensitive opt-ins may be offered, none is on).
+- **`PrivacyMode`, `settings.privacy_mode`, `PrivacySettings.mode`,
+  `persist_snippets`, `allows_snippet_persistence` and the three messages no
+  view sent (`SetPrivacyMode`, `PrivacySettingChanged`,
+  `ClearTemporaryPreviews`) are removed.** The 19 keys that named the mode
+  screen (§8, §9, §10, §11) are deleted.
+- **Compatibility.** A `settings.json` that says `"strict"` loads as
+  **Remember recent searches: Off**, once, and the next save no longer
+  writes `privacy_mode`: a user's effective choice is never silently
+  reversed. Any other value, or none, changes nothing.
+
+**Sections superseded:** §5 (the four modes; Standard is simply the defaults),
+§8 (the mode picker), §9 (enabling Strict), §10's "Strict disables history",
+§11's snippet-persistence setting, and §14's mode input to diagnostics.
+§13 (model download privacy), §15–§16 (Storage and cleanup) stand.
+
+**Criteria changed (§20).** **1** — modes are not a product concept; the
+criterion is met by the fixed defaults being defined in one place
+(`PrivacySettings::default`). **3** — there is no Strict mode; what reduces
+remembered data is the toggle (Off) and Storage's cleanup. **5** — diagnostics
+have no mode to obey; the policy's defaults are fixed and RFC-040 owns the
+rest. **9** — the default UI's privacy language is one sentence and one
+toggle, in plain words. **4** now reads "recent searches obey the toggle".
+Criteria 2, 6, 7, 8 and 10 are unchanged.
 
 ---
 

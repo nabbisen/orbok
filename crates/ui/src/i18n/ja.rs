@@ -6,7 +6,6 @@ pub fn message(key: MessageKey) -> &'static str {
     use MessageKey::*;
     match key {
         AppTitle => "orbok",
-        LocalOnlyBadge => "ローカル専用",
         NavSearch => "検索",
         NavSources => "フォルダー",
         NavIndexing => "準備",
@@ -40,7 +39,6 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NarrowFolderConfirm => "含めない",
         IndexingTitle => "検索の準備",
-        IndexingIdle => "検索の準備ができました",
         IndexingHealthIndexed => "準備完了",
         IndexingHealthStale => "要更新",
         IndexingHealthFailed => "失敗",
@@ -133,14 +131,8 @@ pub fn message(key: MessageKey) -> &'static str {
             "モデルファイルをすでにお持ちの場合は、そのフォルダーを指定してください。"
         }
         WizardBodyFilesIncomplete => "そのフォルダーには必要なファイルの一部がありません。",
-        WizardFilesNeededLabel => "フォルダー内の必要ファイル:",
-        WizardDownloadHint => {
-            "ダウンロード: huggingface-cli download intfloat/multilingual-e5-small"
-        }
-        WizardPathInputPlaceholder => "モデルフォルダーのパス (例: ~/models/multilingual-e5-small)",
         WizardActionValidate => "検証",
         WizardActionUseModel => "このモデルを使用",
-        WizardActionContinue => "orbok を開始",
         WizardPathPlaceholder => "フォルダーのパス…",
         WizardDownloadAction => "HuggingFaceからダウンロード",
         WizardDownloadProgress => "モデルをダウンロード中…",
@@ -150,9 +142,6 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardOr => "または",
         WizardMissingMarker => "不足",
         WizardBack => "戻る",
-        WizardPreviousPathLabel => "最後の既知のパス",
-        WizardValidationOk => "確認済み",
-        WizardValidationFail => "見つかりません",
         WizardReadyBody => "意味による検索が利用可能になりました。",
         ModelConsentTitle => "モデルのダウンロードを確認",
         ModelConsentBody => {
@@ -163,7 +152,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         ModelConsentProvider => "提供元",
         ModelConsentSource => "ソース",
-        ModelConsentRevision => "変更されないリビジョン",
+        ModelConsentRevision => "バージョン",
         ModelConsentExactSize => "正確なダウンロードサイズ",
         ModelConsentLicense => "ライセンス",
         ModelConsentLocation => "保存場所",
@@ -173,7 +162,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelTrustUserSupplied => "ユーザー提供 / 出所未検証",
         ModelConsentConfirm => "同意してダウンロード",
         ModelConsentCancel => "戻る",
-        ModelArtifactTokenizer => "トークナイザー",
+        ModelArtifactTokenizer => "語彙データ",
         ModelArtifactOnnx => "検索モデル",
         ModelDeliveryStoreUnavailable => {
             "モデル保存領域を使用できないか、使用中です。もう一度お試しください。"
@@ -284,7 +273,6 @@ pub fn message(key: MessageKey) -> &'static str {
         AddSensitiveConfirm => "追加する",
         NoticeDismiss => "閉じる",
         Cancel => "キャンセル",
-        Confirm => "確認",
         // RFC-041: Search, Narrow Results, Browse Around
         SearchNarrowResults => "結果を絞り込む",
         SearchNarrowedBy => "絞り込み条件",
@@ -332,10 +320,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceFolderNotFoundDetail => {
             "ドライブが切断されたか、フォルダーが移動された可能性があります。"
         }
-        SourceFilesNotDeletedNotice => {
-            "ファイルは削除されていません。orbokがこのフォルダーを見つけられないだけです。"
-        }
-        SourceManyFilesChanged => "多くのファイルが変更されました。orbokが徐々に準備します。",
         // RFC-038: Result trust badges and recovery
         TrustNeedsUpdate => "要更新",
         TrustFileNotFound => "ファイルが見つかりません",
@@ -360,41 +344,10 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustSizeLimitDetail => "この大きなファイルの一部のみが準備されました。",
         TrustCannotOpenDetail => "orbokはこのファイルを開けません。",
         // RFC-043: Model download readiness
-        ModelCheckingFiles => "モデルを確認中...",
-        ModelAlreadyReady => "意味による検索の準備完了",
-        ModelNeedsDownload => "不足しているファイルのみダウンロードします。",
-        ModelDownloadInProgress => "モデルをダウンロード中",
-        ModelFilesStayLocal => "ファイルはこのコンピューターに保存されます。",
         ModelDownloadFailed => "ダウンロードが完了しませんでした",
         ModelDownloadRetry => "もう一度試す",
-        ModelRepairingFiles => "修復が必要なファイルのみダウンロードします。",
-        ModelBasicSearchAvailable => "キーワード検索は使えます。意味による検索は後で追加できます。",
         ModelDownloadingWhatNeeded => "必要なものをダウンロード中...",
         // RFC-039: Privacy modes
-        PrivacyTitle => "プライバシー",
-        PrivacyModeStandard => "標準",
-        PrivacyModeStrict => "厳格",
-        PrivacyModePortable => "ポータブル",
-        PrivacyModeStrictDescription => "厳格プライバシーはorbokが記憶する内容を減らします。",
-        PrivacyModePortableDescription => "orbokはアプリのコピーの隣にデータを保存します。",
-        PrivacyRememberSearches => "最近の検索を記憶する",
-        PrivacyRememberSearchesHint => "最近の検索はこのコンピューターにのみ保存されます。",
-        PrivacySearchesDisabledStrict => "厳格プライバシーが有効な間は最近の検索は保存されません。",
-        PrivacyTemporaryPreviews => "一時プレビュー",
-        PrivacyTemporaryPreviewsHint => {
-            "一時プレビューにより結果が速く開きます。いつでも削除できます。"
-        }
-        PrivacyClearPreviews => "一時プレビューを消去",
-        PrivacyEnableStrictConfirm => "厳格プライバシーを有効にしますか？",
-        PrivacyEnableStrictBody => {
-            "orbokは最近の検索の保存を停止し、一時プレビューを減らします。保存済みのデータも消去できます。"
-        }
-        PrivacyTurnOn => "有効にする",
-        PrivacyTurnOnAndClear => "有効にして消去",
-        PrivacyFilesNotDeleted => "ファイルは変更も削除もされません。",
-        PrivacyModelDownloadNote => {
-            "orbokはモデルをダウンロードしますが、あなたのドキュメントはアップロードされません。"
-        }
         // RFC-040: Diagnostics
         DiagnosticsTitle => "診断",
         DiagnosticsIntro => {
@@ -422,7 +375,6 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-042: search history
         RecentSearchesLabel => "最近の検索",
         SearchAgainButton => "もう一度検索",
-        SearchingAgainStatus => "再検索中\u{2026}",
         OpenRecentSearches => "最近の検索",
         ClearRecentSearches => "最近の検索を消去",
         ClearRecentSearchesConfirmTitle => "最近の検索を消去しますか？",
@@ -433,9 +385,6 @@ pub fn message(key: MessageKey) -> &'static str {
         RecentSearchesClearedNotice => "最近の検索を消去しました。",
         RememberRecentSearches => "最近の検索を記憶する",
         RecentSearchesPrivacyNote => "最近の検索はこのコンピューター上にのみ保存されます。",
-        RecentSearchesStrictPrivacyNote => {
-            "厳格なプライバシーがオンの間、最近の検索は保存されません。"
-        }
         NoRecentSearches => "最近の検索はまだありません。",
         DroppedFilterNotice => "利用できなくなった絞り込み条件が1つ削除されました。",
         DiagnosticsAppVersion => "アプリのバージョン",

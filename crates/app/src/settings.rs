@@ -25,7 +25,14 @@ use std::path::Path;
 use std::path::PathBuf;
 
 /// All persistent user preferences.
+///
+/// `Serialize` and `Deserialize` are written out below around the derived
+/// ones (`remote = "Self"`) for one reason: a `settings.json` an older orbok
+/// wrote may carry `"privacy_mode": "strict"`, a field this struct no longer
+/// has (RFC-039 amendment, Task 115), and that value must still turn recent
+/// searches off, once, as it did.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(remote = "Self")]
 pub struct OrbokSettings {
     /// Path to the folder containing `onnx/model.onnx` and
     /// `tokenizer.json` for the embedding model. Set by the startup
@@ -77,15 +84,10 @@ pub struct OrbokSettings {
     #[serde(alias = "pause_on_battery")]
     pub pause_embedding_on_battery: bool,
 
-    /// Privacy mode (RFC-039 §5). One of: "standard" | "strict" | "portable".
-    pub privacy_mode: String,
-
-    /// Whether to persist recent search queries (RFC-039 §10).
-    /// Forced off in Strict mode.
+    /// Whether to persist recent search queries (RFC-039 §10): the one
+    /// privacy control, and the whole truth about whether a search is
+    /// recorded.
     pub remember_recent_searches: bool,
-
-    /// Whether to cache result snippets across sessions (RFC-039 §11).
-    pub persist_snippets: bool,
 
     /// Whether to clear temporary previews on app exit (RFC-039 §11).
     pub clear_temporary_previews_on_exit: bool,
@@ -111,9 +113,7 @@ impl Default for OrbokSettings {
             rerank_enabled: false,
             background_indexing: true,
             pause_embedding_on_battery: true,
-            privacy_mode: "standard".into(),
             remember_recent_searches: true,
-            persist_snippets: true,
             clear_temporary_previews_on_exit: false,
         }
     }
@@ -181,19 +181,41 @@ pub fn save_settings(path: &Path, settings: &OrbokSettings) -> std::io::Result<(
 #[cfg(test)]
 mod tests;
 
+impl serde::Serialize for OrbokSettings {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Self::serialize(self, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for OrbokSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        // Compatibility (Task 115 §1.4): only `"strict"` means anything. It is
+        // read once, as the toggle Off; the next save no longer writes the
+        // field, and the file then says the same thing itself. Any other
+        // value, or none, changes nothing.
+        let strict = value
+            .get("privacy_mode")
+            .and_then(serde_json::Value::as_str)
+            == Some("strict");
+        let mut settings = Self::deserialize(value).map_err(D::Error::custom)?;
+        if strict {
+            settings.remember_recent_searches = false;
+        }
+        Ok(settings)
+    }
+}
+
 impl OrbokSettings {
-    /// Build effective [`PrivacySettings`] from the persisted strings,
-    /// applying strict-mode overrides (RFC-039 §9, RFC-042 §14).
+    /// Build effective [`PrivacySettings`] from the persisted values.
     pub fn privacy_settings(&self) -> orbok_core::PrivacySettings {
         orbok_core::PrivacySettings {
-            mode: orbok_core::PrivacyMode::parse(&self.privacy_mode),
             remember_recent_searches: self.remember_recent_searches,
-            persist_snippets: self.persist_snippets,
             clear_temporary_previews_on_exit: self.clear_temporary_previews_on_exit,
             diagnostics_include_paths: false,
             diagnostics_include_recent_searches: false,
         }
-        .with_mode_applied()
     }
 
     /// Effective search-history settings (RFC-042 §7.3).

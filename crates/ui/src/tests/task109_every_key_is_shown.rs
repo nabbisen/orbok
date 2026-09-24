@@ -27,46 +27,6 @@ use std::path::{Path, PathBuf};
 /// (both locales) or building the feature removes the row.
 const UNREFERENCED: &[(MessageKey, &str)] = &[
     (
-        MessageKey::LocalOnlyBadge,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::IndexingIdle,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardFilesNeededLabel,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardDownloadHint,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardPathInputPlaceholder,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardActionContinue,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardPreviousPathLabel,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardValidationOk,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::WizardValidationFail,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::Confirm,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
         MessageKey::SearchNarrowResults,
         "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
     ),
@@ -163,114 +123,6 @@ const UNREFERENCED: &[(MessageKey, &str)] = &[
         "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
     ),
     (
-        MessageKey::SourceFilesNotDeletedNotice,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::SourceManyFilesChanged,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::ModelCheckingFiles,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelAlreadyReady,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelNeedsDownload,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelDownloadInProgress,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelFilesStayLocal,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelRepairingFiles,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::ModelBasicSearchAvailable,
-        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyTitle,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModeStandard,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModeStrict,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModePortable,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModeStrictDescription,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModePortableDescription,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyRememberSearches,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyRememberSearchesHint,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacySearchesDisabledStrict,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyTemporaryPreviews,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyTemporaryPreviewsHint,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyClearPreviews,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyEnableStrictConfirm,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyEnableStrictBody,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyTurnOn,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyTurnOnAndClear,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyFilesNotDeleted,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
-        MessageKey::PrivacyModelDownloadNote,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
-    ),
-    (
         MessageKey::DiagnosticsTitle,
         "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
     ),
@@ -309,14 +161,6 @@ const UNREFERENCED: &[(MessageKey, &str)] = &[
     (
         MessageKey::DiagnosticsShowFile,
         "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::SearchingAgainStatus,
-        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
-    ),
-    (
-        MessageKey::RecentSearchesStrictPrivacyNote,
-        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
     ),
 ];
 
@@ -397,7 +241,7 @@ fn every_unreferenced_key_exemption_is_load_bearing() {
 /// `UNREFERENCED` only shrinks (the rule of `LEGACY-ALLOWLIST.txt`, made
 /// mechanical): removing an entry lowers this number in the same commit, and
 /// nothing can raise it without editing it here, where a reviewer sees it.
-const UNREFERENCED_CEILING: usize = 73;
+const UNREFERENCED_CEILING: usize = 34;
 
 #[test]
 fn the_unreferenced_list_only_shrinks() {

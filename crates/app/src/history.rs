@@ -1,8 +1,8 @@
 //! Search history orchestration (RFC-042).
 //!
 //! Thin glue between the iced update loop and `SearchHistoryRepository`.
-//! Honors the privacy gate: when history is disabled (setting off or strict
-//! privacy mode) nothing is recorded.
+//! Honors the privacy gate: when history is disabled (the Remember recent
+//! searches toggle is off) nothing is recorded.
 
 use orbok_core::{
     OrbokResult, PrivacySettings, SearchHistoryEntry, SearchHistoryId, SearchHistorySettings,
@@ -15,7 +15,7 @@ use orbok_search::ActiveFilter;
 /// Whether history should be recorded, given current privacy settings.
 ///
 /// Mirrors `PrivacySettings::effective_recent_searches()` (RFC-039/§14):
-/// disabled by the per-user toggle or by strict privacy mode.
+/// the per-user toggle, and nothing else.
 pub fn history_enabled(privacy: &PrivacySettings) -> bool {
     privacy.effective_recent_searches()
 }

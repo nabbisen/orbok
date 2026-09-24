@@ -749,6 +749,20 @@ This RFC is accepted when:
 
 ---
 
+## 18a. Amendment 1 (2026-09-25) — there is no Strict mode; and one status line is not offered
+
+Task 115's origin: Task 112's audit (Review Request 290) and Review 290 §1.
+**Criterion 8** ("Strict privacy mode disables history") describes a mode that
+no screen could set; RFC-039 Amendment 1 removes the mode. What is true now:
+**the one control, Remember recent searches, disables history**, and a
+`settings.json` that still says `"strict"` loads as that toggle Off, once.
+Criterion 7 is the criterion that is met by that control. Separately, the
+"Searching again…" line (§9 step 5, and §11.4's wireframe) is not offered: it named a second word
+for the state the search page already calls "Searching…" (Task 068), one word
+per state.
+
+---
+
 ## 19. Final Decision
 
 Implement search history as:

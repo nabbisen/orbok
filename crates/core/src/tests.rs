@@ -177,56 +177,16 @@ fn timestamps_are_iso8601_utc() {
 
 // ── RFC-039: Privacy mode tests ───────────────────────────────────────
 
-use crate::privacy::{DiagnosticsPolicy, LocalDataCategory, PrivacyMode, PrivacySettings};
+use crate::privacy::{DiagnosticsPolicy, LocalDataCategory, PrivacySettings};
 
 #[test]
-fn default_privacy_mode_is_standard() {
-    assert_eq!(PrivacySettings::default().mode, PrivacyMode::Standard);
-}
-
-#[test]
-fn strict_mode_disables_recent_searches() {
-    assert!(!PrivacyMode::Strict.allows_recent_searches());
-    assert!(PrivacyMode::Standard.allows_recent_searches());
-}
-
-#[test]
-fn strict_mode_disables_snippet_persistence() {
-    assert!(!PrivacyMode::Strict.allows_snippet_persistence());
-    assert!(PrivacyMode::Standard.allows_snippet_persistence());
-}
-
-#[test]
-fn strict_settings_applied_forces_off_searches() {
-    let settings = PrivacySettings {
-        mode: PrivacyMode::Strict,
-        remember_recent_searches: true, // attempted override
-        ..PrivacySettings::default()
-    }
-    .with_mode_applied();
-    assert!(!settings.effective_recent_searches());
-}
-
-#[test]
-fn standard_settings_respects_user_choice() {
-    let settings = PrivacySettings {
-        mode: PrivacyMode::Standard,
-        remember_recent_searches: false, // user turned it off
+fn recent_searches_default_on_and_follow_the_toggle_only() {
+    assert!(PrivacySettings::default().effective_recent_searches());
+    let off = PrivacySettings {
+        remember_recent_searches: false, // the user turned it off
         ..PrivacySettings::default()
     };
-    assert!(!settings.effective_recent_searches());
-}
-
-#[test]
-fn privacy_mode_roundtrip() {
-    for mode in [
-        PrivacyMode::Standard,
-        PrivacyMode::Strict,
-        PrivacyMode::Portable,
-        PrivacyMode::Diagnostics,
-    ] {
-        assert_eq!(PrivacyMode::parse(mode.as_str()), mode);
-    }
+    assert!(!off.effective_recent_searches());
 }
 
 #[test]
@@ -254,29 +214,15 @@ fn local_data_category_labels_avoid_technical_terms() {
 }
 
 #[test]
-fn diagnostics_policy_strict_disables_sensitive_paths() {
+fn diagnostics_policy_never_enables_raw_paths_by_default() {
     let settings = PrivacySettings {
-        mode: PrivacyMode::Strict,
         diagnostics_include_paths: true, // attempted override
         ..PrivacySettings::default()
     };
     let policy = DiagnosticsPolicy::from_privacy(&settings);
     assert!(
         !policy.include_raw_paths,
-        "strict must prevent raw path inclusion"
+        "raw paths are never included by default (RFC-040)"
     );
-    assert!(
-        !policy.allows_sensitive_optins(),
-        "strict must hide sensitive opt-ins"
-    );
-}
-
-#[test]
-fn diagnostics_policy_standard_allows_opt_ins() {
-    let settings = PrivacySettings {
-        mode: PrivacyMode::Standard,
-        ..PrivacySettings::default()
-    };
-    let policy = DiagnosticsPolicy::from_privacy(&settings);
-    assert!(policy.allows_sensitive_optins());
+    assert!(policy.allows_sensitive_optins(), "the Standard default");
 }

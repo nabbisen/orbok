@@ -121,7 +121,6 @@ macro_rules! message_keys {
 message_keys! {
     // Application chrome
     AppTitle,
-    LocalOnlyBadge,
     // Navigation
     NavSearch,
     NavSources,
@@ -152,7 +151,6 @@ message_keys! {
     NarrowFolderConfirm,
     // Indexing view
     IndexingTitle,
-    IndexingIdle,
     IndexingHealthIndexed,
     IndexingHealthStale,
     IndexingHealthFailed,
@@ -247,12 +245,8 @@ message_keys! {
     WizardBodyFileMissing,
     WizardBodyLocateExisting,
     WizardBodyFilesIncomplete,
-    WizardFilesNeededLabel,
-    WizardDownloadHint,
-    WizardPathInputPlaceholder,
     WizardActionValidate,
     WizardActionUseModel,
-    WizardActionContinue,
     WizardPathPlaceholder,
     WizardDownloadAction,
     WizardDownloadProgress,
@@ -262,9 +256,6 @@ message_keys! {
     WizardOr,
     WizardMissingMarker,
     WizardBack,
-    WizardPreviousPathLabel,
-    WizardValidationOk,
-    WizardValidationFail,
     WizardReadyBody,
     ModelConsentTitle,
     ModelConsentBody,
@@ -361,7 +352,6 @@ message_keys! {
     AddSensitiveConfirm,
     NoticeDismiss,
     Cancel,
-    Confirm,
     // RFC-041: Search, Narrow Results, Browse Around
     SearchNarrowResults,
     SearchNarrowedBy,
@@ -409,8 +399,6 @@ message_keys! {
     SourceRemoveConfirmBody,
     SourceRemoveConfirm,
     SourceFolderNotFoundDetail,
-    SourceFilesNotDeletedNotice,
-    SourceManyFilesChanged,
     // RFC-038: Result trust badges and recovery
     TrustNeedsUpdate,
     TrustFileNotFound,
@@ -431,35 +419,10 @@ message_keys! {
     TrustSizeLimitDetail,
     TrustCannotOpenDetail,
     // RFC-043: Model download readiness
-    ModelCheckingFiles,
-    ModelAlreadyReady,
-    ModelNeedsDownload,
-    ModelDownloadInProgress,
-    ModelFilesStayLocal,
     ModelDownloadFailed,
     ModelDownloadRetry,
-    ModelRepairingFiles,
-    ModelBasicSearchAvailable,
     ModelDownloadingWhatNeeded,
     // RFC-039: Privacy modes
-    PrivacyTitle,
-    PrivacyModeStandard,
-    PrivacyModeStrict,
-    PrivacyModePortable,
-    PrivacyModeStrictDescription,
-    PrivacyModePortableDescription,
-    PrivacyRememberSearches,
-    PrivacyRememberSearchesHint,
-    PrivacySearchesDisabledStrict,
-    PrivacyTemporaryPreviews,
-    PrivacyTemporaryPreviewsHint,
-    PrivacyClearPreviews,
-    PrivacyEnableStrictConfirm,
-    PrivacyEnableStrictBody,
-    PrivacyTurnOn,
-    PrivacyTurnOnAndClear,
-    PrivacyFilesNotDeleted,
-    PrivacyModelDownloadNote,
     // RFC-040: Diagnostics
     DiagnosticsTitle,
     DiagnosticsIntro,
@@ -493,7 +456,6 @@ message_keys! {
     /// Button on each history entry.
     SearchAgainButton,
     /// Status shown while restoring a history entry (RFC-042 §9 step 5).
-    SearchingAgainStatus,
     /// Button to open the Recent searches panel.
     OpenRecentSearches,
     /// Button to clear all history entries.
@@ -509,7 +471,6 @@ message_keys! {
     /// Privacy sub-label when enabled (RFC-042 §14).
     RecentSearchesPrivacyNote,
     /// Privacy sub-label when strict privacy is on (RFC-042 §14).
-    RecentSearchesStrictPrivacyNote,
     /// Shown when the history list is empty.
     NoRecentSearches,
     /// Notice when a filter was dropped on reopen (RFC-042 §9 step 3).

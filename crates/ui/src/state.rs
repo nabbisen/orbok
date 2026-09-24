@@ -1027,13 +1027,6 @@ pub enum Message {
         needs_download: bool,
         needs_repair: bool,
     },
-    // RFC-039: privacy mode
-    SetPrivacyMode(String),
-    PrivacySettingChanged {
-        key: String,
-        value: bool,
-    },
-    ClearTemporaryPreviews,
     // RFC-040: diagnostics
     DiagnosticsCreateBundle,
     DiagnosticsBundleCreated(String),
@@ -1604,10 +1597,6 @@ impl AppState {
             }
             // RFC-043: model readiness
             Message::ModelReadinessChecked { .. } => {} // handled by orbok
-            // RFC-039: privacy
-            Message::SetPrivacyMode(_) => {} // handled by orbok
-            Message::PrivacySettingChanged { .. } => {} // handled by orbok
-            Message::ClearTemporaryPreviews => {} // handled by orbok
             // RFC-040: diagnostics
             Message::DiagnosticsCreateBundle => {} // handled by orbok
             Message::DiagnosticsBundleCreated(_) => {

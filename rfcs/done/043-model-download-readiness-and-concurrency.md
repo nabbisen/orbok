@@ -5,6 +5,7 @@
 **RFC:** 043  
 **Title:** Model Download Readiness Check and Bounded Concurrency  
 **Status:** Implemented (v0.19.0)
+**Amended:** 2026-09-25 (Amendment 1: the copy sections were superseded by RFC-050's wizard)
 **Target milestone:** Setup Wizard / Model Management / Download Reliability  
 **Date:** 2026-06-18  
 **Related RFCs:** RFC-012 Model Registry and Installation Workflow, RFC-029 Model Download Integrity and Trust Policy, RFC-042 Search History and Reopen Recent Searches  
@@ -1098,6 +1099,34 @@ This RFC is accepted when:
 11. Default UI shows one friendly progress experience.
 12. Basic search remains available if better search setup is skipped or fails.
 13. No technical download jargon appears in the default UI.
+
+---
+
+## 26a. Amendment 1 (2026-09-25) — the copy was superseded by RFC-050's wizard
+
+Task 115's origin: Task 112's audit (Review Request 290 §2). This RFC's
+*behaviour* shipped and is met (criteria 1–12): the local check, skipping valid
+files, `.part` staging and a final rename, two concurrent transfers, retry that
+re-checks. Its **user-facing copy** (§14, §15.1) was written before RFC-050
+rebuilt delivery as the managed model store, and RFC-050's wizard says the same
+things in other words. The seven keys that carried this RFC's wording were
+never rendered and are deleted:
+
+| This RFC's copy | Replaced by (the wizard's own key) |
+|---|---|
+| §14.1 "Checking…" (`ModelCheckingFiles`) | `WizardTitleValidating` "Checking model folder" |
+| §14.2 "…ready" (`ModelAlreadyReady`) | `WizardTitleReady`, the identical text |
+| §14.3 "only what is missing" (`ModelNeedsDownload`) | the consent screen's "Download from HuggingFace" plan |
+| §14.4 "Downloading…" (`ModelDownloadInProgress`) | `WizardDownloadProgress` "Downloading model…" |
+| §14.4 "Your files stay on this computer." (`ModelFilesStayLocal`) | `WizardBodyNotConfigured` "No files are uploaded — inference runs locally." |
+| §14.5 "Repairing…" (`ModelRepairingFiles`) | none: a failed verification says "Try again", and Try again repairs (criterion 9) |
+| §15.1 "keyword search is ready" (`ModelBasicSearchAvailable`) | `ModelsKeywordOnlyHint`, `WizardBodyNotConfigured` |
+
+**Criterion 13** (no technical download jargon in the default UI) was only
+partly met: the consent screen said "Immutable revision" and, while
+downloading, "Tokenizer". They now say **Version** (「バージョン」; the value
+beside it is still the exact revision identifier) and **Vocabulary**
+(「語彙データ」; beside "Search model"). Criterion 13 is met.
 
 ---
 

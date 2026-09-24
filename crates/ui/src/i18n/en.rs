@@ -6,7 +6,6 @@ pub fn message(key: MessageKey) -> &'static str {
     use MessageKey::*;
     match key {
         AppTitle => "orbok",
-        LocalOnlyBadge => "Local Only",
         NavSearch => "Search",
         NavSources => "Folders",
         NavIndexing => "Preparing",
@@ -40,7 +39,6 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         NarrowFolderConfirm => "Stop including",
         IndexingTitle => "Preparing search",
-        IndexingIdle => "Search is ready",
         IndexingHealthIndexed => "Ready",
         IndexingHealthStale => "Needs update",
         IndexingHealthFailed => "Failed",
@@ -136,12 +134,8 @@ pub fn message(key: MessageKey) -> &'static str {
              contains them."
         }
         WizardBodyFilesIncomplete => "That folder is missing some of the required files.",
-        WizardFilesNeededLabel => "Required files in the folder:",
-        WizardDownloadHint => "Download: huggingface-cli download intfloat/multilingual-e5-small",
-        WizardPathInputPlaceholder => "Path to model folder (e.g. ~/models/multilingual-e5-small)",
         WizardActionValidate => "Validate",
         WizardActionUseModel => "Use this model",
-        WizardActionContinue => "Continue to orbok",
         WizardPathPlaceholder => "Folder path…",
         WizardDownloadAction => "Download from HuggingFace",
         WizardDownloadProgress => "Downloading model…",
@@ -151,9 +145,6 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardOr => "or",
         WizardMissingMarker => "missing",
         WizardBack => "Back",
-        WizardPreviousPathLabel => "Last known path",
-        WizardValidationOk => "found",
-        WizardValidationFail => "not found",
         WizardReadyBody => "Search by meaning is now available.",
         ModelConsentTitle => "Review model download",
         ModelConsentBody => {
@@ -164,7 +155,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         ModelConsentProvider => "Provider",
         ModelConsentSource => "Source",
-        ModelConsentRevision => "Immutable revision",
+        ModelConsentRevision => "Version",
         ModelConsentExactSize => "Exact download size",
         ModelConsentLicense => "License",
         ModelConsentLocation => "Save location",
@@ -174,7 +165,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelTrustUserSupplied => "User supplied / provenance not verified",
         ModelConsentConfirm => "Agree and download",
         ModelConsentCancel => "Back",
-        ModelArtifactTokenizer => "Tokenizer",
+        ModelArtifactTokenizer => "Vocabulary",
         ModelArtifactOnnx => "Search model",
         ModelDeliveryStoreUnavailable => "The model store is busy or unavailable. Try again.",
         ModelDeliveryConnection => {
@@ -274,7 +265,6 @@ pub fn message(key: MessageKey) -> &'static str {
         AddSensitiveConfirm => "Add anyway",
         NoticeDismiss => "Dismiss",
         Cancel => "Cancel",
-        Confirm => "Confirm",
         // RFC-041: Search, Narrow Results, Browse Around
         SearchNarrowResults => "Narrow results",
         SearchNarrowedBy => "Narrowed by",
@@ -322,10 +312,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceFolderNotFoundDetail => {
             "This can happen if a drive is disconnected or the folder was moved."
         }
-        SourceFilesNotDeletedNotice => {
-            "Your files were not deleted. orbok just cannot find this folder right now."
-        }
-        SourceManyFilesChanged => "Many files changed. orbok will prepare them gradually.",
         // RFC-038: Result trust badges and recovery
         TrustNeedsUpdate => "Needs update",
         TrustFileNotFound => "File not found",
@@ -348,45 +334,10 @@ pub fn message(key: MessageKey) -> &'static str {
         TrustSizeLimitDetail => "Only part of this large file was prepared.",
         TrustCannotOpenDetail => "orbok cannot open this file.",
         // RFC-043: Model download readiness
-        ModelCheckingFiles => "Checking model...",
-        ModelAlreadyReady => "Search by meaning is ready",
-        ModelNeedsDownload => "Only the missing files are downloaded.",
-        ModelDownloadInProgress => "Downloading model",
-        ModelFilesStayLocal => "Your files stay on this computer.",
         ModelDownloadFailed => "Download did not finish",
         ModelDownloadRetry => "Try again",
-        ModelRepairingFiles => "Only the files needing repair are downloaded.",
-        ModelBasicSearchAvailable => {
-            "Keyword search is ready. Search by meaning can be added later."
-        }
         ModelDownloadingWhatNeeded => "Downloading what is needed...",
         // RFC-039: Privacy modes
-        PrivacyTitle => "Privacy",
-        PrivacyModeStandard => "Standard",
-        PrivacyModeStrict => "Strict",
-        PrivacyModePortable => "Portable",
-        PrivacyModeStrictDescription => "Strict privacy reduces what orbok remembers.",
-        PrivacyModePortableDescription => "orbok stores app data next to this copy of the app.",
-        PrivacyRememberSearches => "Remember recent searches",
-        PrivacyRememberSearchesHint => "Recent searches are saved on this computer only.",
-        PrivacySearchesDisabledStrict => {
-            "Recent searches are not saved while Strict privacy is on."
-        }
-        PrivacyTemporaryPreviews => "Temporary previews",
-        PrivacyTemporaryPreviewsHint => {
-            "Temporary previews help results open faster. You can clear them anytime."
-        }
-        PrivacyClearPreviews => "Clear temporary previews",
-        PrivacyEnableStrictConfirm => "Turn on Strict privacy?",
-        PrivacyEnableStrictBody => {
-            "orbok will stop saving recent searches and reduce temporary previews. You can also clear data already saved."
-        }
-        PrivacyTurnOn => "Turn on",
-        PrivacyTurnOnAndClear => "Turn on and clear",
-        PrivacyFilesNotDeleted => "Your files are never changed or deleted.",
-        PrivacyModelDownloadNote => {
-            "orbok downloads the model, but your documents are not uploaded."
-        }
         // RFC-040: Diagnostics
         DiagnosticsTitle => "Diagnostics",
         DiagnosticsIntro => {
@@ -414,7 +365,6 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-042: search history
         RecentSearchesLabel => "Recent searches",
         SearchAgainButton => "Search again",
-        SearchingAgainStatus => "Searching again\u{2026}",
         OpenRecentSearches => "Recent searches",
         ClearRecentSearches => "Clear recent searches",
         ClearRecentSearchesConfirmTitle => "Clear recent searches?",
@@ -425,9 +375,6 @@ pub fn message(key: MessageKey) -> &'static str {
         RecentSearchesClearedNotice => "Recent searches cleared.",
         RememberRecentSearches => "Remember recent searches",
         RecentSearchesPrivacyNote => "Recent searches are saved on this computer only.",
-        RecentSearchesStrictPrivacyNote => {
-            "Recent searches are not saved while Strict privacy is on."
-        }
         NoRecentSearches => "No recent searches yet.",
         DroppedFilterNotice => "One narrowing choice was no longer available and was removed.",
         DiagnosticsAppVersion => "App version",
