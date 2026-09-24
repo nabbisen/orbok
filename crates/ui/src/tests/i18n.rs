@@ -117,27 +117,27 @@ fn parameterized_messages_localize() {
 fn source_summary_shows_ready_always_and_other_segments_only_when_nonzero() {
     // (ready, needs update, failed, no text) -> English, Japanese
     let cases = [
-        ((12, 0, 0, 0), "Ready 12", "準備済み 12"),
+        ((12, 0, 0, 0), "Ready 12", "準備完了 12"),
         (
             (12, 1, 0, 0),
             "Ready 12 · Needs update 1",
-            "準備済み 12 · 要更新 1",
+            "準備完了 12 · 要更新 1",
         ),
-        ((12, 0, 2, 0), "Ready 12 · Failed 2", "準備済み 12 · 失敗 2"),
+        ((12, 0, 2, 0), "Ready 12 · Failed 2", "準備完了 12 · 失敗 2"),
         (
             (12, 0, 0, 2),
             "Ready 12 · No text 2",
-            "準備済み 12 · テキストなし 2",
+            "準備完了 12 · テキストなし 2",
         ),
         (
             (12, 1, 0, 2),
             "Ready 12 · Needs update 1 · No text 2",
-            "準備済み 12 · 要更新 1 · テキストなし 2",
+            "準備完了 12 · 要更新 1 · テキストなし 2",
         ),
         (
             (12, 1, 2, 3),
             "Ready 12 · Needs update 1 · Failed 2 · No text 3",
-            "準備済み 12 · 要更新 1 · 失敗 2 · テキストなし 3",
+            "準備完了 12 · 要更新 1 · 失敗 2 · テキストなし 3",
         ),
     ];
     for ((ready, stale, failed, no_text), en, ja) in cases {

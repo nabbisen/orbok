@@ -34,9 +34,6 @@ pub fn message(key: MessageKey) -> &'static str {
              orbok will not scan your entire computer automatically."
         }
         SourcesAddFolder => "Add Folder",
-        SourcesStatusActive => "Active",
-        SourcesStatusPaused => "Paused",
-        SourcesStatusMissing => "Missing",
         SourcesPathInputPlaceholder => "Or type a path manually…",
         SourcesRecursiveHint => "All sub-folders are scanned recursively.",
         IndexingTitle => "Preparing search",
@@ -112,7 +109,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchModeAuto => "Auto",
         SearchModeExact => "Keyword",
         SearchModeConceptual => "By meaning",
-        SearchModeFast => "Fast",
         BadgeKeyword => "Keyword",
         BadgeSemantic => "By meaning",
         BadgeReranked => "Reranked",
@@ -140,7 +136,6 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardFilesNeededLabel => "Required files in the folder:",
         WizardDownloadHint => "Download: huggingface-cli download intfloat/multilingual-e5-small",
         WizardPathInputPlaceholder => "Path to model folder (e.g. ~/models/multilingual-e5-small)",
-        WizardActionLocate => "Locate model folder",
         WizardActionValidate => "Validate",
         WizardActionUseModel => "Use this model",
         WizardActionContinue => "Continue to orbok",
@@ -315,7 +310,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SourceStateRemoved => "Removed",
         SourceActionCheckAgain => "Check again",
         SourceActionPrepareAgain => "Prepare again",
-        SourceActionChooseFolderAgain => "Choose folder again",
         SourceActionRemoveFromOrbok => "Remove from orbok",
         SourceRemoveConfirmBody => {
             "Your files are never changed or deleted. orbok removes what it prepared to \
@@ -329,8 +323,6 @@ pub fn message(key: MessageKey) -> &'static str {
             "Your files were not deleted. orbok just cannot find this folder right now."
         }
         SourceManyFilesChanged => "Many files changed. orbok will prepare them gradually.",
-        SourcePausePreparation => "Pause preparing",
-        SourceResumePreparation => "Resume preparing",
         // RFC-038: Result trust badges and recovery
         TrustNeedsUpdate => "Needs update",
         TrustFileNotFound => "File not found",

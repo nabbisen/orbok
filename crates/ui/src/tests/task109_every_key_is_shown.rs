@@ -1,0 +1,399 @@
+//! Task 109 §1.5: every catalog key is read by some code that could show it.
+//! A key nobody reads is copy nobody sees -- and copy the glossary and the
+//! translators still spend their checks on.
+//!
+//! **Mechanism (as simple as the glossary's source scan):** read every `.rs`
+//! file under `crates/` except the two catalogs and test code (the enum's own
+//! file is read: its formatters name keys, and its key list does not spell
+//! `MessageKey::`), and look for `MessageKey::<Name>` as a whole word. A key reached
+//! through a `label_key()` match counts, because the match names it.
+//! `use MessageKey::*` appears only in the two catalogs, so no bare name is
+//! missed.
+//!
+//! **Limits, stated:** a key named only inside an inline `#[cfg(test)]`
+//! module of a production file counts as referenced (the scan does not parse
+//! modules); and "referenced" is not "rendered on a path a user reaches" --
+//! that is what Task 107's audit did by hand.
+
+use crate::i18n::{ALL_KEYS, MessageKey};
+use std::path::{Path, PathBuf};
+
+/// `(key, why)` -- keys deliberately unreferenced. Checked by
+/// `every_unreferenced_key_exemption_is_load_bearing`, like the glossary's.
+///
+/// **These are not deleted on purpose** (Task 109 §6): an unread key is dead
+/// text or a feature that was never connected, and only the owner can say
+/// which. Each row says which RFC the copy belongs to. Deleting a row's key
+/// (both locales) or building the feature removes the row.
+const UNREFERENCED: &[(MessageKey, &str)] = &[
+    (
+        MessageKey::LocalOnlyBadge,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::IndexingIdle,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardFilesNeededLabel,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardDownloadHint,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardPathInputPlaceholder,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardActionContinue,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardPreviousPathLabel,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardValidationOk,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::WizardValidationFail,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::Confirm,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchNarrowResults,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchNarrowedBy,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchMoreWays,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchClearFilters,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchNoResultsFiltered,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchNoResultsFilteredBody,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchInThisFolder,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchShowNearby,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchShowSimilar,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchResultsUpdating,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKind,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterChanged,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterSearchIn,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterReadyStatus,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKindPdfs,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKindNotes,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKindCode,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKindDocuments,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterKindSpreadsheets,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterChangedToday,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterChangedThisWeek,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterChangedThisMonth,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterChangedAnyTime,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::FilterAllFolders,
+        "RFC-041 (Accepted) narrow / browse-around copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SourceFilesNotDeletedNotice,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SourceManyFilesChanged,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::ModelCheckingFiles,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelAlreadyReady,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelNeedsDownload,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelDownloadInProgress,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelFilesStayLocal,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelRepairingFiles,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::ModelBasicSearchAvailable,
+        "RFC-043 (Implemented v0.19.0) readiness copy that nothing renders (Review 207 found seven such strings): unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyTitle,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyLocalOnlyStatement,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModeStandard,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModeStrict,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModePortable,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModeStrictDescription,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModePortableDescription,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyRememberSearches,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyRememberSearchesHint,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacySearchesDisabledStrict,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyTemporaryPreviews,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyTemporaryPreviewsHint,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyClearPreviews,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyEnableStrictConfirm,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyEnableStrictBody,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyTurnOn,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyTurnOnAndClear,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyFilesNotDeleted,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::PrivacyModelDownloadNote,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsTitle,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsIntro,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsPreviewTitle,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsIncludedLabel,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsExcludedLabel,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsOptInFolderNames,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsOptInFolderNamesHint,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsOptInSearchWords,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsOptInSearchWordsHint,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::DiagnosticsShowFile,
+        "RFC-040 (Accepted) support-bundle copy that nothing renders: unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::SearchingAgainStatus,
+        "not read by any code; not classified as dead text or an unbuilt feature -- owner decision",
+    ),
+    (
+        MessageKey::RecentSearchesStrictPrivacyNote,
+        "RFC-039 (Implemented v0.19.0) privacy-mode copy that nothing renders: unbuilt feature or dead text -- owner decision",
+    ),
+];
+
+fn source_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+        let path = entry.path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if path.is_dir() {
+            if name != "tests" && name != "target" {
+                source_files(&path, out);
+            }
+        } else if name.ends_with(".rs")
+            && name != "tests.rs"
+            && !path.ends_with("i18n/en.rs")
+            && !path.ends_with("i18n/ja.rs")
+        {
+            out.push(path);
+        }
+    }
+}
+
+fn production_source() -> String {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut files = Vec::new();
+    source_files(&crates, &mut files);
+    assert!(files.len() > 50, "found only {} source files", files.len());
+    files
+        .iter()
+        .map(|p| std::fs::read_to_string(p).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn referenced(source: &str, key: MessageKey) -> bool {
+    let needle = format!("MessageKey::{key:?}");
+    source.match_indices(&needle).any(|(at, _)| {
+        !source[at + needle.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
+}
+
+fn unreferenced_keys() -> Vec<MessageKey> {
+    let source = production_source();
+    ALL_KEYS
+        .iter()
+        .copied()
+        .filter(|&key| !referenced(&source, key))
+        .collect()
+}
+
+#[test]
+fn every_catalog_key_is_referenced_by_production_code() {
+    let unlisted: Vec<_> = unreferenced_keys()
+        .into_iter()
+        .filter(|key| !UNREFERENCED.iter().any(|&(k, _)| k == *key))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "\n{} catalog key(s) no production code names: {unlisted:?}\n\
+         Delete each (both locales) or add it to UNREFERENCED with a reason.",
+        unlisted.len()
+    );
+}
+
+#[test]
+fn every_unreferenced_key_exemption_is_load_bearing() {
+    let unreferenced = unreferenced_keys();
+    for &(key, why) in UNREFERENCED {
+        assert!(
+            unreferenced.contains(&key),
+            "{key:?} ({why}) is referenced now -- remove it from UNREFERENCED"
+        );
+    }
+}

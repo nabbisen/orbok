@@ -223,8 +223,8 @@ navigation/list/dialog surface:
 | `Enter` (search input focused) | Submit search |
 | `Enter` (not typing) | Confirm whichever dialog/wizard page/list selection is active, if any (§ below) — on the Setup page this downloads the reviewed model |
 | `Arrow Down`/`Up` (Search view, not typing) | Select next/previous result |
-| `Arrow Down`/`Up` (Sources view, not typing) | Select next/previous source |
-| `Ctrl/Cmd + R` (Sources view, source selected) | Manual refresh for the selected source — "Check again" (missing/permission-denied) or "Prepare again" (active), mirroring the mouse-only button `sources_view` renders per source state (Task 035) |
+| `Arrow Down`/`Up` (Folders view, not typing) | Select next/previous source |
+| `Ctrl/Cmd + R` (Folders view, source selected) | Manual refresh for the selected source — "Check again" (missing/permission-denied) or "Prepare again" (active), mirroring the mouse-only button `sources_view` renders per source state (Task 035) |
 
 **The wizard — the walkthrough's actual blocker — is fixed.** `Escape` on
 the Setup/Checked/DownloadFailed pages performs the same zero-confirmation
@@ -369,7 +369,7 @@ What we provide:
   have no `Focused` status to render at all.
 - Both selection-model list views use `components::selection_ring`
   (`tokens.focus`-driven, Task 031) as a visible selection indicator: the
-  search results list, and, since Task 024, the Sources view.
+  search results list, and, since Task 024, the Folders view.
 - High-contrast themes maximise the visibility of affordances we can render,
   and since Task 031 that includes a wider, differently-coloured selection
   ring specifically, not just the presets' general contrast.
@@ -476,7 +476,7 @@ bound; do not extend it to cover 2.1.1's known-open items until they are.
    `Enter`: confirm it submits. With results showing, use `Arrow Down`/
    `Arrow Up` (not while typing) to move the selection; confirm the
    selected card shows an accent border.
-4. On the Sources view with at least one folder added, use `Arrow Down`/
+4. On the Folders view with at least one folder added, use `Arrow Down`/
    `Arrow Up` to select a source (confirm the accent border), then press
    `Enter`: confirm it is removed. Press `Escape` after selecting one:
    confirm the selection clears without removing it.
@@ -504,7 +504,7 @@ badges announce their labels — could never have passed. They are preserved her
 as the specification of what to run *once the block clears*, not as work to do
 now:
 
-1. Navigate to the Sources view; confirm source cards announce their content.
+1. Navigate to the Folders view; confirm source cards announce their content.
 2. Navigate to the Storage view; confirm the danger button announces "Reset
    Catalog" (or locale equivalent).
 3. Confirm status badges announce their label text.

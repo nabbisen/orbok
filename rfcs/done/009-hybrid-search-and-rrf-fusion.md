@@ -514,3 +514,12 @@ Two things worth carrying into the remediation, neither decided here:
 2. Whether a future criterion should assert positively that fusion receives a
    non-empty vector side under a known-good corpus — the check that would have
    caught this.
+
+## Amendment 1 (2026-09-24) — Fast is an engine mode, not a user choice
+
+Owner decision 2026-09-24 (Task 109): §19's Fast mode (and §3's "Fast" in the
+list of modes) is not offered to the user. `SearchMode::Fast` stays in the
+engine (`crates/search/engine/src/hybrid.rs`, the candidate limits) but no
+production or test code constructs it (Task 109 §1.4); the user's modes are
+Auto, Keyword and By meaning.
+

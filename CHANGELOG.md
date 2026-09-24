@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and By meaning, not Exact, Conceptual or semantic.
 - **The user guide matches the app's pages and controls** (Task 107): it
   names the Folders and Preparing pages and the buttons the app really shows.
+- **The user guide no longer describes settings orbok does not offer**
+  (Task 109): adding a single file, per-folder hidden-file and symlink
+  settings, storage modes and a Fast search mode. Japanese: the folder card
+  now says 準備完了 and 要更新 like the rest of the app.
 
 ## [0.26.1] — 2026-09-22
 

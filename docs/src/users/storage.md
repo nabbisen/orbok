@@ -37,11 +37,3 @@ Safe cleanup **never** deletes your source files or source registrations.
 **Reset saved app data...** removes all source registrations, indexes, and cached
 data (including the extracted-text cache). Your actual files on disk are
 never touched. This action requires confirmation.
-
-## Storage modes
-
-| Mode | Index size | Features |
-|---|---|---|
-| Balanced | Moderate | Keyword search and search by meaning |
-| High Accuracy | Larger | Richer chunking |
-| Space Saving | Smallest | Quantized vectors (future) |

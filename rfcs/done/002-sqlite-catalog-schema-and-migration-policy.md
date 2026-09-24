@@ -679,3 +679,12 @@ The rule this section exists to state is unchanged and still governs: only
 one `libsqlite3-sys` may resolve per dependency graph, and any future
 `rusqlite` move must be coordinated with `localcache`. Only the specific
 version differs.
+
+## Amendment 1 (2026-09-24) — `index_mode` is not a user choice
+
+Owner decision 2026-09-24 (Task 109): fixed safe defaults; less to configure.
+`sources.index_mode` stays in the schema with its three values, and **every
+folder is stored as `balanced`** (`add_source`, `crates/app/src/bootstrap/sources.rs`).
+`high_accuracy` and `space_saving` are not selectable by the user. Nothing in
+the product reads the column back to change behaviour (Task 109 §1.4).
+

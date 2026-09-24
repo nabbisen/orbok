@@ -530,9 +530,23 @@ const GLOSSARY: &[GlossaryTerm] = &[
     GlossaryTerm {
         concept: "a file that changed since orbok prepared it",
         canonical: &[(Locale::En, "Needs update"), (Locale::Ja, "要更新")],
-        forbidden: &[(Locale::En, "stale")],
+        forbidden: &[(Locale::En, "stale"), (Locale::Ja, "更新が必要")],
         allowed_if_followed_by: None,
-        exemptions: &[],
+        // Review 285 §3 believed the badges already said 要更新. They say
+        // 更新が必要, and only `SourceStateNeedsUpdate` was owner-approved to
+        // change (Task 109 §3). Listed, not changed: review request 287.
+        exemptions: &[
+            (
+                MessageKey::BadgeSourceStale,
+                "更新が必要",
+                "not in the owner-approved change list; pending decision",
+            ),
+            (
+                MessageKey::TrustNeedsUpdate,
+                "更新が必要",
+                "not in the owner-approved change list; pending decision",
+            ),
+        ],
         applies_to_docs: true,
         // Docs match case-sensitively as whole words, so the capitalised
         // spelling is listed too.
@@ -540,6 +554,35 @@ const GLOSSARY: &[GlossaryTerm] = &[
         doc_exemptions: &[],
         formatter_exemptions: &[],
         whole_word: true,
+    },
+    GlossaryTerm {
+        concept: "a file that is prepared for search (Task 109)",
+        canonical: &[(Locale::En, "Ready"), (Locale::Ja, "準備完了")],
+        forbidden: &[(Locale::Ja, "準備済み")],
+        allowed_if_followed_by: None,
+        // 「準備済み」 stays where it describes prepared *things*, not the
+        // Ready state label: the row's substring rule also finds these.
+        exemptions: &[
+            (
+                MessageKey::RebuildConfirmBody,
+                "準備済み",
+                "\"prepared data\" (Task 099), not the Ready state label",
+            ),
+            (
+                MessageKey::TrustPartlyPrepared,
+                "準備済み",
+                "\"only partly prepared\": a different state, Partly prepared",
+            ),
+        ],
+        applies_to_docs: true,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
+        formatter_exemptions: &[(
+            "fmt_reset_removes",
+            "準備済み",
+            "\"prepared files\" in the owner-approved reset copy (Task 092), a noun phrase, not the state label",
+        )],
+        whole_word: false,
     },
     GlossaryTerm {
         concept: "a page of the app (Task 107)",

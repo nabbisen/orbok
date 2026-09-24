@@ -2,23 +2,17 @@
 
 ## Registering sources
 
-Add folders or files from the **Folders** view. orbok never scans your
-whole computer automatically.
+Add a folder from the **Folders** view with **Add Folder**. orbok only
+searches folders you add; it never scans your whole computer automatically.
 
 When you add a folder near sensitive directories (`.ssh`, `.gnupg`,
 `.aws`), orbok adds it and shows the notice "This folder may contain
 private files". Remove the folder if you did not mean to search it.
 
-## Hidden files
+## What orbok skips
 
-By default, files and directories starting with `.` are excluded.
-Change this per-source via **Edit Policy → Hidden files**.
-
-## Symlinks
-
-The default **Ignore** policy skips symlinks. Use
-**Follow within source** to follow links that stay inside the source
-root; external links are always rejected.
+Hidden files and folders (names starting with `.`) are not prepared, and
+symbolic links are not followed. This is fixed; there is no setting for it.
 
 ## What you see while a folder is prepared
 

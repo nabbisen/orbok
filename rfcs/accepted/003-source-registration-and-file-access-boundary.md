@@ -3,9 +3,16 @@
 **Project:** orbok  
 **RFC:** 003  
 **Title:** Source Registration and File Access Boundary  
-**Status:** Implemented (v0.1.0)
+**Status:** Accepted
 **Target Milestone:** M2  
 **Date:** 2026-06-06  
+
+**Returned to `accepted/` 2026-09-24 (Task 109).** Carried `Implemented
+(v0.1.0)` while §10.2's warning **before saving** was not built: orbok saved
+the folder, queued its files, and only then showed a notice. Amendment 1
+(§10a) drops the controls owner decision 2026-09-24 chose not to offer and
+keeps §10.2 (without "add with exclusions"); Task 110 builds it, and its
+closure record is written then.
 
 ---
 
@@ -290,6 +297,27 @@ Removing a source must clarify:
 - all orbok data for the source can optionally be removed.
 
 ---
+
+## 10a. Amendment 1 (2026-09-24) — what orbok does not offer
+
+Owner decision 2026-09-24: **fixed safe defaults; less to configure.** Task
+109 (origin: Review Request 285 §3) records what §10.1 and §13 asked for and
+orbok does not offer:
+
+- **§10.1's single-file selector and the persistent/temporary choice are
+  dropped**, and so is §13's "User can add temporary file source". A source
+  is a folder.
+- **§10.1's hidden-file policy, symlink policy, index mode and
+  include/exclude rules are dropped as user controls.** The values are fixed:
+  hidden files are excluded and symlinks are not followed (§13's two
+  "by default" criteria hold as *fixed* behaviour). Where: `add_source`
+  stores `HiddenFilePolicy::Exclude` and `SymlinkPolicy::Ignore`
+  (`crates/app/src/bootstrap/sources.rs`); the scanner reads them
+  (`crates/data/fs/src/scanner.rs`, `skip_component` and `symlink_allowed`).
+  The columns stay in the schema (RFC-002).
+- **§10.2 is kept, without "add with exclusions".** If a risky source is
+  selected, orbok asks before saving: cancel, or add anyway. It is met by
+  Task 110.
 
 ## 11. Path Canonicalization Strategy
 

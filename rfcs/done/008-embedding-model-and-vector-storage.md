@@ -573,3 +573,11 @@ a new RFC, precisely because no design decision needs revisiting.
 The `Status` line is left as Implemented pending that work, rather than being
 silently rewritten; this note is the accurate record of what "Implemented" has
 meant for this RFC.
+
+## Amendment 1 (2026-09-24) — one storage mode
+
+Owner decision 2026-09-24 (Task 109): the High Accuracy and Space Saving
+storage modes are not offered as a user choice. Every folder is `balanced`
+(RFC-002, Amendment 1); the modes table above describes what a future choice
+would mean, not what orbok does.
+

@@ -36,14 +36,11 @@ pub fn message(key: MessageKey) -> &'static str {
              orbok がコンピューター全体を自動的にスキャンすることはありません。"
         }
         SourcesAddFolder => "フォルダーを追加",
-        SourcesStatusActive => "有効",
-        SourcesStatusPaused => "一時停止",
-        SourcesStatusMissing => "見つかりません",
         SourcesPathInputPlaceholder => "またはパスを直接入力…",
         SourcesRecursiveHint => "すべてのサブフォルダーが再帰的にスキャンされます。",
         IndexingTitle => "検索の準備",
         IndexingIdle => "検索の準備ができました",
-        IndexingHealthIndexed => "準備済み",
+        IndexingHealthIndexed => "準備完了",
         IndexingHealthStale => "要更新",
         IndexingHealthFailed => "失敗",
         IndexingHealthQueued => "待機中",
@@ -112,7 +109,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchModeAuto => "自動",
         SearchModeExact => "キーワード",
         SearchModeConceptual => "意味",
-        SearchModeFast => "高速",
         BadgeKeyword => "キーワード",
         BadgeSemantic => "意味",
         BadgeReranked => "リランク済み",
@@ -141,7 +137,6 @@ pub fn message(key: MessageKey) -> &'static str {
             "ダウンロード: huggingface-cli download intfloat/multilingual-e5-small"
         }
         WizardPathInputPlaceholder => "モデルフォルダーのパス (例: ~/models/multilingual-e5-small)",
-        WizardActionLocate => "モデルフォルダーを選択",
         WizardActionValidate => "検証",
         WizardActionUseModel => "このモデルを使用",
         WizardActionContinue => "orbok を開始",
@@ -322,14 +317,13 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-037: Source lifecycle
         SourceStateReady => "準備完了",
         SourceStatePreparing => "準備中",
-        SourceStateNeedsUpdate => "更新が必要",
+        SourceStateNeedsUpdate => "要更新",
         SourceStatePaused => "一時停止中",
         SourceStateFolderNotFound => "フォルダーが見つかりません",
         SourceStateCannotOpen => "開けません",
         SourceStateRemoved => "削除済み",
         SourceActionCheckAgain => "再確認",
         SourceActionPrepareAgain => "再準備",
-        SourceActionChooseFolderAgain => "フォルダーを選び直す",
         SourceActionRemoveFromOrbok => "orbokから削除",
         SourceRemoveConfirmBody => {
             "ファイルは変更も削除もされません。このフォルダーの検索の準備内容は削除され、\
@@ -343,8 +337,6 @@ pub fn message(key: MessageKey) -> &'static str {
             "ファイルは削除されていません。orbokがこのフォルダーを見つけられないだけです。"
         }
         SourceManyFilesChanged => "多くのファイルが変更されました。orbokが徐々に準備します。",
-        SourcePausePreparation => "準備を一時停止",
-        SourceResumePreparation => "準備を再開",
         // RFC-038: Result trust badges and recovery
         TrustNeedsUpdate => "更新が必要",
         TrustFileNotFound => "ファイルが見つかりません",

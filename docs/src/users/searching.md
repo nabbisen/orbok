@@ -11,7 +11,6 @@ by meaning is set up.
 | **Auto** | General queries — uses keyword search, and search by meaning when it is set up |
 | **Keyword** | Identifiers, error codes, code symbols |
 | **By meaning** | Natural-language questions |
-| **Fast** | Quick lookup, smaller candidate set |
 
 ## Keyword tips
 

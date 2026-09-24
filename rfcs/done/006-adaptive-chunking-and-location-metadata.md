@@ -573,3 +573,10 @@ Required tests:
 ## 22. Decision
 
 Adopt structure-aware chunking with fallback paragraph/token windows, parent-child chunk support, explicit location quality, and non-authoritative localcache chunk bundle acceleration.
+
+## Amendment 1 (2026-09-24) — one chunking mode
+
+Owner decision 2026-09-24 (Task 109): the per-mode chunk sizes in the table
+above are not user-selectable. Every folder is `balanced` (RFC-002,
+Amendment 1); the Space Saving and High Accuracy rows are not offered.
+

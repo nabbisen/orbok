@@ -239,7 +239,7 @@ development one.
 
 - [ ] Storage view shows per-category MiB breakdown
 - [ ] Safe cleanup removes snippets (source files unaffected)
-- [ ] Reset catalog dialog requires confirmation
+- [ ] Reset saved app data dialog requires confirmation
 - [ ] Post-reset: sources list is empty; source files are intact
 
 ### Models

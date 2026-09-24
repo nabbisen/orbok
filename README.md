@@ -68,7 +68,7 @@ It also caches the **extracted text** of each indexed document in
 `orbok-cache.sqlite3`, so that changing the embedding model does not require
 re-parsing every PDF. That cache has a 90-day freshness limit — an entry older
 than that is never served, forcing a fresh extraction — and both
-**"Reset catalog"** and the Storage view's **"Clear extracted text"** erase it
+**"Reset saved app data..."** and the Storage view's **"Clear extracted text"** erase it
 outright, on demand, regardless of age (RFC-059).
 
 Data is classified into three lifecycle layers (RFC-001):

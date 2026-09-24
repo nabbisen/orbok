@@ -307,7 +307,6 @@ Troubleshooting should include:
 | storage too large | use Storage cleanup |
 | model invalid | validate or locate model |
 | PDF not searchable | extraction limitations |
-| app slow | use Fast mode or reduce indexing |
 | database issue | repair tools |
 | privacy concern | clear cache/search history |
 
@@ -412,3 +411,10 @@ Documentation checks:
 Adopt structured documentation with a concise README and separate user, developer, release, and RFC documentation.
 
 Documentation is part of release readiness, not an optional afterthought.
+
+## Amendment 1 (2026-09-24) — no "use Fast mode"
+
+Owner decision 2026-09-24 (Task 109): Fast is not a user choice (RFC-009,
+Amendment 1), so §13's troubleshooting row "app slow — use Fast mode or
+reduce indexing" is removed.
+
