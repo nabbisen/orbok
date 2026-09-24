@@ -63,17 +63,6 @@ fn permission_denied_file_is_cannot_open() {
     );
 }
 
-#[test]
-fn failed_file_is_partly_prepared() {
-    let trust = SearchResultTrust::from_catalog("failed", &[]);
-    assert_eq!(trust.state, ResultTrustState::PartlyPrepared);
-    assert!(
-        trust
-            .recovery_actions
-            .contains(&ResultRecoveryAction::PrepareAgain)
-    );
-}
-
 // ── Extraction warning → trust state ─────────────────────────────────
 
 #[test]
@@ -128,7 +117,7 @@ fn non_ready_states_show_badge() {
 #[test]
 fn every_non_ready_result_has_a_recovery_action() {
     // RFC-038 §16: every non-ready result should have a safe next step.
-    let statuses = ["stale", "missing", "deleted", "permission_denied", "failed"];
+    let statuses = ["stale", "missing", "deleted", "permission_denied"];
     for status in statuses {
         let trust = SearchResultTrust::from_catalog(status, &[]);
         assert!(

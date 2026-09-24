@@ -103,14 +103,6 @@ fn unsupported_maps_to_ignored() {
     );
 }
 
-#[test]
-fn failed_maps_to_partly_prepared() {
-    assert_eq!(
-        FileState::from_catalog_status("failed"),
-        FileState::PartlyPrepared
-    );
-}
-
 /// Task 080: a file orbok read but found no text in maps to its own
 /// state, distinct from `Ready` (0 chunks would otherwise be
 /// indistinguishable from "prepared and searchable") and from

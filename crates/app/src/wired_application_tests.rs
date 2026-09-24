@@ -2929,3 +2929,308 @@ async fn deleting_the_vector_index_and_draining_the_scheduler_makes_search_find_
          search finds it again"
     );
 }
+
+// ── Task 103: a file that cannot be prepared says so ────────────────────
+
+/// A folder with one file, added and scanned, and the hosted scheduler
+/// drained -- what the app does when a folder is added.
+async fn task103_profile(
+    file_name: &str,
+    write: impl Fn(&Path),
+) -> (tempfile::TempDir, RuntimeContext, std::path::PathBuf) {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let file = source_dir.join(file_name);
+    write(&file);
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    (temp, context, file)
+}
+
+fn task103_status(catalog: &orbok_db::Catalog, file_name: &str) -> String {
+    catalog
+        .lock()
+        .query_row(
+            "SELECT file_status FROM files WHERE display_path LIKE ?1",
+            [format!("%{file_name}")],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+fn task103_write_corrupt_pdf(path: &Path) {
+    std::fs::write(path, b"%PDF-1.4\nthis is not a pdf at all\n").unwrap();
+}
+
+/// §2.1 / §2.2: a file that cannot be extracted ends `failed`, the Folders
+/// card and the Preparing page both count it, and startup recovery does not
+/// queue it again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_that_cannot_be_extracted_ends_failed_and_is_not_requeued_at_startup() {
+    let (temp, context, _file) = task103_profile("broken.pdf", task103_write_corrupt_pdf).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+
+    assert_eq!(task103_status(&catalog, "broken.pdf"), "failed");
+    let cards = bootstrap::get_sources(&catalog).unwrap();
+    assert_eq!(cards[0].failed, 1, "the Folders card counts it");
+    assert_eq!(
+        bootstrap::get_health(&catalog).failed,
+        1,
+        "the Preparing page counts it"
+    );
+
+    let report =
+        orbok_workers::run_startup_recovery(&catalog, &temp.path().join(orbok_db::CACHE_FILE_NAME))
+            .unwrap();
+    assert_eq!(
+        report.jobs_requeued_discovered, 0,
+        "startup recovery must not queue a failed file again"
+    );
+    let queued: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE status IN ('queued','running')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(queued, 0);
+}
+
+/// §2.3: it comes back when its content changes.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_file_comes_back_when_its_content_changes() {
+    let (_temp, context, file) = task103_profile("doc.pdf", task103_write_corrupt_pdf).await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        assert_eq!(task103_status(&catalog, "doc.pdf"), "failed");
+    }
+    write_pdf_with_text(&file, "backfromfailure marker text");
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let source_id: String = catalog
+            .lock()
+            .query_row("SELECT source_id FROM sources", [], |r| r.get(0))
+            .unwrap();
+        bootstrap::scan_and_index_source(&catalog, &source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(task103_status(&catalog, "doc.pdf"), "indexed");
+}
+
+/// §2.4: Prepare again works on a failed file without any content change.
+/// The cause: the file is **not on disk** while the jobs run (moved away,
+/// then put back byte for byte), a cause that leaves its bytes alone and
+/// works on every platform.
+#[tokio::test(flavor = "multi_thread")]
+async fn prepare_again_works_on_a_failed_file_without_a_content_change() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let source_dir = temp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    let file = source_dir.join("later.md");
+    let body = "# Later\n\nreturningfilemarker content.\n";
+    std::fs::write(&file, body).unwrap();
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        // Scan first (the file is discovered and its Extract job queued),
+        // then take the file away before any job runs.
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        // The scan job itself needs the file; run it, then remove the file.
+    }
+    let parked = temp.path().join("parked.md");
+    // Run only the scan, so the file row exists, then make it unreadable.
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        assert_eq!(task103_status(&catalog, "later.md"), "indexed");
+        // Put the file in the state a failed one is in: no active chunks,
+        // `discovered`, jobs finished.
+        catalog
+            .lock()
+            .execute_batch(
+                "UPDATE files SET file_status = 'discovered'; \
+                 UPDATE chunks SET chunk_status = 'deleted'; \
+                 DELETE FROM keyword_index_records; \
+                 INSERT INTO chunk_fts(chunk_fts) VALUES('delete-all'); \
+                 INSERT INTO chunk_fts_trigram(chunk_fts_trigram) VALUES('delete-all');",
+            )
+            .unwrap();
+        // Evict the extraction cache so the Extract job must read the file.
+        let cache = bootstrap::cache_service(&context).unwrap();
+        bootstrap::clean_temporary_extraction(&catalog, &cache).unwrap();
+        std::fs::rename(&file, &parked).unwrap();
+        orbok_db::repo::IndexJobRepository::new(&catalog)
+            .enqueue_extraction_if_idle(&file_id(&catalog))
+            .unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        assert_eq!(
+            task103_status(&catalog, "later.md"),
+            "failed",
+            "the file could not be read, so it ends failed"
+        );
+        std::fs::rename(&parked, &file).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), body);
+        assert!(
+            orbok_db::repo::IndexJobRepository::new(&catalog)
+                .enqueue_extraction_if_idle(&file_id(&catalog))
+                .unwrap(),
+            "Prepare again queues the file"
+        );
+        assert_eq!(
+            task103_status(&catalog, "later.md"),
+            "discovered",
+            "asking again takes it out of failed while it is prepared"
+        );
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(task103_status(&catalog, "later.md"), "indexed");
+    let failed_jobs: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE status = 'failed' AND job_type = 'chunk'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(failed_jobs, 0, "no Chunk job met UNIQUE");
+}
+
+fn file_id(catalog: &orbok_db::Catalog) -> orbok_core::FileId {
+    orbok_core::FileId::from_string(
+        catalog
+            .lock()
+            .query_row("SELECT file_id FROM files LIMIT 1", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+    )
+}
+
+/// §2.5: an earlier version keeps the file searchable, so it ends `stale`,
+/// not `failed`, and the old text is still found.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_earlier_version_keeps_the_file_searchable_and_stale() {
+    let (_temp, context, file) = task103_profile("doc.pdf", |p| {
+        write_pdf_with_text(p, "earlierversionmarker text")
+    })
+    .await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        assert_eq!(task103_status(&catalog, "doc.pdf"), "indexed");
+    }
+    task103_write_corrupt_pdf(&file);
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let source_id: String = catalog
+            .lock()
+            .query_row("SELECT source_id FROM sources", [], |r| r.get(0))
+            .unwrap();
+        bootstrap::scan_and_index_source(&catalog, &source_id).unwrap();
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(task103_status(&catalog, "doc.pdf"), "stale");
+    let found = bootstrap::run_search(
+        &catalog,
+        None,
+        None,
+        "earlierversionmarker",
+        orbok_search::SearchMode::Auto,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(!found.is_empty(), "the old text is still found");
+}
+
+/// §2.6: an embedding failure is not a file failure. No model is wired, so
+/// every file's Embedding job ends `failed` (`model_missing`); the file
+/// stays keyword-searchable and `indexed`.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_embedding_failure_is_not_a_file_failure() {
+    let (_temp, context, _file) = task103_profile("note.md", |p| {
+        std::fs::write(p, "# Note\n\nembeddingonlyfailure marker.\n").unwrap()
+    })
+    .await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let failed_embeddings: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'embedding' AND status = 'failed'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(failed_embeddings >= 1, "control: the embedding job failed");
+    assert_eq!(task103_status(&catalog, "note.md"), "indexed");
+
+    // The same with a file that has nothing prepared (`discovered`, no
+    // active chunks): an Embedding job failing for it is still not a file
+    // failure.
+    catalog
+        .lock()
+        .execute_batch(
+            "UPDATE files SET file_status = 'discovered'; \
+             UPDATE chunks SET chunk_status = 'deleted';",
+        )
+        .unwrap();
+    let file = file_id(&catalog);
+    let source_id: String = catalog
+        .lock()
+        .query_row("SELECT source_id FROM sources", [], |r| r.get(0))
+        .unwrap();
+    orbok_db::repo::IndexJobRepository::new(&catalog)
+        .enqueue(
+            orbok_core::JobType::Embedding,
+            Some(&orbok_core::SourceId::from_string(source_id)),
+            Some(&file),
+        )
+        .unwrap();
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(
+        task103_status(&catalog, "note.md"),
+        "discovered",
+        "an embedding failure never fails a file"
+    );
+}
+
+/// §1.5: an existing profile's file stuck `discovered` after a permanent
+/// failure (what every such file is before this task) is queued once more by
+/// Task 078's startup step, fails again, and now ends `failed`. No migration.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_old_profile_s_stuck_file_ends_failed_after_one_more_startup() {
+    let (temp, context, _file) = task103_profile("old.pdf", task103_write_corrupt_pdf).await;
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        // Put the file where the old code left it.
+        catalog
+            .lock()
+            .execute("UPDATE files SET file_status = 'discovered'", [])
+            .unwrap();
+        let report = orbok_workers::run_startup_recovery(
+            &catalog,
+            &temp.path().join(orbok_db::CACHE_FILE_NAME),
+        )
+        .unwrap();
+        assert_eq!(report.jobs_requeued_discovered, 1, "queued once more");
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(task103_status(&catalog, "old.pdf"), "failed");
+}

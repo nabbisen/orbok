@@ -130,7 +130,6 @@ impl FileState {
             "missing" | "deleted" => FileState::FileNotFound,
             "permission_denied" => FileState::CouldNotPrepare,
             "unsupported" => FileState::Ignored,
-            "failed" => FileState::PartlyPrepared,
             _ => FileState::Discovered,
         }
     }

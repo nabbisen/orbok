@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A file orbok cannot prepare is shown as failed** (Task 103), and it is no
+  longer retried at every start. Before, it stayed "waiting" for ever and the
+  "Failed" counts on the Folders and Preparing pages were always zero.
 - **Folder cards show preparation as it happens** (Task 108): a folder says
   "Preparing" while it has work to do, and its counts rise until it says
   "Ready", instead of showing "Ready 0" until the next restart.

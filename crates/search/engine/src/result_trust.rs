@@ -182,13 +182,9 @@ fn trust_from_file_status(
             ResultTrustState::CannotOpen,
             vec![ResultRecoveryAction::ShowInFolder],
         ),
-        "failed" => (
-            ResultTrustState::PartlyPrepared,
-            vec![
-                ResultRecoveryAction::PrepareAgain,
-                ResultRecoveryAction::ViewDetails,
-            ],
-        ),
+        // No "failed" arm (Task 103): a `failed` file has no active chunks, so
+        // no result is ever built from it, and a state no result can be in is
+        // a promise this code does not keep.
         _ => (ResultTrustState::Ready, Vec::new()),
     }
 }

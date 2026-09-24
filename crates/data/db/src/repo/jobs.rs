@@ -263,6 +263,15 @@ impl<'a> IndexJobRepository<'a> {
             ],
         )
         .map_err(db_err)?;
+        // Task 103: asking again (Prepare again) takes a `failed` file out of
+        // `failed`: it is being prepared, not failed, until this attempt says
+        // otherwise (`fail_with_category` writes `failed` again if it does).
+        tx.execute(
+            "UPDATE files SET file_status = 'discovered', updated_at = ?2 \
+             WHERE file_id = ?1 AND file_status = 'failed'",
+            params![file_id.as_str(), now],
+        )
+        .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
         Ok(true)
     }
@@ -310,6 +319,39 @@ impl<'a> IndexJobRepository<'a> {
             params![id.as_str(), category, message, now],
         )
         .map_err(db_err)?;
+
+        // Task 103: a file whose `Extract` or `Chunk` job has failed for good
+        // and which has nothing prepared is `failed`, so the user sees an end
+        // instead of "waiting" and startup recovery stops retrying it.
+        //
+        // Only when all of these hold, in one statement:
+        // - the job is extract / chunk / keyword_index (an `Embedding` failure
+        //   never fails a file: it stays keyword-searchable);
+        // - the category is not one whose replacement job was already queued
+        //   (`extraction_cache_missing`, `canceled`; the "no other unfinished
+        //   job" test below would catch the first anyway, the list says why);
+        // - the file is `discovered` or `stale` (an `indexed` or `no_text_found`
+        //   file is finished, and never goes back to `failed` this way);
+        // - it has **no active chunks**: a `stale` file that still has an
+        //   earlier version prepared is still searchable and keeps its status
+        //   (Needs update, with Prepare again, already says the true thing);
+        // - and no other job for it is unfinished.
+        if !matches!(category, "extraction_cache_missing" | "canceled") {
+            conn.execute(
+                "UPDATE files SET file_status = 'failed', updated_at = ?2 \
+                 WHERE file_status IN ('discovered', 'stale') \
+                 AND file_id = (SELECT file_id FROM index_jobs WHERE job_id = ?1 \
+                                AND job_type IN ('extract', 'chunk', 'keyword_index') \
+                                AND file_id IS NOT NULL) \
+                 AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.file_id = files.file_id \
+                                 AND c.chunk_status = 'active') \
+                 AND NOT EXISTS (SELECT 1 FROM index_jobs j WHERE j.file_id = files.file_id \
+                                 AND j.job_id != ?1 \
+                                 AND j.status NOT IN ('succeeded', 'failed', 'canceled'))",
+                params![id.as_str(), now],
+            )
+            .map_err(db_err)?;
+        }
         Ok(())
     }
 
