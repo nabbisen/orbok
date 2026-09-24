@@ -22,8 +22,6 @@ pub struct PrivacySettings {
     /// Whether to persist recent search queries. The whole truth about
     /// whether a search is recorded.
     pub remember_recent_searches: bool,
-    /// Whether to clear temporary previews when the app exits.
-    pub clear_temporary_previews_on_exit: bool,
     /// Whether diagnostics may include raw filesystem paths (RFC-040).
     pub diagnostics_include_paths: bool,
     /// Whether diagnostics may include recent search queries (RFC-040).
@@ -34,7 +32,6 @@ impl Default for PrivacySettings {
     fn default() -> Self {
         Self {
             remember_recent_searches: true,
-            clear_temporary_previews_on_exit: false,
             diagnostics_include_paths: false,
             diagnostics_include_recent_searches: false,
         }

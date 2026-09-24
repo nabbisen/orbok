@@ -118,15 +118,23 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
     /// missing file the default value is persisted at the active resolved
     /// path (and nowhere else) before being returned, matching the
     /// pre-Slice-2 `load_or_default` first-load contract (Correction Request
-    /// 111 C4). Any other read/parse error falls back to the default without
-    /// writing it.
+    /// 111 C4). Any other read error falls back to the default without
+    /// writing it. **A file that cannot be parsed at all is kept** (Task 117):
+    /// moved to `<name>.unreadable` beside it, replacing an older copy, so the
+    /// next save cannot overwrite what the user had.
     pub fn load_settings<T>(&self) -> io::Result<T>
     where
         T: Serialize + DeserializeOwned + Default,
     {
         let path = self.path(RuntimePathKind::Settings)?;
         match std::fs::read(path) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+            Ok(bytes) => match serde_json::from_slice(&bytes) {
+                Ok(settings) => Ok(settings),
+                Err(error) => {
+                    keep_unreadable_settings(path, &error);
+                    Ok(T::default())
+                }
+            },
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let default = T::default();
                 write_json(path, &default)?;
@@ -555,6 +563,33 @@ where
 /// requires the destination to be absent (`DestinationExists`) and both
 /// paths under the managed model root, neither of which holds for
 /// replacing an existing settings file outside that root.
+/// Task 117: set an unparseable settings file aside as `<name>.unreadable`.
+/// Logs where the parse failed (line and column), never what the file held.
+/// If it cannot be moved it is copied; if neither works that is logged, and the
+/// defaults are used regardless.
+fn keep_unreadable_settings(path: &Path, error: &serde_json::Error) {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".unreadable");
+    let kept = path.with_file_name(name);
+    // Windows cannot rename over an existing file.
+    let _ = std::fs::remove_file(&kept);
+    let moved = std::fs::rename(path, &kept).or_else(|_| std::fs::copy(path, &kept).map(|_| ()));
+    match moved {
+        Ok(()) => tracing::warn!(
+            line = error.line(),
+            column = error.column(),
+            kept_as = %kept.display(),
+            settings_unreadable = true
+        ),
+        Err(io_error) => tracing::warn!(
+            line = error.line(),
+            column = error.column(),
+            %io_error,
+            settings_unreadable = true
+        ),
+    }
+}
+
 fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let directory = path.parent().ok_or_else(|| {
         io::Error::new(

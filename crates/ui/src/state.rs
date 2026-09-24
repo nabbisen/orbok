@@ -1021,12 +1021,6 @@ pub enum Message {
     /// removes none and never touches the selection, so a read that raced a
     /// removal cannot bring the folder back.
     SourceCardsRefreshed(Vec<SourceCard>),
-    // RFC-043: model readiness
-    ModelReadinessChecked {
-        ready: bool,
-        needs_download: bool,
-        needs_repair: bool,
-    },
     // RFC-040: diagnostics
     DiagnosticsCreateBundle,
     DiagnosticsBundleCreated(String),
@@ -1595,8 +1589,6 @@ impl AppState {
                     }
                 }
             }
-            // RFC-043: model readiness
-            Message::ModelReadinessChecked { .. } => {} // handled by orbok
             // RFC-040: diagnostics
             Message::DiagnosticsCreateBundle => {} // handled by orbok
             Message::DiagnosticsBundleCreated(_) => {

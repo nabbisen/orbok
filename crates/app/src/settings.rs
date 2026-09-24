@@ -26,26 +26,34 @@ use std::path::PathBuf;
 
 /// All persistent user preferences.
 ///
+/// **An upgrade keeps your settings (Task 117).** Three rules, all in how this
+/// is read:
+///
+/// 1. `#[serde(default)]` on the struct, backed by `Default`: a field a file
+///    does not have (one a newer release added) takes its default, and
+///    nothing else changes.
+/// 2. Each field is read on its own (the `Deserialize` below): a value of the
+///    wrong type (`"theme": 5`) takes its default and the rest still load.
+/// 3. A file that cannot be read at all is kept by the loader
+///    (`RuntimeStorage::load_settings`), never overwritten.
+///
 /// `Serialize` and `Deserialize` are written out below around the derived
-/// ones (`remote = "Self"`) for one reason: a `settings.json` an older orbok
-/// wrote may carry `"privacy_mode": "strict"`, a field this struct no longer
-/// has (RFC-039 amendment, Task 115), and that value must still turn recent
-/// searches off, once, as it did.
+/// ones (`remote = "Self"`), which is what lets rule 2 and one more thing
+/// happen before the fields are read: a `settings.json` an older orbok wrote
+/// may carry `"privacy_mode": "strict"`, a field this struct no longer has
+/// (RFC-039 amendment, Task 115), and that value must still turn recent
+/// searches off, once, as it did. `#[serde(default)]` and `remote = "Self"`
+/// combine without a wrapper: the derived `OrbokSettings::deserialize` is an
+/// inherent function that fills gaps from `Default`, and the trait
+/// implementation calls it.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-#[serde(remote = "Self")]
+#[serde(default, remote = "Self")]
 pub struct OrbokSettings {
     /// Path to the folder containing `onnx/model.onnx` and
     /// `tokenizer.json` for the embedding model. Set by the startup
     /// wizard (RFC-021). `None` means semantic search has never been
     /// configured.
     pub embedding_model_dir: Option<String>,
-
-    /// Path to the reranker model folder (optional, RFC-010).
-    pub reranker_model_dir: Option<String>,
-
-    /// Indexing quality mode (RFC-013).
-    /// One of: `"balanced"` | `"high_accuracy"` | `"space_saving"`.
-    pub index_mode: String,
 
     /// UI locale code — `"en"` | `"ja"` | `"auto"` (RFC-031 §48). `"auto"`
     /// is not a `Locale` variant; `Locale::parse` returns `None` for it by
@@ -64,9 +72,6 @@ pub struct OrbokSettings {
     /// Whether to reduce motion (RFC-035). `true` suppresses non-essential
     /// animations. Defaults from OS signal; user can override.
     pub reduced_motion: bool,
-
-    /// Whether reranking is enabled (RFC-010). Requires reranker model.
-    pub rerank_enabled: bool,
 
     /// Whether background indexing is allowed (RFC-019).
     pub background_indexing: bool,
@@ -88,17 +93,12 @@ pub struct OrbokSettings {
     /// privacy control, and the whole truth about whether a search is
     /// recorded.
     pub remember_recent_searches: bool,
-
-    /// Whether to clear temporary previews on app exit (RFC-039 §11).
-    pub clear_temporary_previews_on_exit: bool,
 }
 
 impl Default for OrbokSettings {
     fn default() -> Self {
         Self {
             embedding_model_dir: None,
-            reranker_model_dir: None,
-            index_mode: "balanced".into(),
             // RFC-031 §48/§166, Task 009: "auto" is load-bearing, not "en".
             // A fresh profile must reach OS locale detection; "en" as the
             // literal default would satisfy Locale::parse on the first
@@ -110,11 +110,9 @@ impl Default for OrbokSettings {
             theme: "system".into(),
             text_scale: "default".into(),
             reduced_motion: false,
-            rerank_enabled: false,
             background_indexing: true,
             pause_embedding_on_battery: true,
             remember_recent_searches: true,
-            clear_temporary_previews_on_exit: false,
         }
     }
 }
@@ -190,16 +188,36 @@ impl serde::Serialize for OrbokSettings {
 impl<'de> serde::Deserialize<'de> for OrbokSettings {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error;
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let serde_json::Value::Object(map) = serde_json::Value::deserialize(deserializer)? else {
+            return Err(D::Error::custom("the settings file is not an object"));
+        };
         // Compatibility (Task 115 §1.4): only `"strict"` means anything. It is
         // read once, as the toggle Off; the next save no longer writes the
         // field, and the file then says the same thing itself. Any other
         // value, or none, changes nothing.
-        let strict = value
-            .get("privacy_mode")
-            .and_then(serde_json::Value::as_str)
-            == Some("strict");
-        let mut settings = Self::deserialize(value).map_err(D::Error::custom)?;
+        let strict = map.get("privacy_mode").and_then(serde_json::Value::as_str) == Some("strict");
+        // One unreadable value does not cost the others (Task 117 §1.3): each
+        // entry is tried alone -- with the struct-level default, a lone entry
+        // reads if and only if its value has the right type -- and one that
+        // does not is left out, so its field takes its default. This is
+        // independent of the field's type, so a field added later is covered
+        // without touching this.
+        let mut readable = serde_json::Map::new();
+        for (key, value) in map {
+            let mut alone = serde_json::Map::new();
+            alone.insert(key.clone(), value.clone());
+            if Self::deserialize(serde_json::Value::Object(alone)).is_ok() {
+                readable.insert(key, value);
+            } else {
+                tracing::warn!(setting = %key, unreadable_value = true);
+            }
+        }
+        // Both names of one field would be a duplicate: the new name wins.
+        if readable.contains_key("pause_embedding_on_battery") {
+            readable.remove("pause_on_battery");
+        }
+        let mut settings =
+            Self::deserialize(serde_json::Value::Object(readable)).map_err(D::Error::custom)?;
         if strict {
             settings.remember_recent_searches = false;
         }
@@ -212,7 +230,6 @@ impl OrbokSettings {
     pub fn privacy_settings(&self) -> orbok_core::PrivacySettings {
         orbok_core::PrivacySettings {
             remember_recent_searches: self.remember_recent_searches,
-            clear_temporary_previews_on_exit: self.clear_temporary_previews_on_exit,
             diagnostics_include_paths: false,
             diagnostics_include_recent_searches: false,
         }

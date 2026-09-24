@@ -69,7 +69,7 @@ fn first_load_creates_settings_only_at_the_active_path_in_both_directions() {
 }
 
 #[test]
-fn corrupt_settings_file_falls_back_to_default_without_overwriting_it() {
+fn corrupt_settings_file_falls_back_to_default_and_is_kept_beside_it() {
     let temp = tempfile::tempdir().unwrap();
     let (standard, _portable) = contexts(temp.path());
     let storage = RuntimeStorage::new(&standard, &AllowRuntimePathProbe);
@@ -82,9 +82,15 @@ fn corrupt_settings_file_falls_back_to_default_without_overwriting_it() {
 
     let loaded: TestSettings = storage.load_settings().unwrap();
     assert_eq!(loaded, TestSettings::default());
-    // Best-effort: the corrupt bytes are left as-is, matching the prior
-    // behavior of falling back to a default without persisting it.
-    assert_eq!(std::fs::read(&path).unwrap(), b"not json");
+    // Task 117: the defaults are not persisted, and the user's bytes are not
+    // lost: they are moved beside the settings path as `<name>.unreadable`.
+    assert!(!path.exists(), "nothing is written in its place");
+    let mut kept = path.file_name().unwrap().to_os_string();
+    kept.push(".unreadable");
+    assert_eq!(
+        std::fs::read(path.with_file_name(kept)).unwrap(),
+        b"not json"
+    );
 }
 
 #[test]

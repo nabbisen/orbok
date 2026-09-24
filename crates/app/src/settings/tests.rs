@@ -250,3 +250,219 @@ fn recent_searches_follow_the_toggle_and_nothing_else() {
             .all(|e| e.search_text != "kept private")
     );
 }
+
+// ── Task 117: an upgrade keeps your settings ──────────────────────────
+//
+// These go through the production load and save
+// (`orbok::runtime_storage::load_settings` / `save_settings`), not the
+// test-only `load_settings(path)` above: the unreadable-file rule lives there.
+
+use orbok::runtime_context::{PlatformRuntimePaths, RuntimeContext, RuntimeSelection};
+
+fn context_in(dir: &Path) -> RuntimeContext {
+    RuntimeContext::resolve(
+        RuntimeSelection::resolve(false, Some(dir.as_os_str().to_os_string())).unwrap(),
+        dir,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(dir),
+            standard_settings_dir: Some(dir),
+        },
+    )
+    .unwrap()
+}
+
+fn load_prod(context: &RuntimeContext) -> OrbokSettings {
+    orbok::runtime_storage::load_settings::<OrbokSettings>(context).unwrap()
+}
+
+fn as_value(settings: &OrbokSettings) -> serde_json::Value {
+    serde_json::to_value(settings).unwrap()
+}
+
+/// A settings file in which **every** field the app reads has a value that is
+/// not its default.
+fn non_default_settings() -> serde_json::Value {
+    serde_json::json!({
+        "embedding_model_dir": "/models/e5",
+        "locale": "ja",
+        "theme": "dark",
+        "text_scale": "larger",
+        "reduced_motion": true,
+        "background_indexing": false,
+        "pause_embedding_on_battery": false,
+        "remember_recent_searches": false,
+    })
+}
+
+/// Test 1: every field, missing one at a time. That field takes its default;
+/// every other keeps its own value.
+#[test]
+fn a_missing_field_takes_its_default_and_nothing_else_changes() {
+    let full = non_default_settings();
+    let default = as_value(&OrbokSettings::default());
+    // The fixture really is non-default everywhere, or this proves nothing.
+    for (key, value) in full.as_object().unwrap() {
+        assert_ne!(value, &default[key], "{key} must differ from its default");
+    }
+    assert_eq!(
+        full.as_object().unwrap().len(),
+        default.as_object().unwrap().len(),
+        "the fixture names every field"
+    );
+    for missing in full.as_object().unwrap().keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = full.clone();
+        file.as_object_mut().unwrap().remove(missing);
+        std::fs::write(dir.path().join("settings.json"), file.to_string()).unwrap();
+
+        let loaded = as_value(&load_prod(&context_in(dir.path())));
+
+        for (key, expected) in full.as_object().unwrap() {
+            let want = if key == missing {
+                &default[key]
+            } else {
+                expected
+            };
+            assert_eq!(
+                &loaded[key], want,
+                "without `{missing}`, `{key}` must be {want}"
+            );
+        }
+    }
+}
+
+/// Test 2: a file from before 0.14.0 (no `text_scale`, no `reduced_motion`)
+/// keeps what it had. These are the fields orbok then wrote.
+#[test]
+fn a_file_from_before_text_scale_and_reduced_motion_keeps_its_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("settings.json"),
+        r#"{
+            "embedding_model_dir": "/models/e5",
+            "reranker_model_dir": null,
+            "index_mode": "balanced",
+            "locale": "ja",
+            "theme": "dark",
+            "rerank_enabled": false,
+            "background_indexing": true,
+            "pause_on_battery": false
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = load_prod(&context_in(dir.path()));
+
+    assert_eq!(loaded.embedding_model_dir.as_deref(), Some("/models/e5"));
+    assert_eq!(loaded.locale, "ja");
+    assert_eq!(loaded.theme, "dark");
+    assert!(
+        !loaded.pause_embedding_on_battery,
+        "the old name still loads"
+    );
+    assert_eq!(loaded.text_scale, "default", "the new fields take defaults");
+    assert!(!loaded.reduced_motion);
+}
+
+/// Test 3: one unreadable value does not cost the others.
+#[test]
+fn a_wrong_typed_value_takes_its_default_and_the_rest_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut file = non_default_settings();
+    file["theme"] = serde_json::json!(5);
+    file["background_indexing"] = serde_json::json!("yes");
+    std::fs::write(dir.path().join("settings.json"), file.to_string()).unwrap();
+
+    let loaded = load_prod(&context_in(dir.path()));
+
+    assert_eq!(loaded.theme, "system", "the bad value takes its default");
+    assert!(loaded.background_indexing, "so does the second one");
+    assert_eq!(loaded.locale, "ja");
+    assert_eq!(loaded.embedding_model_dir.as_deref(), Some("/models/e5"));
+    assert_eq!(loaded.text_scale, "larger");
+    assert!(loaded.reduced_motion);
+    assert!(!loaded.remember_recent_searches);
+}
+
+/// Test 4: a file that cannot be parsed at all is kept, not overwritten.
+#[test]
+fn an_unparseable_file_is_kept_beside_the_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let context = context_in(dir.path());
+    let settings_path = dir.path().join("settings.json");
+    let unreadable = dir.path().join("settings.json.unreadable");
+    let truncated = br#"{"locale": "ja", "embedding_model_dir": "/models/e5", "theme":"#;
+    std::fs::write(&settings_path, truncated).unwrap();
+
+    let loaded = load_prod(&context);
+
+    assert_eq!(as_value(&loaded), as_value(&OrbokSettings::default()));
+    assert_eq!(
+        std::fs::read(&unreadable).unwrap(),
+        truncated,
+        "the user's bytes are kept, intact"
+    );
+    assert!(!settings_path.exists(), "and moved, not copied");
+
+    // The next save writes a fresh file and leaves the copy alone.
+    let mut changed = loaded;
+    changed.theme = "dark".into();
+    orbok::runtime_storage::save_settings(&context, &changed).unwrap();
+    assert_eq!(std::fs::read(&unreadable).unwrap(), truncated);
+    assert_eq!(load_prod(&context).theme, "dark");
+
+    // A second unreadable file replaces the older copy.
+    std::fs::write(&settings_path, b"not json at all").unwrap();
+    let _ = load_prod(&context);
+    assert_eq!(std::fs::read(&unreadable).unwrap(), b"not json at all");
+}
+
+/// A file that is JSON but not an object is unreadable too.
+#[test]
+fn a_file_that_is_not_an_object_is_kept_too() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("settings.json"), b"[1, 2, 3]").unwrap();
+    let loaded = load_prod(&context_in(dir.path()));
+    assert_eq!(as_value(&loaded), as_value(&OrbokSettings::default()));
+    assert_eq!(
+        std::fs::read(dir.path().join("settings.json.unreadable")).unwrap(),
+        b"[1, 2, 3]"
+    );
+}
+
+/// Test 5: fields nothing reads load without complaint, and the next save
+/// omits them.
+#[test]
+fn removed_fields_load_and_are_not_saved_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let context = context_in(dir.path());
+    let mut file = non_default_settings();
+    for (key, value) in [
+        ("index_mode", serde_json::json!("space_saving")),
+        ("clear_temporary_previews_on_exit", serde_json::json!(true)),
+        ("reranker_model_dir", serde_json::json!("/models/rerank")),
+        ("rerank_enabled", serde_json::json!(true)),
+    ] {
+        file[key] = value;
+    }
+    std::fs::write(dir.path().join("settings.json"), file.to_string()).unwrap();
+
+    let loaded = load_prod(&context);
+    assert_eq!(loaded.locale, "ja", "the rest of the file loads");
+    orbok::runtime_storage::save_settings(&context, &loaded).unwrap();
+
+    let saved = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+    for gone in [
+        "index_mode",
+        "clear_temporary_previews_on_exit",
+        "reranker_model_dir",
+        "rerank_enabled",
+        "privacy_mode",
+        "persist_snippets",
+    ] {
+        assert!(
+            !saved.contains(gone),
+            "the saved file still has `{gone}`: {saved}"
+        );
+    }
+}
