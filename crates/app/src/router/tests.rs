@@ -1227,3 +1227,185 @@ fn search_in_a_folder_above_an_added_one_combines_them() {
         })
     );
 }
+
+// ── Task 114: a folder can leave out its subfolders ────────────────────
+
+/// A folder `f` with `x.md` and `sub/y.md`, added and scanned by hand: rows
+/// exist for both files. Returns its card id.
+fn folder_with_a_subfolder(temp: &std::path::Path, deps: &AppDeps, app: &mut OrbokApp) -> String {
+    let f = folder(temp, "f");
+    let sub = folder(temp, "f/sub");
+    std::fs::write(f.join("x.md"), "# x\n").unwrap();
+    std::fs::write(sub.join("y.md"), "# y\n").unwrap();
+    let _ = typed(app, deps, &f.to_string_lossy());
+    let id = app.state.sources[0].source_id.clone();
+    orbok_fs::Scanner::new(&deps.catalog)
+        .scan(
+            &orbok_fs::ScanRequest {
+                source_id: orbok_core::SourceId::from_string(id.clone()),
+                force_hash: false,
+                enqueue_index_jobs: true,
+            },
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    id
+}
+
+fn file_count(deps: &AppDeps) -> i64 {
+    deps.catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+        .unwrap()
+}
+
+/// §2.9: the confirmed narrowing's work runs off the update thread, as a real
+/// task on its own connection. `route` returns promptly even with a reader
+/// holding the database, one task is dispatched, and **nothing has been
+/// erased when it returns** (the rows are still there).
+#[test]
+fn the_confirmed_narrowing_runs_off_the_update_thread() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let id = folder_with_a_subfolder(temp.path(), &deps, &mut app);
+    assert_eq!(file_count(&deps), 2);
+    let reader = hold_a_read_transaction(deps.catalog.path());
+
+    let start = std::time::Instant::now();
+    let task = route(&mut app, Message::NarrowFolderRequested(id), &deps);
+    let elapsed = start.elapsed();
+    reader.execute_batch("COMMIT;").unwrap();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "route() must return promptly; took {elapsed:?}"
+    );
+    assert_eq!(task.units(), 1, "the erasure is dispatched as a real task");
+    assert_eq!(file_count(&deps), 2, "nothing was erased inline");
+    assert!(
+        app.state.sources[0].covers_subfolders,
+        "the card is unchanged"
+    );
+}
+
+/// The question opens at once and its counted line is fetched by a task;
+/// confirming (Enter or the button) dispatches the request, not the erasure.
+#[test]
+fn asking_fetches_the_count_and_confirming_dispatches_the_request() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let id = folder_with_a_subfolder(temp.path(), &deps, &mut app);
+
+    let task = route(&mut app, Message::AskNarrowFolder(id.clone()), &deps);
+    assert_eq!(
+        app.state.confirm_narrow_source.as_deref(),
+        Some(id.as_str())
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "the count is fetched off the update thread"
+    );
+    // The line's number, from the same read the task does.
+    assert_eq!(bootstrap::narrow_file_count(&deps.catalog, &id).unwrap(), 1);
+    app.update(Message::NarrowCountReady(id.clone(), 1));
+    assert_eq!(app.state.narrow_file_count, Some(1));
+
+    let task = route(&mut app, Message::ConfirmNarrowFolder, &deps);
+    assert_eq!(task.units(), 1, "the request is dispatched");
+    assert_eq!(app.state.confirm_narrow_source, None, "the question closed");
+    assert_eq!(file_count(&deps), 2, "and nothing was erased by confirming");
+}
+
+/// §1.4: a failure is visible -- the existing "cleanup didn't finish" notice
+/// whose "Try again" re-opens the question (never the erasure) -- and the
+/// cards are re-read either way.
+#[test]
+fn a_failed_narrowing_says_so_and_retrying_asks_again() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    // A folder the catalog does not hold: the erasure fails.
+    let (outcome, cards, health) = crate::narrow_folder_and_reload(&deps.runtime, "no-such-folder");
+    assert!(matches!(outcome, crate::NarrowOutcome::Failed));
+    assert!(cards.is_some() && health.is_some(), "re-read either way");
+
+    let messages = crate::narrow_outcome_messages("s1".into(), outcome, cards, health);
+    match &messages[0] {
+        Message::ShowNoticeWithAction { notice, action } => {
+            assert_eq!(*notice, orbok_ui::notice::UserNotice::CleanupDidNotFinish);
+            assert!(
+                matches!(**action, Message::AskNarrowFolder(ref id) if id == "s1"),
+                "Try again re-opens the question, got {action:?}"
+            );
+        }
+        other => panic!("expected the failure notice, got {other:?}"),
+    }
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(m, Message::SourceCardsRefreshed(_)))
+    );
+
+    let done = crate::narrow_outcome_messages(
+        "s1".into(),
+        crate::NarrowOutcome::Narrowed,
+        Some(Vec::new()),
+        None,
+    );
+    assert!(matches!(&done[0], Message::FolderNarrowed(id) if id == "s1"));
+    assert!(matches!(&done[1], Message::SourceCardsRefreshed(_)));
+}
+
+/// §2.5 / §2.6 through the router: widening asks nothing, prepares the
+/// subfolders (a scan is queued), and over an added subfolder combines them
+/// with Task 113's notice.
+#[test]
+fn widening_over_an_added_subfolder_combines_them_and_says_so() {
+    use orbok_ui::notice::UserNotice;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let f = folder(temp.path(), "f");
+    let sub = folder(temp.path(), "f/sub");
+    let _ = typed(&mut app, &deps, &f.to_string_lossy());
+    let f_id = app.state.sources[0].source_id.clone();
+    orbok_db::repo::SourceRepository::new(&deps.catalog)
+        .narrow_to_top_level(&orbok_core::SourceId::from_string(f_id.clone()))
+        .unwrap();
+    app.update(Message::SourcesLoaded(
+        bootstrap::get_sources(&deps.catalog).unwrap(),
+    ));
+    assert!(!app.state.sources[0].covers_subfolders);
+    let _ = typed(&mut app, &deps, &sub.to_string_lossy());
+    assert_eq!(
+        source_rows(&deps),
+        2,
+        "a subfolder of a this-folder-only folder is added"
+    );
+
+    let task = route(&mut app, Message::WidenFolder(f_id.clone()), &deps);
+
+    assert_eq!(task.units(), 0, "nothing is asked and no dialog opens");
+    assert_eq!(source_rows(&deps), 1, "the subfolder became part of it");
+    assert_eq!(app.state.sources.len(), 1);
+    assert!(app.state.sources[0].covers_subfolders, "the card says so");
+    assert_eq!(
+        app.state.notice,
+        Some(UserNotice::FoldersCombined {
+            folders: vec!["sub".into()],
+            parent: "f".into(),
+        })
+    );
+    let scans: i64 = deps
+        .catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'scan' AND source_id = ?1",
+            [&f_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(scans >= 1, "the folder is scanned again");
+}

@@ -62,6 +62,9 @@ crates/app/src/main.rs	rebuild vector index failed: cache unavailable	tracing::e
 crates/app/src/main.rs	rebuild vector index failed: {e}	tracing::error! log message, not rendered in the GUI (Task 099: paired with the localized notice_retry::cleanup_did_not_finish(), same shape as Task 097's reset-catalog log lines)
 crates/app/src/main.rs	the startup-failure window could not be shown	tracing::error! log message, not rendered in the GUI (Task 071: logged only when the window itself fails to open)
 crates/app/src/router.rs	initial scan failed: {e}	tracing::warn! log message, not rendered in the GUI
+crates/app/src/main.rs	narrow folder failed: catalog or cache unavailable	tracing::error! log message, not rendered in the GUI (Task 114: paired with the localized notice_retry::cleanup_did_not_finish(), same shape as Task 099's rebuild log lines)
+crates/app/src/main.rs	narrow folder failed: {e}	tracing::error! log message, not rendered in the GUI (Task 114: paired with the localized notice_retry::cleanup_did_not_finish(), same shape as Task 099's rebuild log lines)
+crates/app/src/router.rs	widen folder failed: {e}	tracing::error! log message, not rendered in the GUI (Task 114: paired with the localized notice_retry::folder_not_widened())
 crates/app/src/router.rs	model store unavailable: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(d), paired with the localized UserNotice::StorageUnavailable)
 crates/app/src/source_removal.rs	remove source failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SourceCouldNotBeRemoved; moved from main.rs by Task 073)
 crates/app/src/router.rs	persist theme failed: {e}	tracing::error! log message, not rendered in the GUI (RFC-061 §8(b), paired with the localized UserNotice::SettingCouldNotBeSaved)

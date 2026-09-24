@@ -35,6 +35,7 @@ fn guard_over(root: &std::path::Path) -> PathGuard {
         hidden_file_policy: HiddenFilePolicy::Exclude,
         symlink_policy: SymlinkPolicy::Ignore,
         max_file_size_bytes: None,
+        covers_subfolders: true,
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-01-01T00:00:00Z".to_string(),
         last_scanned_at: None,

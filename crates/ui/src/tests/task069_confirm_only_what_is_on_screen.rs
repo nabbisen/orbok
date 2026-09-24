@@ -9,6 +9,8 @@ use iced::keyboard::{Key, Modifiers, key::Named};
 #[derive(Debug, Clone, Copy)]
 enum Confirmation {
     Removal,
+    /// Task 114: "Stop including subfolders?".
+    Narrow,
     Reset,
     ClearHistory,
     /// Task 110: the private-folder question, from either page.
@@ -17,8 +19,9 @@ enum Confirmation {
 }
 
 impl Confirmation {
-    const ALL: [Confirmation; 5] = [
+    const ALL: [Confirmation; 6] = [
         Self::Removal,
+        Self::Narrow,
         Self::Reset,
         Self::ClearHistory,
         Self::AddOnFolders,
@@ -28,7 +31,7 @@ impl Confirmation {
     /// The one view each confirmation renders on.
     fn home(self) -> ViewId {
         match self {
-            Self::Removal => ViewId::Sources,
+            Self::Removal | Self::Narrow => ViewId::Sources,
             Self::Reset => ViewId::Storage,
             Self::ClearHistory => ViewId::Settings,
             Self::AddOnFolders => ViewId::Sources,
@@ -39,6 +42,7 @@ impl Confirmation {
     fn open(self) -> Message {
         match self {
             Self::Removal => Message::AskRemoveSource("src-1".into()),
+            Self::Narrow => Message::AskNarrowFolder("src-1".into()),
             Self::Reset => Message::AskResetCatalog,
             Self::ClearHistory => Message::AskClearRecentSearches,
             Self::AddOnFolders => Message::AskAddSensitiveFolder(PendingFolderAdd {
@@ -56,6 +60,7 @@ impl Confirmation {
         matches!(
             (self, message),
             (Self::Removal, Some(Message::ConfirmRemoveSource))
+                | (Self::Narrow, Some(Message::ConfirmNarrowFolder))
                 | (Self::Reset, Some(Message::ConfirmResetCatalog))
                 | (
                     Self::ClearHistory,
@@ -71,6 +76,7 @@ impl Confirmation {
     fn is_open(self, state: &AppState) -> bool {
         match self {
             Self::Removal => state.confirm_remove_source.is_some(),
+            Self::Narrow => state.confirm_narrow_source.is_some(),
             Self::Reset => state.confirm_reset,
             Self::ClearHistory => state.confirm_clear_history,
             Self::AddOnFolders | Self::AddOnSearch => state.pending_folder_add.is_some(),
@@ -89,6 +95,7 @@ fn opened_on_its_view(confirmation: Confirmation) -> AppState {
             failed: 0,
             no_text_found: 0,
             unfinished_jobs: 0,
+            covers_subfolders: true,
             status: orbok_core::SourceStatus::Active,
             source_id: "src-1".into(),
         }],

@@ -232,6 +232,33 @@ fn report_combined(
     }));
 }
 
+/// Task 114: "This folder and subfolders" for one folder, and what follows
+/// from it: added folders inside it become part of it (Task 113's combine,
+/// with its notice), the folder is queued to be scanned again, and the cards
+/// are re-read.
+fn widen_folder(app: &mut OrbokApp, deps: &AppDeps, source_id: &str) {
+    match bootstrap::widen_source(&deps.catalog, source_id) {
+        Ok(combined) => {
+            if let Some(parent) = app
+                .state
+                .sources
+                .iter()
+                .find(|card| card.source_id == source_id)
+                .cloned()
+            {
+                report_combined(app, &parent, combined);
+            }
+            app.update(Message::HealthUpdated(bootstrap::get_health(&deps.catalog)));
+            cards_follow_the_queue(app, &deps.catalog);
+        }
+        Err(e) => {
+            tracing::error!("widen folder failed: {e}");
+            app.update(notice_retry::folder_not_widened(source_id));
+            cards_follow_the_queue(app, &deps.catalog);
+        }
+    }
+}
+
 /// Open the OS folder picker for the search page (RFC-045), unless one is
 /// already open (Task 047's rule, which `search_location.picker_in_progress`
 /// records but nothing checked before Task 105). Used by a submitted search
@@ -311,6 +338,14 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         return app
             .state
             .take_confirmed_folder_add()
+            .map_or_else(iced::Task::none, iced::Task::done);
+    }
+    // Task 114: "Stop including" -- dispatch the narrowing for the folder the
+    // question was opened for, and close it.
+    if matches!(message, Message::ConfirmNarrowFolder) {
+        return app
+            .state
+            .take_confirmed_narrowing()
             .map_or_else(iced::Task::none, iced::Task::done);
     }
     if matches!(message, Message::ConfirmRemoveSource) {
@@ -603,6 +638,29 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         }
         Message::SourceRemoved(source_id) => {
             source_removal::remove(&deps.catalog, &mut app.state, source_id);
+            return iced::Task::none();
+        }
+        // Task 114: the question opens synchronously (the reducer); its
+        // counted line is fetched off the update thread, the same
+        // `Task::perform` shape as the rebuild questions' (Task 099).
+        Message::AskNarrowFolder(source_id) => {
+            app.update(message.clone());
+            if app.state.confirm_narrow_source.as_ref() == Some(source_id) {
+                return crate::narrow_count_task(deps.catalog.clone(), source_id.clone());
+            }
+            return iced::Task::none();
+        }
+        // Task 114: the erasure runs off the update thread, on its own
+        // connection (Task 097's shape); it lands as `FolderNarrowed` and a
+        // card refresh, or the failure notice with its retry and a refresh.
+        Message::NarrowFolderRequested(source_id) => {
+            return crate::narrow_folder_task(deps.runtime.clone(), source_id.clone());
+        }
+        // Task 114: widening asks nothing. The setting, the combine of added
+        // folders inside, and the scan being queued are quick catalog writes
+        // (no erasure), the same weight as adding a folder.
+        Message::WidenFolder(source_id) => {
+            widen_folder(app, deps, source_id);
             return iced::Task::none();
         }
         // RFC-037 §10.2 manual refresh (Task 035): same function

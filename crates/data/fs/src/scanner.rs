@@ -127,7 +127,11 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 if path.is_dir() {
-                    stack.push(path);
+                    // Task 114: "this folder only" reads the folder's direct
+                    // entries and does not descend.
+                    if source.covers_subfolders {
+                        stack.push(path);
+                    }
                     continue;
                 }
                 if !path.is_file() {
@@ -231,7 +235,7 @@ impl<'a> Scanner<'a> {
                     summary.unsupported_files += 1;
                     FileStatus::Unsupported
                 };
-                let record = files.insert(NewFile {
+                let new_file = NewFile {
                     source_id: source.source_id.clone(),
                     original_path: canonical.clone(),
                     canonical_path: canonical.clone(),
@@ -241,7 +245,18 @@ impl<'a> Scanner<'a> {
                         .map(|e| e.to_string_lossy().to_ascii_lowercase()),
                     metadata: observed,
                     status,
-                })?;
+                };
+                // Task 114: a file below the top level is written only while
+                // the folder still covers its subfolders -- decided by the
+                // insert itself, not by the copy of the folder this scan read
+                // when it started, which narrowing may since have changed.
+                let Some(record) = (if is_below_top_level(source, path) {
+                    files.insert_below_top_level(new_file)?
+                } else {
+                    Some(files.insert(new_file)?)
+                }) else {
+                    return Ok(());
+                };
                 if supported {
                     summary.new_files += 1;
                     if request.enqueue_index_jobs {
@@ -332,8 +347,8 @@ impl<'a> Scanner<'a> {
         let canonical = path.to_string_lossy().into_owned();
         match files.get_by_path(&source.source_id, &canonical)? {
             Some(record) => files.set_status(&record.file_id, status),
-            None => files
-                .insert(NewFile {
+            None => {
+                let new_file = NewFile {
                     source_id: source.source_id.clone(),
                     original_path: canonical.clone(),
                     canonical_path: canonical.clone(),
@@ -341,10 +356,20 @@ impl<'a> Scanner<'a> {
                     extension: None,
                     metadata: ObservedMetadata::default(),
                     status,
-                })
-                .map(|_| ()),
+                };
+                if is_below_top_level(source, path) {
+                    files.insert_below_top_level(new_file).map(|_| ())
+                } else {
+                    files.insert(new_file).map(|_| ())
+                }
+            }
         }
     }
+}
+
+/// Whether `path` is not a direct entry of the folder (Task 114).
+fn is_below_top_level(source: &SourceRecord, path: &Path) -> bool {
+    path.parent() != Some(Path::new(&source.canonical_path))
 }
 
 /// Hidden/excluded component skipping for directory descent and files.

@@ -63,6 +63,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "files_no_text_found_check",
         sql: include_str!("../migrations/0009_files_no_text_found_check.sql"),
     },
+    Migration {
+        version: 10,
+        name: "source_covers_subfolders",
+        sql: include_str!("../migrations/0010_source_covers_subfolders.sql"),
+    },
 ];
 
 /// Apply all pending migrations. Called from `Catalog::open` before any

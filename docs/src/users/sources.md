@@ -12,15 +12,35 @@ Nothing is saved or prepared until you choose **Add anyway**; **Cancel** (or
 Escape) adds nothing. You can remove a folder at any time with **Remove from
 orbok** in **Folders**.
 
+## What a folder covers
+
+A new folder covers **This folder and subfolders**. Each card on the
+**Folders** view shows what its folder covers, with a button for the other
+choice.
+
+- **This folder only** prepares only the files directly in the folder. To
+  choose it, press it on the card. orbok asks first ("Stop including
+  subfolders?"): it removes what it prepared for the files in the
+  subfolders, and says how many. Your files are never changed or deleted.
+  Cancel, or Escape, changes nothing.
+- **This folder and subfolders** prepares the subfolders too. Pressing it
+  asks nothing and starts preparing.
+
+To prepare only some subfolders, add the folder as **This folder only**,
+then add the subfolders you want.
+
 ## Folders inside folders
 
 A file belongs to one folder. If you add a folder that is inside a folder
-you already added, orbok adds nothing and says **Folder already included**:
-the folder above already covers it. If you add a folder **above** folders
+you already added **and covers its subfolders**, orbok adds nothing and says
+**Folder already included**: the folder above already covers it. A folder
+set to **This folder only** covers nothing below it, so its subfolders can
+be added. If you add a folder **above** folders
 you already added, they become part of the new one and orbok says **Folders
 combined**; what it already prepared for their files is kept, and their
-cards go from the list. Choosing a folder inside an added folder to search
-in registers nothing either: orbok searches the added folder's files, only
+cards go from the list. Changing a folder to **This folder and subfolders**
+does the same for added folders inside it. Choosing a folder inside an added
+folder to search in registers nothing either: orbok searches the added folder's files, only
 those under the folder you chose.
 
 ## What orbok skips

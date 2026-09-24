@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A folder can leave out its subfolders** (Task 114): each card on the
+  Folders view shows whether it covers "This folder and subfolders" or "This
+  folder only" and changes it. Choosing "This folder only" asks first and
+  removes what orbok prepared for the subfolders' files (your files are never
+  touched).
+
 - **Storage now offers "Prepare keyword search again" and "Prepare search
   by meaning again"** (Task 099, Advanced view). Deleting either search
   index used to be unreachable — the button existed nowhere, and the one

@@ -7,6 +7,7 @@ mod rfc062_migration_integrity;
 mod task055_backfill_cost;
 mod task080_files_no_text_found_migration;
 mod task099_rebuild_index;
+mod task114_source_covers_subfolders_migration;
 
 use crate::Catalog;
 use crate::migrations;

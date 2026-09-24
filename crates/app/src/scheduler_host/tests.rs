@@ -3525,3 +3525,319 @@ async fn a_search_limited_to_a_subfolder_finds_only_files_under_it() {
         "and from the added folder when there is no limit"
     );
 }
+
+// ── Task 114: a folder can leave out its subfolders ────────────────────
+
+fn count_where(catalog: &Catalog, sql: &str) -> i64 {
+    catalog.lock().query_row(sql, [], |r| r.get(0)).unwrap()
+}
+
+/// How many extraction-cache entries exist for `path`'s file (0 or 1).
+fn cached_extractions(context: &RuntimeContext, catalog: &Catalog, path: &Path) -> usize {
+    let cache = bootstrap::cache_service(context).unwrap();
+    let engine = cache
+        .engine::<Vec<u8>>(
+            catalog,
+            &orbok_cache::OrbokCacheNamespace::ExtractSegments,
+            orbok_cache::OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )
+        .unwrap();
+    usize::from(engine.check_status(path).unwrap() != localcache::CacheStatus::Missing)
+}
+
+/// §2.2: prepare the whole tree (with embeddings), then narrow. For the files
+/// below the top level nothing is left: no `files` row, chunk, keyword row,
+/// embedding or cache entry; the RFC-059 invariant holds; nothing is shown as
+/// File not found; startup queues nothing for them; and search finds only what
+/// is still in the folder.
+#[tokio::test]
+async fn narrowing_erases_everything_prepared_below_the_top_level() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    for rel in ["f/x.md", "f/sub/y.md", "f/sub/deep/z.md"] {
+        write_doc(&docs, rel);
+    }
+    let (f, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
+            .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &f.source_id).unwrap();
+    let model_id = register_mock_model(&catalog, "mock");
+    run_host_until(&context, &model_id, "the whole tree prepared", || {
+        indexed_count(&catalog) == 3
+            && chunks_without_embedding(&catalog, &model_id) == 0
+            && nothing_unfinished(&catalog)
+    })
+    .await;
+    let y = native_path(&docs, "f/sub/y.md");
+    let z = native_path(&docs, "f/sub/deep/z.md");
+    let x = native_path(&docs, "f/x.md");
+    assert_eq!(
+        cached_extractions(&context, &catalog, &y),
+        1,
+        "prepared, cached"
+    );
+    assert_eq!(cached_extractions(&context, &catalog, &z), 1);
+    assert!(count_where(&catalog, "SELECT COUNT(*) FROM embeddings") >= 3);
+
+    bootstrap::narrow_source(
+        &catalog,
+        &bootstrap::cache_service(&context).unwrap(),
+        &f.source_id,
+    )
+    .unwrap();
+
+    let by_path = |p: &Path| {
+        format!(
+            "canonical_path = '{}'",
+            p.to_string_lossy().replace('\'', "''")
+        )
+    };
+    for gone in [&y, &z] {
+        let cond = by_path(gone);
+        assert_eq!(
+            count_where(
+                &catalog,
+                &format!("SELECT COUNT(*) FROM files WHERE {cond}")
+            ),
+            0,
+            "no files row for {gone:?}"
+        );
+        assert_eq!(
+            cached_extractions(&context, &catalog, gone),
+            0,
+            "no cache entry"
+        );
+    }
+    assert_eq!(
+        count_where(&catalog, "SELECT COUNT(*) FROM files"),
+        1,
+        "only x.md"
+    );
+    assert_eq!(
+        cached_extractions(&context, &catalog, &x),
+        1,
+        "x.md is untouched"
+    );
+    // Nothing below the top level is left in any table that hangs off a file.
+    assert_eq!(
+        count_where(&catalog, "SELECT COUNT(*) FROM chunks"),
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM chunks c JOIN files f ON f.file_id = c.file_id WHERE f.canonical_path LIKE '%x.md'"
+        )
+    );
+    assert_eq!(
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM embeddings e LEFT JOIN chunks c ON c.chunk_id = e.chunk_id \
+             WHERE c.chunk_id IS NULL"
+        ),
+        0,
+        "no embedding without its chunk"
+    );
+    let counts = orbok_db::repo::ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert_eq!(counts.violation(), None, "the erasure invariant holds");
+    assert_eq!(
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM files WHERE file_status IN ('missing','deleted')"
+        ),
+        0,
+        "nothing is File not found: the files are out of the folder"
+    );
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", None),
+        ["x.md"],
+        "search finds only what is still in the folder"
+    );
+
+    // Startup recovery queues nothing for the files that left.
+    let state = bootstrap::load_initial_state(&context).unwrap();
+    assert_eq!(state.sources.len(), 1);
+    assert!(!state.sources[0].covers_subfolders);
+    assert_eq!(
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM index_jobs WHERE file_id IS NOT NULL AND file_id NOT IN (SELECT file_id FROM files)"
+        ),
+        0
+    );
+    assert_eq!(count_where(&catalog, "SELECT COUNT(*) FROM files"), 1);
+}
+
+/// §2.4: narrow while the subfolders' files are being prepared -- the scan is
+/// running and jobs are queued. Whatever the interleaving, afterwards no file
+/// below the top level has a row or a job, and the host drains with only the
+/// top level prepared.
+#[tokio::test]
+async fn narrowing_mid_preparation_leaves_no_job_and_no_row() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    write_doc(&docs, "f/x.md");
+    for i in 0..150 {
+        write_doc(&docs, &format!("f/sub{}/n{i}.md", i % 5));
+    }
+    let (f, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
+            .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &f.source_id).unwrap();
+
+    // The host is running (the scan and the extraction jobs are in flight).
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(&context).unwrap(),
+        bootstrap::cache_service(&context).unwrap(),
+        super::EmbeddingSource::fixed(None),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    wait_until(Duration::from_secs(30), "preparation is under way", || {
+        count_where(&catalog, "SELECT COUNT(*) FROM files") > 1
+    })
+    .await;
+
+    let cache = bootstrap::cache_service(&context).unwrap();
+    let narrowing = {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let id = f.source_id.clone();
+        tokio::task::spawn_blocking(move || bootstrap::narrow_source(&catalog, &cache, &id))
+    };
+    narrowing.await.unwrap().unwrap();
+
+    wait_until(Duration::from_secs(60), "the host drains", || {
+        nothing_unfinished(&catalog)
+    })
+    .await;
+    handle.abort();
+    let _ = handle.await;
+
+    let below = |table_sql: &str| count_where(&catalog, table_sql);
+    assert_eq!(
+        below("SELECT COUNT(*) FROM files WHERE canonical_path LIKE '%sub%'"),
+        0,
+        "no row below the top level"
+    );
+    assert_eq!(
+        below(
+            "SELECT COUNT(*) FROM index_jobs j JOIN files f ON f.file_id = j.file_id \
+             WHERE f.canonical_path LIKE '%sub%'"
+        ),
+        0,
+        "and no job for one"
+    );
+    assert_eq!(
+        below(
+            "SELECT COUNT(*) FROM chunks c JOIN files f ON f.file_id = c.file_id WHERE f.canonical_path LIKE '%sub%'"
+        ),
+        0
+    );
+    let counts = orbok_db::repo::ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert_eq!(counts.violation(), None);
+    assert_eq!(
+        below("SELECT COUNT(*) FROM files"),
+        1,
+        "x.md is the only file"
+    );
+}
+
+/// §2.5: widening prepares the subfolders without a question, and Task 113's
+/// one-folder rule holds for a folder that was added inside in the meantime.
+#[tokio::test]
+async fn widening_prepares_the_subfolders() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    for rel in ["f/x.md", "f/sub/y.md"] {
+        write_doc(&docs, rel);
+    }
+    let (f, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
+            .unwrap();
+    orbok_db::repo::SourceRepository::new(&catalog)
+        .narrow_to_top_level(&orbok_core::SourceId::from_string(f.source_id.clone()))
+        .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &f.source_id).unwrap();
+    prepare_files(&context, &catalog, 1).await;
+    assert_eq!(found_paths(&catalog, "orbokfound", None), ["x.md"]);
+
+    let combined = bootstrap::widen_source(&catalog, &f.source_id).unwrap();
+    assert!(combined.is_empty());
+    prepare_files(&context, &catalog, 2).await;
+
+    assert_eq!(found_paths(&catalog, "orbokfound", None), ["x.md", "y.md"]);
+}
+
+/// §2.4, deterministic: narrow while the subfolders' files are **queued**
+/// (scanned, their jobs waiting; the host not yet running). Their rows and
+/// jobs go with the narrowing; the host then starts, prepares only what is
+/// left, and runs no job for a file that left.
+#[tokio::test]
+async fn narrowing_while_subfolder_files_are_queued_cancels_their_jobs() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    write_doc(&docs, "f/x.md");
+    for i in 0..40 {
+        write_doc(&docs, &format!("f/sub/n{i}.md"));
+    }
+    let (f, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
+            .unwrap();
+    orbok_fs::Scanner::new(&catalog)
+        .scan(
+            &orbok_fs::ScanRequest {
+                source_id: orbok_core::SourceId::from_string(f.source_id.clone()),
+                force_hash: false,
+                enqueue_index_jobs: true,
+            },
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+    let queued_extracts = |c: &Catalog| {
+        count_where(
+            c,
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type = 'extract' AND status = 'queued'",
+        )
+    };
+    assert_eq!(queued_extracts(&catalog), 41, "one queued job per file");
+
+    bootstrap::narrow_source(
+        &catalog,
+        &bootstrap::cache_service(&context).unwrap(),
+        &f.source_id,
+    )
+    .unwrap();
+
+    assert_eq!(count_where(&catalog, "SELECT COUNT(*) FROM files"), 1);
+    assert_eq!(
+        queued_extracts(&catalog),
+        1,
+        "the jobs for the 40 files that left are gone; x.md's stays"
+    );
+    prepare_files(&context, &catalog, 1).await;
+    assert_eq!(
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM index_jobs WHERE status = 'failed' \
+             AND job_type != 'embedding'"
+        ),
+        0,
+        "nothing ran for a file that left, so nothing failed (x.md's embedding \
+         fails as `model_missing`: no model is configured)"
+    );
+    assert_eq!(found_paths(&catalog, "orbokfound", None), ["x.md"]);
+}

@@ -34,7 +34,11 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         SourcesAddFolder => "フォルダーを追加",
         SourcesPathInputPlaceholder => "またはパスを直接入力…",
-        SourcesRecursiveHint => "すべてのサブフォルダーが再帰的にスキャンされます。",
+        NarrowFolderTitle => "サブフォルダーを含めないようにしますか?",
+        NarrowFolderBody => {
+            "orbok はこのフォルダーのサブフォルダーにあるファイルについて、準備したデータを削除します。ファイルは変更も削除もされません。"
+        }
+        NarrowFolderConfirm => "含めない",
         IndexingTitle => "検索の準備",
         IndexingIdle => "検索の準備ができました",
         IndexingHealthIndexed => "準備完了",

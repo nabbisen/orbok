@@ -18,6 +18,7 @@ fn card(id: &str, name: &str) -> SourceCard {
         failed: 0,
         no_text_found: 0,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: SourceStatus::Active,
         source_id: id.into(),
     }

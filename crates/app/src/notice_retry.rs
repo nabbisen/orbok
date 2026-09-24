@@ -107,6 +107,16 @@ pub(crate) fn folder_not_checked(source_id: &str) -> Message {
     )
 }
 
+/// Task 114: widening a folder to cover its subfolders failed, so it was not
+/// prepared again. The existing "could not check this folder" copy is true;
+/// "Try again" repeats the widening.
+pub(crate) fn folder_not_widened(source_id: &str) -> Message {
+    with_action(
+        UserNotice::FolderNotChecked,
+        Message::WidenFolder(source_id.to_string()),
+    )
+}
+
 /// HANDOFF-038: a recovery action's file is not in the catalog any more
 /// (its folder was removed since the search). The existing "could not be
 /// found" copy is true, and Go to Folders is where to look.

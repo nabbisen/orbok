@@ -65,6 +65,7 @@ fn with_results(locale: Locale, results: Vec<SearchResultDisplay>) -> AppState {
         failed: 0,
         no_text_found: 0,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     }];

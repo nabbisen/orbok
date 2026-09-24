@@ -3,8 +3,9 @@
 **Project:** orbok\
 **RFC:** 064\
 **Title:** What a Folder Covers\
-**Status:** Accepted\
+**Status:** Implemented (unreleased)\
 **Accepted:** 2026-09-24 by the project owner\
+**Implemented:** 2026-09-25 (Tasks 113 and 114)\
 **Target milestone:** folder management\
 **Date:** 2026-09-24\
 **Related RFCs:** RFC-003 (registration; Amendment 1 §10a keeps settings few); RFC-004 (the scanner, "recursively scan registered sources"); RFC-045 (search in a folder, and its two scopes); RFC-059 (erasure completeness); RFC-041 (plain language)

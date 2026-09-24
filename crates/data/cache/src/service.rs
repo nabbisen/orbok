@@ -129,6 +129,16 @@ impl CacheService {
         engine.remove(&path.canonical).map_err(cache_err)
     }
 
+    /// Invalidate one entry by the file's path, for a file that has left its
+    /// folder (Task 114) and so has no boundary-validated path any more.
+    /// `false` when there was no entry.
+    pub fn remove_path<T: Serialize + DeserializeOwned>(
+        engine: &CacheEngine<T>,
+        path: &std::path::Path,
+    ) -> OrbokResult<bool> {
+        engine.remove(path).map_err(cache_err)
+    }
+
     /// Safe cleanup driven by a validated plan (RFC-001 §9, Appendix A
     /// §12). Maps each action to its payload namespaces and runs
     /// expiry + missing-file + stale-version maintenance there.

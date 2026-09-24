@@ -322,6 +322,7 @@ pub(super) fn source_card(
         status: src.status,
         source_id: src.source_id.as_str().to_string(),
         display_path: src.canonical_path,
+        covers_subfolders: src.covers_subfolders,
     }
 }
 
@@ -380,6 +381,9 @@ fn covering_of<'a>(
             orbok_core::folder_cover::relative_under(Path::new(&s.canonical_path), path)
                 .map(|rest| (s, rest))
         })
+        // Task 114: a folder set to "this folder only" is the same folder as
+        // itself and covers nothing below it (RFC-064 §3.3, row 3).
+        .filter(|(s, rest)| s.covers_subfolders || rest.as_os_str().is_empty())
         .min_by_key(|(s, _)| Path::new(&s.canonical_path).components().count())
 }
 
@@ -436,8 +440,13 @@ pub fn combine_overlapping_folders(
                 Path::new(&a.canonical_path),
             )
             .is_some_and(|rest| {
-                rest.as_os_str().is_empty() && b.source_id.as_str() < a.source_id.as_str()
-                    || !rest.as_os_str().is_empty()
+                if rest.as_os_str().is_empty() {
+                    b.source_id.as_str() < a.source_id.as_str()
+                } else {
+                    // Task 114: only a folder that covers its subfolders
+                    // covers what is below it.
+                    b.covers_subfolders
+                }
             })
     };
     let mut combined = Vec::new();
@@ -473,4 +482,72 @@ pub fn combine_overlapping_folders(
         });
     }
     Ok(combined)
+}
+
+/// Task 114: how many of a folder's files "This folder only" would drop --
+/// the counted line of the narrowing question. `Ok(0)` is a real zero: the
+/// caller shows no line for it.
+pub fn narrow_file_count(catalog: &Catalog, source_id: &str) -> OrbokResult<u64> {
+    use orbok_db::repo::SourceRepository;
+    SourceRepository::new(catalog)
+        .count_below_top_level(&orbok_core::SourceId::from_string(source_id.to_string()))
+}
+
+/// Task 114 (RFC-064 §3.2): "This folder only". Erases everything orbok
+/// holds for the files below the folder's top level -- one transaction in the
+/// catalog (`SourceRepository::narrow_to_top_level`, which is the per-folder
+/// erasure at file granularity) and their extraction-cache entries -- and
+/// stops the folder covering its subfolders.
+///
+/// **Order: cache first, catalog second**, not the reverse. Both orders can
+/// leave an entry behind for a job that was already extracting a file as it
+/// left. They differ when something fails: failing to open the cache leaves
+/// the folder exactly as it was, so "Try again" starts over; failing after
+/// the catalog had changed would leave entries whose paths nothing knows any
+/// more. The cache is derived data, so an entry evicted for a file whose
+/// erasure then fails costs one re-extraction, no more.
+pub fn narrow_source(
+    catalog: &Catalog,
+    cache: &orbok::runtime_storage::ProfileCache,
+    source_id: &str,
+) -> OrbokResult<()> {
+    use orbok_db::repo::SourceRepository;
+    let id = orbok_core::SourceId::from_string(source_id.to_string());
+    let repo = SourceRepository::new(catalog);
+    let before = repo.paths_below_top_level(&id)?;
+    cache.evict_extracted(catalog, &before)?;
+    let erased = repo.narrow_to_top_level(&id)?;
+    // A scan that was already running may have added a file between the read
+    // and the erasure; the erasure took its row, so its entry goes too.
+    let seen: std::collections::HashSet<&String> = before.iter().collect();
+    let late: Vec<String> = erased.into_iter().filter(|p| !seen.contains(p)).collect();
+    if !late.is_empty() {
+        cache.evict_extracted(catalog, &late)?;
+    }
+    Ok(())
+}
+
+/// Task 114: "This folder and subfolders". Nothing is asked and nothing is
+/// erased. Added folders inside this one become part of it (Task 113's
+/// combine, in the same transaction as the setting), and the folder is
+/// scanned again so its subfolders are prepared. Returns the folders that
+/// became part of it.
+pub fn widen_source(
+    catalog: &Catalog,
+    source_id: &str,
+) -> OrbokResult<Vec<orbok_ui::state::CombinedFolder>> {
+    use orbok_db::repo::SourceRepository;
+    use std::path::Path;
+    let id = orbok_core::SourceId::from_string(source_id.to_string());
+    let repo = SourceRepository::new(catalog);
+    let sources = repo.list()?;
+    let this = sources
+        .iter()
+        .find(|s| s.source_id == id)
+        .ok_or(OrbokError::SourceNotFound)?;
+    let inside = folders_inside(&sources, Path::new(&this.canonical_path));
+    let ids: Vec<orbok_core::SourceId> = inside.iter().map(|s| s.source_id.clone()).collect();
+    repo.widen_and_absorb(&id, &ids)?;
+    scan_and_index_source(catalog, source_id)?;
+    Ok(inside.iter().map(|s| combined_folder(s)).collect())
 }

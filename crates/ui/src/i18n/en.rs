@@ -34,7 +34,11 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         SourcesAddFolder => "Add folder",
         SourcesPathInputPlaceholder => "Or type a path manually…",
-        SourcesRecursiveHint => "All sub-folders are scanned recursively.",
+        NarrowFolderTitle => "Stop including subfolders?",
+        NarrowFolderBody => {
+            "orbok removes what it prepared for files in this folder's subfolders. Your files are never changed or deleted."
+        }
+        NarrowFolderConfirm => "Stop including",
         IndexingTitle => "Preparing search",
         IndexingIdle => "Search is ready",
         IndexingHealthIndexed => "Ready",

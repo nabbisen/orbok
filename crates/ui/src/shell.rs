@@ -38,6 +38,9 @@ pub struct KeyboardContext {
     pub confirm_reset: bool,
     /// Task 062: the folder removal confirmation is open.
     pub confirm_remove_source: bool,
+    /// Task 114: the "stop including subfolders" question is open and on
+    /// screen.
+    pub confirm_narrow_folder: bool,
     pub confirm_clear_history: bool,
     /// Task 099: the "prepare keyword search again" confirmation is open.
     pub confirm_delete_keyword_index: bool,
@@ -130,6 +133,7 @@ pub fn key_to_message(
                 && ctx.active_view == ViewId::Sources
                 && !ctx.confirm_reset
                 && !ctx.confirm_remove_source
+                && !ctx.confirm_narrow_folder
                 && !ctx.confirm_clear_history
                 && !ctx.confirm_delete_keyword_index
                 && !ctx.confirm_delete_vector_index
@@ -225,6 +229,9 @@ fn confirm_message(ctx: &KeyboardContext) -> Option<Message> {
     // confirm at all (RFC-034 §5.3 amendment).
     if ctx.confirm_remove_source {
         return Some(Message::ConfirmRemoveSource);
+    }
+    if ctx.confirm_narrow_folder {
+        return Some(Message::ConfirmNarrowFolder);
     }
     if ctx.confirm_delete_keyword_index {
         return Some(Message::ConfirmDeleteKeywordIndex);
@@ -327,6 +334,7 @@ impl OrbokApp {
             // Task 069: only the confirmation on screen can be confirmed.
             confirm_reset: state.visible_confirmation() == Some(Confirmation::ResetCatalog),
             confirm_remove_source: state.visible_confirmation() == Some(Confirmation::RemoveSource),
+            confirm_narrow_folder: state.visible_confirmation() == Some(Confirmation::NarrowFolder),
             confirm_clear_history: state.visible_confirmation()
                 == Some(Confirmation::ClearRecentSearches),
             confirm_delete_keyword_index: state.visible_confirmation()

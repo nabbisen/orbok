@@ -18,6 +18,7 @@ fn card(id: &str, name: &str) -> SourceCard {
         failed: 0,
         no_text_found: 0,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: SourceStatus::Active,
         source_id: id.into(),
     }
@@ -31,6 +32,7 @@ fn the_card_state_follows_the_fixed_order() {
         status,
         stale,
         unfinished_jobs: 5,
+        covers_subfolders: true,
         ..card("a", "A")
     };
     assert_eq!(
@@ -68,6 +70,7 @@ fn a_preparing_card_says_preparing_and_keeps_prepare_again() {
             active_view: ViewId::Sources,
             sources: vec![SourceCard {
                 unfinished_jobs: 3,
+                covers_subfolders: true,
                 ..card("a", "Docs")
             }],
             ..AppState::default()
@@ -161,6 +164,7 @@ fn the_preparing_page_names_the_one_folder_that_is_preparing() {
                 card("a", "Quiet"),
                 SourceCard {
                     unfinished_jobs: 4,
+                    covers_subfolders: true,
                     ..card("b", "Busy")
                 },
             ],

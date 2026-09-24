@@ -171,6 +171,51 @@ impl<'a> FileRepository<'a> {
         self.get_by_path_id(&id)
     }
 
+    /// Insert a newly discovered file that lies **below** its folder's top
+    /// level, but only while the folder still covers its subfolders (Task
+    /// 114). The check and the insert are one statement, so narrowing the
+    /// folder to "this folder only" (which erases the rows below the top
+    /// level in one transaction) cannot be followed by a scan that had
+    /// already started writing one: a scan that read the folder before it was
+    /// narrowed gets `None` here and writes nothing.
+    pub fn insert_below_top_level(&self, new: NewFile) -> OrbokResult<Option<FileRecord>> {
+        let id = FileId::generate();
+        let now = now_iso8601();
+        let hash_algorithm = new.metadata.content_hash.as_ref().map(|_| "sha256");
+        let conn = self.catalog.lock();
+        let inserted = conn
+            .execute(
+                "INSERT INTO files (file_id, source_id, original_path, canonical_path, \
+                 display_path, extension, file_size_bytes, modified_at, platform_file_key, \
+                 content_hash, hash_algorithm, file_status, last_seen_at, last_scanned_at, \
+                 created_at, updated_at) \
+                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?13,?13 \
+                 WHERE EXISTS (SELECT 1 FROM sources \
+                               WHERE source_id = ?2 AND covers_subfolders = 1)",
+                params![
+                    id.as_str(),
+                    new.source_id.as_str(),
+                    new.original_path,
+                    new.canonical_path,
+                    new.display_path,
+                    new.extension,
+                    new.metadata.file_size_bytes as i64,
+                    new.metadata.modified_at,
+                    new.metadata.platform_file_key,
+                    new.metadata.content_hash,
+                    hash_algorithm,
+                    new.status.as_str(),
+                    now,
+                ],
+            )
+            .map_err(db_err)?;
+        drop(conn);
+        if inserted == 0 {
+            return Ok(None);
+        }
+        self.get_by_path_id(&id).map(Some)
+    }
+
     fn get_by_path_id(&self, id: &FileId) -> OrbokResult<FileRecord> {
         let conn = self.catalog.lock();
         let mut stmt = conn

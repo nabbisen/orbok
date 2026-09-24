@@ -143,6 +143,10 @@ pub struct SourceCard {
     pub unfinished_jobs: u64,
     pub status: SourceStatus,
     pub source_id: String,
+    /// Task 114 (RFC-064): whether this folder covers its subfolders --
+    /// "This folder and subfolders" (`true`, the default) or "This folder
+    /// only". Shown and changed on the card, and nowhere else.
+    pub covers_subfolders: bool,
 }
 
 impl SourceCard {
@@ -511,6 +515,8 @@ pub enum Confirmation {
     ResetCatalog,
     /// Clear recent searches -- Settings (`settings_view`).
     ClearRecentSearches,
+    /// Task 114: "Stop including subfolders?" -- Folders (`sources_view`).
+    NarrowFolder,
     /// Task 099: "Prepare keyword search again" -- Storage, Advanced view.
     DeleteKeywordIndex,
     /// Task 099: "Prepare search by meaning again" -- Storage, Advanced view.
@@ -547,6 +553,7 @@ impl Confirmation {
     pub fn view(self) -> ViewId {
         match self {
             Self::RemoveSource => ViewId::Sources,
+            Self::NarrowFolder => ViewId::Sources,
             Self::ResetCatalog => ViewId::Storage,
             Self::ClearRecentSearches => ViewId::Settings,
             Self::DeleteKeywordIndex => ViewId::Storage,
@@ -642,6 +649,15 @@ pub struct AppState {
     /// Removal erases what orbok prepared for it (RFC-059), so it always
     /// asks first. At most one confirmation is open at a time.
     pub confirm_remove_source: Option<String>,
+    /// Task 114: the folder whose "stop including subfolders" question is
+    /// open, if any. Narrowing erases what orbok prepared for the files below
+    /// the folder's top level (RFC-064 §3.2), so it always asks first.
+    pub confirm_narrow_source: Option<String>,
+    /// Task 114: how many files the open narrowing question would drop,
+    /// fetched off the update thread when it opens. `None` until it arrives,
+    /// on a failed read, and when it is genuinely zero -- no count, no line,
+    /// never a zero.
+    pub narrow_file_count: Option<u64>,
     /// RFC-042: whether "Remember recent searches" is on (reflects the
     /// persisted setting; mirrored here so the settings toggle renders).
     pub remember_recent_searches: bool,
@@ -699,6 +715,8 @@ impl Default for AppState {
             confirm_delete_vector_index: false,
             rebuild_file_count: None,
             confirm_remove_source: None,
+            confirm_narrow_source: None,
+            narrow_file_count: None,
             remember_recent_searches: true,
             confirm_clear_history: false,
             tokens: snora::design::Tokens::light(),
@@ -944,6 +962,26 @@ pub enum Message {
     SourceRemoved(String), // source_id
     /// Task 073: the catalog removed this folder; the list now drops it.
     SourceRemovalSucceeded(String), // source_id
+    /// Task 114: the card's button for a folder that covers its subfolders --
+    /// opens "Stop including subfolders?" for it. Changes nothing yet.
+    AskNarrowFolder(String), // source_id
+    /// Task 114: its counted line, fetched off the update thread.
+    NarrowCountReady(String, u64), // source_id, files
+    /// Task 114: the count could not be read: the question shows no line.
+    NarrowCountFailed,
+    CancelNarrowFolder,
+    /// Task 114: taken by orbok (`take_confirmed_narrowing`) and dispatched as
+    /// [`Message::NarrowFolderRequested`].
+    ConfirmNarrowFolder,
+    /// Task 114: a request, sent once the question is confirmed. Changes no
+    /// state: orbok erases off the update thread, then sends `FolderNarrowed`
+    /// (or raises the failure notice) and a card refresh.
+    NarrowFolderRequested(String), // source_id
+    /// Task 114: the catalog now holds this folder as "this folder only".
+    FolderNarrowed(String), // source_id
+    /// Task 114: the card's button for a "this folder only" folder. Asks
+    /// nothing: it adds nothing the user did not ask for (RFC-064 §3.2).
+    WidenFolder(String), // source_id
     /// Task 113: the catalog made these folders part of another; the list
     /// drops their cards, anything that pointed at one is pointed at the
     /// folder that holds it, and a notice says what happened.
@@ -1067,6 +1105,7 @@ impl AppState {
         // bar's `Switch`, the sidebar's `SwitchGroup`, a shortcut).
         if self.active_view != view_before {
             self.confirm_remove_source = None;
+            self.cancel_narrowing();
             self.confirm_reset = false;
             self.confirm_clear_history = false;
             self.cancel_folder_add();
@@ -1078,6 +1117,7 @@ impl AppState {
         {
             self.clear_notice();
         }
+        self.normalise_location_scope();
     }
 
     fn apply(&mut self, message: &Message) {
@@ -1111,6 +1151,32 @@ impl AppState {
                 }
             }
             Message::CancelRemoveSource => self.confirm_remove_source = None,
+            Message::AskNarrowFolder(id) => {
+                // Only a folder in the list that covers its subfolders can be
+                // asked about: there is no dialog to show for any other.
+                if self
+                    .sources
+                    .iter()
+                    .any(|card| &card.source_id == id && card.covers_subfolders)
+                {
+                    self.confirm_narrow_source = Some(id.clone());
+                    // Not left over from an earlier opening.
+                    self.narrow_file_count = None;
+                    self.confirm_remove_source = None;
+                    self.confirm_reset = false;
+                }
+            }
+            Message::NarrowCountReady(id, count) => {
+                if self.confirm_narrow_source.as_ref() == Some(id) {
+                    self.narrow_file_count = (*count > 0).then_some(*count);
+                }
+            }
+            Message::NarrowCountFailed => self.narrow_file_count = None,
+            Message::CancelNarrowFolder => self.cancel_narrowing(),
+            Message::ConfirmNarrowFolder => {} // handled by orbok: take_confirmed_narrowing
+            Message::NarrowFolderRequested(_) => {} // handled by orbok
+            Message::WidenFolder(_) => {}      // handled by orbok
+            Message::FolderNarrowed(id) => self.apply_folder_narrowed(id),
             Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
             Message::CancelResetCatalog => {
                 self.confirm_reset = false;
@@ -1299,6 +1365,8 @@ impl AppState {
                 // open.
                 if self.pending_folder_add.is_some() {
                     self.cancel_folder_add();
+                } else if self.confirm_narrow_source.is_some() {
+                    self.cancel_narrowing();
                 } else if self.confirm_remove_source.is_some() {
                     self.confirm_remove_source = None;
                 } else if self.confirm_reset {
@@ -1708,6 +1776,13 @@ impl AppState {
         {
             self.confirm_remove_source = None;
         }
+        if self
+            .confirm_narrow_source
+            .as_deref()
+            .is_some_and(|id| absorbed(id).is_some())
+        {
+            self.cancel_narrowing();
+        }
         self.search_location
             .recent_locations
             .retain(|summary| absorbed(summary.source_id.as_str()).is_none());
@@ -1803,6 +1878,79 @@ impl AppState {
         self.sources.iter().find(|card| &card.source_id == id)
     }
 
+    /// Task 114: the folder the narrowing question is for -- its card, or
+    /// `None` when no question is open, its folder is not listed, or it no
+    /// longer covers its subfolders (there is then nothing to stop including).
+    pub fn narrow_target(&self) -> Option<&SourceCard> {
+        let id = self.confirm_narrow_source.as_ref()?;
+        self.sources
+            .iter()
+            .find(|card| &card.source_id == id && card.covers_subfolders)
+    }
+
+    /// Task 114: close the narrowing question without changing anything.
+    pub fn cancel_narrowing(&mut self) {
+        self.confirm_narrow_source = None;
+        self.narrow_file_count = None;
+    }
+
+    /// Task 114: the narrowing question was confirmed. Returns the request to
+    /// dispatch for the folder it was opened for, and closes the question.
+    pub fn take_confirmed_narrowing(&mut self) -> Option<Message> {
+        self.narrow_file_count = None;
+        self.confirm_narrow_source
+            .take()
+            .map(Message::NarrowFolderRequested)
+    }
+
+    /// Task 114: whether the selected search location is a folder set to
+    /// "this folder only": its scope is then fixed, and offers no toggle
+    /// (RFC-064 §3.4). A location limited to a subfolder never is: it is a
+    /// folder *inside* the one it names.
+    pub fn search_location_is_folder_only(&self) -> bool {
+        let Some(location) = self.search_location.selected.as_ref() else {
+            return false;
+        };
+        location.limit_path().is_none()
+            && location.source_id().is_some_and(|id| {
+                self.sources
+                    .iter()
+                    .any(|card| card.source_id == id.as_str() && !card.covers_subfolders)
+            })
+    }
+
+    /// Task 114: a remembered "and subfolders" for a folder that has since
+    /// been narrowed is shown, and searched, as "only": the state never holds
+    /// the contradiction. Run after every message, so the several ways the
+    /// folder list can change (a reload, a refresh, the narrowing itself) all
+    /// meet it.
+    fn normalise_location_scope(&mut self) {
+        if self.search_location_is_folder_only()
+            && self
+                .search_location
+                .selected
+                .as_ref()
+                .map(SearchLocation::scope)
+                == Some(SearchFolderScope::FolderAndSubfolders)
+        {
+            self.search_location
+                .set_scope(SearchFolderScope::FolderOnly);
+        }
+    }
+
+    /// Task 114: the folder is now "this folder only". A search that was
+    /// limited to one of its subfolders has nothing left to look at, so that
+    /// location is cleared (the query stays); the scope of one on the folder
+    /// itself follows [`Self::normalise_location_scope`] once its card says so.
+    fn apply_folder_narrowed(&mut self, id: &str) {
+        let limited_inside = self.search_location.selected.as_ref().is_some_and(|l| {
+            l.source_id().is_some_and(|s| s.as_str() == id) && l.limit_path().is_some()
+        });
+        if limited_inside {
+            self.search_location.clear();
+        }
+    }
+
     /// Task 069: the confirmation the user can actually see -- its flag set,
     /// its own view active, and no wizard replacing the view. Both the views
     /// and the keyboard context use this, so Enter can never confirm
@@ -1816,6 +1964,9 @@ impl AppState {
             // Task 073: visible only when its folder's card, which the
             // dialog renders, is in the list.
             (self.removal_target().is_some(), Confirmation::RemoveSource),
+            // Task 114: visible only when its folder's card, which the
+            // dialog names, is in the list and still covers its subfolders.
+            (self.narrow_target().is_some(), Confirmation::NarrowFolder),
             (
                 self.confirm_clear_history,
                 Confirmation::ClearRecentSearches,

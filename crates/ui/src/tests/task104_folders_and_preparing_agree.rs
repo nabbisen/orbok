@@ -23,6 +23,7 @@ fn card() -> SourceCard {
         failed: FAILED,
         no_text_found: NO_TEXT,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     }

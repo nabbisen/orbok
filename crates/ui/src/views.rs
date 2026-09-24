@@ -199,7 +199,15 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             .into()
         }
         Some(location) => {
-            let scope = location.scope();
+            // Task 114 (RFC-064 §3.4): a folder set to "this folder only" has
+            // nothing below it prepared, so its scope is fixed and no toggle
+            // is offered.
+            let folder_only = state.search_location_is_folder_only();
+            let scope = if folder_only {
+                SearchFolderScope::FolderOnly
+            } else {
+                location.scope()
+            };
             let chip_label = search_location_chip(locale, location.display_name(), scope);
 
             // Scope toggle: "and subfolders" / "only" (RFC-045 §11.2).
@@ -213,7 +221,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 ),
             };
 
-            hrow![
+            let mut row = hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
                 // Folder chip with an X to remove — keyboard removable
                 // (RFC-045 §20).
@@ -225,20 +233,21 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                     Some(char::from(lucide::X)),
                     Message::SearchLocationCleared,
                 ),
+            ]
+            .spacing(tokens.spacing.xs);
+            if !folder_only {
                 // Scope toggle: ArrowUpDown says "switch to the other scope",
                 // which is what pressing it does.
-                components::chip(
+                row = row.push(components::chip(
                     tokens,
                     sc,
                     Some(char::from(lucide::ArrowUpDown)),
                     tr(locale, other_label_key),
                     None,
                     Message::SearchScopeChanged(other_scope),
-                ),
-            ]
-            .spacing(tokens.spacing.xs)
-            .wrap()
-            .into()
+                ));
+            }
+            row.wrap().into()
         }
     }
 }
@@ -687,6 +696,48 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         return page(tokens, content);
     }
 
+    // Task 114: "Stop including subfolders?", laid out like the removal
+    // confirmation (Task 062) and shown only while it is the visible one
+    // (Task 069). The counted line is there only with a count.
+    if let Some(folder) = (state.visible_confirmation()
+        == Some(crate::state::Confirmation::NarrowFolder))
+    .then(|| state.narrow_target())
+    .flatten()
+    {
+        let mut content = column![
+            text(tr(locale, MessageKey::NarrowFolderTitle)).size(theme::title_s(tokens, sc)),
+            text(folder.display_path.clone()).size(theme::meta_s(tokens, sc)),
+            text(tr(locale, MessageKey::NarrowFolderBody))
+                .size(theme::body_s(tokens, sc))
+                .line_height(theme::body_lh(tokens)),
+        ]
+        .spacing(tokens.spacing.lg);
+        if let Some(files) = state.narrow_file_count {
+            content = content.push(
+                text(crate::i18n::fmt_narrow_folder_counted(locale, files))
+                    .size(theme::body_s(tokens, sc))
+                    .line_height(theme::body_lh(tokens)),
+            );
+        }
+        content = content.push(
+            hrow![
+                components::ghost(
+                    tokens,
+                    tr(locale, MessageKey::Cancel),
+                    Some(Message::CancelNarrowFolder)
+                ),
+                components::danger(
+                    tokens,
+                    tr(locale, MessageKey::NarrowFolderConfirm),
+                    Some(Message::ConfirmNarrowFolder)
+                ),
+            ]
+            .spacing(tokens.spacing.md)
+            .wrap(),
+        );
+        return page(tokens, content);
+    }
+
     // Task 047: no second add-folder dialog while one is open.
     let add_folder = (!state.add_source_picker_in_progress).then_some(Message::RequestAddSource);
     let add_btn = components::icon_secondary(
@@ -711,9 +762,6 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         hrow![add_btn, container(add_input).width(Length::Fill)]
             .spacing(tokens.spacing.sm)
             .wrap(),
-        text(tr(locale, MessageKey::SourcesRecursiveHint))
-            .size(theme::meta_s(tokens, sc))
-            .line_height(theme::meta_lh(tokens)),
     ];
 
     if state.sources.is_empty() {
@@ -768,6 +816,30 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 summary,
                 status_label,
                 detail,
+                components::CardCoverage {
+                    current: tr(
+                        locale,
+                        if card.covers_subfolders {
+                            MessageKey::SearchScopeSubfolders
+                        } else {
+                            MessageKey::SearchScopeOnly
+                        },
+                    ),
+                    other: tr(
+                        locale,
+                        if card.covers_subfolders {
+                            MessageKey::SearchScopeOnly
+                        } else {
+                            MessageKey::SearchScopeSubfolders
+                        },
+                    ),
+                    toggle: if card.covers_subfolders {
+                        Message::AskNarrowFolder(card.source_id.clone())
+                    } else {
+                        Message::WidenFolder(card.source_id.clone())
+                    },
+                    sc,
+                },
                 refresh_action,
                 state.selected_source == Some(i),
                 // Task 062: the button was unlabelled, and removed directly.

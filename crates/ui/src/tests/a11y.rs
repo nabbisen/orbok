@@ -23,6 +23,7 @@ fn ctx(text_input_focused: bool) -> KeyboardContext {
         confirm_delete_keyword_index: false,
         confirm_delete_vector_index: false,
         confirm_add_sensitive_folder: false,
+        confirm_narrow_folder: false,
         wizard_kind: None,
         selected_source_id: None,
         selected_result: None,
@@ -266,6 +267,7 @@ fn key_map_enter_confirms_by_context() {
                     confirm_delete_keyword_index: false,
                     confirm_delete_vector_index: false,
                     confirm_add_sensitive_folder: false,
+                    confirm_narrow_folder: false,
                     ..ctx(false)
                 }
             ),
@@ -619,6 +621,7 @@ fn source_navigation_bounds() {
         failed: 0,
         no_text_found: 0,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: orbok_core::SourceStatus::Active,
         source_id: id.into(),
     };
@@ -651,6 +654,7 @@ fn selected_source_removed_by_source_removed_message() {
         failed: 0,
         no_text_found: 0,
         unfinished_jobs: 0,
+        covers_subfolders: true,
         status: orbok_core::SourceStatus::Active,
         source_id: "src-1".into(),
     }]));

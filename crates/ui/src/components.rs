@@ -302,6 +302,20 @@ pub fn result_card<'a>(
 /// the same visible-selection mitigation for 2.4.7's absence, not a
 /// second convention.
 #[allow(clippy::too_many_arguments)]
+/// Task 114 (RFC-064 §3.2): what a folder card says about its subfolders and
+/// the one button that changes it -- the same shape as the search row's scope
+/// toggle (RFC-045 §11.2): the current choice, and a button for the other.
+pub struct CardCoverage<'a> {
+    /// The current choice, in the app's words ("This folder only").
+    pub current: &'a str,
+    /// The other choice, which is what the button says and does.
+    pub other: &'a str,
+    /// Pressing it: asks first when narrowing, widens at once.
+    pub toggle: Message,
+    pub sc: crate::theme::TextScale,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn source_card<'a>(
     tokens: &'a Tokens,
     display_name: String,
@@ -313,6 +327,7 @@ pub fn source_card<'a>(
     // was moved.") -- `None` for every other state, which §17's other
     // wireframes (17.1/17.2/17.4) draw with no such line.
     detail: Option<&'a str>,
+    coverage: CardCoverage<'a>,
     // RFC-037 §10.2/§17 (Task 035): `[Check again]` for a missing/
     // permission-denied source, `[Prepare again]` for an active one --
     // `None` for a source with nothing to refresh (Paused; RFC-037 §7.4
@@ -342,6 +357,22 @@ pub fn source_card<'a>(
                 .line_height(theme::meta_lh(tokens)),
         );
     }
+    body = body.push(
+        hrow![
+            text(coverage.current.to_string()).size(theme::meta(tokens)),
+            chip(
+                tokens,
+                coverage.sc,
+                Some(char::from(lucide::ArrowUpDown)),
+                coverage.other,
+                None,
+                coverage.toggle,
+            ),
+        ]
+        .spacing(tokens.spacing.sm)
+        .align_y(iced::Alignment::Center)
+        .wrap(),
+    );
     body = body.push(actions.wrap());
     if is_selected {
         selection_ring(tokens, body)

@@ -81,6 +81,7 @@ fn enter_on_the_load_failed_step_retries_loading() {
             confirm_delete_keyword_index: false,
             confirm_delete_vector_index: false,
             confirm_add_sensitive_folder: false,
+            confirm_narrow_folder: false,
             wizard_kind: Some(WizardKind::ReadyLoadFailed),
             selected_source_id: None,
             selected_result: None,

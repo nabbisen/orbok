@@ -639,6 +639,7 @@ mod tests {
             confirm_delete_keyword_index: false,
             confirm_delete_vector_index: false,
             confirm_add_sensitive_folder: false,
+            confirm_narrow_folder: false,
             wizard_kind: state.wizard.as_ref().map(WizardState::kind),
             selected_source_id: None,
             selected_result: None,

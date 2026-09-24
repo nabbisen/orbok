@@ -24,6 +24,9 @@ pub struct SourceRecord {
     pub hidden_file_policy: HiddenFilePolicy,
     pub symlink_policy: SymlinkPolicy,
     pub max_file_size_bytes: Option<u64>,
+    /// Task 114: `true` covers the folder's subfolders (the default);
+    /// `false` is "this folder only".
+    pub covers_subfolders: bool,
     pub created_at: String,
     pub updated_at: String,
     pub last_scanned_at: Option<String>,
@@ -51,6 +54,79 @@ pub struct AbsorbReport {
     pub files_moved: u64,
     /// File rows that both folders held, of which one copy was erased.
     pub duplicates_erased: u64,
+}
+
+/// The body of [`SourceRepository::absorb`], inside the caller's transaction.
+fn absorb_in(
+    tx: &rusqlite::Transaction<'_>,
+    outer: &SourceId,
+    inner: &[SourceId],
+) -> OrbokResult<AbsorbReport> {
+    let outer_path: String = tx
+        .query_row(
+            "SELECT canonical_path FROM sources WHERE source_id = ?1",
+            params![outer.as_str()],
+            |r| r.get(0),
+        )
+        .map_err(db_err)?;
+    let mut report = AbsorbReport::default();
+    for inner_id in inner {
+        // Rows both folders hold. Erase the copy that is less prepared.
+        let outer_copy_is_worse = "EXISTS (SELECT 1 FROM files i WHERE i.source_id = ?2 \
+             AND i.canonical_path = f.canonical_path AND i.file_status = 'indexed') \
+             AND f.file_status != 'indexed'";
+        report.duplicates_erased += erase_files(
+            tx,
+            "f.source_id = ?1",
+            &format!("({outer_copy_is_worse})"),
+            params![outer.as_str(), inner_id.as_str()],
+        )?;
+        report.duplicates_erased += erase_files(
+            tx,
+            "f.source_id = ?2",
+            "EXISTS (SELECT 1 FROM files o WHERE o.source_id = ?1 \
+             AND o.canonical_path = f.canonical_path)",
+            params![outer.as_str(), inner_id.as_str()],
+        )?;
+        report.files_moved += tx
+            .execute(
+                "UPDATE files SET source_id = ?1, \
+                    display_path = COALESCE(NULLIF(ltrim(substr(canonical_path, \
+                        length(?3) + 1), '/\\'), ''), canonical_path) \
+                 WHERE source_id = ?2",
+                params![outer.as_str(), inner_id.as_str(), outer_path],
+            )
+            .map_err(db_err)? as u64;
+        tx.execute(
+            "UPDATE index_jobs SET source_id = ?1 \
+             WHERE source_id = ?2 AND job_type != 'scan'",
+            params![outer.as_str(), inner_id.as_str()],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            "DELETE FROM sources WHERE source_id = ?1",
+            params![inner_id.as_str()],
+        )
+        .map_err(db_err)?;
+    }
+    Ok(report)
+}
+
+/// SQL: a file of the folder whose path has a separator after the folder's
+/// own path -- one that is not a direct entry. `?2` is the folder's path and
+/// `?3` the platform separator.
+const BELOW_TOP_LEVEL: &str = "instr(substr(f.canonical_path, length(?2) + 2), ?3) > 0";
+
+fn source_root(conn: &rusqlite::Connection, id: &SourceId) -> OrbokResult<String> {
+    conn.query_row(
+        "SELECT canonical_path FROM sources WHERE source_id = ?1",
+        params![id.as_str()],
+        |r| r.get(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => OrbokError::SourceNotFound,
+        other => db_err(other),
+    })
 }
 
 /// Erase the `files` rows of alias `f` matching `where_sql AND extra_sql`,
@@ -97,7 +173,7 @@ pub struct SourceRepository<'a> {
 const COLUMNS: &str = "source_id, source_type, persistence_mode, display_name, original_path, \
      canonical_path, status, index_mode, include_patterns_json, exclude_patterns_json, \
      hidden_file_policy, symlink_policy, max_file_size_bytes, created_at, updated_at, \
-     last_scanned_at";
+     last_scanned_at, covers_subfolders";
 
 impl<'a> SourceRepository<'a> {
     pub fn new(catalog: &'a Catalog) -> Self {
@@ -162,55 +238,104 @@ impl<'a> SourceRepository<'a> {
     pub fn absorb(&self, outer: &SourceId, inner: &[SourceId]) -> OrbokResult<AbsorbReport> {
         let mut conn = self.catalog.lock();
         let tx = conn.transaction().map_err(db_err)?;
-        let outer_path: String = tx
+        let report = absorb_in(&tx, outer, inner)?;
+        tx.commit().map_err(db_err)?;
+        Ok(report)
+    }
+
+    /// Task 114: "This folder and subfolders", and -- when the folder now
+    /// covers added folders -- their [`absorb`](Self::absorb), in one
+    /// transaction, so a folder is never left covering subfolders while
+    /// another folder holds the same files.
+    pub fn widen_and_absorb(&self, id: &SourceId, inner: &[SourceId]) -> OrbokResult<AbsorbReport> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        tx.execute(
+            "UPDATE sources SET covers_subfolders = 1, updated_at = ?2 WHERE source_id = ?1",
+            params![id.as_str(), now_iso8601()],
+        )
+        .map_err(db_err)?;
+        let report = absorb_in(&tx, id, inner)?;
+        tx.commit().map_err(db_err)?;
+        Ok(report)
+    }
+
+    /// Task 114: how many of a folder's files lie below its top level -- the
+    /// files "This folder only" would drop.
+    pub fn count_below_top_level(&self, id: &SourceId) -> OrbokResult<u64> {
+        let conn = self.catalog.lock();
+        let root = source_root(&conn, id)?;
+        let count: i64 = conn
             .query_row(
-                "SELECT canonical_path FROM sources WHERE source_id = ?1",
-                params![outer.as_str()],
+                &format!(
+                    "SELECT COUNT(*) FROM files f WHERE f.source_id = ?1 AND {BELOW_TOP_LEVEL}"
+                ),
+                params![id.as_str(), root, std::path::MAIN_SEPARATOR.to_string()],
                 |r| r.get(0),
             )
             .map_err(db_err)?;
-        let mut report = AbsorbReport::default();
-        for inner_id in inner {
-            // Rows both folders hold. Erase the copy that is less prepared.
-            let outer_copy_is_worse = "EXISTS (SELECT 1 FROM files i WHERE i.source_id = ?2 \
-                 AND i.canonical_path = f.canonical_path AND i.file_status = 'indexed') \
-                 AND f.file_status != 'indexed'";
-            report.duplicates_erased += erase_files(
-                &tx,
-                "f.source_id = ?1",
-                &format!("({outer_copy_is_worse})"),
-                params![outer.as_str(), inner_id.as_str()],
-            )?;
-            report.duplicates_erased += erase_files(
-                &tx,
-                "f.source_id = ?2",
-                "EXISTS (SELECT 1 FROM files o WHERE o.source_id = ?1 \
-                 AND o.canonical_path = f.canonical_path)",
-                params![outer.as_str(), inner_id.as_str()],
-            )?;
-            report.files_moved += tx
-                .execute(
-                    "UPDATE files SET source_id = ?1, \
-                        display_path = COALESCE(NULLIF(ltrim(substr(canonical_path, \
-                            length(?3) + 1), '/\\'), ''), canonical_path) \
-                     WHERE source_id = ?2",
-                    params![outer.as_str(), inner_id.as_str(), outer_path],
-                )
-                .map_err(db_err)? as u64;
-            tx.execute(
-                "UPDATE index_jobs SET source_id = ?1 \
-                 WHERE source_id = ?2 AND job_type != 'scan'",
-                params![outer.as_str(), inner_id.as_str()],
-            )
+        Ok(count as u64)
+    }
+
+    /// Task 114: the canonical paths of a folder's files below its top level
+    /// -- what `narrow_to_top_level` erases, read first so the caller can evict
+    /// their extraction-cache entries before the catalog changes.
+    pub fn paths_below_top_level(&self, id: &SourceId) -> OrbokResult<Vec<String>> {
+        let conn = self.catalog.lock();
+        let root = source_root(&conn, id)?;
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT f.canonical_path FROM files f WHERE f.source_id = ?1 AND {BELOW_TOP_LEVEL}"
+            ))
             .map_err(db_err)?;
-            tx.execute(
-                "DELETE FROM sources WHERE source_id = ?1",
-                params![inner_id.as_str()],
-            )
-            .map_err(db_err)?;
-        }
+        stmt.query_map(
+            params![id.as_str(), root, std::path::MAIN_SEPARATOR.to_string()],
+            |r| r.get(0),
+        )
+        .map_err(db_err)?
+        .collect::<Result<_, _>>()
+        .map_err(db_err)
+    }
+
+    /// Task 114 (RFC-064 §3.2): "This folder only". In one transaction, the
+    /// folder stops covering its subfolders and everything orbok holds for the
+    /// files below its top level is erased -- their `files` rows, and through
+    /// them chunks, embeddings, `keyword_index_records`, the `chunk_fts` and
+    /// `chunk_fts_trigram` rows, and the folder's queued jobs for them (the FK
+    /// cascade; the scheduler skips a popped job whose row is gone). The files
+    /// are out of the folder, not missing: no row is left to be marked so.
+    ///
+    /// Returns the erased files' canonical paths, for the caller to evict from
+    /// the extraction cache, which is outside this database.
+    pub fn narrow_to_top_level(&self, id: &SourceId) -> OrbokResult<Vec<String>> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let root = source_root(&tx, id)?;
+        let separator = std::path::MAIN_SEPARATOR.to_string();
+        let paths: Vec<String> = {
+            let mut stmt = tx
+                .prepare(&format!(
+                    "SELECT f.canonical_path FROM files f WHERE f.source_id = ?1 AND {BELOW_TOP_LEVEL}"
+                ))
+                .map_err(db_err)?;
+            stmt.query_map(params![id.as_str(), root, separator], |r| r.get(0))
+                .map_err(db_err)?
+                .collect::<Result<_, _>>()
+                .map_err(db_err)?
+        };
+        erase_files(
+            &tx,
+            "f.source_id = ?1",
+            BELOW_TOP_LEVEL,
+            params![id.as_str(), root, separator],
+        )?;
+        tx.execute(
+            "UPDATE sources SET covers_subfolders = 0, updated_at = ?2 WHERE source_id = ?1",
+            params![id.as_str(), now_iso8601()],
+        )
+        .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
-        Ok(report)
+        Ok(paths)
     }
 
     /// Fetch one source by id.
@@ -337,30 +462,10 @@ impl<'a> SourceRepository<'a> {
     pub fn delete_with_all_data(&self, id: &SourceId) -> OrbokResult<()> {
         let mut conn = self.catalog.lock();
         let tx = conn.transaction().map_err(db_err)?;
-        let source_chunks_subquery = "SELECT c.chunk_id FROM chunks c \
-             JOIN files f ON f.file_id = c.file_id WHERE f.source_id = ?1";
-        tx.execute(
-            &format!(
-                "DELETE FROM chunk_fts WHERE rowid IN ( \
-                     SELECT k.fts_rowid FROM keyword_index_records k \
-                     WHERE k.chunk_id IN ({source_chunks_subquery}) \
-                       AND k.fts_rowid IS NOT NULL \
-                 )"
-            ),
-            params![id.as_str()],
-        )
-        .map_err(db_err)?;
-        tx.execute(
-            &format!(
-                "DELETE FROM chunk_fts_trigram WHERE rowid IN ( \
-                     SELECT k.trigram_fts_rowid FROM keyword_index_records k \
-                     WHERE k.chunk_id IN ({source_chunks_subquery}) \
-                       AND k.trigram_fts_rowid IS NOT NULL \
-                 )"
-            ),
-            params![id.as_str()],
-        )
-        .map_err(db_err)?;
+        // The same erasure a file leaving a folder gets (`narrow_to_top_level`),
+        // for every file of the folder: one implementation, at file
+        // granularity (Task 114).
+        erase_files(&tx, "f.source_id = ?1", "1", params![id.as_str()])?;
         tx.execute(
             "DELETE FROM sources WHERE source_id = ?1",
             params![id.as_str()],
@@ -402,6 +507,7 @@ fn row_to_record(row: &Row<'_>) -> rusqlite::Result<OrbokResult<SourceRecord>> {
             created_at: row.get(13).map_err(db_err)?,
             updated_at: row.get(14).map_err(db_err)?,
             last_scanned_at: row.get(15).map_err(db_err)?,
+            covers_subfolders: row.get::<_, i64>(16).map_err(db_err)? != 0,
         })
     })())
 }

@@ -668,6 +668,111 @@ fn delete_vector_index_task(
     })
 }
 
+/// Task 114: the narrowing question's counted line, fetched off the update
+/// thread when it opens.
+fn narrow_count_task(
+    catalog: std::sync::Arc<orbok_db::Catalog>,
+    source_id: String,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move {
+            let count = bootstrap::narrow_file_count(&catalog, &source_id);
+            (source_id, count)
+        },
+        |(source_id, result)| match result {
+            Ok(count) => Message::NarrowCountReady(source_id, count),
+            Err(_) => Message::NarrowCountFailed,
+        },
+    )
+}
+
+/// What narrowing a folder came to (Task 114).
+enum NarrowOutcome {
+    Narrowed,
+    Failed,
+}
+
+/// Task 114: erase for the files leaving `source_id`, on a connection of its
+/// own, then re-read the cards and health on it, so the window shows what the
+/// catalog holds whether or not the erasure worked.
+fn narrow_folder_and_reload(
+    runtime: &orbok::runtime_context::RuntimeContext,
+    source_id: &str,
+) -> (
+    NarrowOutcome,
+    Option<Vec<orbok_ui::state::SourceCard>>,
+    Option<orbok_ui::state::IndexHealth>,
+) {
+    let (Ok(catalog), Ok(cache)) = (
+        bootstrap::open_catalog(runtime),
+        bootstrap::cache_service(runtime),
+    ) else {
+        tracing::error!("narrow folder failed: catalog or cache unavailable");
+        return (NarrowOutcome::Failed, None, None);
+    };
+    let outcome = match bootstrap::narrow_source(&catalog, &cache, source_id) {
+        Ok(()) => NarrowOutcome::Narrowed,
+        Err(e) => {
+            tracing::error!("narrow folder failed: {e}");
+            NarrowOutcome::Failed
+        }
+    };
+    (
+        outcome,
+        bootstrap::get_sources(&catalog).ok(),
+        Some(bootstrap::get_health(&catalog)),
+    )
+}
+
+/// Task 114: [`narrow_folder_and_reload`] off the update thread, and what it
+/// becomes: `FolderNarrowed` on success, or `CleanupDidNotFinish` whose
+/// "Try again" re-opens the question (never the erasure itself), and the card
+/// refresh either way.
+fn narrow_folder_task(
+    runtime: orbok::runtime_context::RuntimeContext,
+    source_id: String,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move {
+            let result = narrow_folder_and_reload(&runtime, &source_id);
+            (source_id, result)
+        },
+        |result| result,
+    )
+    .then(|(source_id, (outcome, cards, health))| {
+        iced::Task::batch(
+            narrow_outcome_messages(source_id, outcome, cards, health)
+                .into_iter()
+                .map(iced::Task::done),
+        )
+    })
+}
+
+/// Task 114: the messages a narrowing's outcome becomes. A failure's "Try
+/// again" is the `AskNarrowFolder` that re-opens the question -- never the
+/// erasure itself, which would run again without asking (Task 099's rule);
+/// health and the cards are re-read either way.
+fn narrow_outcome_messages(
+    source_id: String,
+    outcome: NarrowOutcome,
+    cards: Option<Vec<orbok_ui::state::SourceCard>>,
+    health: Option<orbok_ui::state::IndexHealth>,
+) -> Vec<Message> {
+    let mut messages = vec![match outcome {
+        NarrowOutcome::Narrowed => Message::FolderNarrowed(source_id),
+        NarrowOutcome::Failed => {
+            notice_retry::cleanup_did_not_finish(&Message::AskNarrowFolder(source_id))
+        }
+    }];
+    if let Some(health) = health {
+        messages.push(Message::HealthUpdated(health));
+    }
+    if let Some(cards) = cards {
+        messages.push(Message::SourceCardsRefreshed(cards));
+    }
+    messages
+}
+
 /// Task 099: either rebuild confirmation's own counted line, fetched fresh
 /// off the update thread when it opens -- the same `Task::perform` shape
 /// as `reset_counts_task`.

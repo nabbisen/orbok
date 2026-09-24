@@ -147,7 +147,9 @@ message_keys! {
     SourcesEmptyBody,
     SourcesAddFolder,
     SourcesPathInputPlaceholder,
-    SourcesRecursiveHint,
+    NarrowFolderTitle,
+    NarrowFolderBody,
+    NarrowFolderConfirm,
     // Indexing view
     IndexingTitle,
     IndexingIdle,
@@ -788,6 +790,17 @@ pub fn fmt_rebuild_prepares(locale: Locale, files: u64) -> String {
     match locale {
         Locale::En => format!("This prepares {files} file{file_s} again."),
         Locale::Ja => format!("ファイル {files} 件を準備し直します。"),
+    }
+}
+
+/// Task 114: the narrowing question's counted line (RFC-064 §4) -- "no count,
+/// no line; never a zero", so the caller never invokes this for `files == 0`.
+/// Same singular/plural shape as [`fmt_rebuild_prepares`].
+pub fn fmt_narrow_folder_counted(locale: Locale, files: u64) -> String {
+    let file_s = if files == 1 { "" } else { "s" };
+    match locale {
+        Locale::En => format!("This removes what orbok prepared for {files} file{file_s}."),
+        Locale::Ja => format!("ファイル {files} 件について、準備したデータを削除します。"),
     }
 }
 

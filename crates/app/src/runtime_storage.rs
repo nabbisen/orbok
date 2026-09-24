@@ -767,6 +767,32 @@ impl ProfileCache {
         self.service.engine(catalog, namespace, options)
     }
 
+    /// Task 114: drop the extraction-cache entry of each file in `paths`, for
+    /// files that are leaving their folder. Returns how many entries were
+    /// removed. Failing to *open* the cache is an error (nothing was
+    /// evicted, and the caller has not changed the catalog yet). A path whose
+    /// entry cannot be reached one by one -- the file is gone from the disk,
+    /// so its key cannot be resolved -- is skipped: an entry for a file that
+    /// is not there is what the cache's own missing-file maintenance removes.
+    pub fn evict_extracted(&self, catalog: &Catalog, paths: &[String]) -> OrbokResult<u64> {
+        let engine = self.service.engine::<Vec<u8>>(
+            catalog,
+            &OrbokCacheNamespace::ExtractSegments,
+            OrbokCacheNamespace::ExtractSegments.default_engine_options(),
+        )?;
+        let mut removed = 0;
+        for path in paths {
+            match orbok_cache::CacheService::remove_path(&engine, Path::new(path)) {
+                Ok(true) => removed += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::debug!(%error, "extraction cache entry not evicted");
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     pub fn run_safe_cleanup(&self, catalog: &Catalog, plan: &CleanupPlan) -> OrbokResult<()> {
         orbok_workers::CleanupService::new(catalog, &self.service, &self.db_path)
             .run_safe(plan)

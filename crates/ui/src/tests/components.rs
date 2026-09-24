@@ -85,6 +85,15 @@ fn component_smoke_result_card() {
     );
 }
 
+fn cover() -> crate::components::CardCoverage<'static> {
+    crate::components::CardCoverage {
+        current: "This folder and subfolders",
+        other: "This folder only",
+        toggle: Message::AskNarrowFolder("src-1".to_string()),
+        sc: crate::theme::TextScale::default(),
+    }
+}
+
 #[test]
 fn component_smoke_source_card() {
     let tokens = Tokens::light();
@@ -95,6 +104,7 @@ fn component_smoke_source_card() {
         "812 indexed · 0 stale".to_string(),
         "Active",
         None,
+        cover(),
         Some((
             "Prepare again",
             Message::SourceRefreshRequested("src-1".to_string()),
@@ -112,6 +122,7 @@ fn component_smoke_source_card() {
         "812 indexed · 0 stale".to_string(),
         "Active",
         None,
+        cover(),
         None,
         true,
         "Remove from orbok",
@@ -125,6 +136,7 @@ fn component_smoke_source_card() {
         "0 indexed".to_string(),
         "Folder not found",
         Some("This can happen if a drive is disconnected or the folder was moved."),
+        cover(),
         Some((
             "Check again",
             Message::SourceRefreshRequested("src-2".to_string()),
