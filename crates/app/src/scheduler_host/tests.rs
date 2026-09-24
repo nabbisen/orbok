@@ -3681,7 +3681,7 @@ async fn narrowing_mid_preparation_leaves_no_job_and_no_row() {
     let docs = temp.path().canonicalize().unwrap().join("docs");
     write_doc(&docs, "f/x.md");
     for i in 0..150 {
-        write_doc(&docs, &format!("f/sub{}/n{i}.md", i % 5));
+        write_doc(&docs, &format!("f/nested{}/n{i}.md", i % 5));
     }
     let (f, _) =
         bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
@@ -3723,21 +3723,21 @@ async fn narrowing_mid_preparation_leaves_no_job_and_no_row() {
 
     let below = |table_sql: &str| count_where(&catalog, table_sql);
     assert_eq!(
-        below("SELECT COUNT(*) FROM files WHERE canonical_path LIKE '%sub%'"),
+        below("SELECT COUNT(*) FROM files WHERE canonical_path LIKE '%nested%'"),
         0,
         "no row below the top level"
     );
     assert_eq!(
         below(
             "SELECT COUNT(*) FROM index_jobs j JOIN files f ON f.file_id = j.file_id \
-             WHERE f.canonical_path LIKE '%sub%'"
+             WHERE f.canonical_path LIKE '%nested%'"
         ),
         0,
         "and no job for one"
     );
     assert_eq!(
         below(
-            "SELECT COUNT(*) FROM chunks c JOIN files f ON f.file_id = c.file_id WHERE f.canonical_path LIKE '%sub%'"
+            "SELECT COUNT(*) FROM chunks c JOIN files f ON f.file_id = c.file_id WHERE f.canonical_path LIKE '%nested%'"
         ),
         0
     );
