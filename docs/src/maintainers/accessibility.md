@@ -525,7 +525,7 @@ Windows users predominantly run.
 
 Switch to each of the four non-System themes and verify:
 - Body text is legible on all surfaces.
-- Status badges (Stale, Missing, Current, Keyword, By meaning) are distinguishable.
+- Status badges are distinguishable: the trust badges (Needs update, File not found, Still being prepared, Partly prepared, Cannot open) and the match badges (Keyword, By meaning, Reranked; Needs update).
 - Danger buttons are visually distinct from primary buttons.
 
 ### Grayscale status-distinguishability pass
