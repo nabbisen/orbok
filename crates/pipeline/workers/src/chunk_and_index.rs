@@ -6,7 +6,9 @@ use crate::chunk_adapter::to_chunk_specs;
 use orbok_cache::{CacheService, OrbokCacheNamespace};
 use orbok_core::{ExtractionId, FileId, FileStatus, JobType, OrbokError, OrbokResult};
 use orbok_db::Catalog;
-use orbok_db::repo::{ChunkRepository, FileRepository, IndexJobRepository, SourceRepository};
+use orbok_db::repo::{
+    ChunkRepository, ExistingChunks, FileRepository, IndexJobRepository, SourceRepository,
+};
 use orbok_extract::{ExtractOutput, chunk};
 use orbok_fs::{GuardedSource, PathGuard};
 use rusqlite::params;
@@ -80,7 +82,35 @@ impl<'a> ChunkAndIndexWorker<'a> {
             return Ok(());
         }
 
-        ChunkRepository::new(self.catalog).insert_bundle(file_id, &extraction_id, &specs)?;
+        // Task 102: a `Chunk` job for an extraction whose chunks already
+        // exist is an ordinary event (Prepare again on a healthy file, a
+        // duplicated job, a keyword rebuild over a fresh extraction cache),
+        // not an error. Same chunks: write only the keyword rows they lack,
+        // under the same chunk ids -- nothing that hangs off those ids
+        // (embeddings) changes, so no `Embedding` job is queued.
+        let chunks = ChunkRepository::new(self.catalog);
+        match chunks.reuse_existing_chunks(file_id, &extraction_id, &specs)? {
+            ExistingChunks::Reused { .. } => return Ok(()),
+            ExistingChunks::Different => {
+                // The chunker produced different chunks from the same
+                // extraction. Make a new generation: evict this file's cache
+                // entry so `Extract` re-extracts (a fresh `extraction_id`),
+                // and queue it.
+                tracing::info!(
+                    file_id = file_id.as_str(),
+                    "chunks differ from the stored ones: making a new generation"
+                );
+                CacheService::remove(&engine, &validated)?;
+                IndexJobRepository::new(self.catalog).enqueue(
+                    JobType::Extract,
+                    Some(&record.source_id),
+                    Some(file_id),
+                )?;
+                return Ok(());
+            }
+            ExistingChunks::None => {}
+        }
+        chunks.insert_bundle(file_id, &extraction_id, &specs)?;
 
         // RFC-008 §19 "Chunk Change Handling": a new embedding job is
         // queued after rechunking. Mirrors extract.rs's JobType::Chunk

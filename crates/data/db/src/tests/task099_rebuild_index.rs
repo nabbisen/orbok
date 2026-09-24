@@ -105,6 +105,18 @@ fn job_count_of_type(catalog: &Catalog, job_type: &str) -> i64 {
         .unwrap()
 }
 
+/// One column as readable text (a blob is shown by its length).
+fn cell(v: rusqlite::types::ValueRef<'_>) -> String {
+    use rusqlite::types::ValueRef::*;
+    match v {
+        Null => "NULL".into(),
+        Integer(i) => i.to_string(),
+        Real(f) => f.to_string(),
+        Text(t) => String::from_utf8_lossy(t).into_owned(),
+        Blob(b) => format!("blob({})", b.len()),
+    }
+}
+
 /// Every row of `table`, every column, as text -- a snapshot to compare
 /// before and after, so "untouched" is asserted on content, not on a count.
 fn dump(catalog: &Catalog, table: &str) -> Vec<Vec<String>> {
@@ -115,7 +127,7 @@ fn dump(catalog: &Catalog, table: &str) -> Vec<Vec<String>> {
     let columns = stmt.column_count();
     stmt.query_map([], |row| {
         (0..columns)
-            .map(|i| row.get_ref(i).map(|v| format!("{v:?}")))
+            .map(|i| row.get_ref(i).map(cell))
             .collect::<Result<Vec<_>, _>>()
     })
     .unwrap()

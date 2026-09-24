@@ -171,28 +171,6 @@ impl<'a> IndexJobRepository<'a> {
         Ok(files.len())
     }
 
-    /// Task 099: the file ids [`Self::enqueue_extraction_backfill`] would
-    /// queue right now. `orbok_workers::CleanupService` reads this
-    /// *before* calling the executor (while the predicate's "no unfinished
-    /// extract/chunk job" half still matches every candidate) to evict
-    /// each file's extraction-cache entry first -- without that, a file
-    /// whose content has not changed hits `ExtractionWorker::run`'s own
-    /// freshness shortcut, which re-queues a `Chunk` job against the
-    /// *same* `extraction_id` its still-active chunks already occupy,
-    /// and `insert_bundle` then fails the whole rebuild on a UNIQUE
-    /// constraint (`chunks(file_id, extraction_id, chunk_ordinal)`)
-    /// rather than reindexing anything.
-    pub fn extraction_backfill_candidate_file_ids(&self) -> OrbokResult<Vec<FileId>> {
-        let conn = self.catalog.lock();
-        let mut stmt = conn
-            .prepare(EXTRACTION_BACKFILL_FILES_SQL)
-            .map_err(db_err)?;
-        stmt.query_map([], |row| row.get::<_, String>(0))
-            .map_err(db_err)?
-            .map(|r| r.map(FileId::from_string).map_err(db_err))
-            .collect()
-    }
-
     /// Task 099: how many files [`Self::enqueue_extraction_backfill`] would
     /// queue right now -- the Storage page's "prepare keyword search again"
     /// confirmation counts this fresh when it opens, the same way

@@ -118,22 +118,20 @@ impl<'a> CleanupExecutor<'a> {
     /// tables, the only way to regenerate that text is to re-extract: this
     /// is why the rebuild this queues is `Extract`, not a lighter
     /// keyword-only step -- there is no lighter step the storage layer can
-    /// support. `ChunkRepository::insert_bundle` rebuilds the keyword
-    /// index as a byproduct of chunking the fresh extraction, the same
+    /// support. `ChunkRepository::reuse_existing_chunks` (the chunks are the
+    /// stored ones) or `insert_bundle` (a new generation) rebuilds the
+    /// keyword index as a byproduct of chunking the extraction, the same
     /// path an ordinary first-time index already takes.
     ///
-    /// **Not sufficient on its own in production**, found by Task 099's own
-    /// end-to-end test: a file whose content has not changed still has a
-    /// fresh entry in the *extraction* cache (a separate store, outside
-    /// this crate), and `ExtractionWorker::run` skips straight past a real
-    /// re-extraction when it finds one -- re-queuing a `Chunk` job against
-    /// the *same* `extraction_id` this file's still-active chunks already
-    /// occupy, which then fails `insert_bundle`'s own `UNIQUE(file_id,
-    /// extraction_id, chunk_ordinal)` instead of reindexing anything.
-    /// `orbok_workers::CleanupService::run_safe` evicts each candidate's
-    /// extraction-cache entry before calling this, which is why every
-    /// production caller must go through it rather than this method
-    /// directly.
+    /// Sufficient on its own (Task 102). A file whose content has not
+    /// changed still has a fresh entry in the *extraction* cache (a separate
+    /// store, outside this crate), so the `Extract` job this queues takes
+    /// `ExtractionWorker::run`'s freshness shortcut and queues a `Chunk` job
+    /// against the *same* `extraction_id` its still-active chunks occupy.
+    /// `ChunkAndIndexWorker` handles that: when the chunks it derives are the
+    /// stored ones it writes only the keyword rows they lack, under the same
+    /// chunk ids, and queues no `Embedding` job. (Task 099 first avoided the
+    /// case by evicting the cache entry, which re-embedded every file.)
     pub fn delete_keyword_index(&self) -> OrbokResult<CleanupOutcome> {
         let deleted = {
             let mut conn = self.catalog.lock();

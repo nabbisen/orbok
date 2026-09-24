@@ -58,6 +58,157 @@ pub struct ChunkRepository<'a> {
 
 const CHUNKER_VERSION: &str = "chunker-v1";
 
+/// RFC-059 §6's two counts that must agree, read together (Task 102: the one
+/// implementation of the check, used by the erasure tests and the keyword
+/// rebuild tests alike).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeywordIndexCounts {
+    pub fts: i64,
+    pub records: i64,
+    pub trigram: i64,
+    pub records_with_trigram: i64,
+}
+
+impl KeywordIndexCounts {
+    /// `None` when both invariants hold: `count(chunk_fts) ==
+    /// count(keyword_index_records)` and `count(chunk_fts_trigram) ==
+    /// count(keyword_index_records WHERE trigram_fts_rowid IS NOT NULL)`.
+    pub fn violation(&self) -> Option<String> {
+        if self.fts != self.records {
+            return Some(format!(
+                "count(chunk_fts)={} must equal count(keyword_index_records)={}",
+                self.fts, self.records
+            ));
+        }
+        if self.trigram != self.records_with_trigram {
+            return Some(format!(
+                "count(chunk_fts_trigram)={} must equal \
+                 count(keyword_index_records WHERE trigram_fts_rowid IS NOT NULL)={}",
+                self.trigram, self.records_with_trigram
+            ));
+        }
+        None
+    }
+}
+
+/// The three keyword-index rows of one chunk: the unicode61 FTS row, the
+/// trigram FTS row (RFC-014 §12, Japanese/CJK recall) and the
+/// `keyword_index_records` mapping between them and the chunk. Kept together
+/// so RFC-059 §6's `count(chunk_fts) == count(keyword_index_records)` holds
+/// wherever they are written (`insert_bundle`, `reuse_existing_chunks`).
+fn write_keyword_rows(
+    tx: &rusqlite::Transaction<'_>,
+    chunk_id: &ChunkId,
+    spec: &ChunkSpec,
+    now: &str,
+) -> OrbokResult<()> {
+    tx.execute(
+        "INSERT INTO chunk_fts (title, heading_path, normalized_text) \
+         VALUES (?1, ?2, ?3)",
+        params![spec.title, spec.heading_path, spec.normalized_text],
+    )
+    .map_err(db_err)?;
+    let fts_rowid = tx.last_insert_rowid();
+
+    tx.execute(
+        "INSERT INTO chunk_fts_trigram (title, heading_path, normalized_text) \
+         VALUES (?1, ?2, ?3)",
+        params![spec.title, spec.heading_path, spec.normalized_text],
+    )
+    .map_err(db_err)?;
+    let trigram_fts_rowid = tx.last_insert_rowid();
+
+    tx.execute(
+        "INSERT INTO keyword_index_records \
+         (chunk_id, fts_rowid, trigram_fts_rowid, index_engine, tokenizer_name, \
+          tokenizer_version, indexed_at, status) \
+         VALUES (?1, ?2, ?3, 'sqlite-fts5', 'unicode61', ?4, ?5, 'active') \
+         ON CONFLICT(chunk_id) DO UPDATE SET fts_rowid = ?2, trigram_fts_rowid = ?3, \
+          index_engine = 'sqlite-fts5', tokenizer_name = 'unicode61', \
+          tokenizer_version = ?4, indexed_at = ?5, status = 'active'",
+        params![
+            chunk_id.as_str(),
+            fts_rowid,
+            trigram_fts_rowid,
+            CHUNKER_VERSION,
+            now,
+        ],
+    )
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// What [`ChunkRepository::reuse_existing_chunks`] found (Task 102).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExistingChunks {
+    /// This extraction has no active chunks: insert a bundle.
+    None,
+    /// It has, and they are the chunks the caller derived. Their missing
+    /// keyword rows were written (`keyword_rows_written`, 0 when every chunk
+    /// already had them). The chunk ids did not change, so nothing that
+    /// hangs off them (embeddings) needs redoing.
+    Reused { keyword_rows_written: usize },
+    /// It has, and they are not the chunks the caller derived. Nothing was
+    /// written.
+    Different,
+}
+
+/// RFC-059 §6/§0(i): the previous generation's FTS rows and their mapping
+/// rows, addressed by file, for every active chunk of a *different*
+/// extraction (see `insert_bundle`'s own comment for why by file and not by
+/// chunk id).
+fn delete_superseded_keyword_rows(
+    tx: &rusqlite::Transaction<'_>,
+    file_id: &FileId,
+    extraction_id: &ExtractionId,
+) -> OrbokResult<()> {
+    let superseded_chunks = "SELECT chunk_id FROM chunks WHERE file_id = ?1 AND extraction_id != ?2 \
+             AND chunk_status = 'active'";
+    tx.execute(
+        &format!(
+            "DELETE FROM chunk_fts WHERE rowid IN ( \
+                     SELECT fts_rowid FROM keyword_index_records \
+                     WHERE chunk_id IN ({superseded_chunks}) AND fts_rowid IS NOT NULL \
+                 )"
+        ),
+        params![file_id.as_str(), extraction_id.as_str()],
+    )
+    .map_err(db_err)?;
+    tx.execute(
+        &format!(
+            "DELETE FROM chunk_fts_trigram WHERE rowid IN ( \
+                     SELECT trigram_fts_rowid FROM keyword_index_records \
+                     WHERE chunk_id IN ({superseded_chunks}) AND trigram_fts_rowid IS NOT NULL \
+                 )"
+        ),
+        params![file_id.as_str(), extraction_id.as_str()],
+    )
+    .map_err(db_err)?;
+    tx.execute(
+        &format!("DELETE FROM keyword_index_records WHERE chunk_id IN ({superseded_chunks})"),
+        params![file_id.as_str(), extraction_id.as_str()],
+    )
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// Old chunks of this file that belong to a different extraction become
+/// `stale`.
+fn mark_other_generations_stale(
+    tx: &rusqlite::Transaction<'_>,
+    file_id: &FileId,
+    extraction_id: &ExtractionId,
+    now: &str,
+) -> OrbokResult<()> {
+    tx.execute(
+        "UPDATE chunks SET chunk_status = 'stale', updated_at = ?3 \
+         WHERE file_id = ?1 AND extraction_id != ?2 AND chunk_status = 'active'",
+        params![file_id.as_str(), extraction_id.as_str(), now],
+    )
+    .map_err(db_err)?;
+    Ok(())
+}
+
 impl<'a> ChunkRepository<'a> {
     pub fn new(catalog: &'a Catalog) -> Self {
         Self { catalog }
@@ -111,33 +262,7 @@ impl<'a> ChunkRepository<'a> {
         // after every re-index, confirmed by first shipping this fix
         // without the mapping delete and watching the invariant test fail
         // with `keyword_index_records` one row ahead.
-        let superseded_chunks = "SELECT chunk_id FROM chunks WHERE file_id = ?1 AND extraction_id != ?2 \
-             AND chunk_status = 'active'";
-        tx.execute(
-            &format!(
-                "DELETE FROM chunk_fts WHERE rowid IN ( \
-                     SELECT fts_rowid FROM keyword_index_records \
-                     WHERE chunk_id IN ({superseded_chunks}) AND fts_rowid IS NOT NULL \
-                 )"
-            ),
-            params![file_id.as_str(), extraction_id.as_str()],
-        )
-        .map_err(db_err)?;
-        tx.execute(
-            &format!(
-                "DELETE FROM chunk_fts_trigram WHERE rowid IN ( \
-                     SELECT trigram_fts_rowid FROM keyword_index_records \
-                     WHERE chunk_id IN ({superseded_chunks}) AND trigram_fts_rowid IS NOT NULL \
-                 )"
-            ),
-            params![file_id.as_str(), extraction_id.as_str()],
-        )
-        .map_err(db_err)?;
-        tx.execute(
-            &format!("DELETE FROM keyword_index_records WHERE chunk_id IN ({superseded_chunks})"),
-            params![file_id.as_str(), extraction_id.as_str()],
-        )
-        .map_err(db_err)?;
+        delete_superseded_keyword_rows(&tx, file_id, extraction_id)?;
 
         let mut records = Vec::with_capacity(specs.len());
         for (i, spec) in specs.iter().enumerate() {
@@ -168,41 +293,7 @@ impl<'a> ChunkRepository<'a> {
             )
             .map_err(db_err)?;
 
-            // Insert into unicode61 FTS and record rowid.
-            tx.execute(
-                "INSERT INTO chunk_fts (title, heading_path, normalized_text) \
-                 VALUES (?1, ?2, ?3)",
-                params![spec.title, spec.heading_path, spec.normalized_text],
-            )
-            .map_err(db_err)?;
-            let fts_rowid = tx.last_insert_rowid();
-
-            // Insert into trigram FTS (RFC-014 §12) for Japanese/CJK recall.
-            tx.execute(
-                "INSERT INTO chunk_fts_trigram (title, heading_path, normalized_text) \
-                 VALUES (?1, ?2, ?3)",
-                params![spec.title, spec.heading_path, spec.normalized_text],
-            )
-            .map_err(db_err)?;
-            let trigram_fts_rowid = tx.last_insert_rowid();
-
-            tx.execute(
-                "INSERT INTO keyword_index_records \
-                 (chunk_id, fts_rowid, trigram_fts_rowid, index_engine, tokenizer_name, \
-                  tokenizer_version, indexed_at, status) \
-                 VALUES (?1, ?2, ?3, 'sqlite-fts5', 'unicode61', ?4, ?5, 'active') \
-                 ON CONFLICT(chunk_id) DO UPDATE SET fts_rowid = ?2, trigram_fts_rowid = ?3, \
-                  index_engine = 'sqlite-fts5', tokenizer_name = 'unicode61', \
-                  tokenizer_version = ?4, indexed_at = ?5, status = 'active'",
-                params![
-                    chunk_id.as_str(),
-                    fts_rowid,
-                    trigram_fts_rowid,
-                    CHUNKER_VERSION,
-                    now,
-                ],
-            )
-            .map_err(db_err)?;
+            write_keyword_rows(&tx, chunk_id, spec, &now)?;
 
             // Chunk location.
             tx.execute(
@@ -237,13 +328,7 @@ impl<'a> ChunkRepository<'a> {
             });
         }
 
-        // Mark old chunks for this file that belong to a different extraction stale.
-        tx.execute(
-            "UPDATE chunks SET chunk_status = 'stale', updated_at = ?3 \
-             WHERE file_id = ?1 AND extraction_id != ?2 AND chunk_status = 'active'",
-            params![file_id.as_str(), extraction_id.as_str(), now],
-        )
-        .map_err(db_err)?;
+        mark_other_generations_stale(&tx, file_id, extraction_id, &now)?;
 
         // Mark file indexed.
         tx.execute(
@@ -255,6 +340,131 @@ impl<'a> ChunkRepository<'a> {
 
         tx.commit().map_err(db_err)?;
         Ok(records)
+    }
+
+    /// The counts [`KeywordIndexCounts::violation`] checks.
+    pub fn keyword_index_counts(&self) -> OrbokResult<KeywordIndexCounts> {
+        let conn = self.catalog.lock();
+        let count = |sql: &str| -> OrbokResult<i64> {
+            conn.query_row(sql, [], |r| r.get(0)).map_err(db_err)
+        };
+        Ok(KeywordIndexCounts {
+            fts: count("SELECT COUNT(*) FROM chunk_fts")?,
+            records: count("SELECT COUNT(*) FROM keyword_index_records")?,
+            trigram: count("SELECT COUNT(*) FROM chunk_fts_trigram")?,
+            records_with_trigram: count(
+                "SELECT COUNT(*) FROM keyword_index_records WHERE trigram_fts_rowid IS NOT NULL",
+            )?,
+        })
+    }
+
+    /// Task 102: a `Chunk` job for an extraction that already has active
+    /// chunks is an ordinary event (a per-file Prepare again on a healthy
+    /// file, a duplicated job, a keyword rebuild over a fresh extraction
+    /// cache), not an error. When the chunks the caller derived are the ones
+    /// stored -- same count, and for each ordinal the same content hash,
+    /// heading path, title, kind and line range -- the missing keyword rows are written
+    /// under the **existing chunk ids**, in one transaction, and nothing else
+    /// changes: embeddings hang off those ids and stay valid. When they
+    /// differ, nothing is written and the caller makes a new generation.
+    ///
+    /// Any keyword rows still belonging to a superseded generation of this
+    /// file are removed here too, exactly as `insert_bundle` does, so this
+    /// path cannot leave a stale row behind.
+    pub fn reuse_existing_chunks(
+        &self,
+        file_id: &FileId,
+        extraction_id: &ExtractionId,
+        specs: &[ChunkSpec],
+    ) -> OrbokResult<ExistingChunks> {
+        let now = now_iso8601();
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+
+        type Stored = (
+            String,
+            i64,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+        );
+        let stored: Vec<Stored> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT c.chunk_id, c.chunk_ordinal, c.heading_path, c.title, c.chunk_kind, \
+                     c.content_hash, l.line_start, l.line_end FROM chunks c \
+                     LEFT JOIN chunk_locations l ON l.chunk_id = c.chunk_id \
+                     WHERE c.file_id = ?1 AND c.extraction_id = ?2 AND c.chunk_status = 'active' \
+                     ORDER BY c.chunk_ordinal",
+                )
+                .map_err(db_err)?;
+            stmt.query_map(params![file_id.as_str(), extraction_id.as_str()], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                ))
+            })
+            .map_err(db_err)?
+            .collect::<Result<_, _>>()
+            .map_err(db_err)?
+        };
+        if stored.is_empty() {
+            return Ok(ExistingChunks::None);
+        }
+        let same = stored.len() == specs.len()
+            && stored.iter().zip(specs).all(|(row, spec)| {
+                row.1 == spec.chunk_ordinal as i64
+                    && row.2 == spec.heading_path
+                    && row.3 == spec.title
+                    && row.4 == spec.chunk_kind
+                    && row.5 == sha256_text(&spec.normalized_text)
+                    && row.6 == Some(spec.line_start as i64)
+                    && row.7 == Some(spec.line_end as i64)
+            });
+        if !same {
+            return Ok(ExistingChunks::Different);
+        }
+
+        let mut written = 0;
+        for (row, spec) in stored.iter().zip(specs) {
+            let has_rows: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM keyword_index_records \
+                     WHERE chunk_id = ?1 AND fts_rowid IS NOT NULL \
+                     AND trigram_fts_rowid IS NOT NULL)",
+                    params![row.0],
+                    |r| r.get(0),
+                )
+                .map_err(db_err)?;
+            if !has_rows {
+                write_keyword_rows(&tx, &ChunkId::from_string(row.0.clone()), spec, &now)?;
+                written += 1;
+            }
+        }
+        delete_superseded_keyword_rows(&tx, file_id, extraction_id)?;
+        mark_other_generations_stale(&tx, file_id, extraction_id, &now)?;
+
+        // A healthy file (every row present, already indexed) changes nothing.
+        tx.execute(
+            "UPDATE files SET file_status = 'indexed', last_indexed_at = ?2, updated_at = ?2 \
+             WHERE file_id = ?1 AND (?3 > 0 OR file_status != 'indexed')",
+            params![file_id.as_str(), now, written as i64],
+        )
+        .map_err(db_err)?;
+
+        tx.commit().map_err(db_err)?;
+        Ok(ExistingChunks::Reused {
+            keyword_rows_written: written,
+        })
     }
 
     /// RFC-037 §8/§12, Task 035 §5.3: cascade a source's just-marked-missing

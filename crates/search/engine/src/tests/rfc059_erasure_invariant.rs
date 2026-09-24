@@ -104,42 +104,15 @@ fn chunk_fts_trigram_count(catalog: &Catalog) -> i64 {
         .unwrap()
 }
 
-fn keyword_index_records_count(catalog: &Catalog) -> i64 {
-    catalog
-        .lock()
-        .query_row("SELECT COUNT(*) FROM keyword_index_records", [], |r| {
-            r.get(0)
-        })
-        .unwrap()
-}
-
-fn keyword_index_records_with_trigram_count(catalog: &Catalog) -> i64 {
-    catalog
-        .lock()
-        .query_row(
-            "SELECT COUNT(*) FROM keyword_index_records WHERE trigram_fts_rowid IS NOT NULL",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap()
-}
-
 /// Asserts both RFC-059 §6 invariants, tagging the failure with which
 /// operation it was checked after.
 fn assert_erasure_invariant(catalog: &Catalog, after: &str) {
-    let fts = chunk_fts_count(catalog);
-    let records = keyword_index_records_count(catalog);
-    assert_eq!(
-        fts, records,
-        "after {after}: count(chunk_fts)={fts} must equal count(keyword_index_records)={records}"
-    );
-    let trigram = chunk_fts_trigram_count(catalog);
-    let records_with_trigram = keyword_index_records_with_trigram_count(catalog);
-    assert_eq!(
-        trigram, records_with_trigram,
-        "after {after}: count(chunk_fts_trigram)={trigram} must equal \
-         count(keyword_index_records WHERE trigram_fts_rowid IS NOT NULL)={records_with_trigram}"
-    );
+    let counts = orbok_db::repo::ChunkRepository::new(catalog)
+        .keyword_index_counts()
+        .unwrap();
+    if let Some(violation) = counts.violation() {
+        panic!("after {after}: {violation}");
+    }
 }
 
 #[test]

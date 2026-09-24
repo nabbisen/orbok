@@ -15,7 +15,7 @@ pub mod settings;
 pub mod sources;
 pub mod storage;
 
-pub use chunks::{ChunkRecord, ChunkRepository, ChunkSpec};
+pub use chunks::{ChunkRecord, ChunkRepository, ChunkSpec, ExistingChunks, KeywordIndexCounts};
 pub use cleanup::CleanupExecutor;
 pub use embeddings::{EmbeddingRecord, EmbeddingRepository, NewEmbedding};
 pub use events::{EventRepository, Severity};
