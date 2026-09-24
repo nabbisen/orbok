@@ -2858,34 +2858,50 @@ async fn a_folder_card_follows_preparation_without_a_restart() {
         None,
     ));
 
+    // Two questions, asked separately (the shape of Task 101's fix). A fixed
+    // wall-time window cannot tell "the card never followed" from "the card
+    // has not been told yet" on a loaded runner, so the first wait is for the
+    // *state* -- preparation is finished in the catalog -- with a generous
+    // deadline, feeding the window every message as it arrives.
+    let source_id = orbok_core::SourceId::from_string(state.sources[0].source_id.clone());
+    let unfinished = || {
+        orbok_db::repo::IndexJobRepository::new(&ui_catalog)
+            .count_unfinished_for_source(&source_id)
+            .unwrap()
+    };
     let start = Instant::now();
-    while state.sources[0].indexed != 3 && start.elapsed() < Duration::from_secs(10) {
+    while indexed_count(&ui_catalog) != 3 || unfinished() != 0 {
+        while let Ok(message) = rx.try_recv() {
+            state.update(&message);
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(60),
+            "preparation did not finish within 60 s ({} of 3 files, {} jobs unfinished)",
+            indexed_count(&ui_catalog),
+            unfinished()
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Second: once preparation is over the loop goes idle and flushes its
+    // last report within IDLE_POLL plus one throttle interval, so the card
+    // must follow within a few seconds of *that moment*. Here a timeout is a
+    // real failure of what this task promises.
+    let finished_at = Instant::now();
+    while (state.sources[0].indexed != 3 || state.sources[0].is_preparing())
+        && finished_at.elapsed() < Duration::from_secs(5)
+    {
         while let Ok(message) = rx.try_recv() {
             state.update(&message);
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     handle.abort();
-
-    assert_eq!(
-        indexed_count(&ui_catalog),
-        3,
-        "the files themselves were prepared"
-    );
     assert_eq!(
         state.sources[0].indexed, 3,
-        "the card still says Ready {} after preparation finished",
+        "the card still says Ready {} five seconds after preparation finished",
         state.sources[0].indexed
     );
-    // The last report is the final flush: nothing is left to prepare, so the
-    // card is Ready and its line reads "Ready 3".
-    let start = Instant::now();
-    while state.sources[0].is_preparing() && start.elapsed() < Duration::from_secs(10) {
-        while let Ok(message) = rx.try_recv() {
-            state.update(&message);
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
     let card = &state.sources[0];
     assert_eq!(
         card.state_label_key(),
