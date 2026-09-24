@@ -280,6 +280,13 @@ Behavior:
 - typing is allowed before folder selection;
 - pressing Search opens folder picker if no folder is selected.
 
+**Amendment (2026-09-24, Task 105).** The bracketed `[Choose a folder]` above
+was built as passive text, so after a cancelled picker the only thing that
+named the next step was a sentence, not a control (Review 268 §3). It is now a
+control: a link-style button that opens the same picker a submitted search
+opens, keeps the typed query, and does nothing while a picker is already open.
+Cancelling is unchanged (§8.2): neutral, no error, query kept.
+
 ### 7.2. User Presses Search
 
 ```text

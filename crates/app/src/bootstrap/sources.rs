@@ -18,7 +18,15 @@ pub enum AddSourceOutcome {
     AlreadyRegistered { card: orbok_ui::state::SourceCard },
 }
 
-/// Add a folder or file as a new searchable source, unless its canonical
+/// A leading `~` is the user's home directory.
+pub(crate) fn expand_home(raw: &str, home: &str) -> String {
+    match raw.strip_prefix('~') {
+        Some(rest) => format!("{home}{rest}"),
+        None => raw.to_string(),
+    }
+}
+
+/// Add a folder as a new searchable source, unless its canonical
 /// path is already registered.
 pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOutcome> {
     use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
@@ -36,13 +44,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
         // failure two lines below, just caught earlier.
         return Err(OrbokError::PathCanonicalization("path is empty".into()));
     }
-    // Resolve tilde and canonicalize.
-    let expanded = if let Some(stripped) = raw.strip_prefix('~') {
-        let home = std::env::var("HOME").unwrap_or_default();
-        format!("{home}{stripped}")
-    } else {
-        raw.to_string()
-    };
+    let expanded = expand_home(raw, &std::env::var("HOME").unwrap_or_default());
     let canonical = Path::new(&expanded)
         .canonicalize()
         .map_err(|e| OrbokError::PathCanonicalization(format!("cannot access '{expanded}': {e}")))?
@@ -55,11 +57,15 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
         });
     }
 
-    let source_type = if Path::new(&canonical).is_dir() {
-        SourceType::Directory
-    } else {
-        SourceType::File
-    };
+    // Task 105: only a folder can be added. Single files were dropped (Task
+    // 109, RFC-003 Amendment 1); the picker offers folders only, which hid a
+    // registration of a file until a typed path could reach this.
+    if !Path::new(&canonical).is_dir() {
+        return Err(OrbokError::PathCanonicalization(format!(
+            "'{canonical}' is not a folder"
+        )));
+    }
+    let source_type = SourceType::Directory;
     let display_name = folder_display_name(&canonical);
 
     let src = SourceRepository::new(catalog).insert(NewSource {

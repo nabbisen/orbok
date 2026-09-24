@@ -1,5 +1,11 @@
 # Searching
 
+## Choosing where to search
+
+Type a question and press Search. If no folder is chosen yet, orbok asks you
+to choose one; you can also press **Choose a folder** on the search page at
+any time. Cancelling keeps what you typed.
+
 ## Search modes
 
 The **Mode** choice appears when **Advanced view** is on (**Settings**). By

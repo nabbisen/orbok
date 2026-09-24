@@ -52,6 +52,7 @@ mod task081_storage_page;
 mod task088_toggle_labels;
 mod task099_rebuild_confirmation;
 mod task104_folders_and_preparing_agree;
+mod task105_choosing_a_folder;
 mod task108_a_folder_card_shows_what_is_true_now;
 mod task109_every_key_is_shown;
 

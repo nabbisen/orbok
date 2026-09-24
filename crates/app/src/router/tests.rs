@@ -733,3 +733,164 @@ fn a_failed_keyword_rebuild_raises_cleanup_did_not_finish_with_retry() {
         "expected a CleanupDidNotFinish notice retrying AskDeleteKeywordIndex, got {messages:?}"
     );
 }
+
+// ── Task 105: choosing a folder always does something ───────────────────
+
+fn source_rows(deps: &AppDeps) -> i64 {
+    deps.catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM sources", [], |r| r.get(0))
+        .unwrap()
+}
+
+fn typed(app: &mut OrbokApp, deps: &AppDeps, text: &str) -> iced::Task<Message> {
+    app.update(Message::SourcePathChanged(text.to_string()));
+    route(app, Message::SubmitSourcePath, deps)
+}
+
+/// §2.1: Enter in the path field with a real directory's path adds it, clears
+/// the field, and opens no picker.
+#[test]
+fn a_typed_path_is_added_and_no_picker_opens() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let folder = temp.path().join("notes");
+    std::fs::create_dir(&folder).unwrap();
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let task = typed(&mut app, &deps, &folder.to_string_lossy());
+
+    assert_eq!(task.units(), 0, "no picker task is returned");
+    assert_eq!(app.state.sources.len(), 1, "the folder was added");
+    assert_eq!(source_rows(&deps), 1);
+    assert!(app.state.source_path_input.is_empty(), "the field clears");
+}
+
+/// §2.3: a bad path raises the failure notice, keeps the typed text, adds
+/// nothing.
+#[test]
+fn a_bad_typed_path_is_kept_for_correction_and_adds_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let bad = temp
+        .path()
+        .join("no-such-folder")
+        .to_string_lossy()
+        .to_string();
+
+    let task = typed(&mut app, &deps, &bad);
+
+    assert_eq!(task.units(), 0);
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderCouldNotBeAdded)
+    );
+    assert_eq!(app.state.source_path_input, bad, "the text is unchanged");
+    assert_eq!(source_rows(&deps), 0);
+}
+
+/// Task 105 §1.1: only a folder can be added. A typed file path is refused
+/// with the same notice, and no row is created (single files were dropped,
+/// RFC-003 Amendment 1).
+#[test]
+fn a_typed_file_path_is_refused_and_creates_no_row() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let file = temp.path().join("one.md");
+    std::fs::write(&file, "# one\n").unwrap();
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let _ = typed(&mut app, &deps, &file.to_string_lossy());
+
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderCouldNotBeAdded)
+    );
+    assert_eq!(source_rows(&deps), 0, "no row for a file");
+    assert!(app.state.sources.is_empty());
+}
+
+/// §2.4: Enter with an empty (or blank) field does nothing.
+#[test]
+fn enter_in_an_empty_path_field_does_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    for text in ["", "   "] {
+        let task = typed(&mut app, &deps, text);
+        assert_eq!(task.units(), 0, "no task for {text:?}");
+        assert!(app.state.notice.is_none(), "no notice for {text:?}");
+    }
+    assert_eq!(source_rows(&deps), 0);
+}
+
+/// §2.5: the Add folder button still opens the picker, and only it does.
+#[test]
+fn the_button_opens_the_picker_and_the_field_does_not() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let task = route(&mut app, Message::RequestAddSource, &deps);
+    assert_eq!(task.units(), 1, "the button opens the picker");
+    assert!(app.state.add_source_picker_in_progress);
+}
+
+/// §2.6: "Choose a folder" opens the search picker and respects the
+/// one-picker flag: a second press while it is open does nothing.
+#[test]
+fn choose_a_folder_opens_the_picker_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState {
+        query: "meeting notes".into(),
+        ..AppState::default()
+    });
+
+    let first = route(&mut app, Message::ChooseSearchFolder, &deps);
+    assert_eq!(first.units(), 1, "the picker task");
+    assert!(app.state.search_location.picker_in_progress);
+    assert_eq!(
+        app.state.search_location.pending_query.as_deref(),
+        Some("meeting notes"),
+        "the query is kept for after the pick"
+    );
+
+    let second = route(&mut app, Message::ChooseSearchFolder, &deps);
+    assert_eq!(second.units(), 0, "a second press does nothing");
+}
+
+/// §2.7: the picker's arm and the typed path's arm both call the one
+/// routine, so a notice, the already-added check and the scan cannot differ.
+#[test]
+fn both_add_arms_call_the_one_routine() {
+    let source = include_str!("../router.rs");
+    let arm = |start: &str, end: &str| {
+        let from = source.find(start).unwrap();
+        let to = from + source[from..].find(end).unwrap();
+        &source[from..to]
+    };
+    for (name, body) in [
+        (
+            "AddSourceFolderPicked",
+            arm(
+                "Message::AddSourceFolderPicked(folder) =>",
+                "Message::SubmitSourcePath =>",
+            ),
+        ),
+        (
+            "SubmitSourcePath",
+            arm(
+                "Message::SubmitSourcePath =>",
+                "Message::AddSourceFolderPickerCancelled =>",
+            ),
+        ),
+    ] {
+        assert!(
+            body.contains("add_folder_from_path("),
+            "the {name} arm must call add_folder_from_path"
+        );
+    }
+}

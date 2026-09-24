@@ -11,4 +11,6 @@ mod task034_health_query;
 #[cfg(test)]
 mod task047_duplicate_source;
 #[cfg(test)]
+mod task105_only_folders;
+#[cfg(test)]
 mod task108_one_card_builder;

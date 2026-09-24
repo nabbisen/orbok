@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Typing a folder's path and pressing Enter now adds it** (Task 105); before
+  it opened the folder picker and ignored what you typed. A path that is not a
+  folder is refused, and a path that could not be added stays in the box so you
+  can correct it.
+- **"Choose a folder" on the search page is now a button** (Task 105), so after
+  cancelling the picker there is something to press; it opens the picker again.
+
 - **A file orbok cannot prepare is shown as failed** (Task 103), and it is no
   longer retried at every start. Before, it stayed "waiting" for ever and the
   "Failed" counts on the Folders and Preparing pages were always zero.

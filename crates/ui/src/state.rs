@@ -862,6 +862,10 @@ pub enum Message {
     WizardSkip,
     // Source management
     SourcePathChanged(String),
+    /// Task 105: Enter in the Folders page's path field. Adds the typed path
+    /// (an empty field does nothing); the Add folder button keeps opening the
+    /// picker, so each control does one thing.
+    SubmitSourcePath,
     RequestAddSource,
     /// RFC-061 §7 Slice 5: the OS folder picker `RequestAddSource` opens
     /// returned `path` -- mirrors RFC-045's `FolderPicked`, but for the
@@ -939,6 +943,10 @@ pub enum Message {
     /// User submitted a search but no folder is selected: open the OS folder
     /// picker. Sets `picker_in_progress = true` to block duplicate dialogs.
     ChooseFolderRequested,
+    /// Task 105: "Choose a folder" on the search page's no-folder line, the
+    /// control behind the prompt: opens the same picker a submitted search
+    /// opens. Ignored while one is already open (Task 047's rule).
+    ChooseSearchFolder,
     /// The OS folder picker was cancelled — keep query, show no error
     /// (RFC-045 §8.2).
     FolderPickerCancelled,
@@ -1404,6 +1412,8 @@ impl AppState {
             // Task 047: orbok opens the dialog and adds the folder; its arms
             // return before this reducer runs, so they forward these three
             // messages here explicitly.
+            Message::SubmitSourcePath => {} // handled by orbok (Task 105)
+            Message::ChooseSearchFolder => {} // handled by orbok (Task 105)
             Message::RequestAddSource => self.add_source_picker_in_progress = true,
             Message::AddSourceFolderPicked(_) => self.add_source_picker_in_progress = false,
             Message::AddSourceFolderPickerCancelled => self.add_source_picker_in_progress = false,

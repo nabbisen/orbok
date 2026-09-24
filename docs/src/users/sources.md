@@ -2,8 +2,9 @@
 
 ## Registering sources
 
-Add a folder from the **Folders** view with **Add folder**. orbok only
-searches folders you add; it never scans your whole computer automatically.
+Add a folder from the **Folders** view with **Add folder**, or type its path
+into the box beside it and press Enter. orbok only searches folders you add;
+it never scans your whole computer automatically.
 
 When you add a folder near sensitive directories (`.ssh`, `.gnupg`,
 `.aws`), orbok adds it and shows the notice "This folder may contain

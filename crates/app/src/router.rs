@@ -37,6 +37,72 @@ pub(crate) struct AppDeps {
     pub(crate) active_download_cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
 }
 
+/// Add a folder from the Folders page -- the picker's answer or a typed path
+/// (Task 105: one routine, so the sensitive-folder notice, "already added"
+/// and the scan cannot differ between them). A failure raises the failure
+/// notice; it never touches the path field, so a typed path stays for
+/// correction. Success clears the field (`SourceAdded`).
+fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str) {
+    match bootstrap::add_source(&deps.catalog, path) {
+        Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { .. }) => {
+            app.update(Message::ShowNotice(
+                orbok_ui::notice::UserNotice::FolderAlreadyAdded,
+            ));
+        }
+        Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
+            if let Some(warning) = sensitive {
+                tracing::warn!("sensitive source: {warning}");
+                app.update(Message::ShowNotice(
+                    orbok_ui::notice::UserNotice::SensitiveSourceAdded,
+                ));
+            }
+            let source_id = card.source_id.clone();
+            app.update(Message::SourceAdded(card));
+            match bootstrap::scan_and_index_source(&deps.catalog, &source_id) {
+                Ok(health) => {
+                    app.update(Message::HealthUpdated(health));
+                    cards_follow_the_queue(app, &deps.catalog);
+                }
+                Err(e) => {
+                    tracing::error!("scan failed: {e}");
+                    app.update(notice_retry::add_folder_failed());
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("add source failed: {e}");
+            app.update(notice_retry::add_folder_failed());
+        }
+    }
+}
+
+/// Open the OS folder picker for the search page (RFC-045), unless one is
+/// already open (Task 047's rule, which `search_location.picker_in_progress`
+/// records but nothing checked before Task 105). Used by a submitted search
+/// with no folder chosen and by the "Choose a folder" control.
+fn open_search_folder_picker(app: &mut OrbokApp) -> iced::Task<Message> {
+    if app.state.search_location.picker_in_progress {
+        return iced::Task::none();
+    }
+    app.update(Message::ChooseFolderRequested);
+    // The actual rfd call is an async Task so it does not block the iced
+    // event loop (RFC-045 §19.0).
+    let locale = app.state.locale;
+    iced::Task::perform(
+        async move {
+            rfd::AsyncFileDialog::new()
+                .set_title(dialog_title_choose_search_folder(locale))
+                .pick_folder()
+                .await
+                .map(|h| h.path().to_path_buf())
+        },
+        |result| match result {
+            Some(path) => Message::FolderPicked(path),
+            None => Message::FolderPickerCancelled,
+        },
+    )
+}
+
 /// Task 108: a scan has just been queued, so the folder cards are re-read
 /// now. Without this a folder just added would say Ready until the first job
 /// finished and the scheduler's next report arrived.
@@ -261,39 +327,19 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         Message::AddSourceFolderPicked(folder) => {
             let path = folder.to_string_lossy().to_string();
             app.update(Message::SourcePathChanged(path.clone()));
-            match bootstrap::add_source(&deps.catalog, &path) {
-                Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { .. }) => {
-                    app.update(Message::ShowNotice(
-                        orbok_ui::notice::UserNotice::FolderAlreadyAdded,
-                    ));
-                }
-                Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
-                    if let Some(warning) = sensitive {
-                        tracing::warn!("sensitive source: {warning}");
-                        app.update(Message::ShowNotice(
-                            orbok_ui::notice::UserNotice::SensitiveSourceAdded,
-                        ));
-                    }
-                    let source_id = card.source_id.clone();
-                    app.update(Message::SourceAdded(card));
-                    match bootstrap::scan_and_index_source(&deps.catalog, &source_id) {
-                        Ok(health) => {
-                            app.update(Message::HealthUpdated(health));
-                            cards_follow_the_queue(app, &deps.catalog);
-                        }
-                        Err(e) => {
-                            tracing::error!("scan failed: {e}");
-                            app.update(notice_retry::add_folder_failed());
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("add source failed: {e}");
-                    app.update(notice_retry::add_folder_failed());
-                }
-            }
+            add_folder_from_path(app, deps, &path);
             // Clears the picker flag whatever the outcome.
             app.update(message.clone());
+            return iced::Task::none();
+        }
+        // Task 105: Enter in the path field adds what was typed, through the
+        // same routine the picker uses. An empty field does nothing; a
+        // failure keeps the text so it can be corrected.
+        Message::SubmitSourcePath => {
+            let typed = app.state.source_path_input.trim().to_string();
+            if !typed.is_empty() {
+                add_folder_from_path(app, deps, &typed);
+            }
             return iced::Task::none();
         }
         Message::AddSourceFolderPickerCancelled => {
@@ -453,29 +499,15 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 app.update(notice_retry::setting_not_saved(&message));
             }
         }
+        // Task 105: the control behind "Search in Choose a folder".
+        Message::ChooseSearchFolder => return open_search_folder_picker(app),
         Message::SubmitSearch => {
             let query = app.state.query.trim().to_string();
             if !query.is_empty() {
                 // RFC-045: if no search location is selected, open the
                 // folder picker first and store the pending query.
                 if !app.state.search_location.has_selected() {
-                    app.update(Message::ChooseFolderRequested);
-                    // The actual rfd call is an async Task so it does
-                    // not block the iced event loop (RFC-045 §19.0).
-                    let locale = app.state.locale;
-                    return iced::Task::perform(
-                        async move {
-                            rfd::AsyncFileDialog::new()
-                                .set_title(dialog_title_choose_search_folder(locale))
-                                .pick_folder()
-                                .await
-                                .map(|h| h.path().to_path_buf())
-                        },
-                        |result| match result {
-                            Some(path) => Message::FolderPicked(path),
-                            None => Message::FolderPickerCancelled,
-                        },
-                    );
+                    return open_search_folder_picker(app);
                 }
                 // RFC-061 §7 Slice 5: show "Searching…" immediately
                 // (was previously only shown *after* the search

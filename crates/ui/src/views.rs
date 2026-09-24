@@ -177,14 +177,21 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
 
     match &state.search_location.selected {
         None => {
-            // First-run / no-folder state: passive one-line prompt (RFC-045 §7.1).
+            // First-run / no-folder state: the one-line prompt, and its
+            // second half is the control that opens the picker (Task 105,
+            // RFC-045 §7.1 Amendment): after a cancelled picker the next
+            // step is something to press, not only text.
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
-                text(tr(locale, MessageKey::SearchChooseFolder))
-                    .size(theme::meta_s(tokens, sc))
-                    .color(to_iced_color(tokens.palette.text_secondary)),
+                components::ghost(
+                    tokens,
+                    tr(locale, MessageKey::SearchChooseFolder),
+                    (!state.search_location.picker_in_progress)
+                        .then_some(Message::ChooseSearchFolder),
+                ),
             ]
             .spacing(tokens.spacing.xs)
+            .align_y(iced::Alignment::Center)
             .into()
         }
         Some(location) => {
@@ -633,7 +640,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         &state.source_path_input,
     )
     .on_input(Message::SourcePathChanged)
-    .on_submit_maybe(add_folder)
+    .on_submit(Message::SubmitSourcePath)
     // Task 072: matches the Add Folder button beside it.
     .size(theme::body(tokens))
     .padding(components::input_padding(tokens));
