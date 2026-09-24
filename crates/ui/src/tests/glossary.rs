@@ -532,21 +532,7 @@ const GLOSSARY: &[GlossaryTerm] = &[
         canonical: &[(Locale::En, "Needs update"), (Locale::Ja, "要更新")],
         forbidden: &[(Locale::En, "stale"), (Locale::Ja, "更新が必要")],
         allowed_if_followed_by: None,
-        // Review 285 §3 believed the badges already said 要更新. They say
-        // 更新が必要, and only `SourceStateNeedsUpdate` was owner-approved to
-        // change (Task 109 §3). Listed, not changed: review request 287.
-        exemptions: &[
-            (
-                MessageKey::BadgeSourceStale,
-                "更新が必要",
-                "not in the owner-approved change list; pending decision",
-            ),
-            (
-                MessageKey::TrustNeedsUpdate,
-                "更新が必要",
-                "not in the owner-approved change list; pending decision",
-            ),
-        ],
+        exemptions: &[],
         applies_to_docs: true,
         // Docs match case-sensitively as whole words, so the capitalised
         // spelling is listed too.

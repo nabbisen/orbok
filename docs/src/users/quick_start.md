@@ -85,6 +85,6 @@ from the Store, which Windows manages for you:
 ## First launch walkthrough
 
 1. **Set up search by meaning (optional)** — until a model is set up, orbok opens **Set up search by meaning**. Choose **Download from HuggingFace** (~490 MB) or enter the folder of a model you already have. **Skip — use keyword search only** leaves it for later; the screen comes back the next time orbok starts.
-2. **Add a folder** — on the **Folders** view, choose **Add Folder**. orbok only scans folders you add.
+2. **Add a folder** — on the **Folders** view, choose **Add folder**. orbok only scans folders you add.
 3. **Wait for preparing** — the **Preparing** view shows progress.
 4. **Search** — type an exact term or a natural-language question.

@@ -17,8 +17,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchPlaceholder => "Search local documents...",
         SearchButton => "Search",
         SearchNoSourcesTitle => "Nothing to search yet",
-        SearchNoSourcesBody => "Add a folder or file so orbok can search it.",
-        SearchAddSource => "Add folder",
+        SearchNoSourcesBody => "Add a folder so orbok can search it.",
         SearchNoResults => "No results found",
         SearchKeywordOnlyNotice => {
             "Search by meaning is not set up yet. Keyword search still works."
@@ -30,10 +29,10 @@ pub fn message(key: MessageKey) -> &'static str {
         SourcesTitle => "Folders",
         SourcesEmptyTitle => "No folders added",
         SourcesEmptyBody => {
-            "Add folders or files that orbok is allowed to search. \
+            "Add folders that orbok is allowed to search. \
              orbok will not scan your entire computer automatically."
         }
-        SourcesAddFolder => "Add Folder",
+        SourcesAddFolder => "Add folder",
         SourcesPathInputPlaceholder => "Or type a path manually…",
         SourcesRecursiveHint => "All sub-folders are scanned recursively.",
         IndexingTitle => "Preparing search",

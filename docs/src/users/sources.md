@@ -2,7 +2,7 @@
 
 ## Registering sources
 
-Add a folder from the **Folders** view with **Add Folder**. orbok only
+Add a folder from the **Folders** view with **Add folder**. orbok only
 searches folders you add; it never scans your whole computer automatically.
 
 When you add a folder near sensitive directories (`.ssh`, `.gnupg`,

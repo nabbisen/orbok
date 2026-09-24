@@ -135,7 +135,6 @@ message_keys! {
     SearchButton,
     SearchNoSourcesTitle,
     SearchNoSourcesBody,
-    SearchAddSource,
     SearchNoResults,
     SearchKeywordOnlyNotice,
     SearchRunning,

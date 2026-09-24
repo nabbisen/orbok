@@ -382,7 +382,7 @@ fn every_catalog_key_is_referenced_by_production_code() {
     assert!(
         unlisted.is_empty(),
         "\n{} catalog key(s) no production code names: {unlisted:?}\n\
-         Delete each (both locales) or add it to UNREFERENCED with a reason.",
+         Delete each (both locales), or show it. UNREFERENCED only shrinks.",
         unlisted.len()
     );
 }
@@ -396,4 +396,25 @@ fn every_unreferenced_key_exemption_is_load_bearing() {
             "{key:?} ({why}) is referenced now -- remove it from UNREFERENCED"
         );
     }
+}
+
+/// `UNREFERENCED` only shrinks (the rule of `LEGACY-ALLOWLIST.txt`, made
+/// mechanical): removing an entry lowers this number in the same commit, and
+/// nothing can raise it without editing it here, where a reviewer sees it.
+const UNREFERENCED_CEILING: usize = 74;
+
+#[test]
+fn the_unreferenced_list_only_shrinks() {
+    assert!(
+        UNREFERENCED.len() <= UNREFERENCED_CEILING,
+        "UNREFERENCED has {} entries; the ceiling is {UNREFERENCED_CEILING}. Delete or show \
+         the key instead of listing it.",
+        UNREFERENCED.len()
+    );
+    assert_eq!(
+        UNREFERENCED.len(),
+        UNREFERENCED_CEILING,
+        "an entry was removed: lower UNREFERENCED_CEILING to {} in the same commit",
+        UNREFERENCED.len()
+    );
 }

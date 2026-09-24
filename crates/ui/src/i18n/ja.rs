@@ -17,10 +17,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchPlaceholder => "ローカル文書を検索...",
         SearchButton => "検索",
         SearchNoSourcesTitle => "検索対象がありません",
-        SearchNoSourcesBody => {
-            "フォルダーまたはファイルを追加すると、orbok が検索できるようになります。"
-        }
-        SearchAddSource => "フォルダーを追加",
+        SearchNoSourcesBody => "フォルダーを追加すると、orbok が検索できるようになります。",
         SearchNoResults => "結果が見つかりません",
         SearchKeywordOnlyNotice => {
             "意味による検索はまだ設定されていません。キーワード検索は引き続き使用できます。"
@@ -32,7 +29,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SourcesTitle => "フォルダー",
         SourcesEmptyTitle => "フォルダーが追加されていません",
         SourcesEmptyBody => {
-            "orbok に検索を許可するフォルダーまたはファイルを追加してください。\
+            "orbok に検索を許可するフォルダーを追加してください。\
              orbok がコンピューター全体を自動的にスキャンすることはありません。"
         }
         SourcesAddFolder => "フォルダーを追加",
@@ -112,7 +109,7 @@ pub fn message(key: MessageKey) -> &'static str {
         BadgeKeyword => "キーワード",
         BadgeSemantic => "意味",
         BadgeReranked => "リランク済み",
-        BadgeSourceStale => "更新が必要",
+        BadgeSourceStale => "要更新",
         DialogAddSourceTitle => "追加するフォルダーを選択",
         DialogChooseSearchFolderTitle => "検索するフォルダーを選択",
         WizardTitleNotConfigured => "意味による検索の設定",
@@ -338,7 +335,7 @@ pub fn message(key: MessageKey) -> &'static str {
         }
         SourceManyFilesChanged => "多くのファイルが変更されました。orbokが徐々に準備します。",
         // RFC-038: Result trust badges and recovery
-        TrustNeedsUpdate => "更新が必要",
+        TrustNeedsUpdate => "要更新",
         TrustFileNotFound => "ファイルが見つかりません",
         TrustStillBeingPrepared => "準備中",
         TrustPartlyPrepared => "一部のみ準備済み",

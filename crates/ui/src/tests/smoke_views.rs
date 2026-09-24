@@ -23,7 +23,7 @@ fn search_empty_state_offers_add_source() {
     let state = AppState::default();
     let mut ui = simulator(views::search_view(&state));
     assert!(
-        ui.find(tr(state.locale, MessageKey::SearchAddSource))
+        ui.find(tr(state.locale, MessageKey::SourcesAddFolder))
             .is_ok(),
         "empty search view must offer an 'add source' action"
     );
@@ -35,7 +35,7 @@ fn search_empty_cta_switches_to_sources() {
     let _guard = iced_test_guard();
     let state = AppState::default();
     let mut ui = simulator(views::search_view(&state));
-    let _ = ui.click(tr(state.locale, MessageKey::SearchAddSource));
+    let _ = ui.click(tr(state.locale, MessageKey::SourcesAddFolder));
     let messages: Vec<Message> = ui.into_messages().collect();
     assert!(
         messages

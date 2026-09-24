@@ -384,7 +384,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     .line_height(theme::body_lh(tokens)),
                 components::primary(
                     tokens,
-                    tr(locale, MessageKey::SearchAddSource),
+                    tr(locale, MessageKey::SourcesAddFolder),
                     Some(Message::Switch(crate::state::ViewId::Sources)),
                 ),
             ]
