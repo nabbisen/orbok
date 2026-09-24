@@ -19,5 +19,16 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     ]
     .spacing(tokens.spacing.sm)
     .align_y(Alignment::Start);
+    // Task 106: a control row wraps; a text-only row is out of the rule; a
+    // builder is wrapped where it is used; a row that must not wrap says why.
+    let j = hrow![text(label), button(text(x)).on_press(m)]
+        .spacing(tokens.spacing.sm)
+        .wrap();
+    let k = hrow![text(label), text(value)].spacing(tokens.spacing.sm);
+    let mut chips = hrow![text(label)].spacing(tokens.spacing.xs);
+    chips = chips.push(chip);
+    column.push(chips.wrap());
+    // no-wrap: the inside of one button, not a row of controls
+    let mut inner = hrow![].spacing(tokens.spacing.xs);
     a
 }

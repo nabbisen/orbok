@@ -19,5 +19,8 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     // Category 7 (Task 072): a row with no vertical alignment.
     let g = row![a, b]
         .spacing(tokens.spacing.sm);
+    // Category 8 (Task 106): a row that holds a control and does not wrap.
+    let h = hrow![text(label), button(text(x)).on_press(m)]
+        .spacing(tokens.spacing.sm);
     a
 }

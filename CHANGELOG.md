@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Controls stay reachable in a narrow window** (Task 106): with a narrow
+  window and larger text, rows of buttons (the theme choices in Settings, the
+  Search button, the Add folder box and others) now wrap onto the next line
+  instead of running off the edge.
+
 - **Preparation progress shows as it happens** (Task 111): the counts on the
   Folders and Preparing pages now rise while a folder is being prepared, instead
   of jumping to their final values when preparation finishes. Background

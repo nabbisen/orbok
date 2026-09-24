@@ -34,8 +34,8 @@ fi
 
 violation_out="$(check_tokens scripts/fixtures/design-tokens/violation.rs || true)"
 violation_findings="$(echo "$violation_out" | grep -c "^design-token gate:" || true)"
-check "violation fixture produces exactly seven findings (one per category)" "7" "$violation_findings"
-if [ "$violation_findings" != "7" ]; then
+check "violation fixture produces exactly eight findings (one per category)" "8" "$violation_findings"
+if [ "$violation_findings" != "8" ]; then
   echo "$violation_out" >&2
 fi
 
@@ -46,7 +46,8 @@ for expected_substr in \
   'literal spacing' \
   'literal radius' \
   'literal colour' \
-  'row![ without .align_y('
+  'row![ without .align_y(' \
+  'holds a control but does not wrap'
 do
   if echo "$violation_out" | grep -qF "$expected_substr"; then
     echo "ok: violation fixture reports $expected_substr"

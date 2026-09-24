@@ -46,6 +46,7 @@ fn file_check_line<'a>(
 ) -> Element<'a, Message> {
     let size = theme::meta_s(tokens, sc);
     let glyph = if found { lucide::Check } else { lucide::X };
+    // no-wrap: an icon and its label, not a control
     let mut line = hrow![icon_text(char::from(glyph), size.0), text(label).size(size),]
         .spacing(tokens.spacing.sm);
     if !found {
@@ -248,7 +249,8 @@ fn page_setup<'a>(
             .padding(control_padding(tokens))
             .on_press(Message::WizardValidate),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
     );
 
     // ── Tertiary action: skip ─────────────────────────────────────────
@@ -334,7 +336,8 @@ fn page_download_consent<'a>(
             )
             .on_press(Message::CancelModelDownload),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
     ]
     .spacing(tokens.spacing.sm);
 
@@ -521,7 +524,8 @@ fn page_checked<'a>(
                 .padding(control_padding(tokens))
                 .on_press(Message::WizardValidate),
             ]
-            .spacing(tokens.spacing.sm),
+            .spacing(tokens.spacing.sm)
+            .wrap(),
         );
     }
 
@@ -538,7 +542,8 @@ fn page_checked<'a>(
             button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
                 .on_press(Message::WizardSkip),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
     );
 
     wizard_page(tokens, col)

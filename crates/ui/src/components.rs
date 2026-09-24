@@ -43,6 +43,18 @@ use snora::lucide;
 /// `row!`. A deliberate top-aligned row writes
 /// `row![..].align_y(Alignment::Start)` with a comment saying why;
 /// `scripts/check-design-tokens.sh` fails on a `row!` with neither.
+///
+/// **A row that holds a control wraps** (Task 106). The main window has no
+/// minimum size and narrow windows are routine, so a row wider than the window
+/// would push its last button or input past the edge, out of reach. Every
+/// `hrow![..]` whose children include a button, an input or a chip therefore
+/// ends in `.wrap()`, after its `.spacing(..)` (`Row::wrap` returns a
+/// `Wrapping`, which has no `.push`): `hrow![a, b].spacing(s).wrap()`. A
+/// builder (`let mut x = hrow![..]; x = x.push(..)`) is wrapped where it is
+/// used (`x.wrap()`). A row of text only is out of the rule; a row that must
+/// not wrap says why in a `// no-wrap: <reason>` comment on the line above.
+/// `check-design-tokens.sh` enforces this, and `tests/task106_narrow_window.rs`
+/// asserts that the listed controls lie inside a 450 px window.
 macro_rules! hrow {
     () => {
         iced::widget::row![].align_y(iced::Alignment::Center)
@@ -221,6 +233,7 @@ pub fn result_card<'a>(
     let badge_row: Element<'a, Message> = if shown_badges.is_empty() && trust_badge.is_none() {
         text("").size(theme::meta(tokens)).into()
     } else {
+        // no-wrap: badges, not controls
         let mut r = hrow![].spacing(tokens.spacing.sm);
         if let Some(badge) = trust_badge {
             r = r.push(badge);
@@ -329,7 +342,7 @@ pub fn source_card<'a>(
                 .line_height(theme::meta_lh(tokens)),
         );
     }
-    body = body.push(actions);
+    body = body.push(actions.wrap());
     if is_selected {
         selection_ring(tokens, body)
     } else {
@@ -453,7 +466,7 @@ pub fn cleanup_row<'a>(
                 .on_press(msg),
         );
     }
-    r.into()
+    r.wrap().into()
 }
 
 /// A danger action button with standard token padding (for danger-zone rows).
@@ -506,6 +519,7 @@ pub fn chip<'a>(
     on_press: Message,
 ) -> Element<'a, Message> {
     let size = theme::meta_s(tokens, sc);
+    // no-wrap: the inside of one chip's button, not a row of controls
     let mut content = hrow![].spacing(tokens.spacing.xs);
     if let Some(glyph) = leading {
         content = content.push(icon_text(glyph, size.0));

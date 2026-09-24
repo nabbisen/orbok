@@ -60,6 +60,68 @@ check_tokens() {
     echo "$bare_rows"
     flag "row![ without .align_y( — use hrow![..] (centred) or row![..].align_y(..) ($(echo "$bare_rows" | grep -c .) found)"
   fi
+  # Task 106: a row that holds a control wraps. A control that a narrow
+  # window pushes past the edge cannot be reached, so every `hrow![..]` whose
+  # children include a button, input or chip must end in `.wrap()` (after its
+  # `.spacing(..)`), and a builder (`let mut x = hrow![..]`) must be wrapped
+  # where it is used (`x.wrap()`). A row that must not wrap says why in a
+  # `// no-wrap: <reason>` comment on the line above.
+  local unwrapped
+  unwrapped=$(control_rows_without_wrap "${files[@]}")
+  if [ -n "$unwrapped" ]; then
+    echo "$unwrapped"
+    flag "hrow![ holds a control but does not wrap — add .wrap() after .spacing(..) (or // no-wrap: reason) ($(echo "$unwrapped" | grep -c .) found)"
+  fi
+}
+
+# control_rows_without_wrap <file...> — prints file:line for each `hrow![` whose
+# children include a control and whose method chain has no `.wrap(`; and for
+# each `let mut NAME = hrow![` builder whose NAME is never `.wrap()`ped in the
+# file. Text-only rows are out of the rule.
+control_rows_without_wrap() {
+  perl -0777 -ne '
+    my $src = $_;
+    my $control = qr/\bbutton\(|components::(?:ghost|primary|secondary|danger|chip|icon_primary|icon_secondary|filter_chip|danger_action)\b|text_input\(|pick_list\(|checkbox\(|toggler\(|\b\w*(?:_btn|_button|_input)\b|\bsubmit\b/;
+    while ($src =~ /(?<![A-Za-z0-9_])hrow!\[/g) {
+      my $start = $-[0];
+      my $pos = pos($src);
+      my $bodystart = $pos;
+      my $depth = 1;
+      while ($depth > 0 && $pos < length $src) {
+        my $c = substr($src, $pos, 1);
+        $depth++ if $c eq "[" || $c eq "(" || $c eq "{";
+        $depth-- if $c eq "]" || $c eq ")" || $c eq "}";
+        $pos++;
+      }
+      my $body = substr($src, $bodystart, $pos - $bodystart - 1);
+      my $line = (substr($src, 0, $start) =~ tr/\n//) + 1;
+      my $before = substr($src, 0, $start);
+      next if $before =~ /\/\/ no-wrap:[^\n]*\n\s*(?:[^\n]*=\s*|return\s+)?$/;
+      my $chain = "";
+      while (substr($src, $pos) =~ /^(\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*)/) {
+        $chain .= $1;
+        $pos += length $1;
+        if (substr($src, $pos, 1) eq "(") {
+          my $d = 0;
+          do {
+            my $c = substr($src, $pos, 1);
+            $d++ if $c eq "(";
+            $d-- if $c eq ")";
+            $chain .= $c;
+            $pos++;
+          } while ($d > 0 && $pos < length $src);
+        }
+      }
+      my $name = ($before =~ /let\s+mut\s+(\w+)\s*=\s*$/) ? $1 : undef;
+      if (defined $name) {
+        # A builder: pushes happen later, so judge the whole file: it must be
+        # wrapped where used. (`x.wrap()` or `x)` passed to `.wrap()`.)
+        print "$ARGV:$line: builder $name never wrapped\n" if $src !~ /\b$name\s*(?:\.spacing\((?:[^()]|\([^()]*\))*\)\s*)?\.wrap\(/;
+      } elsif ($body =~ $control && $chain !~ /\.wrap\(/) {
+        print "$ARGV:$line: hrow![ with a control, no .wrap(\n";
+      }
+    }
+  ' "$@"
 }
 
 # bare_rows_without_alignment <file...> — prints file:line for each `row![`

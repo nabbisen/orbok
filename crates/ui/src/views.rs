@@ -51,6 +51,7 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
             )
             .on_press(Message::OpenRecentSearches)
         ]
+        .wrap()
         .into();
     }
 
@@ -118,7 +119,8 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
                 tooltip::Position::Bottom,
             ),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
         scrollable(entries).height(Length::Shrink),
     ]
     .spacing(tokens.spacing.sm)
@@ -151,7 +153,8 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
                 )
                 .on_press(Message::ConfirmClearRecentSearches),
             ]
-            .spacing(tokens.spacing.sm),
+            .spacing(tokens.spacing.sm)
+            .wrap(),
         ]
         .spacing(tokens.spacing.xs)
         .into()
@@ -192,6 +195,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             ]
             .spacing(tokens.spacing.xs)
             .align_y(iced::Alignment::Center)
+            .wrap()
             .into()
         }
         Some(location) => {
@@ -233,6 +237,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 ),
             ]
             .spacing(tokens.spacing.xs)
+            .wrap()
             .into()
         }
     }
@@ -307,7 +312,9 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::NavSearch)),
-        hrow![container(input).width(Length::Fill), submit].spacing(tokens.spacing.sm),
+        hrow![container(input).width(Length::Fill), submit]
+            .spacing(tokens.spacing.sm)
+            .wrap(),
         // RFC-045: "Search in" location row.
         search_location_row(state),
     ];
@@ -334,7 +341,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                 Message::RecentFolderSelected(summary.source_id.clone()),
             ));
         }
-        content = content.push(chips);
+        content = content.push(chips.wrap());
     }
 
     // RFC-042: Recent searches (collapsed button or expanded panel).
@@ -384,7 +391,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                         .then_some(Message::SetSearchMode(orbok_search::SearchMode::Conceptual)),
                 ),
             ]
-            .spacing(tokens.spacing.xs),
+            .spacing(tokens.spacing.xs)
+            .wrap(),
         );
     }
 
@@ -476,7 +484,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                                     Some(Message::RevealResult(i)),
                                 ),
                             ]
-                            .spacing(tokens.spacing.sm),
+                            .spacing(tokens.spacing.sm)
+                            .wrap(),
                         );
                     }
                 }
@@ -586,7 +595,7 @@ fn trust_recovery<'a>(
     }
     if any_button {
         anything = true;
-        block = block.push(buttons);
+        block = block.push(buttons.wrap());
     }
     anything.then(|| block.into())
 }
@@ -625,7 +634,8 @@ fn private_folder_dialog(state: &AppState) -> Element<'_, Message> {
                 Some(Message::ConfirmAddSensitiveFolder)
             ),
         ]
-        .spacing(tokens.spacing.md),
+        .spacing(tokens.spacing.md)
+        .wrap(),
     ]
     .spacing(tokens.spacing.lg);
     page(tokens, content)
@@ -670,7 +680,8 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                     Some(Message::ConfirmRemoveSource)
                 ),
             ]
-            .spacing(tokens.spacing.md),
+            .spacing(tokens.spacing.md)
+            .wrap(),
         ]
         .spacing(tokens.spacing.lg);
         return page(tokens, content);
@@ -697,7 +708,9 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::SourcesTitle)),
-        hrow![add_btn, container(add_input).width(Length::Fill)].spacing(tokens.spacing.sm),
+        hrow![add_btn, container(add_input).width(Length::Fill)]
+            .spacing(tokens.spacing.sm)
+            .wrap(),
         text(tr(locale, MessageKey::SourcesRecursiveHint))
             .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
@@ -819,7 +832,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::IndexingTitle)),
-        cells,
+        cells.wrap(),
         // Review 189 §2: two of the three possible contents can wrap --
         // the "ready" branch is two sentences, and the "preparing"
         // branch embeds a user-supplied, unbounded folder name, the same
@@ -905,7 +918,8 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                     Some(Message::ConfirmResetCatalog)
                 ),
             ]
-            .spacing(tokens.spacing.md),
+            .spacing(tokens.spacing.md)
+            .wrap(),
         );
         return page(tokens, content);
     }
@@ -957,7 +971,8 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                     Some(confirm_msg)
                 ),
             ]
-            .spacing(tokens.spacing.md),
+            .spacing(tokens.spacing.md)
+            .wrap(),
         );
         return page(tokens, content);
     }
@@ -1269,13 +1284,13 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         heading(tokens, sc, tr(locale, MessageKey::SettingsTitle)),
         // Language
         text(tr(locale, MessageKey::SettingsLanguageHeading)).size(theme::body_s(tokens, sc)),
-        language_row,
+        language_row.wrap(),
         // Theme
         text(tr(locale, MessageKey::SettingsThemeHeading)).size(theme::body_s(tokens, sc)),
-        theme_row,
+        theme_row.wrap(),
         // Text size
         text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
-        scale_row,
+        scale_row.wrap(),
         // Accessibility
         hrow![
             motion_btn,
@@ -1283,7 +1298,8 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
                 .size(theme::meta_s(tokens, sc))
                 .line_height(theme::meta_lh(tokens)),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
         // CVD note (always-on — informational, not a toggle)
         text(tr(locale, MessageKey::SettingsCvdNote))
             .size(theme::meta_s(tokens, sc))
@@ -1308,7 +1324,8 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
             )),
             text(tr(locale, MessageKey::RememberRecentSearches)).size(theme::body_s(tokens, sc)),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
         text(tr(locale, MessageKey::RecentSearchesPrivacyNote))
             .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
@@ -1329,7 +1346,8 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
                 .size(theme::meta_s(tokens, sc))
                 .line_height(theme::meta_lh(tokens)),
         ]
-        .spacing(tokens.spacing.sm),
+        .spacing(tokens.spacing.sm)
+        .wrap(),
     ];
     page(tokens, content)
 }
