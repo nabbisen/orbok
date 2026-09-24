@@ -2961,6 +2961,8 @@ async fn every_job_a_folder_creates_carries_that_folder() {
 /// that never awaits anything pending delivers its whole backlog at the end.
 /// This drives the loop exactly as `run_stream` does and asks for messages
 /// until one reports work under way: it must arrive while work is unfinished.
+/// (Reports are throttled to one per 250 ms; the slow model makes the run
+/// long enough to have several.)
 /// (Reports are throttled to one per 250 ms, so the run is long enough to
 /// have several.)
 #[tokio::test]
@@ -2972,18 +2974,26 @@ async fn progress_reaches_the_window_while_preparation_is_running() {
     let context = test_context(temp.path());
     let ui_catalog = bootstrap::open_catalog(&context).unwrap();
     let source_dir = temp.path().join("source");
-    seed_markdown_docs(&source_dir, 500);
+    seed_markdown_docs(&source_dir, 12);
     let (card, _) =
         bootstrap::add_source_expect_added(&ui_catalog, &source_dir.to_string_lossy()).unwrap();
     bootstrap::scan_and_index_source(&ui_catalog, &card.source_id).unwrap();
 
     let loop_catalog = bootstrap::open_catalog(&context).unwrap();
     let loop_cache = bootstrap::cache_service(&context).unwrap();
+    // A model that takes 144 ms per document makes the run last about two
+    // seconds on any machine, without the disk traffic of hundreds of files
+    // (a 500-file version starved a timing test on the Windows runner).
+    let model_id = register_mock_model(&loop_catalog, "slow");
+    let embedding_parts = Some(EmbeddingWorkerParts::for_test(
+        Box::new(SlowEmbeddingModel),
+        model_id,
+    ));
     let stream = iced::stream::channel::<Message>(64, async move |output| {
         run_with_context(
             loop_catalog,
             loop_cache,
-            super::EmbeddingSource::fixed(None),
+            super::EmbeddingSource::fixed(embedding_parts),
             true,
             true,
             no_resource_signals(),
