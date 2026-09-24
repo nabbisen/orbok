@@ -55,13 +55,15 @@ pub(crate) fn scope_from_ui(
     extensions.sort();
     extensions.dedup();
 
-    let folder = match location.and_then(|loc| loc.source_id().map(|id| (id, loc.scope()))) {
-        Some((source_id, scope)) => Some(orbok_core::FolderScope {
+    let folder = match location.and_then(|loc| loc.source_id().map(|id| (id, loc))) {
+        Some((source_id, loc)) => Some(orbok_core::FolderScope {
             source_id: source_id.as_str().to_string(),
-            include_subfolders: scope.includes_subfolders(),
+            limit_path: loc.limit_path().map(str::to_string),
+            include_subfolders: loc.scope().includes_subfolders(),
         }),
         None => folder_from_chip.map(|source_id| orbok_core::FolderScope {
             source_id,
+            limit_path: None,
             include_subfolders: true,
         }),
     };

@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A folder inside another is no longer prepared twice** (Task 113): adding
+  a folder that an added folder already covers now says "Folder already
+  included" instead of listing it again, choosing a subfolder to search in
+  no longer adds it, and adding a folder above added ones combines them into
+  it, keeping what was prepared. Folders that overlap in an existing profile
+  are combined once at startup.
+
 - **Controls stay reachable in a narrow window** (Task 106): with a narrow
   window and larger text, rows of buttons (the theme choices in Settings, the
   Search button, the Add folder box and others) now wrap onto the next line

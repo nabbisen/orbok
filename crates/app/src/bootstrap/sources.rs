@@ -11,6 +11,15 @@ pub enum AddSourceOutcome {
     Added {
         card: orbok_ui::state::SourceCard,
         sensitive: Option<&'static str>,
+        /// Task 113: added folders that were inside this one and are now
+        /// part of it (empty for an ordinary add).
+        combined: Vec<orbok_ui::state::CombinedFolder>,
+    },
+    /// Task 113: `folder` (the chosen folder's own name) lies inside
+    /// `parent`, an added folder, so nothing was registered (RFC-064 §3.3).
+    AlreadyIncluded {
+        folder: String,
+        parent: orbok_ui::state::SourceCard,
     },
     /// The canonical path is already registered (RFC-045 §19.3, Task 047):
     /// nothing was inserted, scanned or warned about. `card` is the existing
@@ -42,18 +51,22 @@ pub fn needs_private_folder_question(catalog: &Catalog, raw_path: &str) -> bool 
     if !canonical.is_dir() {
         return false;
     }
-    let canonical = canonical.to_string_lossy().to_string();
-    if matches!(
-        SourceRepository::new(catalog).find_by_canonical_path(&canonical),
-        Ok(Some(_))
-    ) {
+    // Already registered, or inside a registered folder (Task 113): nothing
+    // would be added, so there is nothing to ask about.
+    if let Ok(sources) = SourceRepository::new(catalog).list()
+        && covering_of(&sources, &canonical).is_some()
+    {
         return false;
     }
+    let canonical = canonical.to_string_lossy().to_string();
     orbok_fs::sensitive_warning(Path::new(&canonical)).is_some()
 }
 
-/// Add a folder as a new searchable source, unless its canonical
-/// path is already registered.
+/// Add a folder as a new searchable source, unless its canonical path is
+/// already registered ([`AddSourceOutcome::AlreadyRegistered`]) or an added
+/// folder covers it ([`AddSourceOutcome::AlreadyIncluded`]). Added folders
+/// inside the new one become part of it (Task 113, RFC-064 §3.3): every file
+/// belongs to one folder.
 pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOutcome> {
     use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
     use orbok_db::repo::{NewSource, SourceRepository};
@@ -77,9 +90,25 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
         .to_string_lossy()
         .to_string();
 
-    if let Some(existing) = SourceRepository::new(catalog).find_by_canonical_path(&canonical)? {
+    let repo = SourceRepository::new(catalog);
+    if let Some(existing) = repo.find_by_canonical_path(&canonical)? {
         return Ok(AddSourceOutcome::AlreadyRegistered {
             card: source_card(catalog, existing),
+        });
+    }
+    // Task 113: a folder an added folder covers is never registered again
+    // (RFC-064 §3.3). The same folder in another spelling of its case (Windows,
+    // macOS) is the same folder.
+    let existing = repo.list()?;
+    if let Some((covering, rest)) = covering_of(&existing, Path::new(&canonical)) {
+        let card = source_card(catalog, covering.clone());
+        return Ok(if rest.as_os_str().is_empty() {
+            AddSourceOutcome::AlreadyRegistered { card }
+        } else {
+            AddSourceOutcome::AlreadyIncluded {
+                folder: folder_display_name(&canonical),
+                parent: card,
+            }
         });
     }
 
@@ -108,6 +137,23 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
         max_file_size_bytes: None,
     })?;
 
+    // Task 113: added folders inside this one become part of it, in one
+    // transaction, with what was prepared for their files. If that fails the
+    // new (still empty) folder is not left behind: the add did not happen.
+    let inside = folders_inside(&existing, Path::new(&canonical));
+    let combined = if inside.is_empty() {
+        Vec::new()
+    } else {
+        let ids: Vec<orbok_core::SourceId> = inside.iter().map(|s| s.source_id.clone()).collect();
+        if let Err(e) = repo.absorb(&src.source_id, &ids) {
+            if let Err(cleanup) = repo.delete_with_all_data(&src.source_id) {
+                tracing::error!("could not undo the new folder after a failed combine: {cleanup}");
+            }
+            return Err(e);
+        }
+        inside.iter().map(|s| combined_folder(s)).collect()
+    };
+
     // RFC-003 acceptance: warn before indexing sensitive directories.
     let sensitive = orbok_fs::sensitive_warning(std::path::Path::new(&canonical));
     if let Some(w) = sensitive {
@@ -117,6 +163,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
     Ok(AddSourceOutcome::Added {
         card: source_card(catalog, src),
         sensitive,
+        combined,
     })
 }
 
@@ -128,8 +175,11 @@ pub(crate) fn add_source_expect_added(
     raw_path: &str,
 ) -> OrbokResult<(orbok_ui::state::SourceCard, Option<&'static str>)> {
     match add_source(catalog, raw_path)? {
-        AddSourceOutcome::Added { card, sensitive } => Ok((card, sensitive)),
-        AddSourceOutcome::AlreadyRegistered { card } => panic!(
+        AddSourceOutcome::Added {
+            card, sensitive, ..
+        } => Ok((card, sensitive)),
+        AddSourceOutcome::AlreadyRegistered { card }
+        | AddSourceOutcome::AlreadyIncluded { parent: card, .. } => panic!(
             "expected a new source, but {} is already registered as {}",
             card.display_path, card.source_id
         ),
@@ -227,23 +277,6 @@ pub fn remove_source(catalog: &Catalog, source_id_str: &str) -> OrbokResult<()> 
     Ok(())
 }
 
-/// Find an existing source whose canonical path matches `canonical_path`.
-///
-/// Used by the RFC-045 search-in-folder flow to reuse a remembered folder
-/// rather than creating a duplicate source record (RFC-045 §6.1, §19.3).
-/// Returns `None` when no matching source is found.
-pub fn find_source_by_canonical_path(
-    catalog: &Catalog,
-    canonical_path: &str,
-) -> Option<orbok_ui::state::SourceCard> {
-    use orbok_db::repo::SourceRepository;
-    SourceRepository::new(catalog)
-        .find_by_canonical_path(canonical_path)
-        .ok()
-        .flatten()
-        .map(|src| source_card(catalog, src))
-}
-
 /// A folder's name as the user sees it when the catalog holds none: the last
 /// component of its path, never a word of ours. A path with no last component
 /// (a filesystem root) is shown whole.
@@ -290,4 +323,154 @@ pub(super) fn source_card(
         source_id: src.source_id.as_str().to_string(),
         display_path: src.canonical_path,
     }
+}
+
+/// Task 113: an added folder that covers a path chosen to search in.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CoveringSource {
+    pub card: orbok_ui::state::SourceCard,
+    /// What the search chip calls the chosen folder: its own name, which for
+    /// a subfolder is not the covering folder's.
+    pub location_name: String,
+    /// The chosen folder's canonical path, in the covering folder's own
+    /// spelling, when it lies **inside** it; `None` when it is the covering
+    /// folder itself.
+    pub limit_path: Option<String>,
+}
+
+/// Task 113: the added folder that covers `raw_path` (the folder itself, or
+/// one above it), for the search-in-folder flow. `None` when no added folder
+/// covers it, or the path cannot be resolved (`add_source` then reports it).
+pub fn covering_source(catalog: &Catalog, raw_path: &str) -> Option<CoveringSource> {
+    use orbok_db::repo::SourceRepository;
+    use std::path::Path;
+    let expanded = expand_home(raw_path.trim(), &std::env::var("HOME").unwrap_or_default());
+    let canonical = Path::new(&expanded).canonicalize().ok()?;
+    let sources = SourceRepository::new(catalog).list().ok()?;
+    let (covering, rest) = covering_of(&sources, &canonical)?;
+    let card = source_card(catalog, covering.clone());
+    if rest.as_os_str().is_empty() {
+        return Some(CoveringSource {
+            location_name: card.display_name.clone(),
+            card,
+            limit_path: None,
+        });
+    }
+    // The limit is spelled the way the covering folder's files are, so a
+    // path comparison in the query matches them exactly.
+    let limit = Path::new(&covering.canonical_path).join(rest);
+    Some(CoveringSource {
+        location_name: folder_display_name(&limit.to_string_lossy()),
+        card,
+        limit_path: Some(limit.to_string_lossy().to_string()),
+    })
+}
+
+/// The registered directory that covers `path` and what lies below it: the
+/// top-most one if several do (an older profile can hold overlaps).
+fn covering_of<'a>(
+    sources: &'a [orbok_db::repo::SourceRecord],
+    path: &std::path::Path,
+) -> Option<(&'a orbok_db::repo::SourceRecord, std::path::PathBuf)> {
+    use std::path::Path;
+    sources
+        .iter()
+        .filter(|s| s.source_type == orbok_core::SourceType::Directory)
+        .filter_map(|s| {
+            orbok_core::folder_cover::relative_under(Path::new(&s.canonical_path), path)
+                .map(|rest| (s, rest))
+        })
+        .min_by_key(|(s, _)| Path::new(&s.canonical_path).components().count())
+}
+
+/// The registered folders strictly inside `path`, shallowest first (the order
+/// `SourceRepository::absorb` takes them in).
+fn folders_inside<'a>(
+    sources: &'a [orbok_db::repo::SourceRecord],
+    path: &std::path::Path,
+) -> Vec<&'a orbok_db::repo::SourceRecord> {
+    use std::path::Path;
+    let mut inside: Vec<_> = sources
+        .iter()
+        .filter(|s| orbok_core::folder_cover::is_inside(path, Path::new(&s.canonical_path)))
+        .collect();
+    inside.sort_by_key(|s| {
+        (
+            Path::new(&s.canonical_path).components().count(),
+            s.created_at.clone(),
+        )
+    });
+    inside
+}
+
+fn combined_folder(source: &orbok_db::repo::SourceRecord) -> orbok_ui::state::CombinedFolder {
+    orbok_ui::state::CombinedFolder {
+        source_id: source.source_id.as_str().to_string(),
+        display_name: source
+            .display_name
+            .clone()
+            .unwrap_or_else(|| folder_display_name(&source.canonical_path)),
+        canonical_path: source.canonical_path.clone(),
+    }
+}
+
+/// Task 113 (RFC-064 §3.3): make every added folder that another added folder
+/// covers part of the top one -- the overlaps an older version allowed.
+/// Idempotent: once nothing overlaps it changes nothing and returns nothing.
+/// One entry per top folder that took others.
+pub fn combine_overlapping_folders(
+    catalog: &Catalog,
+) -> OrbokResult<Vec<orbok_ui::state::FoldersCombined>> {
+    use orbok_db::repo::SourceRepository;
+    use std::path::Path;
+    let repo = SourceRepository::new(catalog);
+    let sources = repo.list()?;
+    // `covered_by(a, b)`: `b` is a directory that covers `a`, and is not `a`.
+    // Two rows for one folder (same path, or the same but for case) are ordered
+    // by id, so exactly one of them is the top.
+    let covered_by = |a: &orbok_db::repo::SourceRecord, b: &orbok_db::repo::SourceRecord| {
+        a.source_id != b.source_id
+            && b.source_type == orbok_core::SourceType::Directory
+            && orbok_core::folder_cover::relative_under(
+                Path::new(&b.canonical_path),
+                Path::new(&a.canonical_path),
+            )
+            .is_some_and(|rest| {
+                rest.as_os_str().is_empty() && b.source_id.as_str() < a.source_id.as_str()
+                    || !rest.as_os_str().is_empty()
+            })
+    };
+    let mut combined = Vec::new();
+    let mut tops: Vec<_> = sources
+        .iter()
+        .filter(|s| !sources.iter().any(|other| covered_by(s, other)))
+        .collect();
+    tops.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then(a.source_id.as_str().cmp(b.source_id.as_str()))
+    });
+    for top in tops {
+        let mut inside: Vec<_> = sources.iter().filter(|s| covered_by(s, top)).collect();
+        if inside.is_empty() {
+            continue;
+        }
+        inside.sort_by_key(|s| {
+            (
+                Path::new(&s.canonical_path).components().count(),
+                s.created_at.clone(),
+            )
+        });
+        let ids: Vec<_> = inside.iter().map(|s| s.source_id.clone()).collect();
+        repo.absorb(&top.source_id, &ids)?;
+        combined.push(orbok_ui::state::FoldersCombined {
+            parent_id: top.source_id.as_str().to_string(),
+            parent_name: top
+                .display_name
+                .clone()
+                .unwrap_or_else(|| folder_display_name(&top.canonical_path)),
+            folders: inside.iter().map(|s| combined_folder(s)).collect(),
+        });
+    }
+    Ok(combined)
 }

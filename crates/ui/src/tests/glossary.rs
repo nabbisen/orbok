@@ -801,6 +801,8 @@ const FORMATTERS: &[(&str, Sampler)] = &[
     sampled!(fmt_storage_row: ("Sample", 1.5, 3)),
     sampled!(fmt_remove_source_title: ("Docs")),
     sampled!(fmt_add_sensitive_body: ()),
+    sampled!(fmt_folder_already_included_body: ("notes", "Docs")),
+    sampled!(fmt_folders_combined_body: (&["notes"], "Docs"), (&["notes", "drafts"], "Docs"), (&["a", "b", "c"], "Docs")),
     sampled!(fmt_query: ("notes")),
     sampled!(search_location_chip:
         ("Docs", SearchFolderScope::FolderAndSubfolders),

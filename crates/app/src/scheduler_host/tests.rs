@@ -3214,3 +3214,314 @@ fn a_second_build_of_the_stream_cannot_start_a_second_loop() {
         "a second build must fail before it starts a thread"
     );
 }
+
+// ── Task 113: every file belongs to one folder ─────────────────────────
+
+/// Write `rel` under `root` with a word every file shares (`orbokfound`) and
+/// one of its own, so one query finds all of them and each is recognisable.
+fn write_doc(root: &Path, rel: &str) {
+    let path = root.join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+    std::fs::write(
+        &path,
+        format!("# {stem}\n\norbokfound and the private word {stem}word.\n"),
+    )
+    .unwrap();
+}
+
+/// `rel` (written with `/`) below `base` with the platform's own separators,
+/// as a canonical path has them.
+fn native_path(base: &Path, rel: &str) -> std::path::PathBuf {
+    rel.split('/')
+        .fold(base.to_path_buf(), |path, part| path.join(part))
+}
+
+/// Prepare with no model until `expected` files are indexed and nothing is
+/// queued: keyword search is all these tests need.
+async fn prepare_files(context: &RuntimeContext, catalog: &Catalog, expected: u64) {
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let handle = tokio::spawn(run_with_context(
+        bootstrap::open_catalog(context).unwrap(),
+        bootstrap::cache_service(context).unwrap(),
+        super::EmbeddingSource::fixed(None),
+        true,
+        true,
+        no_resource_signals(),
+        tx,
+        None,
+    ));
+    drop(rx);
+    let dump = |catalog: &Catalog| -> String {
+        let conn = catalog.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT 'file', file_status, COUNT(*) FROM files GROUP BY 2 UNION ALL \
+                 SELECT 'job:' || job_type, status || ' ' || COALESCE(error_category, ''), COUNT(*) \
+                 FROM index_jobs GROUP BY 1, 2",
+            )
+            .unwrap();
+        stmt.query_map([], |r| {
+            Ok(format!(
+                "{} {} = {}",
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>()
+        .join("; ")
+    };
+    let start = Instant::now();
+    while !(indexed_count(catalog) == expected && nothing_unfinished(catalog)) {
+        assert!(
+            start.elapsed() < Duration::from_secs(60),
+            "{expected} files were not indexed and nothing queued within 60 s: {}",
+            dump(catalog)
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    handle.abort();
+    let _ = handle.await;
+}
+
+fn found_paths(
+    catalog: &Catalog,
+    query: &str,
+    folder: Option<orbok_core::FolderScope>,
+) -> Vec<String> {
+    let scope = orbok_core::SearchScope {
+        extensions: Vec::new(),
+        folder,
+    };
+    let mut paths: Vec<String> = bootstrap::run_search(
+        catalog,
+        None,
+        None,
+        query,
+        orbok_search::SearchMode::Exact,
+        50,
+        scope,
+    )
+    .unwrap()
+    .into_iter()
+    .map(|r| {
+        std::path::Path::new(&r.canonical_path)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+    })
+    .collect();
+    paths.sort();
+    paths
+}
+
+/// §2.2, §2.6, §2.7: `b` is prepared, then `a` above it is added. Its
+/// prepared chunks are kept (same chunk ids, so embeddings stay valid), the
+/// keyword index still matches its records, no chunk belongs to a file row
+/// that is gone, and a search finds every file exactly once.
+#[tokio::test]
+async fn a_folder_added_above_a_prepared_one_keeps_what_was_prepared() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    write_doc(&docs, "a/x.md");
+    write_doc(&docs, "a/b/y.md");
+    write_doc(&docs, "a/b/c/z.md");
+
+    let (b, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "a/b").to_string_lossy())
+            .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &b.source_id).unwrap();
+    prepare_files(&context, &catalog, 2).await;
+    let chunk_ids = |catalog: &Catalog| -> Vec<String> {
+        let conn = catalog.lock();
+        let mut stmt = conn
+            .prepare("SELECT chunk_id FROM chunks ORDER BY chunk_id")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    let before = chunk_ids(&catalog);
+    assert!(before.len() >= 2, "b's files have chunks");
+
+    let outcome = bootstrap::add_source(&catalog, &docs.join("a").to_string_lossy()).unwrap();
+    let bootstrap::AddSourceOutcome::Added {
+        card: a, combined, ..
+    } = outcome
+    else {
+        panic!("`a` is above `b` and must be added: {outcome:?}");
+    };
+    assert_eq!(combined.len(), 1);
+
+    let kept = chunk_ids(&catalog);
+    assert_eq!(
+        kept, before,
+        "combining changed no chunk: b's files were not prepared again"
+    );
+    bootstrap::scan_and_index_source(&catalog, &a.source_id).unwrap();
+    prepare_files(&context, &catalog, 3).await;
+
+    let after = chunk_ids(&catalog);
+    for id in &before {
+        assert!(after.contains(id), "chunk {id} survived the combine");
+    }
+    let counts = orbok_db::repo::ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert_eq!(counts.violation(), None, "the erasure invariant holds");
+    let orphans: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunks c LEFT JOIN files f ON f.file_id = c.file_id \
+             WHERE f.file_id IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(orphans, 0, "no chunk belongs to a file row that is gone");
+
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", None),
+        ["x.md", "y.md", "z.md"],
+        "search everywhere finds each file once"
+    );
+}
+
+/// §2.5 / §2.6 / §2.7 for a profile that already holds an overlapping pair,
+/// both prepared: after the combine each file has one row, one set of chunks,
+/// and the index matches.
+#[tokio::test]
+async fn combining_an_overlapping_pair_leaves_one_prepared_copy_of_each_file() {
+    use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    write_doc(&docs, "a/x.md");
+    write_doc(&docs, "a/b/y.md");
+    let mut ids = Vec::new();
+    // The inner folder first: it is prepared first, so the *outer* folder's
+    // copy of `y.md` is the one that fails, and the combine must keep the
+    // inner's prepared row rather than the outer's.
+    for rel in ["a/b", "a"] {
+        let path = native_path(&docs, rel).to_string_lossy().to_string();
+        let source = orbok_db::repo::SourceRepository::new(&catalog)
+            .insert(orbok_db::repo::NewSource {
+                source_type: SourceType::Directory,
+                persistence_mode: PersistenceMode::Persistent,
+                display_name: None,
+                original_path: path.clone(),
+                canonical_path: path,
+                index_mode: IndexMode::Balanced,
+                include_patterns: vec![],
+                exclude_patterns: vec![],
+                hidden_file_policy: HiddenFilePolicy::Exclude,
+                symlink_policy: SymlinkPolicy::Ignore,
+                max_file_size_bytes: None,
+            })
+            .unwrap();
+        bootstrap::scan_and_index_source(&catalog, source.source_id.as_str()).unwrap();
+        ids.push(source.source_id);
+    }
+    // `y.md` is registered under both folders. Preparing it twice does not
+    // work today: the second copy's chunk job fails (`worker_error`), so one
+    // of the two rows is `failed` and only two are indexed.
+    prepare_files(&context, &catalog, 2).await;
+    let status_count = |status: &str| -> i64 {
+        catalog
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE file_status = ?1",
+                [status],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(status_count("failed"), 1, "the second copy of y failed");
+    assert_eq!(status_count("indexed"), 2);
+
+    let combined = bootstrap::combine_overlapping_folders(&catalog).unwrap();
+    assert_eq!(combined.len(), 1);
+
+    let files: i64 = catalog
+        .lock()
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(files, 2, "one row per file");
+    assert_eq!(
+        status_count("indexed"),
+        2,
+        "and the prepared copy was the one kept"
+    );
+    assert_eq!(status_count("failed"), 0);
+    let counts = orbok_db::repo::ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert_eq!(counts.violation(), None, "the erasure invariant holds");
+    let orphans: i64 = catalog
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM chunks c LEFT JOIN files f ON f.file_id = c.file_id \
+             WHERE f.file_id IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(orphans, 0);
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", None),
+        ["x.md", "y.md"],
+        "search finds each file once"
+    );
+}
+
+/// §2.4: searching in a subfolder of an added folder finds only the files
+/// under it, by path components (`b2` is not under `b`), and "only" counts
+/// from the subfolder.
+#[tokio::test]
+async fn a_search_limited_to_a_subfolder_finds_only_files_under_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    for rel in ["a/x.md", "a/b/y.md", "a/b/c/z.md", "a/b2/w.md"] {
+        write_doc(&docs, rel);
+    }
+    let (a, _) =
+        bootstrap::add_source_expect_added(&catalog, &docs.join("a").to_string_lossy()).unwrap();
+    bootstrap::scan_and_index_source(&catalog, &a.source_id).unwrap();
+    prepare_files(&context, &catalog, 4).await;
+
+    let limit = native_path(&docs, "a/b").to_string_lossy().to_string();
+    let scope = |limit: Option<&str>, include_subfolders: bool| orbok_core::FolderScope {
+        source_id: a.source_id.clone(),
+        limit_path: limit.map(str::to_string),
+        include_subfolders,
+    };
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", Some(scope(None, true))),
+        ["w.md", "x.md", "y.md", "z.md"]
+    );
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", Some(scope(Some(&limit), true))),
+        ["y.md", "z.md"],
+        "the subfolder and what is under it, not the sibling `b2`"
+    );
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", Some(scope(Some(&limit), false))),
+        ["y.md"],
+        "\"only\" is counted from the subfolder"
+    );
+    assert_eq!(
+        found_paths(&catalog, "orbokfound", Some(scope(None, false))),
+        ["x.md"],
+        "and from the added folder when there is no limit"
+    );
+}

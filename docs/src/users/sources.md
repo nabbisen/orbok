@@ -12,6 +12,17 @@ Nothing is saved or prepared until you choose **Add anyway**; **Cancel** (or
 Escape) adds nothing. You can remove a folder at any time with **Remove from
 orbok** in **Folders**.
 
+## Folders inside folders
+
+A file belongs to one folder. If you add a folder that is inside a folder
+you already added, orbok adds nothing and says **Folder already included**:
+the folder above already covers it. If you add a folder **above** folders
+you already added, they become part of the new one and orbok says **Folders
+combined**; what it already prepared for their files is kept, and their
+cards go from the list. Choosing a folder inside an added folder to search
+in registers nothing either: orbok searches the added folder's files, only
+those under the folder you chose.
+
 ## What orbok skips
 
 Hidden files and folders (names starting with `.`) are not prepared, and

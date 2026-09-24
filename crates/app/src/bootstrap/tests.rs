@@ -16,3 +16,5 @@ mod task105_only_folders;
 mod task108_one_card_builder;
 #[cfg(test)]
 mod task110_rfc003_removal;
+#[cfg(test)]
+mod task113_one_folder_per_file;

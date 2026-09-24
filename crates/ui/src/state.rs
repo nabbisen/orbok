@@ -168,6 +168,24 @@ impl SourceCard {
     }
 }
 
+/// Task 113: a folder that became part of another. The window drops its card
+/// and, if the search was looking at it, looks at the same folder inside the
+/// one that now holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CombinedFolder {
+    pub source_id: String,
+    pub display_name: String,
+    pub canonical_path: String,
+}
+
+/// Task 113: the folders (`folders`) that are now part of `parent`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoldersCombined {
+    pub parent_id: String,
+    pub parent_name: String,
+    pub folders: Vec<CombinedFolder>,
+}
+
 /// A search result ready for display — pure data, no backend types
 /// (RFC-027 boundary rule).
 #[derive(Debug, Clone, PartialEq)]
@@ -926,6 +944,10 @@ pub enum Message {
     SourceRemoved(String), // source_id
     /// Task 073: the catalog removed this folder; the list now drops it.
     SourceRemovalSucceeded(String), // source_id
+    /// Task 113: the catalog made these folders part of another; the list
+    /// drops their cards, anything that pointed at one is pointed at the
+    /// folder that holds it, and a notice says what happened.
+    FoldersCombined(FoldersCombined),
     /// RFC-037 §10.2 manual refresh (Task 035): "[Check again]" for a
     /// missing/permission-denied source, "[Prepare again]" for an active
     /// one — same message either way, `orbok`'s handler calls the same
@@ -1492,6 +1514,7 @@ impl AppState {
                     self.clear_notice();
                 }
             }
+            Message::FoldersCombined(combined) => self.apply_folders_combined(combined),
             Message::SourceRefreshRequested(_) => {} // handled by orbok; result arrives via SourcesLoaded/HealthUpdated
             Message::HealthUpdated(health) => {
                 self.health = *health;
@@ -1667,6 +1690,57 @@ impl AppState {
         }
         self.notice = Some(notice);
         self.notice_action = action;
+    }
+
+    /// Task 113: every place the window holds a folder by id, for folders
+    /// that are now part of `combined.parent_id`.
+    fn apply_folders_combined(&mut self, combined: &FoldersCombined) {
+        let absorbed = |id: &str| combined.folders.iter().find(|f| f.source_id == id);
+        self.sources
+            .retain(|card| absorbed(&card.source_id).is_none());
+        self.selected_source = None;
+        // A removal question about a folder that no longer exists has no
+        // dialog to show (Task 073).
+        if self
+            .confirm_remove_source
+            .as_deref()
+            .is_some_and(|id| absorbed(id).is_some())
+        {
+            self.confirm_remove_source = None;
+        }
+        self.search_location
+            .recent_locations
+            .retain(|summary| absorbed(summary.source_id.as_str()).is_none());
+        // A search that was looking at a combined folder keeps looking at
+        // the same files: the folder that holds it now, limited to it.
+        if let Some(location) = self.search_location.selected.clone()
+            && let Some(source_id) = location.source_id()
+            && let Some(folder) = absorbed(source_id.as_str())
+        {
+            let (name, limit) = match location.limit_path() {
+                Some(limit) => (location.display_name().to_string(), limit.to_string()),
+                None => (folder.display_name.clone(), folder.canonical_path.clone()),
+            };
+            self.search_location.selected = Some(
+                SearchLocation::within(
+                    orbok_core::SourceId::from_string(combined.parent_id.clone()),
+                    name,
+                    limit,
+                )
+                .with_scope(location.scope()),
+            );
+        }
+        self.raise_notice(
+            UserNotice::FoldersCombined {
+                folders: combined
+                    .folders
+                    .iter()
+                    .map(|f| f.display_name.clone())
+                    .collect(),
+                parent: combined.parent_name.clone(),
+            },
+            None,
+        );
     }
 
     fn clear_notice(&mut self) {

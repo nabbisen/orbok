@@ -57,6 +57,7 @@ mod task106_narrow_window;
 mod task108_a_folder_card_shows_what_is_true_now;
 mod task109_every_key_is_shown;
 mod task110_private_folder_question;
+mod task113_folders_combined;
 
 /// Serializes every `iced_test::Simulator`-using test across this whole
 /// test binary, not just within one file. `smoke_views.rs` originally

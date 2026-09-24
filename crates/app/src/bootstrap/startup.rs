@@ -90,6 +90,38 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     // the task's review request, since nothing currently sets a source to
     // Paused (no UI action does), so this is a forward-looking choice, not
     // an observed behaviour.
+    // Task 113 (RFC-064 §3.3): folders an older version let overlap are made
+    // part of the top folder once, before anything is scanned, so no file is
+    // prepared under two folders again. Idempotent: the next start finds
+    // nothing and says nothing. A failure is not a failure to start -- it is
+    // tried again next time -- and says nothing either, since nothing changed.
+    let combined = match super::combine_overlapping_folders(&catalog) {
+        Ok(combined) => combined,
+        Err(error) => {
+            tracing::warn!(%error, "could not combine overlapping folders on startup");
+            Vec::new()
+        }
+    };
+    for group in &combined {
+        tracing::info!(
+            parent = %group.parent_name,
+            combined = group.folders.len(),
+            "combined overlapping folders on startup"
+        );
+    }
+    // One notice slot: the first group is the one named. A profile with more
+    // than one group of overlaps is not expected.
+    let combined_notice =
+        combined
+            .first()
+            .map(|group| orbok_ui::notice::UserNotice::FoldersCombined {
+                folders: group
+                    .folders
+                    .iter()
+                    .map(|f| f.display_name.clone())
+                    .collect(),
+                parent: group.parent_name.clone(),
+            });
     for source in SourceRepository::new(&catalog).list().unwrap_or_default() {
         if source.status == orbok_core::SourceStatus::Paused {
             continue;
@@ -187,6 +219,7 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         )),
         health,
         sources,
+        notice: combined_notice,
         remember_recent_searches: settings.remember_recent_searches,
         search_ui: orbok_ui::state::search::SearchUiState {
             history,

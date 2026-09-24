@@ -31,6 +31,18 @@ pub enum UserNotice {
     /// "Add folder" picked a folder that is already registered (Task 047);
     /// nothing was added.
     FolderAlreadyAdded,
+    /// Task 113: the folder chosen lies inside a folder already added, so
+    /// nothing was added. Both are named (RFC-064 §3.3).
+    FolderAlreadyIncluded {
+        folder: String,
+        parent: String,
+    },
+    /// Task 113: folders that were inside a newly added folder (or, at
+    /// startup, inside another added one) are now part of it.
+    FoldersCombined {
+        folders: Vec<String>,
+        parent: String,
+    },
     SearchReady,
     PreviewsCleared,
     /// RFC-059 §8 Slice 4 (Review 214 §4 Q2): "Clear old search results"
@@ -131,7 +143,9 @@ impl UserNotice {
             | Self::DiagnosticsFileCreated => Tone::Info,
             Self::RecentSearchesCleared
             | Self::RecentSearchFilterDropped
-            | Self::FolderAlreadyAdded => Tone::Info,
+            | Self::FolderAlreadyAdded
+            | Self::FolderAlreadyIncluded { .. }
+            | Self::FoldersCombined { .. } => Tone::Info,
         }
     }
 
@@ -145,6 +159,8 @@ impl UserNotice {
             }
             Self::FolderAdded => MessageKey::NoticeFolderAddedTitle,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
+            Self::FolderAlreadyIncluded { .. } => MessageKey::NoticeFolderAlreadyIncludedTitle,
+            Self::FoldersCombined { .. } => MessageKey::NoticeFoldersCombinedTitle,
             Self::SearchReady => MessageKey::NoticeSearchReadyTitle,
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedTitle,
             Self::SearchCacheCleared => MessageKey::NoticeSearchCacheClearedTitle,
@@ -168,8 +184,16 @@ impl UserNotice {
         tr(locale, key)
     }
 
-    pub fn body(&self, locale: Locale) -> &'static str {
+    pub fn body(&self, locale: Locale) -> String {
         let key = match self {
+            // The two notices whose sentence names the user's folders.
+            Self::FolderAlreadyIncluded { folder, parent } => {
+                return crate::i18n::fmt_folder_already_included_body(locale, folder, parent);
+            }
+            Self::FoldersCombined { folders, parent } => {
+                let names: Vec<&str> = folders.iter().map(String::as_str).collect();
+                return crate::i18n::fmt_folders_combined_body(locale, &names, parent);
+            }
             Self::FolderCouldNotBeAdded => MessageKey::NoticeFolderFailBody,
             Self::SearchDidNotFinish => MessageKey::NoticeSearchFailBody,
             Self::FileCouldNotBeFound => MessageKey::NoticeFileNotFoundBody,
@@ -198,7 +222,7 @@ impl UserNotice {
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
         };
-        tr(locale, key)
+        tr(locale, key).to_string()
     }
 
     /// The action button's label, if this kind of notice can offer one.
@@ -220,6 +244,8 @@ impl UserNotice {
             Self::FileCheckFailed => MessageKey::NoticeActionTryAgain,
             Self::FolderAdded
             | Self::FolderAlreadyAdded
+            | Self::FolderAlreadyIncluded { .. }
+            | Self::FoldersCombined { .. }
             | Self::SearchReady
             | Self::PreviewsCleared
             | Self::SearchCacheCleared

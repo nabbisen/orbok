@@ -27,14 +27,22 @@ use std::collections::HashSet;
 /// checking membership -- that is tautological, since anything drawn from
 /// `ALL` is trivially "in `ALL`"; only generating both from one source, as
 /// here, actually closes the gap.)
+///
+/// Task 113: two notices carry the names of the user's folders, so a variant
+/// is either a unit (`Name`) or has data (`Name => sample`), the sample being
+/// the value `all()` returns for it. `ALL` became `all()` because a sample
+/// owns strings.
 macro_rules! every_user_notice {
-    ($($variant:ident),+ $(,)?) => {
-        pub(crate) const ALL: &[UserNotice] = &[$(UserNotice::$variant),+];
+    ($($variant:ident),+ ; $($data:ident => $sample:expr),+ $(,)?) => {
+        pub(crate) fn all() -> Vec<UserNotice> {
+            vec![$(UserNotice::$variant),+ , $($sample),+]
+        }
 
         #[allow(dead_code)]
         fn assert_exhaustive(n: &UserNotice) {
             match n {
                 $(UserNotice::$variant => {})+
+                $(UserNotice::$data { .. } => {})+
             }
         }
     };
@@ -67,7 +75,16 @@ every_user_notice! {
     FolderNotChecked,
     StorageUnavailable,
     IndexingCouldNotStart,
-    ModelCouldNotBeLoaded,
+    ModelCouldNotBeLoaded
+    ;
+    FolderAlreadyIncluded => UserNotice::FolderAlreadyIncluded {
+        folder: "Notes".into(),
+        parent: "Docs".into(),
+    },
+    FoldersCombined => UserNotice::FoldersCombined {
+        folders: vec!["Notes".into(), "Drafts".into()],
+        parent: "Docs".into(),
+    },
 }
 
 /// The invariant `notice.rs:37` claims: every notice is distinguishable by
@@ -81,9 +98,9 @@ every_user_notice! {
 #[test]
 fn user_notice_text_never_relies_on_colour_alone() {
     for &locale in Locale::ALL {
-        let mut seen: HashSet<(&str, &str)> = HashSet::new();
-        for notice in ALL {
-            let title = notice.title(locale);
+        let mut seen: HashSet<(String, String)> = HashSet::new();
+        for notice in &all() {
+            let title = notice.title(locale).to_string();
             let body = notice.body(locale);
             assert!(
                 !title.is_empty(),
@@ -94,7 +111,7 @@ fn user_notice_text_never_relies_on_colour_alone() {
                 "{notice:?} must have a non-empty body in {locale:?}"
             );
             assert!(
-                seen.insert((title, body)),
+                seen.insert((title, body.clone())),
                 "{notice:?} shares its (title, body) pair with another \
                  variant in {locale:?} -- tone would be the only thing \
                  distinguishing them"

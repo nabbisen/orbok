@@ -59,41 +59,54 @@ fn folder_picked(
     {
         return iced::Task::none();
     }
-    // Reuse an existing source if the canonical path already exists --
-    // never create duplicates (RFC-045 §19.3).
-    let card = if let Some(existing) =
-        bootstrap::find_source_by_canonical_path(&deps.catalog, &path_str)
-    {
-        existing
-    } else {
-        match bootstrap::add_source(&deps.catalog, &path_str) {
-            // The lookup above normally catches this; it differs only if
-            // `path_str` was not canonical.
-            Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => card,
-            Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
-                if let Some(warning) = sensitive {
-                    tracing::warn!("sensitive source: {warning}");
+    // Task 113: a folder an added folder already covers -- the folder itself
+    // (RFC-045 §19.3) or one inside it -- registers nothing. The search looks
+    // at the added folder's data, limited to the chosen subfolder.
+    let (card, location_name, limit_path) =
+        if let Some(covering) = bootstrap::covering_source(&deps.catalog, &path_str) {
+            (covering.card, covering.location_name, covering.limit_path)
+        } else {
+            match bootstrap::add_source(&deps.catalog, &path_str) {
+                Ok(bootstrap::AddSourceOutcome::Added {
+                    card,
+                    sensitive,
+                    combined,
+                }) => {
+                    if let Some(warning) = sensitive {
+                        tracing::warn!("sensitive source: {warning}");
+                    }
+                    app.update(Message::SourceAdded(card.clone()));
+                    report_combined(app, &card, combined);
+                    let name = card.display_name.clone();
+                    (card, name, None)
                 }
-                app.update(Message::SourceAdded(card.clone()));
-                card
+                // The lookup above catches both of these; they differ only if the
+                // catalog changed between the two reads.
+                Ok(
+                    bootstrap::AddSourceOutcome::AlreadyRegistered { .. }
+                    | bootstrap::AddSourceOutcome::AlreadyIncluded { .. },
+                ) => {
+                    app.update(Message::FolderPickerCancelled);
+                    app.update(notice_retry::search_folder_failed());
+                    return iced::Task::none();
+                }
+                Err(e) => {
+                    tracing::error!("add source from search failed: {e}");
+                    app.update(Message::FolderPickerCancelled);
+                    app.update(notice_retry::search_folder_failed());
+                    return iced::Task::none();
+                }
             }
-            Err(e) => {
-                tracing::error!("add source from search failed: {e}");
-                app.update(Message::FolderPickerCancelled);
-                app.update(notice_retry::search_folder_failed());
-                return iced::Task::none();
-            }
-        }
-    };
+        };
 
     let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
-    let display_name = card.display_name.clone();
 
     // Promote to selected search location and run the pending search --
     // RFC-045 §8.1 "run search as soon as possible".
-    app.update(Message::SearchLocationSelected(
-        orbok_ui::SearchLocation::remembered(source_id.clone(), display_name),
-    ));
+    app.update(Message::SearchLocationSelected(match limit_path {
+        Some(limit) => orbok_ui::SearchLocation::within(source_id.clone(), location_name, limit),
+        None => orbok_ui::SearchLocation::remembered(source_id.clone(), location_name),
+    }));
 
     // Begin background preparation and immediately search whatever is
     // already indexed (RFC-045 §14, §8.1).
@@ -155,18 +168,34 @@ fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str, confirme
         return;
     }
     match bootstrap::add_source(&deps.catalog, path) {
-        Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { .. }) => {
+        Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => {
+            tracing::info!(folder = %card.display_name, already_added = true);
             app.update(Message::ShowNotice(
                 orbok_ui::notice::UserNotice::FolderAlreadyAdded,
             ));
         }
-        Ok(bootstrap::AddSourceOutcome::Added { card, sensitive }) => {
+        Ok(bootstrap::AddSourceOutcome::AlreadyIncluded { folder, parent }) => {
+            // Task 113: nothing was added, so the typed text stays for the
+            // user to change, as for any add that did not happen.
+            app.update(Message::ShowNotice(
+                orbok_ui::notice::UserNotice::FolderAlreadyIncluded {
+                    folder,
+                    parent: parent.display_name,
+                },
+            ));
+        }
+        Ok(bootstrap::AddSourceOutcome::Added {
+            card,
+            sensitive,
+            combined,
+        }) => {
             if let Some(warning) = sensitive {
                 // Added after the user answered "Add anyway"; logged, no notice.
                 tracing::warn!("sensitive source: {warning}");
             }
             let source_id = card.source_id.clone();
-            app.update(Message::SourceAdded(card));
+            app.update(Message::SourceAdded(card.clone()));
+            report_combined(app, &card, combined);
             match bootstrap::scan_and_index_source(&deps.catalog, &source_id) {
                 Ok(health) => {
                     app.update(Message::HealthUpdated(health));
@@ -183,6 +212,24 @@ fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str, confirme
             app.update(notice_retry::add_folder_failed());
         }
     }
+}
+
+/// Task 113: folders that were inside the folder just added are now part of
+/// it. The window drops their cards and says so (after `SourceAdded`, whose
+/// own notice this one replaces: it is the more specific).
+fn report_combined(
+    app: &mut OrbokApp,
+    parent: &orbok_ui::state::SourceCard,
+    combined: Vec<orbok_ui::state::CombinedFolder>,
+) {
+    if combined.is_empty() {
+        return;
+    }
+    app.update(Message::FoldersCombined(orbok_ui::state::FoldersCombined {
+        parent_id: parent.source_id.clone(),
+        parent_name: parent.display_name.clone(),
+        folders: combined,
+    }));
 }
 
 /// Open the OS folder picker for the search page (RFC-045), unless one is

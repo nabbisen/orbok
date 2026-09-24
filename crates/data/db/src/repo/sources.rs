@@ -45,6 +45,50 @@ pub struct NewSource {
     pub max_file_size_bytes: Option<u64>,
 }
 
+/// What [`SourceRepository::absorb`] did.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AbsorbReport {
+    pub files_moved: u64,
+    /// File rows that both folders held, of which one copy was erased.
+    pub duplicates_erased: u64,
+}
+
+/// Erase the `files` rows of alias `f` matching `where_sql AND extra_sql`,
+/// keyword-index rows first (they are keyed by chunk, which the file delete
+/// cascades to), as `delete_with_all_data` does for a whole source.
+fn erase_files(
+    tx: &rusqlite::Transaction<'_>,
+    where_sql: &str,
+    extra_sql: &str,
+    binds: impl rusqlite::Params + Copy,
+) -> OrbokResult<u64> {
+    let chunks = format!(
+        "SELECT c.chunk_id FROM chunks c JOIN files f ON f.file_id = c.file_id \
+         WHERE {where_sql} AND {extra_sql}"
+    );
+    for (fts, rowid) in [
+        ("chunk_fts", "fts_rowid"),
+        ("chunk_fts_trigram", "trigram_fts_rowid"),
+    ] {
+        tx.execute(
+            &format!(
+                "DELETE FROM {fts} WHERE rowid IN ( \
+                     SELECT k.{rowid} FROM keyword_index_records k \
+                     WHERE k.chunk_id IN ({chunks}) AND k.{rowid} IS NOT NULL)"
+            ),
+            binds,
+        )
+        .map_err(db_err)?;
+    }
+    let erased = tx
+        .execute(
+            &format!("DELETE FROM files WHERE file_id IN (SELECT f.file_id FROM files f WHERE {where_sql} AND {extra_sql})"),
+            binds,
+        )
+        .map_err(db_err)?;
+    Ok(erased as u64)
+}
+
 /// Repository over the `sources` table.
 pub struct SourceRepository<'a> {
     catalog: &'a Catalog,
@@ -92,6 +136,81 @@ impl<'a> SourceRepository<'a> {
         .map_err(db_err)?;
         drop(conn);
         self.get(&id)?.ok_or(OrbokError::SourceNotFound)
+    }
+
+    /// Task 113 (RFC-064 §3.3): make `inner` sources part of `outer`, in one
+    /// transaction. `inner` is in the order they are to be taken (shallowest
+    /// first), so when two of them hold the same file the higher folder's row
+    /// is the one seen first.
+    ///
+    /// Everything that refers to a folder by `source_id` is moved or dropped
+    /// here, and nothing that refers to a file by `file_id` changes, so the
+    /// chunks, embeddings, keyword index rows and recent searches that hang
+    /// off a file stay valid:
+    ///
+    /// * `files`: the rows move to `outer` and `display_path` is recomputed
+    ///   relative to it. When `outer` already holds a row for the same
+    ///   canonical path (an overlap an older version allowed), one row is
+    ///   kept: the prepared one, or `outer`'s when both or neither are. The
+    ///   other is erased with its keyword-index rows, as removing a folder
+    ///   erases them, so the erasure invariant holds.
+    /// * `index_jobs`: the jobs for files move with them. An `inner` scan
+    ///   goes with the folder: `outer` is scanned by its own job.
+    /// * the `sources` rows of `inner` are deleted.
+    ///
+    /// Returns how many file rows moved and how many duplicates were erased.
+    pub fn absorb(&self, outer: &SourceId, inner: &[SourceId]) -> OrbokResult<AbsorbReport> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        let outer_path: String = tx
+            .query_row(
+                "SELECT canonical_path FROM sources WHERE source_id = ?1",
+                params![outer.as_str()],
+                |r| r.get(0),
+            )
+            .map_err(db_err)?;
+        let mut report = AbsorbReport::default();
+        for inner_id in inner {
+            // Rows both folders hold. Erase the copy that is less prepared.
+            let outer_copy_is_worse = "EXISTS (SELECT 1 FROM files i WHERE i.source_id = ?2 \
+                 AND i.canonical_path = f.canonical_path AND i.file_status = 'indexed') \
+                 AND f.file_status != 'indexed'";
+            report.duplicates_erased += erase_files(
+                &tx,
+                "f.source_id = ?1",
+                &format!("({outer_copy_is_worse})"),
+                params![outer.as_str(), inner_id.as_str()],
+            )?;
+            report.duplicates_erased += erase_files(
+                &tx,
+                "f.source_id = ?2",
+                "EXISTS (SELECT 1 FROM files o WHERE o.source_id = ?1 \
+                 AND o.canonical_path = f.canonical_path)",
+                params![outer.as_str(), inner_id.as_str()],
+            )?;
+            report.files_moved += tx
+                .execute(
+                    "UPDATE files SET source_id = ?1, \
+                        display_path = COALESCE(NULLIF(ltrim(substr(canonical_path, \
+                            length(?3) + 1), '/\\'), ''), canonical_path) \
+                     WHERE source_id = ?2",
+                    params![outer.as_str(), inner_id.as_str(), outer_path],
+                )
+                .map_err(db_err)? as u64;
+            tx.execute(
+                "UPDATE index_jobs SET source_id = ?1 \
+                 WHERE source_id = ?2 AND job_type != 'scan'",
+                params![outer.as_str(), inner_id.as_str()],
+            )
+            .map_err(db_err)?;
+            tx.execute(
+                "DELETE FROM sources WHERE source_id = ?1",
+                params![inner_id.as_str()],
+            )
+            .map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(report)
     }
 
     /// Fetch one source by id.

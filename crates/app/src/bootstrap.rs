@@ -47,8 +47,8 @@ pub(crate) use search::{run_search, scope_from_ui};
 #[cfg(test)]
 pub(crate) use sources::add_source_expect_added;
 pub use sources::{
-    AddSourceOutcome, add_source, check_and_refresh_source, find_source_by_canonical_path,
-    needs_private_folder_question, remove_source, scan_and_index_source,
+    AddSourceOutcome, add_source, check_and_refresh_source, combine_overlapping_folders,
+    covering_source, needs_private_folder_question, remove_source, scan_and_index_source,
 };
 // `get_sources` re-exported since Task 035: `Message::SourceRefreshRequested`'s
 // handler in `main.rs` needs to re-fetch the sources list after a refresh

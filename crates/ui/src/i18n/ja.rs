@@ -203,6 +203,8 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFolderAddedBody => "検索の準備をしています。",
         NoticeFolderAlreadyAddedTitle => "フォルダーは追加済みです",
         NoticeFolderAlreadyAddedBody => "このフォルダーはすでに一覧にあります。",
+        NoticeFolderAlreadyIncludedTitle => "フォルダーはすでに含まれています",
+        NoticeFoldersCombinedTitle => "フォルダーをまとめました",
         NoticeSearchReadyTitle => "検索の準備ができました",
         NoticeSearchReadyBody => "ファイルを検索できます。",
         NoticePreviewsClearedTitle => "一時プレビューを削除しました",

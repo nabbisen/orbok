@@ -11,6 +11,7 @@
 
 pub mod data_class;
 pub mod error;
+pub mod folder_cover;
 pub mod history;
 pub mod id;
 pub mod privacy;

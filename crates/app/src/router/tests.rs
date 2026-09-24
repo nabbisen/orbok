@@ -1046,3 +1046,184 @@ fn ordinary_and_already_added_folders_are_not_asked_about() {
         "an already-added folder is reused without asking"
     );
 }
+
+// ── Task 113: every file belongs to one folder ─────────────────────────
+
+fn folder(root: &std::path::Path, rel: &str) -> std::path::PathBuf {
+    // Component by component, so the separators are the platform's own, as a
+    // canonical path's are.
+    let path = rel
+        .split('/')
+        .fold(root.canonicalize().unwrap().join("docs"), |path, part| {
+            path.join(part)
+        });
+    std::fs::create_dir_all(&path).unwrap();
+    path
+}
+
+/// §2.1: a typed folder inside an added one adds nothing, names both, and
+/// keeps the typed text (Task 105's rule for an add that did not happen).
+#[test]
+fn a_typed_folder_inside_an_added_folder_adds_nothing_and_says_so() {
+    use orbok_ui::notice::UserNotice;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let a = folder(temp.path(), "a");
+    let b = folder(temp.path(), "a/b");
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = typed(&mut app, &deps, &a.to_string_lossy());
+    assert_eq!(source_rows(&deps), 1);
+
+    let task = typed(&mut app, &deps, &b.to_string_lossy());
+
+    assert_eq!(task.units(), 0);
+    assert_eq!(source_rows(&deps), 1, "nothing was registered");
+    assert_eq!(app.state.sources.len(), 1, "and no card was added");
+    assert_eq!(
+        app.state.notice,
+        Some(UserNotice::FolderAlreadyIncluded {
+            folder: "b".into(),
+            parent: "a".into(),
+        })
+    );
+    assert_eq!(
+        app.state.source_path_input,
+        b.to_string_lossy(),
+        "the typed text stays"
+    );
+}
+
+/// §2.2: a typed folder above an added one absorbs it: one card, one
+/// registered folder, the notice says which folder became part of which.
+#[test]
+fn a_typed_folder_above_an_added_one_combines_them_and_says_so() {
+    use orbok_ui::notice::UserNotice;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let a = folder(temp.path(), "a");
+    let b = folder(temp.path(), "a/b");
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = typed(&mut app, &deps, &b.to_string_lossy());
+    assert_eq!(app.state.sources.len(), 1);
+
+    let _ = typed(&mut app, &deps, &a.to_string_lossy());
+
+    assert_eq!(source_rows(&deps), 1);
+    assert_eq!(app.state.sources.len(), 1, "b's card is gone");
+    assert_eq!(app.state.sources[0].display_name, "a");
+    assert_eq!(
+        app.state.notice,
+        Some(UserNotice::FoldersCombined {
+            folders: vec!["b".into()],
+            parent: "a".into(),
+        })
+    );
+    assert!(app.state.source_path_input.is_empty(), "the add succeeded");
+}
+
+/// §2.4: choosing a subfolder of an added folder to search in registers
+/// nothing; the location is the added folder, limited to the subfolder, and
+/// shows the subfolder's name. A sibling whose name only starts the same is a
+/// different folder and is added.
+#[test]
+fn search_in_a_subfolder_registers_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let a = folder(temp.path(), "a");
+    let b = folder(temp.path(), "a/b");
+    let a2 = folder(temp.path(), "a2");
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = typed(&mut app, &deps, &a.to_string_lossy());
+    let a_id = app.state.sources[0].source_id.clone();
+
+    let _ = route(&mut app, Message::FolderPicked(b.clone()), &deps);
+
+    assert_eq!(source_rows(&deps), 1, "the subfolder was not registered");
+    let location = app.state.search_location.selected.clone().unwrap();
+    assert_eq!(location.source_id().unwrap().as_str(), a_id);
+    assert_eq!(location.display_name(), "b");
+    assert_eq!(location.limit_path(), Some(b.to_string_lossy().as_ref()));
+
+    let _ = route(&mut app, Message::FolderPicked(a2.clone()), &deps);
+    assert_eq!(source_rows(&deps), 2, "`a2` is not inside `a`");
+    assert_eq!(
+        app.state
+            .search_location
+            .selected
+            .as_ref()
+            .unwrap()
+            .limit_path(),
+        None
+    );
+}
+
+/// §1.3: the folder the search was looking at becomes part of a new folder
+/// above it; the search keeps looking at the same files.
+#[test]
+fn a_selected_search_folder_that_is_combined_keeps_its_meaning() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let a = folder(temp.path(), "a");
+    let b = folder(temp.path(), "a/b");
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = route(&mut app, Message::FolderPicked(b.clone()), &deps);
+    assert_eq!(source_rows(&deps), 1, "b was added by the search");
+    let b_id = app
+        .state
+        .search_location
+        .selected
+        .as_ref()
+        .unwrap()
+        .source_id()
+        .unwrap()
+        .clone();
+
+    let _ = typed(&mut app, &deps, &a.to_string_lossy());
+
+    assert_eq!(source_rows(&deps), 1);
+    let location = app.state.search_location.selected.clone().unwrap();
+    assert_ne!(
+        location.source_id().unwrap(),
+        &b_id,
+        "not the folder that went"
+    );
+    assert_eq!(
+        location.source_id().unwrap().as_str(),
+        app.state.sources[0].source_id
+    );
+    assert_eq!(location.display_name(), "b");
+    assert_eq!(location.limit_path(), Some(b.to_string_lossy().as_ref()));
+}
+
+/// §1.3 through the search-in-folder path: choosing a folder above an added
+/// one to search in combines them, selects the new folder, and says so.
+#[test]
+fn search_in_a_folder_above_an_added_one_combines_them() {
+    use orbok_ui::notice::UserNotice;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let a = folder(temp.path(), "a");
+    let b = folder(temp.path(), "a/b");
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = route(&mut app, Message::FolderPicked(b), &deps);
+    assert_eq!(source_rows(&deps), 1);
+
+    let _ = route(&mut app, Message::FolderPicked(a), &deps);
+
+    assert_eq!(source_rows(&deps), 1, "b became part of a");
+    assert_eq!(app.state.sources.len(), 1);
+    let location = app.state.search_location.selected.clone().unwrap();
+    assert_eq!(location.display_name(), "a");
+    assert_eq!(location.limit_path(), None, "the whole of the new folder");
+    assert_eq!(
+        location.source_id().unwrap().as_str(),
+        app.state.sources[0].source_id
+    );
+    assert_eq!(
+        app.state.notice,
+        Some(UserNotice::FoldersCombined {
+            folders: vec!["b".into()],
+            parent: "a".into(),
+        })
+    );
+}

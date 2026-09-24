@@ -122,7 +122,7 @@ fn the_latest_problem_wins_with_its_own_action() {
 #[test]
 fn a_notice_class_follows_its_tone() {
     use snora::design::Tone;
-    for notice in crate::tests::notice::ALL {
+    for notice in &crate::tests::notice::all() {
         let expected = matches!(notice.tone(), Tone::Danger | Tone::Warning);
         assert_eq!(notice.is_problem(), expected, "{notice:?}");
     }

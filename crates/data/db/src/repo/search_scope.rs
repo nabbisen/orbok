@@ -47,12 +47,34 @@ pub fn scope_sql(scope: &SearchScope, files: &str, sources: &str, next_param: us
         predicate.push_str(&format!(" AND {files}.source_id = ?{param}"));
         binds.push(Value::Text(folder.source_id.clone()));
         param += 1;
-        if !folder.include_subfolders {
+        let separator = std::path::MAIN_SEPARATOR.to_string();
+        if let Some(limit) = &folder.limit_path {
+            // Task 113: inside a subfolder of the source. A file is inside
+            // when the subfolder's path plus a separator begins its path --
+            // the component rule (`b` does not contain `b2/x`), not a bare
+            // string prefix. "Only" then counts from the subfolder.
+            let prefix = format!(
+                "{}{separator}",
+                limit.trim_end_matches(std::path::MAIN_SEPARATOR)
+            );
+            predicate.push_str(&format!(
+                " AND substr({files}.canonical_path, 1, length(?{param})) = ?{param}"
+            ));
+            binds.push(Value::Text(prefix));
+            if !folder.include_subfolders {
+                predicate.push_str(&format!(
+                    " AND instr(substr({files}.canonical_path, length(?{param}) + 1), \
+                     ?{}) = 0",
+                    param + 1
+                ));
+                binds.push(Value::Text(separator));
+            }
+        } else if !folder.include_subfolders {
             predicate.push_str(&format!(
                 " AND instr(substr({files}.canonical_path, length({sources}.canonical_path) + 2), \
                  ?{param}) = 0"
             ));
-            binds.push(Value::Text(std::path::MAIN_SEPARATOR.to_string()));
+            binds.push(Value::Text(separator));
         }
     }
 

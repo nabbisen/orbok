@@ -302,6 +302,8 @@ message_keys! {
     NoticeFolderAddedBody,
     NoticeFolderAlreadyAddedTitle,
     NoticeFolderAlreadyAddedBody,
+    NoticeFolderAlreadyIncludedTitle,
+    NoticeFoldersCombinedTitle,
     NoticeSearchReadyTitle,
     NoticeSearchReadyBody,
     NoticePreviewsClearedTitle,
@@ -845,6 +847,35 @@ pub fn fmt_add_sensitive_body(locale: Locale) -> String {
              追加すると、その内容を orbok で検索できるようになります。\
              {local_only}「{folders}」の「{remove}」で、いつでも削除できます。"
         ),
+    }
+}
+
+/// Task 113: adding a folder an added folder already covers. Both names are
+/// the user's; the sentence is orbok's (RFC-064 §4).
+pub fn fmt_folder_already_included_body(locale: Locale, folder: &str, parent: &str) -> String {
+    match locale {
+        Locale::En => format!("{folder} is already part of {parent}."),
+        Locale::Ja => format!("{folder} は {parent} に含まれています。"),
+    }
+}
+
+/// Task 113: folders that were inside a newly added folder (or, at startup,
+/// inside another added one) are now part of it. One folder reads as a
+/// singular; several are listed (RFC-064 §4). The list is never empty: a
+/// combine that absorbed nothing raises no notice.
+pub fn fmt_folders_combined_body(locale: Locale, folders: &[&str], parent: &str) -> String {
+    match (locale, folders) {
+        (Locale::En, [only]) => format!("{only} is now part of {parent}."),
+        (Locale::En, [head @ .., last]) => {
+            format!("{} and {last} are now part of {parent}.", head.join(", "))
+        }
+        (Locale::Ja, names) => {
+            format!(
+                "{} は {parent} に含まれるようになりました。",
+                names.join("、")
+            )
+        }
+        (Locale::En, []) => format!("Nothing was combined into {parent}."),
     }
 }
 

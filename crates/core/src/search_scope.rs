@@ -7,13 +7,19 @@
 //! below the requested limit and makes "no results" ambiguous
 //! (RFC-041 §25.5).
 
-/// One folder restriction: a registered source, and whether nested
-/// folders count.
+/// One folder restriction: a registered source, optionally a subfolder of
+/// it, and whether nested folders count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderScope {
     pub source_id: String,
-    /// `false` restricts to files sitting directly in the folder
-    /// (RFC-045 §6.3's "folder only").
+    /// Task 113: the canonical path of a folder **inside** the source, when
+    /// the search is limited to that subfolder. `None` searches the source
+    /// itself. A file is inside when this is a path-component prefix of its
+    /// path (`orbok_core::folder_cover`); "folder only" is then counted from
+    /// this folder, not from the source.
+    pub limit_path: Option<String>,
+    /// `false` restricts to files sitting directly in the folder (the
+    /// source, or `limit_path` when it is set; RFC-045 §6.3's "folder only").
     pub include_subfolders: bool,
 }
 

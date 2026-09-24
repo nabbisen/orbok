@@ -65,11 +65,14 @@ fn every_caller_builds_the_same_card_from_the_records_own_status() {
         .unwrap();
     let canonical = folder.canonicalize().unwrap().to_string_lossy().to_string();
     let from_list = listed(&catalog, &id);
-    let from_search_folder =
-        bootstrap::find_source_by_canonical_path(&catalog, &canonical).unwrap();
+    let from_search_folder = bootstrap::covering_source(&catalog, &canonical)
+        .unwrap()
+        .card;
     let from_add = match bootstrap::add_source(&catalog, &canonical).unwrap() {
         AddSourceOutcome::AlreadyRegistered { card } => card,
-        AddSourceOutcome::Added { .. } => panic!("the folder is already registered"),
+        AddSourceOutcome::Added { .. } | AddSourceOutcome::AlreadyIncluded { .. } => {
+            panic!("the folder is already registered")
+        }
     };
     assert_eq!(from_list.status, SourceStatus::Missing);
     assert_eq!(from_search_folder, from_list, "search-in-folder path");
@@ -89,6 +92,4 @@ fn a_folder_with_no_name_is_shown_by_its_path() {
     assert_eq!(listed(&catalog, &nameless).display_name, "Projects");
     assert_eq!(listed(&catalog, &empty_name).display_name, "Reports");
     assert_eq!(listed(&catalog, &root).display_name, "/");
-    let found = bootstrap::find_source_by_canonical_path(&catalog, "/home/user/Projects").unwrap();
-    assert_eq!(found.display_name, "Projects");
 }

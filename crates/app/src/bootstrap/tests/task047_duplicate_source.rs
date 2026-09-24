@@ -9,11 +9,9 @@ use orbok_db::repo::SourceRepository;
 fn added(outcome: AddSourceOutcome) -> orbok_ui::state::SourceCard {
     match outcome {
         AddSourceOutcome::Added { card, .. } => card,
-        AddSourceOutcome::AlreadyRegistered { card } => {
-            panic!(
-                "expected a new source, got AlreadyRegistered({})",
-                card.source_id
-            )
+        AddSourceOutcome::AlreadyRegistered { card }
+        | AddSourceOutcome::AlreadyIncluded { parent: card, .. } => {
+            panic!("expected a new source, got {}", card.source_id)
         }
     }
 }
@@ -45,9 +43,10 @@ fn adding_an_already_registered_folder_inserts_nothing_and_returns_the_existing_
                 card.source_id, first.source_id,
                 "{spelling:?} must return the source that is already registered"
             ),
-            AddSourceOutcome::Added { card, .. } => {
+            AddSourceOutcome::Added { card, .. }
+            | AddSourceOutcome::AlreadyIncluded { parent: card, .. } => {
                 panic!(
-                    "{spelling:?} was reported as newly added ({})",
+                    "{spelling:?} was not reported as registered ({})",
                     card.source_id
                 )
             }
@@ -64,13 +63,17 @@ fn search_in_folder_lookup_reuses_the_registered_source() {
 
     let first = added(bootstrap::add_source(&catalog, &folder.to_string_lossy()).unwrap());
 
-    let found = bootstrap::find_source_by_canonical_path(&catalog, &first.display_path)
+    let found = bootstrap::covering_source(&catalog, &first.display_path)
         .expect("the registered folder must be found by its canonical path");
-    assert_eq!(found.source_id, first.source_id);
+    assert_eq!(found.card.source_id, first.source_id);
+    assert_eq!(
+        found.limit_path, None,
+        "the folder itself, not one inside it"
+    );
 
     let elsewhere = dir.path().join("elsewhere");
     assert!(
-        bootstrap::find_source_by_canonical_path(&catalog, &elsewhere.to_string_lossy()).is_none(),
+        bootstrap::covering_source(&catalog, &elsewhere.to_string_lossy()).is_none(),
         "an unregistered path must not match"
     );
 }

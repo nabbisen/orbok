@@ -64,6 +64,11 @@ pub enum SearchLocation {
         source_id: SourceId,
         display_name: String,
         scope: SearchFolderScope,
+        /// Task 113: when the location is a folder **inside** the remembered
+        /// one (the user chose a subfolder of an added folder), that
+        /// subfolder's canonical path. `source_id` is then the added folder
+        /// that covers it, and `display_name` is the subfolder's name.
+        limit_path: Option<String>,
     },
 }
 
@@ -75,6 +80,30 @@ impl SearchLocation {
             source_id,
             display_name: display_name.into(),
             scope: SearchFolderScope::default(),
+            limit_path: None,
+        }
+    }
+
+    /// A location that is a folder inside the remembered folder `source_id`
+    /// (Task 113): nothing is registered for it; the search is limited to
+    /// files under `limit_path`.
+    pub fn within(
+        source_id: SourceId,
+        display_name: impl Into<String>,
+        limit_path: impl Into<String>,
+    ) -> Self {
+        SearchLocation::Remembered {
+            source_id,
+            display_name: display_name.into(),
+            scope: SearchFolderScope::default(),
+            limit_path: Some(limit_path.into()),
+        }
+    }
+
+    /// The subfolder this location is limited to, if it is one (Task 113).
+    pub fn limit_path(&self) -> Option<&str> {
+        match self {
+            SearchLocation::Remembered { limit_path, .. } => limit_path.as_deref(),
         }
     }
 
