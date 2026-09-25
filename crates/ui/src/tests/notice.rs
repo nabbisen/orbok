@@ -57,6 +57,7 @@ every_user_notice! {
     FileCheckFailed,
     FolderAdded,
     FolderAlreadyAdded,
+    SettingsFileUnreadable,
     SearchReady,
     PreviewsCleared,
     SearchCacheCleared,

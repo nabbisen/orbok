@@ -198,6 +198,10 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFolderAlreadyAddedBody => "このフォルダーはすでに一覧にあります。",
         NoticeFolderAlreadyIncludedTitle => "フォルダーはすでに含まれています",
         NoticeFoldersCombinedTitle => "フォルダーをまとめました",
+        NoticeSettingsFileUnreadableTitle => "設定ファイルを読み込めませんでした",
+        NoticeSettingsFileUnreadableBody => {
+            "設定ファイルが壊れているため、orbok は初期設定で起動しました。壊れたファイルは settings.json.unreadable として残してあります。"
+        }
         NoticeSearchReadyTitle => "検索の準備ができました",
         NoticeSearchReadyBody => "ファイルを検索できます。",
         NoticePreviewsClearedTitle => "一時プレビューを削除しました",

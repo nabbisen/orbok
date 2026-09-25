@@ -126,21 +126,35 @@ impl<'a, P: RuntimePathProbe + ?Sized> RuntimeStorage<'a, P> {
     where
         T: Serialize + DeserializeOwned + Default,
     {
+        self.load_settings_reporting().map(|(settings, _)| settings)
+    }
+
+    /// [`Self::load_settings`], also saying whether an unreadable file was set
+    /// aside by this call (Task 117), so startup can tell the user once.
+    pub fn load_settings_reporting<T>(&self) -> io::Result<(T, SettingsLoad)>
+    where
+        T: Serialize + DeserializeOwned + Default,
+    {
         let path = self.path(RuntimePathKind::Settings)?;
         match std::fs::read(path) {
             Ok(bytes) => match serde_json::from_slice(&bytes) {
-                Ok(settings) => Ok(settings),
+                Ok(settings) => Ok((settings, SettingsLoad::Read)),
                 Err(error) => {
-                    keep_unreadable_settings(path, &error);
-                    Ok(T::default())
+                    let kept = keep_unreadable_settings(path, &error);
+                    let load = if kept {
+                        SettingsLoad::KeptUnreadable
+                    } else {
+                        SettingsLoad::Read
+                    };
+                    Ok((T::default(), load))
                 }
             },
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let default = T::default();
                 write_json(path, &default)?;
-                Ok(default)
+                Ok((default, SettingsLoad::Read))
             }
-            Err(_) => Ok(T::default()),
+            Err(_) => Ok((T::default(), SettingsLoad::Read)),
         }
     }
 
@@ -563,11 +577,23 @@ where
 /// requires the destination to be absent (`DestinationExists`) and both
 /// paths under the managed model root, neither of which holds for
 /// replacing an existing settings file outside that root.
+/// What a settings load did about the file (Task 117).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsLoad {
+    /// The file was read, or there was none (a first start), or it could not
+    /// be read for a reason that is not its contents.
+    Read,
+    /// The file could not be parsed and was set aside as `<name>.unreadable`;
+    /// the defaults are in use.
+    KeptUnreadable,
+}
+
 /// Task 117: set an unparseable settings file aside as `<name>.unreadable`.
+/// Returns whether it was kept.
 /// Logs where the parse failed (line and column), never what the file held.
 /// If it cannot be moved it is copied; if neither works that is logged, and the
 /// defaults are used regardless.
-fn keep_unreadable_settings(path: &Path, error: &serde_json::Error) {
+fn keep_unreadable_settings(path: &Path, error: &serde_json::Error) -> bool {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".unreadable");
     let kept = path.with_file_name(name);
@@ -575,18 +601,24 @@ fn keep_unreadable_settings(path: &Path, error: &serde_json::Error) {
     let _ = std::fs::remove_file(&kept);
     let moved = std::fs::rename(path, &kept).or_else(|_| std::fs::copy(path, &kept).map(|_| ()));
     match moved {
-        Ok(()) => tracing::warn!(
-            line = error.line(),
-            column = error.column(),
-            kept_as = %kept.display(),
-            settings_unreadable = true
-        ),
-        Err(io_error) => tracing::warn!(
-            line = error.line(),
-            column = error.column(),
-            %io_error,
-            settings_unreadable = true
-        ),
+        Ok(()) => {
+            tracing::warn!(
+                line = error.line(),
+                column = error.column(),
+                kept_as = %kept.display(),
+                settings_unreadable = true
+            );
+            true
+        }
+        Err(io_error) => {
+            tracing::warn!(
+                line = error.line(),
+                column = error.column(),
+                %io_error,
+                settings_unreadable = true
+            );
+            false
+        }
     }
 }
 

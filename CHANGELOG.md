@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Upgrading no longer resets your settings** (Task 117): a settings file that
   lacks a setting a newer version added, or holds one bad value, keeps
   everything else; a file that cannot be read at all is kept as
-  `settings.json.unreadable` instead of being overwritten. Three settings
+  `settings.json.unreadable` instead of being overwritten, and orbok says so once. Three settings
   nothing read (index mode, reranking, clear previews on exit) are removed.
 
 - **A folder inside another is no longer prepared twice** (Task 113): adding

@@ -210,3 +210,27 @@ fn a_location_elsewhere_and_the_recent_list_are_handled() {
         "a chip for a folder that is gone is dropped"
     );
 }
+
+/// Task 117: the settings-file notice, exact approved copy, both locales; an
+/// information notice with no button.
+#[test]
+fn the_settings_file_notice_reads_as_approved_in_both_locales() {
+    let notice = UserNotice::SettingsFileUnreadable;
+    assert_eq!(notice.title(Locale::En), "Settings file could not be read");
+    assert_eq!(
+        notice.body(Locale::En),
+        "Your settings file is damaged, so orbok started with default settings. \
+         The damaged file was kept as settings.json.unreadable."
+    );
+    assert_eq!(
+        notice.title(Locale::Ja),
+        "設定ファイルを読み込めませんでした"
+    );
+    assert_eq!(
+        notice.body(Locale::Ja),
+        "設定ファイルが壊れているため、orbok は初期設定で起動しました。\
+         壊れたファイルは settings.json.unreadable として残してあります。"
+    );
+    assert!(!notice.is_problem());
+    assert!(notice.action(Locale::En).is_none());
+}

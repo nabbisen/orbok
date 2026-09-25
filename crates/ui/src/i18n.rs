@@ -297,6 +297,8 @@ message_keys! {
     NoticeFolderAlreadyAddedBody,
     NoticeFolderAlreadyIncludedTitle,
     NoticeFoldersCombinedTitle,
+    NoticeSettingsFileUnreadableTitle,
+    NoticeSettingsFileUnreadableBody,
     NoticeSearchReadyTitle,
     NoticeSearchReadyBody,
     NoticePreviewsClearedTitle,

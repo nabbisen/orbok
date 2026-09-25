@@ -196,6 +196,10 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFolderAlreadyAddedBody => "This folder is already in your list.",
         NoticeFolderAlreadyIncludedTitle => "Folder already included",
         NoticeFoldersCombinedTitle => "Folders combined",
+        NoticeSettingsFileUnreadableTitle => "Settings file could not be read",
+        NoticeSettingsFileUnreadableBody => {
+            "Your settings file is damaged, so orbok started with default settings. The damaged file was kept as settings.json.unreadable."
+        }
         NoticeSearchReadyTitle => "Search is ready",
         NoticeSearchReadyBody => "Your files are ready to search.",
         NoticePreviewsClearedTitle => "Temporary previews cleared",

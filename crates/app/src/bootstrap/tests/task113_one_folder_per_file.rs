@@ -8,7 +8,7 @@ use orbok_core::SourceId;
 use orbok_db::Catalog;
 use orbok_db::repo::SourceRepository;
 use orbok_fs::{ScanRequest, Scanner};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 /// `root/a/x.md`, `root/a/b/y.md`, `root/a/b/c/z.md` and `root/a2/w.md`.
@@ -435,4 +435,88 @@ fn the_first_start_says_folders_were_combined_and_the_second_is_silent() {
     assert_eq!(second.notice, None, "nothing left to combine, nothing said");
     assert_eq!(second.sources.len(), 1);
     each_file_once(&t);
+}
+
+// ── Task 117: the settings-file notice at startup ─────────────────────
+
+fn context_at(data: &Path) -> orbok::runtime_context::RuntimeContext {
+    use orbok::runtime_context::{PlatformRuntimePaths, RuntimeContext, RuntimeSelection};
+    RuntimeContext::resolve(
+        RuntimeSelection::resolve(false, Some(data.as_os_str().to_os_string())).unwrap(),
+        data,
+        PlatformRuntimePaths {
+            standard_data_dir: Some(data),
+            standard_settings_dir: Some(data),
+        },
+    )
+    .unwrap()
+}
+
+/// A damaged settings file: the startup that moves it says so, once. The next
+/// start finds a fresh file and says nothing.
+#[test]
+fn a_damaged_settings_file_is_reported_once() {
+    use orbok_ui::notice::UserNotice;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let context = context_at(&data);
+    std::fs::write(data.join("settings.json"), br#"{"locale": "ja", "theme":"#).unwrap();
+
+    let first = bootstrap::load_initial_state(&context).unwrap();
+    assert_eq!(first.notice, Some(UserNotice::SettingsFileUnreadable));
+    assert!(data.join("settings.json.unreadable").exists());
+
+    let second = bootstrap::load_initial_state(&context).unwrap();
+    assert_eq!(
+        second.notice, None,
+        "the file was moved once; nothing to say now"
+    );
+}
+
+/// No file at all (a first start) and a healthy file raise nothing.
+#[test]
+fn a_first_start_and_a_healthy_file_raise_no_settings_notice() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let context = context_at(&data);
+    assert!(!data.join("settings.json").exists());
+    assert_eq!(
+        bootstrap::load_initial_state(&context).unwrap().notice,
+        None
+    );
+    assert!(
+        data.join("settings.json").exists(),
+        "the first start wrote its defaults"
+    );
+    assert_eq!(
+        bootstrap::load_initial_state(&context).unwrap().notice,
+        None
+    );
+    assert!(!data.join("settings.json.unreadable").exists());
+}
+
+/// A damaged file and a combine in one start: the user's own settings matter
+/// more, so this notice is the one shown.
+#[test]
+fn the_settings_notice_wins_over_the_combine_notice() {
+    use orbok_ui::notice::UserNotice;
+    let (dir, root) = seeded_dir();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let context = context_at(&data);
+    let t = Tree {
+        _dir: dir,
+        root,
+        catalog: bootstrap::open_catalog(&context).unwrap(),
+    };
+    register_raw(&t, "a");
+    register_raw(&t, "a/b");
+    std::fs::write(data.join("settings.json"), b"{ broken").unwrap();
+
+    let state = bootstrap::load_initial_state(&context).unwrap();
+
+    assert_eq!(state.notice, Some(UserNotice::SettingsFileUnreadable));
+    assert_eq!(state.sources.len(), 1, "the combine still happened");
 }

@@ -43,6 +43,11 @@ pub enum UserNotice {
         folders: Vec<String>,
         parent: String,
     },
+    /// Task 117: at startup the settings file could not be parsed. It was kept
+    /// as `settings.json.unreadable` and orbok started with the defaults.
+    /// Raised once, by the startup that moved the file; never for a missing
+    /// file (a first start).
+    SettingsFileUnreadable,
     SearchReady,
     PreviewsCleared,
     /// RFC-059 §8 Slice 4 (Review 214 §4 Q2): "Clear old search results"
@@ -145,7 +150,8 @@ impl UserNotice {
             | Self::RecentSearchFilterDropped
             | Self::FolderAlreadyAdded
             | Self::FolderAlreadyIncluded { .. }
-            | Self::FoldersCombined { .. } => Tone::Info,
+            | Self::FoldersCombined { .. }
+            | Self::SettingsFileUnreadable => Tone::Info,
         }
     }
 
@@ -161,6 +167,7 @@ impl UserNotice {
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedTitle,
             Self::FolderAlreadyIncluded { .. } => MessageKey::NoticeFolderAlreadyIncludedTitle,
             Self::FoldersCombined { .. } => MessageKey::NoticeFoldersCombinedTitle,
+            Self::SettingsFileUnreadable => MessageKey::NoticeSettingsFileUnreadableTitle,
             Self::SearchReady => MessageKey::NoticeSearchReadyTitle,
             Self::PreviewsCleared => MessageKey::NoticePreviewsClearedTitle,
             Self::SearchCacheCleared => MessageKey::NoticeSearchCacheClearedTitle,
@@ -202,6 +209,7 @@ impl UserNotice {
             Self::FileCheckFailed => MessageKey::NoticeFileCheckFailedBody,
             Self::FolderAdded => MessageKey::NoticeFolderAddedBody,
             Self::FolderAlreadyAdded => MessageKey::NoticeFolderAlreadyAddedBody,
+            Self::SettingsFileUnreadable => MessageKey::NoticeSettingsFileUnreadableBody,
             Self::SearchReady => MessageKey::NoticeSearchReadyBody,
             Self::PreviewsCleared
             | Self::SearchCacheCleared
@@ -246,6 +254,7 @@ impl UserNotice {
             | Self::FolderAlreadyAdded
             | Self::FolderAlreadyIncluded { .. }
             | Self::FoldersCombined { .. }
+            | Self::SettingsFileUnreadable
             | Self::SearchReady
             | Self::PreviewsCleared
             | Self::SearchCacheCleared

@@ -152,8 +152,8 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     // path or writing a first default can fail (an unreadable or malformed
     // file falls back to defaults), and the settings file can live outside
     // the data folder, whose path the window names -- so this is Other.
-    let settings = storage
-        .load_settings::<OrbokSettings>()
+    let (settings, settings_load) = storage
+        .load_settings_reporting::<OrbokSettings>()
         .map_err(StartupFailure::other)?;
 
     let catalog_locale = SettingsRepository::new(&catalog)
@@ -219,7 +219,7 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         )),
         health,
         sources,
-        notice: combined_notice,
+        notice: startup_notice(settings_load, combined_notice),
         remember_recent_searches: settings.remember_recent_searches,
         search_ui: orbok_ui::state::search::SearchUiState {
             history,
@@ -228,6 +228,31 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         ..Default::default()
     };
     Ok(state)
+}
+
+/// Task 117: the one notice a start can show. There is one slot; when both a
+/// damaged settings file and a combine happened, the user's own settings matter
+/// more, so that one is shown and the other is logged (it is already in the
+/// log at the moment it happened).
+fn startup_notice(
+    settings_load: orbok::runtime_storage::SettingsLoad,
+    combined: Option<orbok_ui::notice::UserNotice>,
+) -> Option<orbok_ui::notice::UserNotice> {
+    use orbok::runtime_storage::SettingsLoad;
+    use orbok_ui::notice::UserNotice;
+    match (settings_load, combined) {
+        (SettingsLoad::KeptUnreadable, other) => {
+            if other.is_some() {
+                tracing::info!(
+                    shown = "settings",
+                    not_shown = "combined",
+                    startup_notice = true
+                );
+            }
+            Some(UserNotice::SettingsFileUnreadable)
+        }
+        (SettingsLoad::Read, combined) => combined,
+    }
 }
 
 /// RFC-031 §48/§130/§166 locale priority chain: settings file → catalog →
