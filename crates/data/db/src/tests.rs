@@ -137,8 +137,11 @@ fn file_status_transitions_and_missing_marking() {
         .unwrap();
     assert_eq!(got.file_status, FileStatus::Indexed);
 
-    // Unseen since a future cutoff -> missing, never deleted.
-    let cutoff = "9999-01-01T00:00:00Z";
+    // Not seen by a later scan (Task 116: an event, not a time) -> missing,
+    // never deleted.
+    let cutoff = SourceRepository::new(&catalog)
+        .begin_scan(&src.source_id)
+        .unwrap();
     let n = files.mark_missing_unseen(&src.source_id, cutoff).unwrap();
     assert_eq!(n, 1);
     let got = files
@@ -364,3 +367,4 @@ fn catalog_persists_to_file() {
     let catalog = Catalog::open(&path).unwrap();
     assert_eq!(SourceRepository::new(&catalog).list().unwrap().len(), 1);
 }
+mod task116_fixed_width_timestamps_migration;

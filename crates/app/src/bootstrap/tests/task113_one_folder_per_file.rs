@@ -271,6 +271,14 @@ fn a_folder_above_added_folders_takes_their_files_with_it() {
         );
     }
     assert_eq!(jobs_naming(&t.catalog, &b.source_id), 0, "no job names `b`");
+    // The moved files start again at scan number 0 (Task 116): `a`'s own scan,
+    // whose number is its own, is what says whether each is still there.
+    let numbers: i64 = t
+        .catalog
+        .lock()
+        .query_row("SELECT MAX(seen_generation) FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(numbers, 0);
     let jobs_after: i64 = t
         .catalog
         .lock()

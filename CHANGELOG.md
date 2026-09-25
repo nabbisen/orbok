@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A file could be marked missing, and dropped from search, during the scan
+  that saw it** (Task 116): stored times were written with a varying number of
+  digits, so text comparison could order a later moment before an earlier one
+  (seen on macOS, whose clocks tick in microseconds). Times are now one fixed
+  width, existing values are rewritten by an upgrade, and "seen by this scan" no
+  longer depends on the clock at all.
+
 - **Upgrading no longer resets your settings** (Task 117): a settings file that
   lacks a setting a newer version added, or holds one bad value, keeps
   everything else; a file that cannot be read at all is kept as

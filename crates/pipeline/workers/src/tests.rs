@@ -22,4 +22,5 @@ mod task078_requeue_discovered;
 mod task095_reset_gives_space_back;
 mod task098_reset_and_scheduler;
 mod task102_keyword_rebuild_keeps_what_it_does_not_rebuild;
+mod task116_latest_is_the_last_inserted;
 mod v092_features;

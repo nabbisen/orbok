@@ -8,7 +8,7 @@
 
 use crate::hashing::sha256_file;
 use crate::policy::{CompiledPolicy, FileTypeClass, classify_file_type};
-use orbok_core::{FileStatus, JobType, OrbokResult, SourceId, now_iso8601, system_time_iso8601};
+use orbok_core::{FileStatus, JobType, OrbokResult, SourceId, system_time_iso8601};
 use orbok_db::Catalog;
 use orbok_db::repo::{
     ChunkRepository, FileRepository, IndexJobRepository, NewFile, ObservedMetadata, SourceRecord,
@@ -69,7 +69,6 @@ impl<'a> Scanner<'a> {
     /// the UI at any time; the scan stops at the next file boundary.
     pub fn scan(&self, request: &ScanRequest, cancel: &AtomicBool) -> OrbokResult<ScanSummary> {
         let started = Instant::now();
-        let scan_started_at = now_iso8601();
         let mut summary = ScanSummary::default();
 
         let sources = SourceRepository::new(self.catalog);
@@ -78,6 +77,9 @@ impl<'a> Scanner<'a> {
             .ok_or(orbok_core::OrbokError::SourceNotFound)?;
         let policy = CompiledPolicy::from_source(&source);
         let root = PathBuf::from(&source.canonical_path);
+        // Task 116: this scan's number. Every file it sees records it, and the
+        // files that end without it are the ones it did not see.
+        let generation = sources.begin_scan(&source.source_id)?;
 
         let files = FileRepository::new(self.catalog);
         let jobs = IndexJobRepository::new(self.catalog);
@@ -156,8 +158,7 @@ impl<'a> Scanner<'a> {
         }
 
         if !summary.canceled {
-            summary.missing_files =
-                files.mark_missing_unseen(&source.source_id, &scan_started_at)?;
+            summary.missing_files = files.mark_missing_unseen(&source.source_id, generation)?;
             // RFC-037 §8/§12, Task 035 §5.3: a file's own file_status
             // flipping to missing has no effect, by itself, on whether its
             // content still surfaces in search -- see

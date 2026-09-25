@@ -148,8 +148,10 @@ impl<'a> FileRepository<'a> {
         conn.execute(
             "INSERT INTO files (file_id, source_id, original_path, canonical_path, display_path, \
              extension, file_size_bytes, modified_at, platform_file_key, content_hash, \
-             hash_algorithm, file_status, last_seen_at, last_scanned_at, created_at, updated_at) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?13,?13)",
+             hash_algorithm, file_status, last_seen_at, last_scanned_at, created_at, updated_at, \
+             seen_generation) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?13,?13, \
+                     (SELECT scan_generation FROM sources WHERE source_id = ?2))",
             params![
                 id.as_str(),
                 new.source_id.as_str(),
@@ -188,8 +190,9 @@ impl<'a> FileRepository<'a> {
                 "INSERT INTO files (file_id, source_id, original_path, canonical_path, \
                  display_path, extension, file_size_bytes, modified_at, platform_file_key, \
                  content_hash, hash_algorithm, file_status, last_seen_at, last_scanned_at, \
-                 created_at, updated_at) \
-                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?13,?13 \
+                 created_at, updated_at, seen_generation) \
+                 SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?13,?13, \
+                        (SELECT scan_generation FROM sources WHERE source_id = ?2) \
                  WHERE EXISTS (SELECT 1 FROM sources \
                                WHERE source_id = ?2 AND covers_subfolders = 1)",
                 params![
@@ -235,7 +238,8 @@ impl<'a> FileRepository<'a> {
         let now = now_iso8601();
         let conn = self.catalog.lock();
         conn.execute(
-            "UPDATE files SET last_seen_at = ?2, last_scanned_at = ?2, updated_at = ?2 \
+            "UPDATE files SET last_seen_at = ?2, last_scanned_at = ?2, updated_at = ?2, \
+             seen_generation = (SELECT scan_generation FROM sources WHERE source_id = files.source_id) \
              WHERE file_id = ?1",
             params![id.as_str(), now],
         )
@@ -258,7 +262,9 @@ impl<'a> FileRepository<'a> {
             "UPDATE files SET file_size_bytes = ?2, modified_at = ?3, platform_file_key = ?4, \
              content_hash = COALESCE(?5, content_hash), \
              hash_algorithm = COALESCE(?6, hash_algorithm), file_status = ?7, \
-             last_seen_at = ?8, last_scanned_at = ?8, updated_at = ?8 WHERE file_id = ?1",
+             last_seen_at = ?8, last_scanned_at = ?8, updated_at = ?8, \
+             seen_generation = (SELECT scan_generation FROM sources WHERE source_id = files.source_id) \
+             WHERE file_id = ?1",
             params![
                 id.as_str(),
                 metadata.file_size_bytes as i64,
@@ -278,24 +284,32 @@ impl<'a> FileRepository<'a> {
     pub fn set_status(&self, id: &FileId, status: FileStatus) -> OrbokResult<()> {
         let conn = self.catalog.lock();
         conn.execute(
-            "UPDATE files SET file_status = ?2, updated_at = ?3 WHERE file_id = ?1",
+            "UPDATE files SET file_status = ?2, updated_at = ?3, \
+             seen_generation = (SELECT scan_generation FROM sources WHERE source_id = files.source_id) \
+             WHERE file_id = ?1",
             params![id.as_str(), status.as_str(), now_iso8601()],
         )
         .map_err(db_err)?;
         Ok(())
     }
 
-    /// RFC-004 §11: mark files of `source_id` not seen since `cutoff`
-    /// as Missing — never Deleted (drives may be disconnected). Returns
-    /// the number of newly missing files.
-    pub fn mark_missing_unseen(&self, source_id: &SourceId, cutoff: &str) -> OrbokResult<u64> {
+    /// RFC-004 §11: mark files of `source_id` that the scan numbered
+    /// `generation` did not see as Missing -- never Deleted (drives may be
+    /// disconnected). Returns the number of newly missing files.
+    ///
+    /// **An event, not a time (Task 116).** Every file a scan sees records the
+    /// folder's current `scan_generation` (`SourceRepository::begin_scan`), so
+    /// "not seen by this scan" is `seen_generation < generation`. Before it was
+    /// `last_seen_at < <scan start>`, two clock readings compared as text, which
+    /// a clock stepping backwards (or trailing-zero-trimmed fractions) got wrong.
+    pub fn mark_missing_unseen(&self, source_id: &SourceId, generation: i64) -> OrbokResult<u64> {
         let conn = self.catalog.lock();
         let n = conn
             .execute(
                 "UPDATE files SET file_status = 'missing', updated_at = ?3 \
-                 WHERE source_id = ?1 AND last_seen_at < ?2 \
+                 WHERE source_id = ?1 AND seen_generation < ?2 \
                  AND file_status NOT IN ('missing', 'deleted')",
-                params![source_id.as_str(), cutoff, now_iso8601()],
+                params![source_id.as_str(), generation, now_iso8601()],
             )
             .map_err(db_err)?;
         Ok(n as u64)

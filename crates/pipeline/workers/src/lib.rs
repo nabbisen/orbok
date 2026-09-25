@@ -19,7 +19,7 @@
 //! recovery.
 
 mod chunk_adapter;
-mod chunk_and_index;
+pub(crate) mod chunk_and_index;
 pub mod cleanup_service;
 mod embedding;
 mod extract;

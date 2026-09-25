@@ -404,12 +404,15 @@ impl<'a> IndexJobRepository<'a> {
         self.list_by_status(JobStatus::Blocked, limit)
     }
 
+    /// Oldest first among equal priority: the order the jobs were **enqueued**
+    /// (`rowid`), an event, rather than their `created_at` readings, which a
+    /// clock step or an equal reading can order wrongly (Task 116).
     fn list_by_status(&self, status: JobStatus, limit: u32) -> OrbokResult<Vec<JobRecord>> {
         let conn = self.catalog.lock();
         let mut stmt = conn
             .prepare(
                 "SELECT job_id, source_id, file_id, job_type, status FROM index_jobs \
-                 WHERE status = ?1 ORDER BY priority DESC, created_at LIMIT ?2",
+                 WHERE status = ?1 ORDER BY priority DESC, rowid LIMIT ?2",
             )
             .map_err(db_err)?;
         let rows = stmt

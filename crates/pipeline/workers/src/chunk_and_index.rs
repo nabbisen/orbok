@@ -124,13 +124,17 @@ impl<'a> ChunkAndIndexWorker<'a> {
         Ok(())
     }
 
-    fn latest_extraction_id(&self, file_id: &FileId) -> OrbokResult<ExtractionId> {
+    /// The file's newest successful extraction: the one **inserted last**
+    /// (`rowid`), not the one with the greatest `completed_at`. "Newest" here
+    /// is an event -- which extraction came after which -- and two `completed_at`
+    /// readings can be equal or, after a clock step, out of order (Task 116).
+    pub(crate) fn latest_extraction_id(&self, file_id: &FileId) -> OrbokResult<ExtractionId> {
         let conn = self.catalog.lock();
         let id: String = conn
             .query_row(
                 "SELECT extraction_id FROM extraction_records \
                  WHERE file_id = ?1 AND status = 'succeeded' \
-                 ORDER BY completed_at DESC LIMIT 1",
+                 ORDER BY rowid DESC LIMIT 1",
                 params![file_id.as_str()],
                 |row| row.get(0),
             )

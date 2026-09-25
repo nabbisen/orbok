@@ -20,6 +20,16 @@ fn status_count(counts: &[(FileStatus, u64)], status: FileStatus) -> u64 {
         .unwrap_or(0)
 }
 
+/// **Cause found (Task 116).** The macOS failures of this test and of
+/// `unsupported_types_cataloged` (run `36019073166`) were a file *seen during
+/// the scan* being marked `missing`: timestamps were written with trailing
+/// zeros trimmed, so `…29.123456Z` sorted before `…29.1234Z` although it is
+/// later, and the missing check compared them as text. macOS clocks have
+/// microsecond resolution, so trailing zeros are common there. Timestamps are
+/// now fixed width and "seen by this scan" is a scan number, not a time
+/// (`task116_time_and_events.rs` reproduces it on any platform). The snapshot
+/// below is kept: it is cheap, and it is what would explain the next one.
+///
 /// Task 021: `new_files_discovered_and_jobs_queued` has flaked twice on
 /// macOS CI, cleared both times on rerun, with the failing assertion's
 /// own log unrecoverable afterward (GitHub serves the latest attempt's

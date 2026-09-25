@@ -68,6 +68,16 @@ const MIGRATIONS: &[Migration] = &[
         name: "source_covers_subfolders",
         sql: include_str!("../migrations/0010_source_covers_subfolders.sql"),
     },
+    Migration {
+        version: 11,
+        name: "fixed_width_timestamps",
+        sql: include_str!("../migrations/0011_fixed_width_timestamps.sql"),
+    },
+    Migration {
+        version: 12,
+        name: "scan_generation",
+        sql: include_str!("../migrations/0012_scan_generation.sql"),
+    },
 ];
 
 /// Apply all pending migrations. Called from `Catalog::open` before any

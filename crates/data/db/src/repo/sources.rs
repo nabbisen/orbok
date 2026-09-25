@@ -92,7 +92,8 @@ fn absorb_in(
             .execute(
                 "UPDATE files SET source_id = ?1, \
                     display_path = COALESCE(NULLIF(ltrim(substr(canonical_path, \
-                        length(?3) + 1), '/\\'), ''), canonical_path) \
+                        length(?3) + 1), '/\\'), ''), canonical_path), \
+                    seen_generation = 0 \
                  WHERE source_id = ?2",
                 params![outer.as_str(), inner_id.as_str(), outer_path],
             )
@@ -431,6 +432,31 @@ impl<'a> SourceRepository<'a> {
             return Err(OrbokError::SourceNotFound);
         }
         Ok(())
+    }
+
+    /// Start a scan of this folder: take the next scan number (Task 116).
+    /// Every file the scan sees records it, and the scan's end marks the files
+    /// with an older one as missing.
+    pub fn begin_scan(&self, id: &SourceId) -> OrbokResult<i64> {
+        let mut conn = self.catalog.lock();
+        let tx = conn.transaction().map_err(db_err)?;
+        tx.execute(
+            "UPDATE sources SET scan_generation = scan_generation + 1 WHERE source_id = ?1",
+            params![id.as_str()],
+        )
+        .map_err(db_err)?;
+        let generation = tx
+            .query_row(
+                "SELECT scan_generation FROM sources WHERE source_id = ?1",
+                params![id.as_str()],
+                |r| r.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => OrbokError::SourceNotFound,
+                other => db_err(other),
+            })?;
+        tx.commit().map_err(db_err)?;
+        Ok(generation)
     }
 
     /// Record a completed scan.

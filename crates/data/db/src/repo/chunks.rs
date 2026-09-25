@@ -509,14 +509,16 @@ impl<'a> ChunkRepository<'a> {
     /// [`ChunkRepository::deactivate_for_missing_files`] set `stale` are
     /// still exactly right and just need reactivating.
     ///
-    /// Reactivates only the most recently touched `extraction_id` among
-    /// this file's `stale` chunks (not every stale chunk the file has ever
-    /// had) — `chunks.rs`'s insert path guarantees at most one
-    /// `extraction_id` is `active` for a file at a time, and
-    /// `deactivate_for_missing_files` stamps `updated_at = now()` on
-    /// exactly that generation when the file goes missing, so it is always
-    /// the newest `updated_at` among that file's stale rows at the moment
-    /// of reactivation — never an older, genuinely superseded generation.
+    /// Reactivates only the newest `extraction_id` among this file's `stale`
+    /// chunks (not every stale chunk the file has ever had) — `chunks.rs`'s
+    /// insert path guarantees at most one `extraction_id` is `active` for a
+    /// file at a time, and that one is the newest generation inserted, so it
+    /// is the one `deactivate_for_missing_files` made stale when the file went
+    /// missing — never an older, genuinely superseded generation.
+    ///
+    /// "Newest" is **insertion order** (`rowid`), not `updated_at` (Task 116):
+    /// which generation came last is an event, and two `updated_at` readings
+    /// can compare the wrong way.
     pub fn reactivate_last_stale_generation(&self, file_id: &FileId) -> OrbokResult<u64> {
         let conn = self.catalog.lock();
         let n = conn
@@ -525,7 +527,7 @@ impl<'a> ChunkRepository<'a> {
                  WHERE chunk_status = 'stale' AND file_id = ?1 AND extraction_id = ( \
                      SELECT extraction_id FROM chunks \
                      WHERE file_id = ?1 AND chunk_status = 'stale' \
-                     ORDER BY updated_at DESC LIMIT 1 \
+                     ORDER BY rowid DESC LIMIT 1 \
                  )",
                 params![file_id.as_str(), now_iso8601()],
             )
