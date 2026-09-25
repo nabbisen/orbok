@@ -369,3 +369,4 @@ fn catalog_persists_to_file() {
 }
 mod task116_fixed_width_timestamps_migration;
 mod task116_seen_means_the_scanner_saw_it;
+mod task119_a_write_that_reads_first_does_not_fail_on_another_writer;

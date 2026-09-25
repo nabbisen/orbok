@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A catalog write that reads first (queueing a file to be prepared again, and the other read-then-write steps) no longer fails with "database is locked" when the background scheduler writes at the same moment: every catalog write now takes the write lock first and waits for it.
+
 - **A file could be marked missing, and dropped from search, during the scan
   that saw it** (Task 116): stored times were written with a varying number of
   digits, so text comparison could order a later moment before an earlier one

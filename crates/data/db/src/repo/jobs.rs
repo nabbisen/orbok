@@ -105,7 +105,9 @@ impl<'a> IndexJobRepository<'a> {
     /// other embedding job. Returns how many jobs were queued.
     pub fn enqueue_embedding_backfill(&self, model_id: &ModelId) -> OrbokResult<usize> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let files: Vec<(String, String)> = {
             let mut stmt = tx.prepare(EMBEDDING_BACKFILL_FILES_SQL).map_err(db_err)?;
             stmt.query_map(params![model_id.as_str()], |row| {
@@ -144,7 +146,9 @@ impl<'a> IndexJobRepository<'a> {
     /// nothing new. Returns how many jobs were queued.
     pub fn enqueue_extraction_backfill(&self) -> OrbokResult<usize> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let files: Vec<(String, String)> = {
             let mut stmt = tx.prepare(EXTRACTION_BACKFILL_FILES_SQL).map_err(db_err)?;
             stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -233,7 +237,9 @@ impl<'a> IndexJobRepository<'a> {
         excluded_job: &str,
     ) -> OrbokResult<bool> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let source_id: Option<String> = tx
             .query_row(
                 "SELECT source_id FROM files f WHERE f.file_id = ?1 \

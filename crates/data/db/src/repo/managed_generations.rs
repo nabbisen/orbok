@@ -143,7 +143,7 @@ impl<'a> ManagedGenerationRepository<'a> {
 
         let mut conn = self.catalog.lock();
         let tx = conn
-            .transaction()
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(GenerationCatalogError::database)?;
         let current = load_snapshot(&tx, guard.profile_id())?;
         if current.profile.state_revision != expected_revision {

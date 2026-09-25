@@ -234,7 +234,9 @@ impl<'a> ChunkRepository<'a> {
         let ids: Vec<ChunkId> = (0..specs.len()).map(|_| ChunkId::generate()).collect();
 
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
 
         // RFC-059 §6/§0(i): delete the previous generation's FTS rows --
         // and their now-meaningless `keyword_index_records` mapping rows --
@@ -379,7 +381,9 @@ impl<'a> ChunkRepository<'a> {
     ) -> OrbokResult<ExistingChunks> {
         let now = now_iso8601();
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
 
         type Stored = (
             String,

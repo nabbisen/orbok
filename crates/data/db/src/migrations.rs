@@ -107,7 +107,9 @@ pub fn run_pending(catalog: &Catalog) -> OrbokResult<()> {
             continue;
         }
 
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         tx.execute_batch(migration.sql)
             .map_err(|e| OrbokError::MigrationFailed {
                 version: migration.version,

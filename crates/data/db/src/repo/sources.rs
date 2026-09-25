@@ -238,7 +238,9 @@ impl<'a> SourceRepository<'a> {
     /// Returns how many file rows moved and how many duplicates were erased.
     pub fn absorb(&self, outer: &SourceId, inner: &[SourceId]) -> OrbokResult<AbsorbReport> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let report = absorb_in(&tx, outer, inner)?;
         tx.commit().map_err(db_err)?;
         Ok(report)
@@ -250,7 +252,9 @@ impl<'a> SourceRepository<'a> {
     /// another folder holds the same files.
     pub fn widen_and_absorb(&self, id: &SourceId, inner: &[SourceId]) -> OrbokResult<AbsorbReport> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         tx.execute(
             "UPDATE sources SET covers_subfolders = 1, updated_at = ?2 WHERE source_id = ?1",
             params![id.as_str(), now_iso8601()],
@@ -310,7 +314,9 @@ impl<'a> SourceRepository<'a> {
     /// the extraction cache, which is outside this database.
     pub fn narrow_to_top_level(&self, id: &SourceId) -> OrbokResult<Vec<String>> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let root = source_root(&tx, id)?;
         let separator = std::path::MAIN_SEPARATOR.to_string();
         let paths: Vec<String> = {
@@ -439,7 +445,9 @@ impl<'a> SourceRepository<'a> {
     /// with an older one as missing.
     pub fn begin_scan(&self, id: &SourceId) -> OrbokResult<i64> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         tx.execute(
             "UPDATE sources SET scan_generation = scan_generation + 1 WHERE source_id = ?1",
             params![id.as_str()],
@@ -487,7 +495,9 @@ impl<'a> SourceRepository<'a> {
     /// `remove_replaced_stale_indexes`'s own fix (RFC-059 §6).
     pub fn delete_with_all_data(&self, id: &SourceId) -> OrbokResult<()> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         // The same erasure a file leaving a folder gets (`narrow_to_top_level`),
         // for every file of the folder: one implementation, at file
         // granularity (Task 114).

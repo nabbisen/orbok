@@ -117,7 +117,9 @@ impl<'a> Fts5KeywordEngine<'a> {
 impl KeywordSearchEngine for Fts5KeywordEngine<'_> {
     fn index(&self, documents: &[KeywordDocument]) -> OrbokResult<()> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db)?;
         for doc in documents {
             // Replace-on-reindex: drop any previous fts row first.
             tx.execute(
@@ -156,7 +158,9 @@ impl KeywordSearchEngine for Fts5KeywordEngine<'_> {
 
     fn delete(&self, chunk_ids: &[ChunkId]) -> OrbokResult<()> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db)?;
         for chunk_id in chunk_ids {
             // RFC-059 §6/§0(ii): both FTS rows must go before the mapping
             // row that addresses them -- `keyword_index_records` is the

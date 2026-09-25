@@ -135,7 +135,9 @@ impl<'a> CleanupExecutor<'a> {
     pub fn delete_keyword_index(&self) -> OrbokResult<CleanupOutcome> {
         let deleted = {
             let mut conn = self.catalog.lock();
-            let tx = conn.transaction().map_err(db_err)?;
+            let tx = conn
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(db_err)?;
             let deleted = tx
                 .execute("DELETE FROM keyword_index_records", [])
                 .map_err(db_err)? as u64;
@@ -201,7 +203,9 @@ impl<'a> CleanupExecutor<'a> {
             ));
         }
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let mut deleted = 0u64;
         for table in RESET_DELETE_ORDER {
             deleted += tx
@@ -279,7 +283,9 @@ impl<'a> CleanupExecutor<'a> {
     /// leave the mapping gone with the FTS rows still orphaned.
     fn remove_replaced_stale_indexes(&self) -> OrbokResult<CleanupOutcome> {
         let mut conn = self.catalog.lock();
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let stale_chunks_subquery = "SELECT c.chunk_id FROM chunks c \
              WHERE c.chunk_status IN ('stale','deleted') AND c.file_id IN \
              (SELECT file_id FROM chunks WHERE chunk_status = 'active')";
