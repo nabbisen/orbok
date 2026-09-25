@@ -274,7 +274,12 @@ pub(crate) fn friendly_notice<'a>(
     if let (Some(action_label), true) = (notice.action(locale), has_action) {
         builder = builder.action(action_label.to_string(), Message::NoticeActionPressed);
     }
-    builder.dismiss(Message::ClearNotice).render()
+    // Snora 0.51 (Task 121): a visual tooltip on the dismiss X. It is not an
+    // accessible name and is not cited as one.
+    builder
+        .dismiss(Message::ClearNotice)
+        .dismiss_tooltip(tr(locale, MessageKey::NoticeDismiss))
+        .render()
 }
 
 fn page<'a>(tokens: &Tokens, content: iced::widget::Column<'a, Message>) -> Element<'a, Message> {

@@ -29,6 +29,16 @@ communicates only through an image or icon. Icon-only sidebar navigation items
 carry `tooltip` strings sourced from the i18n catalog, which are the accessible
 text for those controls.
 
+> **Annotated 2026-09-26 (Task 121).** snora states that its tooltips are
+> **visual tooltips, not accessible names**: they are not exposed to assistive
+> technology, because iced 0.14 has no accessible-name API for buttons and snora
+> has no accessibility tree. The sentence above says what orbok's catalog
+> *supplies* for those controls, not what assistive technology receives. The
+> dismiss tooltips added at snora 0.51 (`Notice::dismiss_tooltip`) are the same
+> kind, and are not cited here as meeting any naming criterion. Whether this
+> criterion's status stands is the architect's call; this note only removes the
+> ambiguity.
+
 ### 1.4.1 Use of Color
 
 **Status: Met.**
@@ -99,6 +109,20 @@ So there is nothing to exempt. The correct statement is that the role is unused,
 which is stronger than an exemption and needs no WCAG argument. **If it is ever
 rendered, it must be added to `RENDERED_PAIRS` like any other text role** — do
 not reinstate the exemption.
+
+**snora 0.51 (2026-09-26, Task 121; source: snora's letter of that date and its
+0.50 → 0.51 guide, §4).** Two figures that orbok's records could have relied on
+were corrected upstream. (a) The **active-tab label** (1.4.3) drew on a filled
+`primary.base` block on the **software renderer (tiny-skia)** from 0.41 to 0.50,
+under 4.5:1 in five of six themes including all four design presets (2.66 / 2.49 /
+2.05 / 1.79); on the default renderer (wgpu) it was on the page and fine. orbok's
+users could reach tiny-skia (iced falls back to it when the GPU renderer cannot
+start, or when `ICED_BACKEND` selects it), so orbok's tab bar was affected in that
+case until this upgrade. From 0.51 the label is on the page on both renderers.
+(b) The **active-tab indicator** (1.4.11) was 2.99:1 on stock `Theme::Dark`; all
+four orbok presets were clear. It is now `primary.strong`, 3.70:1 or better
+everywhere. This document stated neither figure before; both are recorded here so
+that nobody cites the earlier behaviour.
 
 ### 1.4.4 Resize Text
 
@@ -423,6 +447,12 @@ had a control been undersized, nothing in the suite would have caught it.
 
 orbok's house rule of 44 px for primary actions (WCAG 2.5.5 AAA guideline) is
 separate and unaffected.
+
+**snora 0.51 (2026-09-26, Task 121):** the toast close target was 25.00 × 23.40
+before 0.51, under 24 × 24, and is exactly 24 × 24 from 0.51 (snora's letter,
+guide §4). orbok renders no snora toast; its notices use `Notice`, whose dismiss
+control is a lucide `X` from 0.51. This entry does not cite a measured size for
+the notice's dismiss target.
 
 **Not applicable:** snora's RFC-061 chip repair does not reach orbok. We do not
 use `snora::design::widget::chip`. Our chips are single `button`s

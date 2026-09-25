@@ -10,8 +10,11 @@ use crate::tests::iced_test_guard;
 use crate::views;
 use iced_test::simulator;
 
-/// The dismiss control snora's `Notice` renders.
-const DISMISS: &str = "×";
+/// The dismiss control snora's `Notice` renders: since snora 0.51, with the
+/// `lucide-icons` feature, a lucide `X` (before that, the text "×").
+fn dismiss() -> String {
+    char::from(snora::lucide::X).to_string()
+}
 
 /// §4 test 2: a notice with a stored action shows the action **and** the
 /// dismiss control; dismiss sends `ClearNotice`.
@@ -27,11 +30,12 @@ fn a_notice_with_an_action_also_offers_dismiss() {
     let mut ui = simulator(app.view());
     let try_again = tr(Locale::En, MessageKey::NoticeActionTryAgain);
     assert!(ui.find(try_again).is_ok(), "the action renders");
+    let dismiss = dismiss();
     assert!(
-        ui.find(DISMISS).is_ok(),
+        ui.find(dismiss.as_str()).is_ok(),
         "dismiss renders beside the action"
     );
-    let _ = ui.click(DISMISS);
+    let _ = ui.click(dismiss.as_str());
     let messages: Vec<Message> = ui.into_messages().collect();
     assert!(
         matches!(messages.as_slice(), [Message::ClearNotice]),

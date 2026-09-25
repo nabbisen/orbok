@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The top tab bar and the sidebar's labels draw cleanly (Task 121): a straight
+  underline under the active tab, a rule under the bar only, the hover kept
+  inside the tab, and a sidebar tooltip with its own background.
+- On the software renderer (used when the graphics driver cannot start, as in
+  some virtual machines), the active tab's label is readable again.
+
 - On Windows and macOS, orbok no longer prepares files the system keeps hidden
   (Task 120): `AppData` and `Library`, and anything else marked Hidden or
   System (Windows) or hidden (macOS), are skipped, and files already prepared
@@ -102,6 +108,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the setting is on and there is something to clear.
 
 ### Changed
+
+- snora 0.51 (Task 121). A notice's dismiss control is now a close icon with a
+  "Dismiss" tooltip.
 
 - **Folders named `build`, `dist` or `target` are skipped only when they are a
   tool's output** (Task 120): beside a `package.json`, `Cargo.toml` or
