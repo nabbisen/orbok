@@ -249,17 +249,17 @@ fn size_gate_still_rejects_oversized_files_through_the_same_seam() {
 #[test]
 fn sensitive_paths_warn() {
     assert_eq!(
-        sensitive_warning(Path::new("/home/user/.ssh")),
+        sensitive_warning(Path::new("/home/user/.ssh"), None),
         Some("credential_directory")
     );
     assert_eq!(
-        sensitive_warning(Path::new("/home/user/.config")),
+        sensitive_warning(Path::new("/home/user/.config"), None),
         Some("hidden_configuration_directory")
     );
-    assert!(sensitive_warning(Path::new("/home/user/Documents")).is_none());
+    assert!(sensitive_warning(Path::new("/home/user/Documents"), None).is_none());
     #[cfg(unix)]
     assert_eq!(
-        sensitive_warning(Path::new("/etc/passwd")),
+        sensitive_warning(Path::new("/etc/passwd"), None),
         Some("system_directory")
     );
 }

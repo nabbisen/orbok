@@ -16,6 +16,7 @@ fn contexts(root: &Path) -> (RuntimeContext, RuntimeContext) {
     let platform = PlatformRuntimePaths {
         standard_data_dir: Some(&standard_data),
         standard_settings_dir: Some(&standard_settings),
+        home_dir: None,
     };
     let standard = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, None).unwrap(),

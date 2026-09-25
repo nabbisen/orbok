@@ -49,7 +49,7 @@ fn every_caller_builds_the_same_card_from_the_records_own_status() {
     let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
 
     let AddSourceOutcome::Added { card: added, .. } =
-        bootstrap::add_source(&catalog, &folder.to_string_lossy()).unwrap()
+        bootstrap::add_source(&catalog, None, &folder.to_string_lossy()).unwrap()
     else {
         panic!("expected a new folder");
     };
@@ -65,10 +65,10 @@ fn every_caller_builds_the_same_card_from_the_records_own_status() {
         .unwrap();
     let canonical = folder.canonicalize().unwrap().to_string_lossy().to_string();
     let from_list = listed(&catalog, &id);
-    let from_search_folder = bootstrap::covering_source(&catalog, &canonical)
+    let from_search_folder = bootstrap::covering_source(&catalog, None, &canonical)
         .unwrap()
         .card;
-    let from_add = match bootstrap::add_source(&catalog, &canonical).unwrap() {
+    let from_add = match bootstrap::add_source(&catalog, None, &canonical).unwrap() {
         AddSourceOutcome::AlreadyRegistered { card } => card,
         AddSourceOutcome::Added { .. } | AddSourceOutcome::AlreadyIncluded { .. } => {
             panic!("the folder is already registered")

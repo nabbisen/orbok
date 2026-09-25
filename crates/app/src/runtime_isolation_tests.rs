@@ -158,6 +158,7 @@ fn contexts(root: &Path) -> (Profile, Profile) {
     let platform = PlatformRuntimePaths {
         standard_data_dir: Some(&standard_data),
         standard_settings_dir: Some(&standard_settings),
+        home_dir: None,
     };
     let standard_context = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, None).unwrap(),
@@ -641,6 +642,7 @@ fn frozen_startup_anchor_survives_a_later_current_directory_change() {
             PlatformRuntimePaths {
                 standard_data_dir: Some(&other.path().join("standard")),
                 standard_settings_dir: Some(&other.path().join("settings")),
+                home_dir: None,
             },
         )
         .unwrap();
@@ -697,6 +699,7 @@ fn standard_override_relocates_settings_through_a_real_run_check() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&platform_data),
             standard_settings_dir: Some(&platform_settings),
+            home_dir: None,
         },
     )
     .unwrap();
@@ -732,6 +735,7 @@ fn physical_symlink_alias_is_rejected_before_persistent_access() {
             PlatformRuntimePaths {
                 standard_data_dir: Some(&standard),
                 standard_settings_dir: Some(&settings),
+                home_dir: None,
             },
         )
         .unwrap(),
@@ -766,6 +770,7 @@ fn physical_catalog_object_identity_alias_is_rejected() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard),
             standard_settings_dir: Some(&settings),
+            home_dir: None,
         },
     )
     .unwrap();
@@ -794,6 +799,7 @@ fn physical_bind_mount_identity_alias_is_rejected() {
             PlatformRuntimePaths {
                 standard_data_dir: Some(&standard),
                 standard_settings_dir: Some(&settings),
+                home_dir: None,
             },
         )
         .unwrap();
@@ -964,6 +970,7 @@ fn physical_junction_alias_is_rejected_before_persistent_access() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard),
             standard_settings_dir: Some(&settings),
+            home_dir: None,
         },
     )
     .unwrap();

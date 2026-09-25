@@ -17,6 +17,7 @@ fn platform_paths<'a>(data: &'a Path, settings: &'a Path) -> PlatformRuntimePath
     PlatformRuntimePaths {
         standard_data_dir: Some(data),
         standard_settings_dir: Some(settings),
+        home_dir: None,
     }
 }
 
@@ -147,6 +148,7 @@ fn missing_platform_data_root_preserves_the_anchored_standard_fallback() {
         PlatformRuntimePaths {
             standard_data_dir: None,
             standard_settings_dir: Some(&standard_settings),
+            home_dir: None,
         },
     )
     .unwrap();
@@ -167,6 +169,7 @@ fn portable_mode_fails_closed_when_it_would_alias_the_standard_fallback() {
         PlatformRuntimePaths {
             standard_data_dir: None,
             standard_settings_dir: Some(&standard_settings),
+            home_dir: None,
         },
     )
     .unwrap_err();
@@ -223,6 +226,7 @@ fn standard_mode_without_override_fails_closed_when_platform_settings_dir_is_abs
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard_data),
             standard_settings_dir: None,
+            home_dir: None,
         },
     )
     .unwrap_err();
@@ -250,6 +254,7 @@ fn portable_mode_starts_normally_when_platform_settings_dir_is_absent() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard_data),
             standard_settings_dir: None,
+            home_dir: None,
         },
     )
     .unwrap();
@@ -276,6 +281,7 @@ fn standard_mode_with_override_starts_normally_when_platform_settings_dir_is_abs
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard_data),
             standard_settings_dir: None,
+            home_dir: None,
         },
     )
     .unwrap();
@@ -303,6 +309,7 @@ fn portable_mode_still_rejects_a_data_dir_alias_when_settings_dir_is_absent() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&standard_data),
             standard_settings_dir: None,
+            home_dir: None,
         },
     )
     .unwrap_err();
@@ -326,6 +333,7 @@ fn portable_mode_still_rejects_the_missing_data_root_fallback_alias_when_setting
         PlatformRuntimePaths {
             standard_data_dir: None,
             standard_settings_dir: None,
+            home_dir: None,
         },
     )
     .unwrap_err();

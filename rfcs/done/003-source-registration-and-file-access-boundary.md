@@ -151,20 +151,12 @@ Recommended v1 behavior:
 
 ## 6.3. Include/Exclude Patterns
 
-Recommended default excludes:
-
-```text
-.git
-node_modules
-target
-dist
-build
-.cache
-.venv
-__pycache__
-```
-
-These should be configurable.
+**Superseded by Amendment 2 (§10b, Task 120).** The list of default excludes
+this section once carried (`.git`, `node_modules`, `target`, `dist`, `build`,
+`.cache`, `.venv`, `__pycache__`, "configurable") is replaced by a rule: what is
+skipped is decided by what the platform hides and by evidence that a tool
+generated a folder, is fixed, and is not configurable. `target`, `dist` and
+`build` are ordinary words and are no longer skipped by name.
 
 ---
 
@@ -320,6 +312,37 @@ orbok does not offer:
 - **§10.2 is kept, without "add with exclusions".** If a risky source is
   selected, orbok asks before saving: cancel, or add anyway. It is met by
   Task 110.
+
+## 10b. Amendment 2 (2026-09-26) — what orbok skips
+
+Task 120 (origin: the owner's question of 2026-09-25, and Review Request 288 §4:
+on Windows, adding the user's profile folder prepared files from inside
+`AppData`). It replaces §6.3's list of default excludes with a rule, and keeps
+Amendment 1's decision that it is fixed (no setting, no per-folder option).
+
+- **Hidden means what the platform means.** A file or folder inside an added
+  folder is skipped when its name starts with `.` (every platform); on Windows
+  when it has the Hidden or System attribute (this is what hides `AppData`); on
+  macOS when it has the hidden flag (`UF_HIDDEN`, what hides `~/Library`). The
+  folder the user added is never skipped as hidden: they chose it.
+- **Tool-generated folders are recognised by evidence, not by common words.** A
+  folder is skipped when it holds a `CACHEDIR.TAG` whose first line is the
+  Cache Directory Tagging Specification's signature; or it is named
+  `node_modules` or `__pycache__`; or it is `target` beside a `Cargo.toml` or
+  `pom.xml`, or `dist` or `build` beside a `package.json`. Nothing else is
+  skipped by name: a user's own `Clients/target/plan.docx` is prepared. `.git`,
+  `.cache` and `.venv` are covered by the hidden rule.
+- **What is skipped has nothing prepared.** When a scan skips a file or folder,
+  or the folder's own policy leaves a file out, the catalog rows for it are
+  erased, as a narrowed folder's files are (RFC-064 §3.2), and never marked
+  missing (RFC-064: out of the folder is not missing).
+- **§7's question also covers `AppData` (Windows) and `Library` (macOS)** when
+  they are the folder directly under the home directory, not any folder of that
+  name. The home directory is resolved once, by the runtime context.
+
+Where: `crates/data/fs/src/policy.rs` (`is_generated_folder`,
+`TOOL_OUTPUT_FOLDERS`, `platform_hidden`), `scanner.rs` (`erase_left_out`),
+`sensitive.rs` (`in_home_application_data`).
 
 ## 11. Path Canonicalization Strategy
 

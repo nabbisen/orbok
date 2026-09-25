@@ -373,3 +373,109 @@ fn application_data_under_home_is_asked_about_and_no_other_folder_of_that_name()
     assert!(!asked("/Users/me/Library", None, &mac));
     assert!(!asked("/Users/me/Library", Some("/Users/me"), &[]));
 }
+
+fn set_source(catalog: &Catalog, assignment: &str) {
+    catalog
+        .lock()
+        .execute(&format!("UPDATE sources SET {assignment}"), [])
+        .unwrap();
+}
+
+fn missing_rows(catalog: &Catalog) -> i64 {
+    count(
+        catalog,
+        "SELECT COUNT(*) FROM files WHERE file_status IN ('missing','deleted')",
+    )
+}
+
+/// Review 298 §4.1: a file is out of the folder, not missing, when the policy
+/// leaves it out -- the same rule as a folder. A hidden file that had been
+/// prepared (the folder included hidden files, then excluded them) is erased with
+/// its chunks and keyword rows, and nothing is marked missing.
+#[test]
+fn a_hidden_file_that_leaves_the_policy_is_erased_not_marked_missing() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path();
+    write_files(root, &["keep.md", ".notes.md"]);
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = register_dir_source_with(
+        &catalog,
+        root,
+        HiddenFilePolicy::Include,
+        SymlinkPolicy::Ignore,
+    );
+    scan(&catalog, &source.source_id);
+    assert_eq!(prepared(&catalog), [".notes.md", "keep.md"]);
+    let hidden: FileId = FileId::from_string(
+        catalog
+            .lock()
+            .query_row(
+                "SELECT file_id FROM files WHERE display_path = '.notes.md'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap(),
+    );
+    seed_chunk(&catalog, &hidden, "words of the hidden file");
+    assert_eq!(count(&catalog, "SELECT COUNT(*) FROM chunk_fts"), 1);
+
+    set_source(&catalog, "hidden_file_policy = 'exclude'");
+    let summary = scan(&catalog, &source.source_id);
+
+    assert_eq!(prepared(&catalog), ["keep.md"]);
+    assert_eq!(summary.erased_files, 1);
+    assert_eq!(summary.missing_files, 0);
+    assert_eq!(missing_rows(&catalog), 0, "erased, not File not found");
+    assert_eq!(count(&catalog, "SELECT COUNT(*) FROM chunks"), 0);
+    assert_eq!(count(&catalog, "SELECT COUNT(*) FROM chunk_fts"), 0);
+    assert_eq!(count(&catalog, "SELECT COUNT(*) FROM chunk_fts_trigram"), 0);
+    let counts = ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert!(counts.violation().is_none(), "RFC-059: {counts:?}");
+}
+
+/// The same rule for the other things a folder's own policy leaves out: a file
+/// type its exclude list names, and a file over its size limit.
+#[test]
+fn a_file_the_folders_own_policy_leaves_out_is_erased_not_marked_missing() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path();
+    write_files(root, &["keep.md", "drop.txt", "big.log"]);
+    std::fs::write(root.join("big.log"), "x".repeat(4096)).unwrap();
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = register_dir_source(&catalog, root);
+    scan(&catalog, &source.source_id);
+    assert_eq!(prepared(&catalog), ["big.log", "drop.txt", "keep.md"]);
+
+    set_source(
+        &catalog,
+        "exclude_patterns_json = '[\"*.txt\"]', max_file_size_bytes = 1024",
+    );
+    let summary = scan(&catalog, &source.source_id);
+
+    assert_eq!(
+        prepared(&catalog),
+        ["keep.md"],
+        "the excluded type and the oversized file have no rows"
+    );
+    assert_eq!(summary.erased_files, 2);
+    assert_eq!(missing_rows(&catalog), 0);
+}
+
+/// A file that is simply gone is still marked missing: only what the policy
+/// leaves out is erased.
+#[test]
+fn a_file_that_is_gone_is_still_marked_missing() {
+    let base = tempfile::tempdir().unwrap();
+    let root = base.path();
+    write_files(root, &["keep.md", "gone.md"]);
+    let catalog = Catalog::open_in_memory().unwrap();
+    let source = register_dir_source(&catalog, root);
+    scan(&catalog, &source.source_id);
+    std::fs::remove_file(root.join("gone.md")).unwrap();
+    let summary = scan(&catalog, &source.source_id);
+    assert_eq!(summary.missing_files, 1);
+    assert_eq!(summary.erased_files, 0);
+    assert_eq!(prepared(&catalog), ["gone.md", "keep.md"]);
+}

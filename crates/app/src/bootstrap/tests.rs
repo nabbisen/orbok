@@ -20,3 +20,4 @@ mod task110_rfc003_removal;
 mod task113_one_folder_per_file;
 #[cfg(test)]
 mod task114_a_folder_can_leave_out_its_subfolders;
+mod task120_one_home;

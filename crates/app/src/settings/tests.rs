@@ -266,6 +266,7 @@ fn context_in(dir: &Path) -> RuntimeContext {
         PlatformRuntimePaths {
             standard_data_dir: Some(dir),
             standard_settings_dir: Some(dir),
+            home_dir: None,
         },
     )
     .unwrap()

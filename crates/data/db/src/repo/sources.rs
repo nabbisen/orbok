@@ -345,46 +345,52 @@ impl<'a> SourceRepository<'a> {
         Ok(paths)
     }
 
-    /// Task 120: everything orbok holds for the files of folder `id` that lie
-    /// under `dir` is erased, in one transaction -- the same erasure as
-    /// [`Self::narrow_to_top_level`], at folder granularity. A scan that skips
-    /// `dir` (hidden, or a tool's generated folder) calls this so files an
-    /// earlier scan prepared there are out of the folder, not missing.
+    /// Task 120: everything orbok holds for what lies at `path` in folder `id` is
+    /// erased, in one transaction -- the same erasure as
+    /// [`Self::narrow_to_top_level`], for one path: the file at exactly `path`,
+    /// or every file under it when `path` is a folder. A scan that skips a hidden
+    /// file or folder (or leaves a file out by the folder's policy) calls this so
+    /// what an earlier scan prepared there is out of the folder, not missing.
     ///
     /// Returns the erased files' canonical paths, for the caller to evict from
-    /// the extraction cache, which is outside this database.
-    pub fn erase_files_under(&self, id: &SourceId, dir: &str) -> OrbokResult<Vec<String>> {
-        // Every path below `dir` starts with `dir` and a separator; the range
-        // ends at the next character, so the unique (source, path) index serves it.
-        let prefix = format!("{dir}{}", std::path::MAIN_SEPARATOR);
+    /// the extraction cache, which is outside this database. A path with nothing
+    /// in the catalog costs one read and no write lock, since a scan asks this of
+    /// every entry it skips.
+    pub fn erase_files_at(&self, id: &SourceId, path: &str) -> OrbokResult<Vec<String>> {
+        // Every path below a folder starts with the folder's path and a
+        // separator; the range ends at the next character, so the unique
+        // (source, path) index serves it.
+        let prefix = format!("{path}{}", std::path::MAIN_SEPARATOR);
         let upper = {
             let mut end = prefix.clone();
             let last = end.pop().unwrap_or('\0');
             end.push(char::from_u32(last as u32 + 1).unwrap_or(last));
             end
         };
-        let within = "f.canonical_path >= ?2 AND f.canonical_path < ?3";
+        let at = "(f.canonical_path = ?2 OR (f.canonical_path >= ?3 AND f.canonical_path < ?4))";
+        let select =
+            format!("SELECT f.canonical_path FROM files f WHERE f.source_id = ?1 AND {at}");
+        let held = |conn: &rusqlite::Connection| -> OrbokResult<Vec<String>> {
+            let mut stmt = conn.prepare(&select).map_err(db_err)?;
+            stmt.query_map(params![id.as_str(), path, prefix, upper], |r| r.get(0))
+                .map_err(db_err)?
+                .collect::<Result<_, _>>()
+                .map_err(db_err)
+        };
+        if held(&self.catalog.lock())?.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut conn = self.catalog.lock();
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(db_err)?;
-        let paths: Vec<String> = {
-            let mut stmt = tx
-                .prepare(&format!(
-                    "SELECT f.canonical_path FROM files f WHERE f.source_id = ?1 AND {within}"
-                ))
-                .map_err(db_err)?;
-            stmt.query_map(params![id.as_str(), prefix, upper], |r| r.get(0))
-                .map_err(db_err)?
-                .collect::<Result<_, _>>()
-                .map_err(db_err)?
-        };
+        let paths = held(&tx)?;
         if !paths.is_empty() {
             erase_files(
                 &tx,
                 "f.source_id = ?1",
-                within,
-                params![id.as_str(), prefix, upper],
+                at,
+                params![id.as_str(), path, prefix, upper],
             )?;
         }
         tx.commit().map_err(db_err)?;

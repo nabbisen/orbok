@@ -77,6 +77,8 @@ pub fn resolve_runtime_context(
     // always-valid path component) without matching on it, so a future
     // upstream variant addition needs no change here.
     let standard_settings_dir = crate::settings::standard_settings_dir().ok();
+    // Task 120 review: the one place the platform's home directory is read.
+    let home_dir = dirs::home_dir();
     let selection = RuntimeSelection::resolve(portable, data_override)?;
     let context = RuntimeContext::resolve(
         selection,
@@ -84,6 +86,7 @@ pub fn resolve_runtime_context(
         PlatformRuntimePaths {
             standard_data_dir: standard_data_dir.as_deref(),
             standard_settings_dir: standard_settings_dir.as_deref(),
+            home_dir: home_dir.as_deref(),
         },
     )?;
     if context.mode() == RuntimeMode::Portable {

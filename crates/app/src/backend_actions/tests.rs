@@ -28,6 +28,7 @@ impl Profile {
             PlatformRuntimePaths {
                 standard_data_dir: Some(temp.path()),
                 standard_settings_dir: Some(temp.path()),
+                home_dir: None,
             },
         )
         .unwrap();

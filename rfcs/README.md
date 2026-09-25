@@ -21,7 +21,7 @@ may start" a checked state rather than an implicit convention.
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | v0.6.0 |
 | 001 | [Local Data Classification and Lifecycle](done/001-local-data-classification-and-lifecycle.md) | v0.1.0 |
 | 002 | [SQLite Catalog Schema and Migration Policy](done/002-sqlite-catalog-schema-and-migration-policy.md) | v0.1.0 |
-| 003 | [Source Registration and File Access Boundary](done/003-source-registration-and-file-access-boundary.md) | Implemented (unreleased) — closed 2026-09-24 (Task 110): §10.2's question before saving is built (picker, typed path and search-in-folder); Amendment 1 (§10a, Task 109) dropped single-file sources and the §10.1 controls. Closure record: [closures/003](closures/003-source-registration-and-file-access-boundary.md) |
+| 003 | [Source Registration and File Access Boundary](done/003-source-registration-and-file-access-boundary.md) | Implemented (unreleased) — closed 2026-09-24 (Task 110): §10.2's question before saving is built (picker, typed path and search-in-folder); Amendment 1 (§10a, Task 109) dropped single-file sources and the §10.1 controls; Amendment 2 (§10b, Task 120, 2026-09-26) replaced §6.3's default excludes with a rule. Closure record: [closures/003](closures/003-source-registration-and-file-access-boundary.md) |
 | 004 | [File Scanner and Change Detection](done/004-file-scanner-and-change-detection.md) | v0.1.0 |
 | 005 | [Document Extraction Pipeline](done/005-document-extraction-pipeline.md) | v0.1.0 |
 | 006 | [Adaptive Chunking and Location Metadata](done/006-adaptive-chunking-and-location-metadata.md) | v0.2.0 |

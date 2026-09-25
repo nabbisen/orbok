@@ -78,6 +78,12 @@ pub struct PlatformRuntimePaths<'a> {
     /// absence is fatal depends on the selected mode, decided in
     /// [`RuntimeContext::resolve`], not here.
     pub standard_settings_dir: Option<&'a Path>,
+    /// The user's home directory, resolved the way the platform means it
+    /// (Task 120 review: one home, resolved once). `None` when the platform
+    /// has none. Everything that needs "home" -- expanding a typed `~`, asking
+    /// before adding `AppData` or `Library` -- reads it from the context, and
+    /// nothing else reads the environment for it.
+    pub home_dir: Option<&'a Path>,
 }
 
 /// Immutable paths for the one active runtime profile.
@@ -92,6 +98,7 @@ pub struct RuntimeContext {
     settings_file: PathBuf,
     diagnostics_dir: PathBuf,
     temporary_dir: PathBuf,
+    home_dir: Option<PathBuf>,
 }
 
 impl RuntimeContext {
@@ -175,6 +182,7 @@ impl RuntimeContext {
             settings_file: settings_dir.join(SETTINGS_FILE),
             diagnostics_dir: data_dir.join(DIAGNOSTICS_DIR),
             temporary_dir: data_dir.join(TEMPORARY_DIR),
+            home_dir: platform.home_dir.map(Path::to_path_buf),
             data_dir,
         })
     }
@@ -188,6 +196,15 @@ impl RuntimeContext {
     /// from outside the storage boundary (RFC-049 §5 "frozen anchor").
     pub fn startup_dir(&self) -> &Path {
         &self.startup_dir
+    }
+
+    /// The user's home directory, frozen with the rest of the context. Not a
+    /// profile-resource path (it names no catalog, cache or settings location),
+    /// so it is safe to read from outside the storage boundary. `None` when the
+    /// platform has none: a typed `~` is then not expanded, and nothing is
+    /// judged relative to a home.
+    pub fn home_dir(&self) -> Option<&Path> {
+        self.home_dir.as_deref()
     }
 
     /// A display-only, redaction-safe summary of the active profile. Carries

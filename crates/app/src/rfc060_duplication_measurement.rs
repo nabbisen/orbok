@@ -28,6 +28,7 @@ fn test_context(data_dir: &Path) -> RuntimeContext {
         PlatformRuntimePaths {
             standard_data_dir: Some(data_dir),
             standard_settings_dir: Some(data_dir),
+            home_dir: None,
         },
     )
     .unwrap()

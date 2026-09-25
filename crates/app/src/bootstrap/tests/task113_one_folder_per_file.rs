@@ -67,7 +67,7 @@ fn scan(catalog: &Catalog, source_id: &str) {
 }
 
 fn add(t: &Tree, rel: &str) -> AddSourceOutcome {
-    bootstrap::add_source(&t.catalog, &native(&t.root, rel).to_string_lossy()).unwrap()
+    bootstrap::add_source(&t.catalog, None, &native(&t.root, rel).to_string_lossy()).unwrap()
 }
 
 fn add_and_scan(t: &Tree, rel: &str) -> orbok_ui::state::SourceCard {
@@ -195,7 +195,7 @@ fn a_deeper_folder_and_another_spelling_are_included_too() {
         format!("{}{}", plain.display(), std::path::MAIN_SEPARATOR),
     ];
     for spelling in &spellings {
-        match bootstrap::add_source(&t.catalog, spelling).unwrap() {
+        match bootstrap::add_source(&t.catalog, None, spelling).unwrap() {
             AddSourceOutcome::AlreadyIncluded { parent, .. } => {
                 assert_eq!(parent.source_id, a.source_id, "{spelling}")
             }
@@ -342,7 +342,7 @@ fn a_chosen_subfolder_is_found_inside_the_added_folder() {
     let a = add_and_scan(&t, "a");
     let sub = |rel: &str| native(&t.root, rel).to_string_lossy().to_string();
 
-    let inside = bootstrap::covering_source(&t.catalog, &sub("a/b")).expect("a covers a/b");
+    let inside = bootstrap::covering_source(&t.catalog, None, &sub("a/b")).expect("a covers a/b");
     assert_eq!(inside.card.source_id, a.source_id);
     assert_eq!(
         inside.location_name, "b",
@@ -350,7 +350,7 @@ fn a_chosen_subfolder_is_found_inside_the_added_folder() {
     );
     assert_eq!(inside.limit_path.as_deref(), Some(sub("a/b").as_str()));
 
-    let itself = bootstrap::covering_source(&t.catalog, &sub("a")).unwrap();
+    let itself = bootstrap::covering_source(&t.catalog, None, &sub("a")).unwrap();
     assert_eq!(itself.card.source_id, a.source_id);
     assert_eq!(
         itself.limit_path, None,
@@ -358,10 +358,10 @@ fn a_chosen_subfolder_is_found_inside_the_added_folder() {
     );
 
     assert!(
-        bootstrap::covering_source(&t.catalog, &sub("a2")).is_none(),
+        bootstrap::covering_source(&t.catalog, None, &sub("a2")).is_none(),
         "the component rule"
     );
-    assert!(bootstrap::covering_source(&t.catalog, &sub("nowhere")).is_none());
+    assert!(bootstrap::covering_source(&t.catalog, None, &sub("nowhere")).is_none());
 }
 
 /// §2.5: an overlapping pair a profile already holds is combined, and a
@@ -417,6 +417,7 @@ fn the_first_start_says_folders_were_combined_and_the_second_is_silent() {
         PlatformRuntimePaths {
             standard_data_dir: Some(&data),
             standard_settings_dir: Some(&data),
+            home_dir: None,
         },
     )
     .unwrap();
@@ -455,6 +456,7 @@ fn context_at(data: &Path) -> orbok::runtime_context::RuntimeContext {
         PlatformRuntimePaths {
             standard_data_dir: Some(data),
             standard_settings_dir: Some(data),
+            home_dir: None,
         },
     )
     .unwrap()

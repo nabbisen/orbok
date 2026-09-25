@@ -13,6 +13,7 @@ fn context_for(data_dir: &Path, startup_dir: &Path) -> RuntimeContext {
         PlatformRuntimePaths {
             standard_data_dir: Some(startup_dir),
             standard_settings_dir: Some(startup_dir),
+            home_dir: None,
         },
     )
     .unwrap()

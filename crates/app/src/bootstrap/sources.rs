@@ -27,11 +27,14 @@ pub enum AddSourceOutcome {
     AlreadyRegistered { card: orbok_ui::state::SourceCard },
 }
 
-/// A leading `~` is the user's home directory.
-pub(crate) fn expand_home(raw: &str, home: &str) -> String {
-    match raw.strip_prefix('~') {
-        Some(rest) => format!("{home}{rest}"),
-        None => raw.to_string(),
+/// A leading `~` is the user's home directory, which the caller passes in (it
+/// comes from the runtime context: `RuntimeContext::home_dir`). With no home
+/// the `~` is left as typed, and the path then fails like any other that
+/// cannot be reached.
+pub(crate) fn expand_home(raw: &str, home: Option<&std::path::Path>) -> String {
+    match (raw.strip_prefix('~'), home) {
+        (Some(rest), Some(home)) => format!("{}{rest}", home.to_string_lossy()),
+        _ => raw.to_string(),
     }
 }
 
@@ -41,10 +44,14 @@ pub(crate) fn expand_home(raw: &str, home: &str) -> String {
 /// be resolved, is not a folder, or is already registered is **not** asked
 /// about: the first two fail in `add_source` with the ordinary notice, and
 /// the third adds nothing. Reads only; nothing is saved.
-pub fn needs_private_folder_question(catalog: &Catalog, raw_path: &str) -> bool {
+pub fn needs_private_folder_question(
+    catalog: &Catalog,
+    home: Option<&std::path::Path>,
+    raw_path: &str,
+) -> bool {
     use orbok_db::repo::SourceRepository;
     use std::path::Path;
-    let expanded = expand_home(raw_path.trim(), &std::env::var("HOME").unwrap_or_default());
+    let expanded = expand_home(raw_path.trim(), home);
     let Ok(canonical) = Path::new(&expanded).canonicalize() else {
         return false;
     };
@@ -59,7 +66,7 @@ pub fn needs_private_folder_question(catalog: &Catalog, raw_path: &str) -> bool 
         return false;
     }
     let canonical = canonical.to_string_lossy().to_string();
-    orbok_fs::sensitive_warning(Path::new(&canonical)).is_some()
+    orbok_fs::sensitive_warning(Path::new(&canonical), home).is_some()
 }
 
 /// Add a folder as a new searchable source, unless its canonical path is
@@ -67,7 +74,11 @@ pub fn needs_private_folder_question(catalog: &Catalog, raw_path: &str) -> bool 
 /// folder covers it ([`AddSourceOutcome::AlreadyIncluded`]). Added folders
 /// inside the new one become part of it (Task 113, RFC-064 §3.3): every file
 /// belongs to one folder.
-pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOutcome> {
+pub fn add_source(
+    catalog: &Catalog,
+    home: Option<&std::path::Path>,
+    raw_path: &str,
+) -> OrbokResult<AddSourceOutcome> {
     use orbok_core::{HiddenFilePolicy, IndexMode, PersistenceMode, SourceType, SymlinkPolicy};
     use orbok_db::repo::{NewSource, SourceRepository};
     use std::path::Path;
@@ -83,7 +94,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
         // failure two lines below, just caught earlier.
         return Err(OrbokError::PathCanonicalization("path is empty".into()));
     }
-    let expanded = expand_home(raw, &std::env::var("HOME").unwrap_or_default());
+    let expanded = expand_home(raw, home);
     let canonical = Path::new(&expanded)
         .canonicalize()
         .map_err(|e| OrbokError::PathCanonicalization(format!("cannot access '{expanded}': {e}")))?
@@ -155,7 +166,7 @@ pub fn add_source(catalog: &Catalog, raw_path: &str) -> OrbokResult<AddSourceOut
     };
 
     // RFC-003 acceptance: warn before indexing sensitive directories.
-    let sensitive = orbok_fs::sensitive_warning(std::path::Path::new(&canonical));
+    let sensitive = orbok_fs::sensitive_warning(std::path::Path::new(&canonical), home);
     if let Some(w) = sensitive {
         tracing::warn!(path = %canonical, warning = w, "sensitive source added");
     }
@@ -174,7 +185,7 @@ pub(crate) fn add_source_expect_added(
     catalog: &Catalog,
     raw_path: &str,
 ) -> OrbokResult<(orbok_ui::state::SourceCard, Option<&'static str>)> {
-    match add_source(catalog, raw_path)? {
+    match add_source(catalog, None, raw_path)? {
         AddSourceOutcome::Added {
             card, sensitive, ..
         } => Ok((card, sensitive)),
@@ -342,10 +353,14 @@ pub struct CoveringSource {
 /// Task 113: the added folder that covers `raw_path` (the folder itself, or
 /// one above it), for the search-in-folder flow. `None` when no added folder
 /// covers it, or the path cannot be resolved (`add_source` then reports it).
-pub fn covering_source(catalog: &Catalog, raw_path: &str) -> Option<CoveringSource> {
+pub fn covering_source(
+    catalog: &Catalog,
+    home: Option<&std::path::Path>,
+    raw_path: &str,
+) -> Option<CoveringSource> {
     use orbok_db::repo::SourceRepository;
     use std::path::Path;
-    let expanded = expand_home(raw_path.trim(), &std::env::var("HOME").unwrap_or_default());
+    let expanded = expand_home(raw_path.trim(), home);
     let canonical = Path::new(&expanded).canonicalize().ok()?;
     let sources = SourceRepository::new(catalog).list().ok()?;
     let (covering, rest) = covering_of(&sources, &canonical)?;

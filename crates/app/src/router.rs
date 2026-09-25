@@ -62,42 +62,43 @@ fn folder_picked(
     // Task 113: a folder an added folder already covers -- the folder itself
     // (RFC-045 §19.3) or one inside it -- registers nothing. The search looks
     // at the added folder's data, limited to the chosen subfolder.
-    let (card, location_name, limit_path) =
-        if let Some(covering) = bootstrap::covering_source(&deps.catalog, &path_str) {
-            (covering.card, covering.location_name, covering.limit_path)
-        } else {
-            match bootstrap::add_source(&deps.catalog, &path_str) {
-                Ok(bootstrap::AddSourceOutcome::Added {
-                    card,
-                    sensitive,
-                    combined,
-                }) => {
-                    if let Some(warning) = sensitive {
-                        tracing::warn!("sensitive source: {warning}");
-                    }
-                    app.update(Message::SourceAdded(card.clone()));
-                    report_combined(app, &card, combined);
-                    let name = card.display_name.clone();
-                    (card, name, None)
+    let (card, location_name, limit_path) = if let Some(covering) =
+        bootstrap::covering_source(&deps.catalog, deps.runtime.home_dir(), &path_str)
+    {
+        (covering.card, covering.location_name, covering.limit_path)
+    } else {
+        match bootstrap::add_source(&deps.catalog, deps.runtime.home_dir(), &path_str) {
+            Ok(bootstrap::AddSourceOutcome::Added {
+                card,
+                sensitive,
+                combined,
+            }) => {
+                if let Some(warning) = sensitive {
+                    tracing::warn!("sensitive source: {warning}");
                 }
-                // The lookup above catches both of these; they differ only if the
-                // catalog changed between the two reads.
-                Ok(
-                    bootstrap::AddSourceOutcome::AlreadyRegistered { .. }
-                    | bootstrap::AddSourceOutcome::AlreadyIncluded { .. },
-                ) => {
-                    app.update(Message::FolderPickerCancelled);
-                    app.update(notice_retry::search_folder_failed());
-                    return iced::Task::none();
-                }
-                Err(e) => {
-                    tracing::error!("add source from search failed: {e}");
-                    app.update(Message::FolderPickerCancelled);
-                    app.update(notice_retry::search_folder_failed());
-                    return iced::Task::none();
-                }
+                app.update(Message::SourceAdded(card.clone()));
+                report_combined(app, &card, combined);
+                let name = card.display_name.clone();
+                (card, name, None)
             }
-        };
+            // The lookup above catches both of these; they differ only if the
+            // catalog changed between the two reads.
+            Ok(
+                bootstrap::AddSourceOutcome::AlreadyRegistered { .. }
+                | bootstrap::AddSourceOutcome::AlreadyIncluded { .. },
+            ) => {
+                app.update(Message::FolderPickerCancelled);
+                app.update(notice_retry::search_folder_failed());
+                return iced::Task::none();
+            }
+            Err(e) => {
+                tracing::error!("add source from search failed: {e}");
+                app.update(Message::FolderPickerCancelled);
+                app.update(notice_retry::search_folder_failed());
+                return iced::Task::none();
+            }
+        }
+    };
 
     let source_id = orbok_core::SourceId::from_string(card.source_id.clone());
 
@@ -139,7 +140,7 @@ fn ask_about_private_folder(
     path: &str,
     origin: orbok_ui::state::FolderAddOrigin,
 ) -> bool {
-    if !bootstrap::needs_private_folder_question(&deps.catalog, path) {
+    if !bootstrap::needs_private_folder_question(&deps.catalog, deps.runtime.home_dir(), path) {
         return false;
     }
     app.update(Message::AskAddSensitiveFolder(
@@ -167,7 +168,7 @@ fn add_folder_from_path(app: &mut OrbokApp, deps: &AppDeps, path: &str, confirme
     {
         return;
     }
-    match bootstrap::add_source(&deps.catalog, path) {
+    match bootstrap::add_source(&deps.catalog, deps.runtime.home_dir(), path) {
         Ok(bootstrap::AddSourceOutcome::AlreadyRegistered { card }) => {
             tracing::info!(folder = %card.display_name, already_added = true);
             app.update(Message::ShowNotice(

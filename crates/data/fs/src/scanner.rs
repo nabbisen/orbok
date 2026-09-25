@@ -127,8 +127,8 @@ impl<'a> Scanner<'a> {
                     continue;
                 };
                 if skip_component(&policy, &source, &name, &entry) {
-                    if file_type.is_dir() {
-                        self.erase_skipped(&source, &path, &mut summary);
+                    if file_type.is_dir() || file_type.is_file() {
+                        self.erase_left_out(&source, &path, &mut summary);
                     }
                     continue;
                 }
@@ -143,7 +143,7 @@ impl<'a> Scanner<'a> {
                     // Task 120: a folder a tool generated has nothing prepared,
                     // and anything an earlier scan prepared there is erased.
                     if is_generated_folder(&path) {
-                        self.erase_skipped(&source, &path, &mut summary);
+                        self.erase_left_out(&source, &path, &mut summary);
                         continue;
                     }
                     // Task 114: "this folder only" reads the folder's direct
@@ -196,26 +196,23 @@ impl<'a> Scanner<'a> {
         Ok(summary)
     }
 
-    /// Task 120: a folder this scan skips holds nothing prepared. Rows an
-    /// earlier scan wrote under it (before it was skipped: `AppData`, a Cargo
-    /// `target`) are erased -- with their chunks and keyword-index rows, as a
-    /// narrowed folder's files are -- and not marked missing: the files are
-    /// still on the disk, orbok just does not look at them. Failing to erase
-    /// affects this folder only and is counted like any per-entry failure.
-    fn erase_skipped(&self, source: &SourceRecord, dir: &Path, summary: &mut ScanSummary) {
-        // "This folder only" never descends, so it holds nothing below.
-        if !source.covers_subfolders {
-            return;
-        }
+    /// Task 120: what the policy leaves out of a folder has nothing prepared --
+    /// a folder or a file, one rule. Rows an earlier scan wrote for it (before
+    /// it was skipped: `AppData`, a Cargo `target`, a file that became hidden)
+    /// are erased -- with their chunks and keyword-index rows, as a narrowed
+    /// folder's files are -- and not marked missing: it is still on the disk,
+    /// orbok just does not look at it. Failing to erase affects this entry only
+    /// and is counted like any per-entry failure.
+    fn erase_left_out(&self, source: &SourceRecord, path: &Path, summary: &mut ScanSummary) {
         match SourceRepository::new(self.catalog)
-            .erase_files_under(&source.source_id, &dir.to_string_lossy())
+            .erase_files_at(&source.source_id, &path.to_string_lossy())
         {
             Ok(paths) => {
                 summary.erased_files += paths.len() as u64;
                 summary.erased_paths.extend(paths);
             }
             Err(error) => {
-                tracing::warn!(%error, "could not erase what a skipped folder held");
+                tracing::warn!(%error, "could not erase what the policy leaves out");
                 summary.failed_files += 1;
             }
         }
@@ -240,6 +237,7 @@ impl<'a> Scanner<'a> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         if !policy.file_included(&file_name) {
+            self.erase_left_out(source, path, summary);
             return Ok(());
         }
 
@@ -253,7 +251,10 @@ impl<'a> Scanner<'a> {
             Err(e) => return Err(e.into()),
         };
         if !policy.size_allowed(metadata.len()) {
-            return Ok(()); // over limit: skipped, not cataloged (RFC-004 §10)
+            // Over limit: skipped, not cataloged (RFC-004 §10); and anything
+            // prepared while it was under the limit is erased, not missing.
+            self.erase_left_out(source, path, summary);
+            return Ok(());
         }
 
         let supported = classify_file_type(path) == FileTypeClass::Supported;

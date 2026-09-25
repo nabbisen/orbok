@@ -4,7 +4,7 @@
 **Format:** RFC-063 §6.1/§6.2 option B.
 **Implemented by:** the original source and path-guard work (v0.1.0), Task 105
 (only a folder can be added; the typed path), Task 109 (Amendment 1, §10a),
-Task 110 (§10.2: the question before saving). None of Tasks 105, 109 or 110 is
+Task 110 (§10.2: the question before saving), Task 120 (Amendment 2, §10b: what orbok skips). None of Tasks 105, 109 or 110 is
 git-tracked (RFC-063 §5): they are `.git-exclude/tasks/dev-team/…`, and the
 review requests are `.git-exclude/review-request/283`, `287`, `288`.
 **Transcribed, not re-derived**, from what was run on 2026-09-24. §13's list
@@ -62,6 +62,11 @@ to change it (§10a). **Limit, observed in Task 110 §4:** a *source root that i
 itself a listed directory* (`~/.ssh`) is not protected by this rule for its
 non-hidden children (`notes.md` was `discovered`; the extension-less `id_rsa`
 was `unsupported`, so its contents are never read).
+
+**Amendment 2 (Task 120, 2026-09-26):** the evidence for this criterion now also
+includes `crates/data/fs/src/tests/task120_what_orbok_skips.rs` (what is hidden
+means what the platform means, and a skipped file or folder is erased, not marked
+missing).
 
 ### 6. Symlinks are ignored by default.
 

@@ -43,11 +43,14 @@ const SYSTEM_PREFIXES: &[&str] = &[
 
 /// Returns a warning reason when `path` looks like a sensitive location.
 /// `None` means no warning is needed.
-pub fn sensitive_warning(path: &Path) -> Option<&'static str> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+///
+/// `home` is the user's home directory, from the runtime context (Task 120
+/// review: resolved once, never read from the environment here). `None` means
+/// the platform has none, and nothing is judged relative to a home.
+pub fn sensitive_warning(path: &Path, home: Option<&Path>) -> Option<&'static str> {
     if in_home_application_data(
         &path.to_string_lossy(),
-        home.as_deref().map(|h| h.to_string_lossy()).as_deref(),
+        home.map(|h| h.to_string_lossy()).as_deref(),
         HOME_APPLICATION_DATA,
     ) {
         return Some("application_data_directory");

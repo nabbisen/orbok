@@ -41,7 +41,7 @@ fn tree() -> Tree {
 }
 
 fn add(t: &Tree, rel: &str) -> AddSourceOutcome {
-    bootstrap::add_source(&t.catalog, &native(&t.root, rel).to_string_lossy()).unwrap()
+    bootstrap::add_source(&t.catalog, None, &native(&t.root, rel).to_string_lossy()).unwrap()
 }
 
 fn added(outcome: AddSourceOutcome) -> orbok_ui::state::SourceCard {
@@ -169,12 +169,16 @@ fn a_subfolder_of_a_this_folder_only_folder_is_added() {
     assert_eq!(SourceRepository::new(&t.catalog).count().unwrap(), 2);
     // ... and nothing covers it for a search either.
     assert!(
-        bootstrap::covering_source(&t.catalog, &native(&t.root, "f/sub/deep").to_string_lossy())
-            .is_some(),
+        bootstrap::covering_source(
+            &t.catalog,
+            None,
+            &native(&t.root, "f/sub/deep").to_string_lossy()
+        )
+        .is_some(),
         "`f/sub` covers `f/sub/deep` (it covers its subfolders)"
     );
     assert!(
-        bootstrap::covering_source(&t.catalog, &native(&t.root, "f").to_string_lossy())
+        bootstrap::covering_source(&t.catalog, None, &native(&t.root, "f").to_string_lossy())
             .is_some_and(|c| c.limit_path.is_none()),
         "`f` itself is `f`"
     );
@@ -196,8 +200,12 @@ fn a_subfolder_of_a_this_folder_only_folder_is_not_covered_for_search() {
     let f = added(add(&t, "f"));
     set_only(&t, &f);
     assert!(
-        bootstrap::covering_source(&t.catalog, &native(&t.root, "f/sub").to_string_lossy())
-            .is_none()
+        bootstrap::covering_source(
+            &t.catalog,
+            None,
+            &native(&t.root, "f/sub").to_string_lossy()
+        )
+        .is_none()
     );
 }
 

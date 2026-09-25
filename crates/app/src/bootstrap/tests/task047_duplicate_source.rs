@@ -23,7 +23,7 @@ fn adding_an_already_registered_folder_inserts_nothing_and_returns_the_existing_
     std::fs::create_dir(&folder).unwrap();
     let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
 
-    let first = added(bootstrap::add_source(&catalog, &folder.to_string_lossy()).unwrap());
+    let first = added(bootstrap::add_source(&catalog, None, &folder.to_string_lossy()).unwrap());
 
     // The same folder, written three ways; canonicalisation must make them equal.
     let spellings = [
@@ -32,7 +32,7 @@ fn adding_an_already_registered_folder_inserts_nothing_and_returns_the_existing_
         folder.join(".").to_string_lossy().to_string(),
     ];
     for spelling in &spellings {
-        let outcome = bootstrap::add_source(&catalog, spelling).unwrap();
+        let outcome = bootstrap::add_source(&catalog, None, spelling).unwrap();
         assert_eq!(
             SourceRepository::new(&catalog).list().unwrap().len(),
             1,
@@ -61,9 +61,9 @@ fn search_in_folder_lookup_reuses_the_registered_source() {
     std::fs::create_dir(&folder).unwrap();
     let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
 
-    let first = added(bootstrap::add_source(&catalog, &folder.to_string_lossy()).unwrap());
+    let first = added(bootstrap::add_source(&catalog, None, &folder.to_string_lossy()).unwrap());
 
-    let found = bootstrap::covering_source(&catalog, &first.display_path)
+    let found = bootstrap::covering_source(&catalog, None, &first.display_path)
         .expect("the registered folder must be found by its canonical path");
     assert_eq!(found.card.source_id, first.source_id);
     assert_eq!(
@@ -73,7 +73,7 @@ fn search_in_folder_lookup_reuses_the_registered_source() {
 
     let elsewhere = dir.path().join("elsewhere");
     assert!(
-        bootstrap::covering_source(&catalog, &elsewhere.to_string_lossy()).is_none(),
+        bootstrap::covering_source(&catalog, None, &elsewhere.to_string_lossy()).is_none(),
         "an unregistered path must not match"
     );
 }

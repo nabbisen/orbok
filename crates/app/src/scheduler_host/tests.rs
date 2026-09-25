@@ -113,6 +113,7 @@ fn test_context(data_dir: &Path) -> RuntimeContext {
         PlatformRuntimePaths {
             standard_data_dir: Some(data_dir),
             standard_settings_dir: Some(data_dir),
+            home_dir: None,
         },
     )
     .unwrap()
@@ -3351,7 +3352,7 @@ async fn a_folder_added_above_a_prepared_one_keeps_what_was_prepared() {
     let before = chunk_ids(&catalog);
     assert!(before.len() >= 2, "b's files have chunks");
 
-    let outcome = bootstrap::add_source(&catalog, &docs.join("a").to_string_lossy()).unwrap();
+    let outcome = bootstrap::add_source(&catalog, None, &docs.join("a").to_string_lossy()).unwrap();
     let bootstrap::AddSourceOutcome::Added {
         card: a, combined, ..
     } = outcome

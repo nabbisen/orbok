@@ -14,7 +14,7 @@ fn removing_a_folder_never_deletes_its_files() {
     std::fs::write(&file, "# keep\n").unwrap();
     let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
     let AddSourceOutcome::Added { card, .. } =
-        bootstrap::add_source(&catalog, &folder.to_string_lossy()).unwrap()
+        bootstrap::add_source(&catalog, None, &folder.to_string_lossy()).unwrap()
     else {
         panic!("expected a new folder");
     };

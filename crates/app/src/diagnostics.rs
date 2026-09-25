@@ -95,7 +95,14 @@ impl DiagnosticsSectionKind {
 /// - search text markers → `<redacted search text>`
 /// - URL query tokens → `<redacted query>`
 /// - home-directory prefix → `<home>/...`
-pub fn redact_text(input: &str, policy: &DiagnosticsPolicy) -> String {
+///
+/// `home` is the user's home directory from the runtime context (Task 120
+/// review: one home, resolved once); with `None` no home prefix is redacted here.
+pub fn redact_text(
+    input: &str,
+    policy: &DiagnosticsPolicy,
+    home: Option<&std::path::Path>,
+) -> String {
     if policy.include_raw_paths {
         return input.to_string();
     }
@@ -103,9 +110,11 @@ pub fn redact_text(input: &str, policy: &DiagnosticsPolicy) -> String {
     let mut out = input.to_string();
 
     // Redact home directory paths (Unix and Windows).
-    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+    if let Some(home) = home {
         let home_str = home.to_string_lossy();
-        out = out.replace(home_str.as_ref(), "<home>");
+        if !home_str.is_empty() {
+            out = out.replace(home_str.as_ref(), "<home>");
+        }
     }
 
     // Redact absolute paths: /some/path/file.ext → <folder>/file.ext
