@@ -3160,7 +3160,7 @@ fn the_window_closing_ends_the_loop_after_the_running_job() {
     drop(rx);
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = handle.join();
+        let _ = handle.expect("the thread started").join();
         let _ = done_tx.send(());
     });
     assert!(
@@ -3840,4 +3840,36 @@ async fn narrowing_while_subfolder_files_are_queued_cancels_their_jobs() {
          fails as `model_missing`: no model is configured)"
     );
     assert_eq!(found_paths(&catalog, "orbokfound", None), ["x.md"]);
+}
+
+/// Task 111 follow-up (Review 289 §3): the OS refusing a thread must not take
+/// the window down. With the spawner refusing, the stream yields the one
+/// `IndexingCouldNotStart` notice and ends, and no loop was ever built.
+#[test]
+fn a_refused_thread_becomes_a_notice_not_a_panic() {
+    use futures::StreamExt;
+    let built = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let built_in_make = built.clone();
+    let (rx, handle) = super::spawn_loop_thread_with(
+        move |_output| {
+            built_in_make.store(true, std::sync::atomic::Ordering::SeqCst);
+            async {}
+        },
+        |_body| Err(std::io::Error::other("resource limit")),
+    );
+    assert!(handle.is_none(), "there is no thread to join");
+    let messages: Vec<orbok_ui::state::Message> = futures::executor::block_on(rx.collect());
+    assert!(
+        matches!(
+            messages.as_slice(),
+            [orbok_ui::state::Message::ShowNotice(
+                orbok_ui::notice::UserNotice::IndexingCouldNotStart
+            )]
+        ),
+        "one notice, then the stream ends: {messages:?}"
+    );
+    assert!(
+        !built.load(std::sync::atomic::Ordering::SeqCst),
+        "no loop was built"
+    );
 }

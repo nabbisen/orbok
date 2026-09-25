@@ -1036,31 +1036,63 @@ fn run_stream(data: &SchedulerSubscriptionData) -> impl futures::Stream<Item = M
 /// The thread is detached: when the process exits it goes with it, and
 /// `run_loop`'s `stop_when_closed` ends the loop after the job it is in when
 /// the window's end of the channel is dropped.
-pub(crate) fn spawn_loop_thread<F, Fut>(make: F) -> (Receiver<Message>, std::thread::JoinHandle<()>)
+pub(crate) fn spawn_loop_thread<F, Fut>(
+    make: F,
+) -> (Receiver<Message>, Option<std::thread::JoinHandle<()>>)
+where
+    F: FnOnce(Sender<Message>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()>,
+{
+    spawn_loop_thread_with(make, |body| {
+        std::thread::Builder::new()
+            .name("orbok-scheduler".into())
+            .spawn(body)
+    })
+}
+
+/// What a thread runs.
+type ThreadBody = Box<dyn FnOnce() + Send>;
+
+/// [`spawn_loop_thread`] with the thread spawner passed in, so a test can make
+/// the OS refuse one (a resource limit). A refused spawn is **not** a panic
+/// (Task 111 follow-up): the stream yields the same `IndexingCouldNotStart`
+/// notice a failed runtime build does, then ends, and no loop runs -- the window
+/// stays up, without background preparation, and says so.
+fn spawn_loop_thread_with<F, Fut>(
+    make: F,
+    spawn: impl FnOnce(ThreadBody) -> std::io::Result<std::thread::JoinHandle<()>>,
+) -> (Receiver<Message>, Option<std::thread::JoinHandle<()>>)
 where
     F: FnOnce(Sender<Message>) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ()>,
 {
     let (mut tx, rx) = futures::channel::mpsc::channel(64);
-    let handle = std::thread::Builder::new()
-        .name("orbok-scheduler".into())
-        .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .thread_name("orbok-scheduler-worker")
-                .enable_all()
-                .build();
-            match runtime {
-                Ok(runtime) => runtime.block_on(make(tx)),
-                Err(error) => {
-                    tracing::error!(%error, "background preparation could not start: no runtime");
-                    let _ = tx.try_send(Message::ShowNotice(
-                        orbok_ui::notice::UserNotice::IndexingCouldNotStart,
-                    ));
-                }
+    // The thread's own sender is moved into it; this one reports a spawn that
+    // never happened.
+    let mut for_a_failed_spawn = tx.clone();
+    let body: ThreadBody = Box::new(move || {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("orbok-scheduler-worker")
+            .enable_all()
+            .build();
+        match runtime {
+            Ok(runtime) => runtime.block_on(make(tx)),
+            Err(error) => {
+                tracing::error!(%error, "background preparation could not start: no runtime");
+                let _ = tx.try_send(Message::ShowNotice(
+                    orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+                ));
             }
-        })
-        .expect("the scheduler thread can be spawned");
+        }
+    });
+    let handle = spawn(body).ok();
+    if handle.is_none() {
+        tracing::error!("background preparation could not start: no thread");
+        let _ = for_a_failed_spawn.try_send(Message::ShowNotice(
+            orbok_ui::notice::UserNotice::IndexingCouldNotStart,
+        ));
+    }
     (rx, handle)
 }
 
