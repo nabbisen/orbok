@@ -347,7 +347,7 @@ impl<'a> Scanner<'a> {
     ) -> OrbokResult<()> {
         let canonical = path.to_string_lossy().into_owned();
         match files.get_by_path(&source.source_id, &canonical)? {
-            Some(record) => files.set_status(&record.file_id, status),
+            Some(record) => files.set_status_seen(&record.file_id, status),
             None => {
                 let new_file = NewFile {
                     source_id: source.source_id.clone(),

@@ -368,3 +368,4 @@ fn catalog_persists_to_file() {
     assert_eq!(SourceRepository::new(&catalog).list().unwrap().len(), 1);
 }
 mod task116_fixed_width_timestamps_migration;
+mod task116_seen_means_the_scanner_saw_it;

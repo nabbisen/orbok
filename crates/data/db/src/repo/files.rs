@@ -280,8 +280,25 @@ impl<'a> FileRepository<'a> {
         Ok(())
     }
 
-    /// Set status only (e.g. permission_denied observed mid-scan).
+    /// Set status only. A plain status write: it does **not** say the scanner
+    /// saw the file (Task 116 follow-up), so the chunk worker's
+    /// `no_text_found` write during a scan cannot save a file the scan never
+    /// saw from being marked missing.
     pub fn set_status(&self, id: &FileId, status: FileStatus) -> OrbokResult<()> {
+        let conn = self.catalog.lock();
+        conn.execute(
+            "UPDATE files SET file_status = ?2, updated_at = ?3 WHERE file_id = ?1",
+            params![id.as_str(), status.as_str(), now_iso8601()],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// The scanner saw this file and could only record a status for it (it is
+    /// `permission_denied`, say): the status write **and** the scan's number.
+    /// Only the scanner's status-only path calls this; "seen" means the scanner
+    /// saw it and nothing else.
+    pub fn set_status_seen(&self, id: &FileId, status: FileStatus) -> OrbokResult<()> {
         let conn = self.catalog.lock();
         conn.execute(
             "UPDATE files SET file_status = ?2, updated_at = ?3, \

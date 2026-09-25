@@ -20,9 +20,10 @@ thread_local! {
     static CLOCK: RefCell<Option<Clock>> = const { RefCell::new(None) };
 }
 
-/// Run `f` with [`now_iso8601`] reading `clock` on this thread. A seam for
-/// tests that need to say exactly which instants a scan sees (Task 116 §2.2);
-/// nothing in the product calls it.
+/// **Tests only.** Run `f` with [`now_iso8601`] reading `clock` on this thread,
+/// so a test can say exactly which instants a scan sees (Task 116 §2.2).
+/// Nothing in the product calls it.
+#[doc(hidden)]
 pub fn with_clock<R>(clock: impl FnMut() -> SystemTime + 'static, f: impl FnOnce() -> R) -> R {
     let previous = CLOCK.with(|c| c.borrow_mut().replace(Box::new(clock)));
     struct Restore(Option<Clock>);
