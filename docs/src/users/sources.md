@@ -7,7 +7,8 @@ into the box beside it and press Enter. orbok only searches folders you add;
 it never scans your whole computer automatically.
 
 When a folder may contain private files (for example `.ssh`, `.gnupg` or
-`.aws`), orbok asks first: "Add a folder that may contain private files?".
+`.aws`, or your `AppData` folder on Windows or `Library` folder on macOS),
+orbok asks first: "Add a folder that may contain private files?".
 Nothing is saved or prepared until you choose **Add anyway**; **Cancel** (or
 Escape) adds nothing. You can remove a folder at any time with **Remove from
 orbok** in **Folders**.
@@ -45,8 +46,32 @@ those under the folder you chose.
 
 ## What orbok skips
 
-Hidden files and folders (names starting with `.`) are not prepared, and
-symbolic links are not followed. This is fixed; there is no setting for it.
+orbok does not prepare what is inside a folder in these cases:
+
+- **Files and folders your system hides.** A name that starts with a dot
+  (such as `.git`) is hidden everywhere. On Windows, orbok also skips what
+  Windows marks **Hidden** or **System**, which includes `AppData`. On macOS
+  it skips what macOS marks hidden, which includes `Library`. The folder you
+  add is never skipped for being hidden: you chose it.
+- **Folders that programming tools create for themselves.** A folder is
+  skipped when any of these is true:
+  - it holds a `CACHEDIR.TAG` file that starts with the standard signature
+    line (Cargo and other tools write one);
+  - it is named `node_modules` or `__pycache__`;
+  - it is named `target` next to a `Cargo.toml` or `pom.xml` file, or
+    `dist` or `build` next to a `package.json` file.
+
+  A folder of yours that happens to be called `target`, `build` or `dist`,
+  with none of those files beside it, is prepared like any other.
+- **Symbolic links** are not followed.
+
+If a folder you added before now falls under one of these, orbok removes
+what it had prepared from it the next time it checks the folder. Your files
+are never changed or deleted.
+
+This is fixed; there is no setting for it. To leave part of a folder out,
+add the folder as **This folder only** and then add the subfolders you want
+(see **What a folder covers**, above).
 
 ## What you see while a folder is prepared
 

@@ -593,7 +593,7 @@ pub(crate) async fn run_loop(
 
         let file_id = job.file_id.clone();
         let result = match (job.kind, &file_id) {
-            (JobKind::ScanSource, _) => run_scan(&catalog, job.source_id.clone()),
+            (JobKind::ScanSource, _) => run_scan(&catalog, &cache, job.source_id.clone()),
             (JobKind::ExtractFile, Some(file_id)) => {
                 let extracted = extract.run(file_id);
                 #[cfg(test)]
@@ -727,17 +727,25 @@ fn backfill_embeddings(catalog: &Catalog, model_id: &orbok_core::ModelId) {
 /// tests and carried through unchanged here). A fresh, unshared cancel
 /// token: cancelling a scan mid-flight is RFC-036 §12.3/§18.6, Slice 3's
 /// scope, not wired here.
-fn run_scan(catalog: &Catalog, source_id: SourceId) -> OrbokResult<()> {
-    Scanner::new(catalog)
-        .scan(
-            &ScanRequest {
-                source_id,
-                force_hash: false,
-                enqueue_index_jobs: true,
-            },
-            &AtomicBool::new(false),
-        )
-        .map(|_summary| ())
+fn run_scan(catalog: &Catalog, cache: &ProfileCache, source_id: SourceId) -> OrbokResult<()> {
+    let summary = Scanner::new(catalog).scan(
+        &ScanRequest {
+            source_id,
+            force_hash: false,
+            enqueue_index_jobs: true,
+        },
+        &AtomicBool::new(false),
+    )?;
+    // Task 120: files erased because their folder is skipped (hidden, or a
+    // tool's output) leave the extraction cache too, which is outside the
+    // catalog. The cache is derived data: failing to evict costs a stale entry
+    // that its own maintenance removes, not the scan.
+    if !summary.erased_paths.is_empty()
+        && let Err(error) = cache.evict_extracted(catalog, &summary.erased_paths)
+    {
+        tracing::warn!(%error, "could not evict the extraction cache entries of skipped folders");
+    }
+    Ok(())
 }
 
 async fn report_health(catalog: &Catalog, output: &mut Sender<Message>) {

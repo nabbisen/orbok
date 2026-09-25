@@ -3669,6 +3669,68 @@ async fn narrowing_erases_everything_prepared_below_the_top_level() {
     assert_eq!(count_where(&catalog, "SELECT COUNT(*) FROM files"), 1);
 }
 
+// ── Task 120: what orbok skips is precise ───────────────────────────────
+
+/// §2.5: a profile from before Task 120 holds prepared files under a folder
+/// that is now skipped. The rescan erases their rows and their extraction-cache
+/// entries; it neither marks them missing nor leaves search able to find them.
+#[tokio::test]
+async fn a_folder_that_becomes_skipped_is_erased_from_the_cache_too() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let docs = temp.path().canonicalize().unwrap().join("docs");
+    for rel in ["f/x.md", "f/target/built.md"] {
+        write_doc(&docs, rel);
+    }
+    let (f, _) =
+        bootstrap::add_source_expect_added(&catalog, &native_path(&docs, "f").to_string_lossy())
+            .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &f.source_id).unwrap();
+    let model_id = register_mock_model(&catalog, "mock");
+    run_host_until(&context, &model_id, "both files prepared", || {
+        indexed_count(&catalog) == 2 && nothing_unfinished(&catalog)
+    })
+    .await;
+    let built = native_path(&docs, "f/target/built.md");
+    assert_eq!(cached_extractions(&context, &catalog, &built), 1);
+
+    // The folder becomes a tool's output, and the folder is scanned again.
+    std::fs::write(
+        native_path(&docs, "f/target").join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )
+    .unwrap();
+    bootstrap::scan_and_index_source(&catalog, &f.source_id).unwrap();
+    run_host_until(&context, &model_id, "the skipped folder erased", || {
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM files WHERE canonical_path LIKE '%built.md'",
+        ) == 0
+            && nothing_unfinished(&catalog)
+    })
+    .await;
+
+    assert_eq!(
+        cached_extractions(&context, &catalog, &built),
+        0,
+        "the cache entry left with the row"
+    );
+    assert_eq!(
+        count_where(
+            &catalog,
+            "SELECT COUNT(*) FROM files WHERE file_status IN ('missing','deleted')"
+        ),
+        0,
+        "erased, not File not found"
+    );
+    let counts = orbok_db::repo::ChunkRepository::new(&catalog)
+        .keyword_index_counts()
+        .unwrap();
+    assert_eq!(counts.violation(), None, "the erasure invariant holds");
+    assert_eq!(found_paths(&catalog, "orbokfound", None), ["x.md"]);
+}
+
 /// §2.4: narrow while the subfolders' files are being prepared -- the scan is
 /// running and jobs are queued. Whatever the interleaving, afterwards no file
 /// below the top level has a row or a job, and the host drains with only the

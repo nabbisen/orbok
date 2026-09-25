@@ -7,7 +7,9 @@
 //! file is committed individually.
 
 use crate::hashing::sha256_file;
-use crate::policy::{CompiledPolicy, FileTypeClass, classify_file_type};
+use crate::policy::{
+    CompiledPolicy, FileTypeClass, classify_file_type, is_generated_folder, platform_hidden,
+};
 use orbok_core::{FileStatus, JobType, OrbokResult, SourceId, system_time_iso8601};
 use orbok_db::Catalog;
 use orbok_db::repo::{
@@ -51,6 +53,12 @@ pub struct ScanSummary {
     pub permission_denied_files: u64,
     pub failed_files: u64,
     pub queued_index_jobs: u64,
+    /// Task 120: files erased because the folder they were in is now skipped.
+    /// They are out of the folder, not missing.
+    pub erased_files: u64,
+    /// The erased files' paths, for the caller to evict from the extraction
+    /// cache, which is outside the catalog.
+    pub erased_paths: Vec<String>,
     pub duration_ms: u64,
     pub canceled: bool,
 }
@@ -114,13 +122,16 @@ impl<'a> Scanner<'a> {
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().into_owned();
 
-                if skip_component(&policy, &source, &name) {
-                    continue;
-                }
                 let Ok(file_type) = entry.file_type() else {
                     summary.failed_files += 1;
                     continue;
                 };
+                if skip_component(&policy, &source, &name, &entry) {
+                    if file_type.is_dir() {
+                        self.erase_skipped(&source, &path, &mut summary);
+                    }
+                    continue;
+                }
                 if file_type.is_symlink() {
                     // RFC-003 §6.2: v1 default Ignore; FollowWithinSource
                     // resolves and verifies containment.
@@ -129,6 +140,12 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 if path.is_dir() {
+                    // Task 120: a folder a tool generated has nothing prepared,
+                    // and anything an earlier scan prepared there is erased.
+                    if is_generated_folder(&path) {
+                        self.erase_skipped(&source, &path, &mut summary);
+                        continue;
+                    }
                     // Task 114: "this folder only" reads the folder's direct
                     // entries and does not descend.
                     if source.covers_subfolders {
@@ -177,6 +194,31 @@ impl<'a> Scanner<'a> {
             "scan finished"
         );
         Ok(summary)
+    }
+
+    /// Task 120: a folder this scan skips holds nothing prepared. Rows an
+    /// earlier scan wrote under it (before it was skipped: `AppData`, a Cargo
+    /// `target`) are erased -- with their chunks and keyword-index rows, as a
+    /// narrowed folder's files are -- and not marked missing: the files are
+    /// still on the disk, orbok just does not look at them. Failing to erase
+    /// affects this folder only and is counted like any per-entry failure.
+    fn erase_skipped(&self, source: &SourceRecord, dir: &Path, summary: &mut ScanSummary) {
+        // "This folder only" never descends, so it holds nothing below.
+        if !source.covers_subfolders {
+            return;
+        }
+        match SourceRepository::new(self.catalog)
+            .erase_files_under(&source.source_id, &dir.to_string_lossy())
+        {
+            Ok(paths) => {
+                summary.erased_files += paths.len() as u64;
+                summary.erased_paths.extend(paths);
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not erase what a skipped folder held");
+                summary.failed_files += 1;
+            }
+        }
     }
 
     /// Catalog one regular file. Failure here affects this file only
@@ -374,16 +416,22 @@ fn is_below_top_level(source: &SourceRecord, path: &Path) -> bool {
 }
 
 /// Hidden/excluded component skipping for directory descent and files.
-fn skip_component(policy: &CompiledPolicy, source: &SourceRecord, name: &str) -> bool {
+///
+/// Task 120: "hidden" is what the platform means -- a name starting with `.`
+/// everywhere, and on Windows the Hidden or System attribute, on macOS the
+/// `UF_HIDDEN` flag. The folder the user added is never asked (it is not an
+/// entry of itself); this rule applies to what is inside it.
+fn skip_component(
+    policy: &CompiledPolicy,
+    source: &SourceRecord,
+    name: &str,
+    entry: &std::fs::DirEntry,
+) -> bool {
     if policy.component_excluded(name) {
         return true;
     }
-    if CompiledPolicy::component_hidden(name)
-        && source.hidden_file_policy == orbok_core::HiddenFilePolicy::Exclude
-    {
-        return true;
-    }
-    false
+    source.hidden_file_policy == orbok_core::HiddenFilePolicy::Exclude
+        && (CompiledPolicy::component_hidden(name) || platform_hidden(entry))
 }
 
 /// Symlink admission per policy (RFC-003 §12.2): resolved target must

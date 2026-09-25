@@ -345,6 +345,52 @@ impl<'a> SourceRepository<'a> {
         Ok(paths)
     }
 
+    /// Task 120: everything orbok holds for the files of folder `id` that lie
+    /// under `dir` is erased, in one transaction -- the same erasure as
+    /// [`Self::narrow_to_top_level`], at folder granularity. A scan that skips
+    /// `dir` (hidden, or a tool's generated folder) calls this so files an
+    /// earlier scan prepared there are out of the folder, not missing.
+    ///
+    /// Returns the erased files' canonical paths, for the caller to evict from
+    /// the extraction cache, which is outside this database.
+    pub fn erase_files_under(&self, id: &SourceId, dir: &str) -> OrbokResult<Vec<String>> {
+        // Every path below `dir` starts with `dir` and a separator; the range
+        // ends at the next character, so the unique (source, path) index serves it.
+        let prefix = format!("{dir}{}", std::path::MAIN_SEPARATOR);
+        let upper = {
+            let mut end = prefix.clone();
+            let last = end.pop().unwrap_or('\0');
+            end.push(char::from_u32(last as u32 + 1).unwrap_or(last));
+            end
+        };
+        let within = "f.canonical_path >= ?2 AND f.canonical_path < ?3";
+        let mut conn = self.catalog.lock();
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(db_err)?;
+        let paths: Vec<String> = {
+            let mut stmt = tx
+                .prepare(&format!(
+                    "SELECT f.canonical_path FROM files f WHERE f.source_id = ?1 AND {within}"
+                ))
+                .map_err(db_err)?;
+            stmt.query_map(params![id.as_str(), prefix, upper], |r| r.get(0))
+                .map_err(db_err)?
+                .collect::<Result<_, _>>()
+                .map_err(db_err)?
+        };
+        if !paths.is_empty() {
+            erase_files(
+                &tx,
+                "f.source_id = ?1",
+                within,
+                params![id.as_str(), prefix, upper],
+            )?;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(paths)
+    }
+
     /// Fetch one source by id.
     pub fn get(&self, id: &SourceId) -> OrbokResult<Option<SourceRecord>> {
         let conn = self.catalog.lock();
