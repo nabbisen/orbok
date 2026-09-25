@@ -979,6 +979,10 @@ pub enum Message {
     NarrowFolderRequested(String), // source_id
     /// Task 114: the catalog now holds this folder as "this folder only".
     FolderNarrowed(String), // source_id
+    /// Task 118: the option of a choice that is already chosen was pressed.
+    /// Changes nothing; it is a message so the chosen option is an enabled
+    /// control, never one drawn disabled.
+    AlreadyChosen,
     /// Task 114: the card's button for a "this folder only" folder. Asks
     /// nothing: it adds nothing the user did not ask for (RFC-064 §3.2).
     WidenFolder(String), // source_id
@@ -1163,6 +1167,7 @@ impl AppState {
             Message::ConfirmNarrowFolder => {} // handled by orbok: take_confirmed_narrowing
             Message::NarrowFolderRequested(_) => {} // handled by orbok
             Message::WidenFolder(_) => {}      // handled by orbok
+            Message::AlreadyChosen => {}
             Message::FolderNarrowed(id) => self.apply_folder_narrowed(id),
             Message::ConfirmRemoveSource => {} // handled by orbok: take_confirmed_removal
             Message::CancelResetCatalog => {

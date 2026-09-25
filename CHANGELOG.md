@@ -95,6 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every setting shows what it is set to** (Task 118): a choice (language,
+  theme, text size, search mode, a folder's coverage, a search's scope) marks
+  the chosen option with a check mark and never draws it disabled, and each
+  on/off setting is a switch instead of an "On"/"Off" button.
+
 - **The model download screen uses plain words** (Task 115): "Version" where it
   said "Immutable revision", and "Vocabulary" where it said "Tokenizer".
 

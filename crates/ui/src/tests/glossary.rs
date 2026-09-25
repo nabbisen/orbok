@@ -762,8 +762,6 @@ fn every_glossary_doc_exemption_is_load_bearing() {
 // present and absent) are each sampled: one formatter can hold several
 // sentences.
 
-use crate::state::SearchFolderScope;
-
 type Sampler = fn(Locale) -> Vec<String>;
 
 /// One `FORMATTERS` entry: the function's name and its sampler, written once.
@@ -805,9 +803,6 @@ const FORMATTERS: &[(&str, Sampler)] = &[
     sampled!(fmt_folders_combined_body: (&["notes"], "Docs"), (&["notes", "drafts"], "Docs"), (&["a", "b", "c"], "Docs")),
     sampled!(fmt_narrow_folder_counted: (1), (3)),
     sampled!(fmt_query: ("notes")),
-    sampled!(search_location_chip:
-        ("Docs", SearchFolderScope::FolderAndSubfolders),
-        ("Docs", SearchFolderScope::FolderOnly)),
 ];
 
 /// The other `pub fn`s in `i18n.rs`, each accounted for by *not* being a

@@ -52,9 +52,9 @@ fn settings_view_has_advanced_toggle() {
     let state = AppState::default();
     let mut ui = simulator(views::settings_view(&state));
     assert!(
-        ui.find(tr(state.locale, MessageKey::SettingsToggleOff))
+        ui.find(crate::components::switch_id("advanced-view"))
             .is_ok(),
-        "settings must show the advanced-view toggle"
+        "settings must show the advanced-view switch"
     );
 }
 

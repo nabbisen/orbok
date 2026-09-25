@@ -28,7 +28,7 @@ use crate::i18n::{Locale, MessageKey, tr};
 use crate::state::Message;
 use crate::theme;
 use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Border, Element, Padding, Shadow};
+use iced::{Alignment, Background, Border, Color, Element, Padding, Shadow};
 use orbok_search::MatchBadge;
 use snora::design::style::button as btn_style;
 use snora::design::style::color::to_iced_color;
@@ -64,6 +64,146 @@ macro_rules! hrow {
     };
 }
 pub(crate) use hrow;
+
+// ── How a setting is shown (Task 118) ────────────────────────────────────
+//
+// **Two standards, and only two.** A user is never left to work out what is
+// set:
+//
+// 1. **A choice** (one of several: language, theme, text size, search mode,
+//    folder coverage, search scope) is [`choice`]. Every option is a visible,
+//    pressable button. The **chosen** one is filled and carries a check icon, so
+//    the state never rests on colour alone (RFC-035); the others are outlined;
+//    pressing the chosen one does nothing (`Message::AlreadyChosen`) and it never
+//    looks disabled. The disabled look is used for one thing only: an option that
+//    is not available (search by meaning without a model), and the reason stays
+//    beside it. A choice wraps as whole options (Task 106).
+// 2. **An on/off setting** is [`switch`]: iced's `toggler` with its label part of
+//    the same widget, so a wrap never separates the label from the switch. The
+//    position of the switch is the state; there is no "On"/"Off" button.
+//
+// No other way of showing a setting is used: not a button that is disabled when
+// it is current, not a button labelled with the *other* value, not a
+// check-marked button standing in for a switch. `check-design-tokens.sh` catches
+// the first shape (a button whose press is decided by comparing against the
+// current value) in `views.rs`; it cannot see a hand-built shape it has not been
+// taught, so the standard is also this paragraph.
+
+/// One option of a [`choice`].
+pub struct ChoiceOption {
+    pub label: String,
+    pub chosen: bool,
+    /// `false` draws the disabled look and sends nothing.
+    pub available: bool,
+    /// Pressed when the option is available and not already chosen.
+    pub on_press: Message,
+}
+
+/// The one way to show a choice of several (see the block above).
+pub fn choice<'a>(
+    tokens: &Tokens,
+    size: iced::Pixels,
+    options: Vec<ChoiceOption>,
+) -> Element<'a, Message> {
+    let mut row = hrow![].spacing(tokens.spacing.xs);
+    for option in options {
+        let t = tokens.clone();
+        let chosen = option.chosen;
+        // no-wrap: the inside of one option's button, not a row of controls
+        let mut content = hrow![].spacing(tokens.spacing.xs);
+        if chosen {
+            content = content.push(icon_text(char::from(lucide::Check), size.0));
+        }
+        content = content.push(text(option.label).size(size));
+        let mut b = button(content)
+            .padding(Padding::from([tokens.spacing.xs, tokens.spacing.md]))
+            .style(move |_theme, status| {
+                if chosen {
+                    btn_style::primary(&t, status)
+                } else {
+                    btn_style::secondary(&t, status)
+                }
+            });
+        if option.available {
+            b = b.on_press(if chosen {
+                Message::AlreadyChosen
+            } else {
+                option.on_press
+            });
+        }
+        row = row.push(b);
+    }
+    row.wrap().into()
+}
+
+/// The widget id of the switch named `name`, so a test (or an operation) can
+/// find the whole switch: `toggler`'s label is drawn by the widget itself and is
+/// not a text element a selector can see.
+pub fn switch_id(name: &'static str) -> iced::widget::Id {
+    iced::widget::Id::new(name)
+}
+
+/// The one way to show an on/off setting (see the block above): the label and
+/// the switch are one widget.
+pub fn switch<'a>(
+    tokens: &Tokens,
+    size: iced::Pixels,
+    name: &'static str,
+    label: &str,
+    is_on: bool,
+    on_toggle: impl Fn(bool) -> Message + 'a,
+) -> Element<'a, Message> {
+    let t = tokens.clone();
+    iced::widget::container(
+        iced::widget::toggler(is_on)
+            .label(label.to_string())
+            .on_toggle(on_toggle)
+            .size(size.0 * 1.4)
+            .text_size(size)
+            .spacing(tokens.spacing.sm)
+            .style(move |_theme, status| switch_style(&t, is_on, status)),
+    )
+    .id(switch_id(name))
+    .into()
+}
+
+/// The switch's colours, from the tokens: an accent track with the accent's own
+/// text colour for the knob when on; the secondary text colour for the track
+/// with the surface colour for the knob when off. Both pairs are contrast-tested
+/// (`tests/task118_choice_and_switch.rs`).
+pub(crate) fn switch_style(
+    tokens: &Tokens,
+    is_on: bool,
+    status: iced::widget::toggler::Status,
+) -> iced::widget::toggler::Style {
+    let (track, knob) = if is_on {
+        (tokens.palette.accent, tokens.palette.accent_text)
+    } else {
+        (tokens.palette.text_secondary, tokens.palette.surface)
+    };
+    let hovered = matches!(status, iced::widget::toggler::Status::Hovered { .. });
+    let track = to_iced_color(track);
+    iced::widget::toggler::Style {
+        background: Background::Color(if hovered {
+            Color {
+                r: (track.r - 0.06).max(0.0),
+                g: (track.g - 0.06).max(0.0),
+                b: (track.b - 0.06).max(0.0),
+                a: track.a,
+            }
+        } else {
+            track
+        }),
+        background_border_width: 0.0,
+        background_border_color: Color::TRANSPARENT,
+        foreground: Background::Color(to_iced_color(knob)),
+        foreground_border_width: 0.0,
+        foreground_border_color: Color::TRANSPARENT,
+        text_color: Some(to_iced_color(tokens.palette.text_primary)),
+        border_radius: None,
+        padding_ratio: 0.2,
+    }
+}
 
 // ── Control heights (Task 072) ────────────────────────────────────────────
 
@@ -302,20 +442,6 @@ pub fn result_card<'a>(
 /// the same visible-selection mitigation for 2.4.7's absence, not a
 /// second convention.
 #[allow(clippy::too_many_arguments)]
-/// Task 114 (RFC-064 §3.2): what a folder card says about its subfolders and
-/// the one button that changes it -- the same shape as the search row's scope
-/// toggle (RFC-045 §11.2): the current choice, and a button for the other.
-pub struct CardCoverage<'a> {
-    /// The current choice, in the app's words ("This folder only").
-    pub current: &'a str,
-    /// The other choice, which is what the button says and does.
-    pub other: &'a str,
-    /// Pressing it: asks first when narrowing, widens at once.
-    pub toggle: Message,
-    pub sc: crate::theme::TextScale,
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn source_card<'a>(
     tokens: &'a Tokens,
     display_name: String,
@@ -327,7 +453,9 @@ pub fn source_card<'a>(
     // was moved.") -- `None` for every other state, which §17's other
     // wireframes (17.1/17.2/17.4) draw with no such line.
     detail: Option<&'a str>,
-    coverage: CardCoverage<'a>,
+    // Task 118: what the folder covers, drawn as a `choice` -- both labels, the
+    // current one chosen (built by the caller, which knows the messages).
+    coverage: Element<'a, Message>,
     // RFC-037 §10.2/§17 (Task 035): `[Check again]` for a missing/
     // permission-denied source, `[Prepare again]` for an active one --
     // `None` for a source with nothing to refresh (Paused; RFC-037 §7.4
@@ -357,22 +485,7 @@ pub fn source_card<'a>(
                 .line_height(theme::meta_lh(tokens)),
         );
     }
-    body = body.push(
-        hrow![
-            text(coverage.current.to_string()).size(theme::meta(tokens)),
-            chip(
-                tokens,
-                coverage.sc,
-                Some(char::from(lucide::ArrowUpDown)),
-                coverage.other,
-                None,
-                coverage.toggle,
-            ),
-        ]
-        .spacing(tokens.spacing.sm)
-        .align_y(iced::Alignment::Center)
-        .wrap(),
-    );
+    body = body.push(coverage);
     body = body.push(actions.wrap());
     if is_selected {
         selection_ring(tokens, body)

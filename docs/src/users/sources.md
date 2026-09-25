@@ -15,8 +15,8 @@ orbok** in **Folders**.
 ## What a folder covers
 
 A new folder covers **This folder and subfolders**. Each card on the
-**Folders** view shows what its folder covers, with a button for the other
-choice.
+**Folders** view shows both choices, with a check mark on the one its
+folder is set to; pressing the other changes it.
 
 - **This folder only** prepares only the files directly in the folder. To
   choose it, press it on the card. orbok asks first ("Stop including

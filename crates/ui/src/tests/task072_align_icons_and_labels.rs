@@ -1,7 +1,7 @@
 //! Task 072 §4 tests 2-3: every notice offers dismiss, and the location
 //! chips are found by their labels.
 
-use crate::i18n::{Locale, MessageKey, search_location_chip, tr};
+use crate::i18n::{Locale, MessageKey, tr};
 use crate::notice::UserNotice;
 use crate::shell::OrbokApp;
 use crate::state::location::{SearchFolderScope, SearchLocation};
@@ -61,8 +61,8 @@ fn clicked(state: &AppState, label: &str) -> Vec<Message> {
 fn the_location_chip_and_the_scope_toggle_are_found_by_their_labels() {
     let _guard = iced_test_guard();
     let state = with_location(SearchFolderScope::FolderAndSubfolders);
-    let chip = search_location_chip(Locale::En, "Docs", SearchFolderScope::FolderAndSubfolders);
-    let messages = clicked(&state, &chip);
+    // Task 118: the chip is the folder's own name; the scope is a choice beside it.
+    let messages = clicked(&state, "Docs");
     assert!(
         matches!(messages.as_slice(), [Message::SearchLocationCleared]),
         "the chip removes the location, got {messages:?}"

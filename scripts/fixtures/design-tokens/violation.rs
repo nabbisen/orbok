@@ -22,5 +22,10 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     // Category 8 (Task 106): a row that holds a control and does not wrap.
     let h = hrow![text(label), button(text(x)).on_press(m)]
         .spacing(tokens.spacing.sm);
+    // Category 9 (Task 118): a choice's current option is the one with no press.
+    let mut b = button(text(label));
+    if *candidate != state.theme {
+        b = b.on_press(Message::SetTheme(*candidate));
+    }
     a
 }

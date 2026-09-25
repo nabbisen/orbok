@@ -2,7 +2,7 @@
 //! narrowing asks first; the search follows the folder.
 
 use crate::OrbokApp;
-use crate::i18n::{Locale, MessageKey, search_location_chip, tr};
+use crate::i18n::{Locale, MessageKey, tr};
 use crate::shell::key_to_message;
 use crate::state::{AppState, Message, SearchFolderScope, SearchLocation, SourceCard, ViewId};
 use crate::tests::iced_test_guard;
@@ -273,20 +273,17 @@ fn a_this_folder_only_folder_offers_no_scope_toggle() {
         let mut only = with_location(false, SearchFolderScope::FolderOnly);
         only.locale = locale;
         let mut ui = simulator(views::search_view(&only));
+        assert!(ui.find("Docs").is_ok(), "{locale:?}: the folder chip");
+        // Task 118: the scope is a choice, and for this folder it has one option:
+        // the chosen one. The other scope is not offered.
         assert!(
-            ui.find(search_location_chip(
-                locale,
-                "Docs",
-                SearchFolderScope::FolderOnly
-            ))
-            .is_ok(),
-            "{locale:?}: the chip shows the scope"
+            ui.find(toggle_to_only).is_ok(),
+            "{locale:?}: the scope is shown"
         );
         assert!(
             ui.find(toggle_to_subfolders).is_err(),
-            "{locale:?}: no toggle"
+            "{locale:?}: nothing to switch to"
         );
-        assert!(ui.find(toggle_to_only).is_err(), "{locale:?}: no toggle");
 
         let mut with = with_location(true, SearchFolderScope::FolderAndSubfolders);
         with.locale = locale;
@@ -316,12 +313,11 @@ fn a_stale_remembered_subfolders_scope_is_shown_and_stored_as_only() {
         );
         let mut ui = simulator(views::search_view(&state));
         assert!(
-            ui.find(search_location_chip(
-                Locale::En,
-                "Docs",
-                SearchFolderScope::FolderOnly
-            ))
-            .is_ok()
+            ui.find(tr(Locale::En, MessageKey::SearchScopeOnly)).is_ok()
+                && ui
+                    .find(tr(Locale::En, MessageKey::SearchScopeSubfolders))
+                    .is_err(),
+            "shown as \"only\""
         );
     }
     // The same when it is selected after the fact.

@@ -30,5 +30,11 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     column.push(chips.wrap());
     // no-wrap: the inside of one button, not a row of controls
     let mut inner = hrow![].spacing(tokens.spacing.xs);
+    // Task 118: a press that does not depend on a comparison with the current
+    // value, and an `if` that has no press in it.
+    let b = button(text(label)).on_press(m);
+    if candidate != state.theme {
+        log(candidate);
+    }
     a
 }

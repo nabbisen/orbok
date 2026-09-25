@@ -49,7 +49,6 @@ mod task071_startup_failure;
 mod task072_align_icons_and_labels;
 mod task073_removal_confirmation_matches_the_list;
 mod task081_storage_page;
-mod task088_toggle_labels;
 mod task099_rebuild_confirmation;
 mod task104_folders_and_preparing_agree;
 mod task105_choosing_a_folder;
@@ -80,3 +79,4 @@ pub(crate) fn iced_test_guard() -> MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
+mod task118_choice_and_switch;

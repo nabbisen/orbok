@@ -66,12 +66,41 @@ check_tokens() {
   # `.spacing(..)`), and a builder (`let mut x = hrow![..]`) must be wrapped
   # where it is used (`x.wrap()`). A row that must not wrap says why in a
   # `// no-wrap: <reason>` comment on the line above.
+  # Task 118: a setting is shown by `components::choice` (one of several) or
+  # `components::switch` (on/off), never by a button that is disabled -- or
+  # otherwise treated differently -- because its value is the current one. The
+  # old shape was `if *candidate != state.x { b = b.on_press(..) }`: the current
+  # option had no press and was drawn disabled. This catches that shape (an `if`
+  # comparing with `!=` whose braces hold an `.on_press(`) in the view files. It
+  # cannot see a hand-built variant that is not written this way (a `match`, a
+  # helper, `on_press_maybe` fed by a comparison); the standard itself is the
+  # comment block in `components.rs`.
+  local by_comparison
+  by_comparison=$(presses_decided_by_comparison "${files[@]}")
+  if [ -n "$by_comparison" ]; then
+    echo "$by_comparison"
+    flag "a button's press is decided by comparing with the current value — use components::choice (a choice) or components::switch (on/off) ($(echo "$by_comparison" | grep -c .) found)"
+  fi
+
   local unwrapped
   unwrapped=$(control_rows_without_wrap "${files[@]}")
   if [ -n "$unwrapped" ]; then
     echo "$unwrapped"
     flag "hrow![ holds a control but does not wrap — add .wrap() after .spacing(..) (or // no-wrap: reason) ($(echo "$unwrapped" | grep -c .) found)"
   fi
+}
+
+# presses_decided_by_comparison <file...> — prints file:line for each
+# `if <expr> != <expr> {` whose block contains `.on_press(` (Task 118).
+presses_decided_by_comparison() {
+  perl -0777 -ne '
+    my $src = $_;
+    while ($src =~ /\bif\s+[^{};]*?!=[^{};]*\{([^{}]{0,200})\}/g) {
+      my $block = $1;
+      my $line = (substr($src, 0, $-[0]) =~ tr/\n//) + 1;
+      print "$ARGV:$line: if .. != .. { .. .on_press(..) }\n" if $block =~ /\.on_press\(/;
+    }
+  ' "$@"
 }
 
 # control_rows_without_wrap <file...> — prints file:line for each `hrow![` whose
@@ -81,7 +110,7 @@ check_tokens() {
 control_rows_without_wrap() {
   perl -0777 -ne '
     my $src = $_;
-    my $control = qr/\bbutton\(|components::(?:ghost|primary|secondary|danger|chip|icon_primary|icon_secondary|filter_chip|danger_action)\b|text_input\(|pick_list\(|checkbox\(|toggler\(|\b\w*(?:_btn|_button|_input)\b|\bsubmit\b/;
+    my $control = qr/\bbutton\(|components::(?:ghost|primary|secondary|danger|chip|icon_primary|icon_secondary|filter_chip|danger_action|choice|switch)\b|text_input\(|pick_list\(|checkbox\(|toggler\(|\b\w*(?:_btn|_button|_input)\b|\bsubmit\b/;
     while ($src =~ /(?<![A-Za-z0-9_])hrow!\[/g) {
       my $start = $-[0];
       my $pos = pos($src);

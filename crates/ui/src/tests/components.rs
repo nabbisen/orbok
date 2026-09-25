@@ -85,13 +85,17 @@ fn component_smoke_result_card() {
     );
 }
 
-fn cover() -> crate::components::CardCoverage<'static> {
-    crate::components::CardCoverage {
-        current: "This folder and subfolders",
-        other: "This folder only",
-        toggle: Message::AskNarrowFolder("src-1".to_string()),
-        sc: crate::theme::TextScale::default(),
-    }
+fn cover() -> iced::Element<'static, Message> {
+    crate::components::choice(
+        &Tokens::light(),
+        iced::Pixels(12.0),
+        vec![crate::components::ChoiceOption {
+            label: "This folder and subfolders".into(),
+            chosen: true,
+            available: true,
+            on_press: Message::AlreadyChosen,
+        }],
+    )
 }
 
 #[test]

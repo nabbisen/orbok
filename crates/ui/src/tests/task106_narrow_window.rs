@@ -90,18 +90,30 @@ fn the_settings_page_keeps_its_controls_in_a_narrow_window() {
                 .iter()
                 .map(|t| tr(locale, t.label_key()).to_string()),
         );
-        wanted.extend(labels(
-            locale,
-            &[
-                MessageKey::SettingsReduceMotion,
-                MessageKey::ClearRecentSearches,
-            ],
-        ));
+        wanted.extend(Locale::ALL.iter().map(|l| l.display_name().to_string()));
+        wanted.extend(labels(locale, &[MessageKey::ClearRecentSearches]));
         assert_reachable(
             views::settings_view(&s),
             &wanted,
             &format!("settings, {locale:?}"),
         );
+        // Task 118: the three switches are single widgets (their label is inside
+        // them, so it is not a text a selector finds); each lies inside the window.
+        let mut ui = Simulator::with_size(
+            iced::Settings::default(),
+            Size::new(WIDTH, 1400.0),
+            views::settings_view(&s),
+        );
+        for name in ["reduce-motion", "remember-recent-searches", "advanced-view"] {
+            let bounds = ui
+                .find(crate::components::switch_id(name))
+                .unwrap_or_else(|_| panic!("settings, {locale:?}: the {name} switch"))
+                .bounds();
+            assert!(
+                bounds.x >= -0.5 && bounds.x + bounds.width <= WIDTH + 0.5,
+                "settings, {locale:?}: the {name} switch lies outside the window: {bounds:?}"
+            );
+        }
     }
 }
 
@@ -129,15 +141,35 @@ fn the_preparing_page_keeps_its_counts_in_a_narrow_window() {
     }
 }
 
-/// The Folders page's Add folder button.
+/// The Folders page's Add folder button, and (Task 118) a card's two coverage
+/// options, both shown whichever is chosen.
 #[test]
 fn the_folders_page_keeps_its_controls_in_a_narrow_window() {
     let _guard = iced_test_guard();
     for &locale in Locale::ALL {
-        let s = state(locale, ViewId::Sources);
+        let mut s = state(locale, ViewId::Sources);
+        s.sources.push(crate::state::SourceCard {
+            display_name: "Documents".into(),
+            display_path: "/home/user/Documents".into(),
+            indexed: 3,
+            stale: 0,
+            failed: 0,
+            no_text_found: 0,
+            unfinished_jobs: 0,
+            status: orbok_core::SourceStatus::Active,
+            source_id: "s1".into(),
+            covers_subfolders: true,
+        });
         assert_reachable(
             views::sources_view(&s),
-            &labels(locale, &[MessageKey::SourcesAddFolder]),
+            &labels(
+                locale,
+                &[
+                    MessageKey::SourcesAddFolder,
+                    MessageKey::SearchScopeSubfolders,
+                    MessageKey::SearchScopeOnly,
+                ],
+            ),
             &format!("folders, {locale:?}"),
         );
     }

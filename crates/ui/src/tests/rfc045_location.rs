@@ -6,7 +6,7 @@
 //! locales, and changing scope never changes the remembered-folder
 //! identity (RFC-045 §6.3).
 
-use crate::i18n::{self, Locale};
+use crate::i18n::Locale;
 use crate::state::{
     AppState, SearchFolderScope, SearchLocation, SearchLocationState, SearchLocationSummary,
 };
@@ -54,49 +54,18 @@ fn remembered_constructor_uses_default_scope() {
     );
 }
 
+/// RFC-045 §19.4 forbidden default copy, for the two scope labels the search
+/// row and the folder card show (Task 118 replaced the combined chip label with
+/// the folder's own name beside a choice of these two).
 #[test]
-fn chip_label_reads_in_friendly_english() {
-    // RFC-045 §7.3 / §19.4: "{folder} and subfolders", never "recursive".
-    assert_eq!(
-        i18n::search_location_chip(
-            Locale::En,
-            "Documents",
-            SearchFolderScope::FolderAndSubfolders
-        ),
-        "Documents and subfolders"
-    );
-    assert_eq!(
-        i18n::search_location_chip(Locale::En, "Downloads", SearchFolderScope::FolderOnly),
-        "Downloads only"
-    );
-}
-
-#[test]
-fn chip_label_is_translated_for_japanese() {
-    // RFC-031: every visible string is translated.
-    assert_eq!(
-        i18n::search_location_chip(
-            Locale::Ja,
-            "Documents",
-            SearchFolderScope::FolderAndSubfolders
-        ),
-        "Documents とサブフォルダー"
-    );
-    assert_eq!(
-        i18n::search_location_chip(Locale::Ja, "Downloads", SearchFolderScope::FolderOnly),
-        "Downloads のみ"
-    );
-}
-
-#[test]
-fn chip_label_never_says_source_or_recursive() {
-    // RFC-045 §19.4 forbidden default copy.
+fn scope_labels_never_say_source_or_recursive() {
+    use crate::i18n::{MessageKey, tr};
     for locale in Locale::ALL {
-        for scope in [
-            SearchFolderScope::FolderAndSubfolders,
-            SearchFolderScope::FolderOnly,
+        for key in [
+            MessageKey::SearchScopeSubfolders,
+            MessageKey::SearchScopeOnly,
         ] {
-            let label = i18n::search_location_chip(*locale, "Documents", scope);
+            let label = tr(*locale, key);
             let lowered = label.to_lowercase();
             assert!(!lowered.contains("source"), "leaked 'source': {label}");
             assert!(

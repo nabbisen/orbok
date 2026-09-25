@@ -12,7 +12,6 @@ pub mod en;
 pub mod ja;
 
 use crate::state::FileCountState;
-use crate::state::location::SearchFolderScope;
 use serde::{Deserialize, Serialize};
 
 /// Supported UI locales. Default English; persisted in the catalog
@@ -219,8 +218,6 @@ message_keys! {
     SettingsLanguageHeading,
     SettingsPrivacyHeading,
     SettingsAdvancedHeading,
-    SettingsToggleOn,
-    SettingsToggleOff,
     SettingsAdvancedHint,
     SettingsPrivacyLocalOnly,
     // Search modes (RFC-009 §8)
@@ -859,20 +856,5 @@ pub fn fmt_query(locale: Locale, query: &str) -> String {
     match locale {
         Locale::En => format!("Search terms: {query}"),
         Locale::Ja => format!("検索語: {query}"),
-    }
-}
-
-/// Parameterized: the selected search-location chip label (RFC-045 §7.3,
-/// §11.1), e.g. `Documents and subfolders` or `Documents only`. Keeps the
-/// friendly "folder" wording — never "source" or "recursive" (RFC-045
-/// §19.4).
-pub fn search_location_chip(locale: Locale, folder: &str, scope: SearchFolderScope) -> String {
-    match (locale, scope) {
-        (Locale::En, SearchFolderScope::FolderAndSubfolders) => format!("{folder} and subfolders"),
-        (Locale::En, SearchFolderScope::FolderOnly) => format!("{folder} only"),
-        (Locale::Ja, SearchFolderScope::FolderAndSubfolders) => {
-            format!("{folder} とサブフォルダー")
-        }
-        (Locale::Ja, SearchFolderScope::FolderOnly) => format!("{folder} のみ"),
     }
 }

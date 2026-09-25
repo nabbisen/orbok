@@ -17,7 +17,7 @@ use crate::components::{
 use crate::i18n::{
     Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
     fmt_query, fmt_rebuild_prepares, fmt_reset_removes, fmt_storage_row,
-    preparing_folder_for_search, search_location_chip, search_result_count, source_summary, tr,
+    preparing_folder_for_search, search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -200,54 +200,52 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
         }
         Some(location) => {
             // Task 114 (RFC-064 §3.4): a folder set to "this folder only" has
-            // nothing below it prepared, so its scope is fixed and no toggle
-            // is offered.
+            // nothing below it prepared, so its scope is fixed: one option,
+            // chosen, and nothing to switch to.
             let folder_only = state.search_location_is_folder_only();
             let scope = if folder_only {
                 SearchFolderScope::FolderOnly
             } else {
                 location.scope()
             };
-            let chip_label = search_location_chip(locale, location.display_name(), scope);
-
-            // Scope toggle: "and subfolders" / "only" (RFC-045 §11.2).
-            let (other_scope, other_label_key) = match scope {
-                SearchFolderScope::FolderAndSubfolders => {
-                    (SearchFolderScope::FolderOnly, MessageKey::SearchScopeOnly)
-                }
-                SearchFolderScope::FolderOnly => (
+            let meta = theme::meta_s(tokens, sc);
+            let scope_option =
+                |candidate: SearchFolderScope, key: MessageKey| components::ChoiceOption {
+                    label: tr(locale, key).to_string(),
+                    chosen: scope == candidate,
+                    available: true,
+                    on_press: Message::SearchScopeChanged(candidate),
+                };
+            // Task 118: both scopes are shown, the current one chosen.
+            let mut scopes = Vec::new();
+            if !folder_only {
+                scopes.push(scope_option(
                     SearchFolderScope::FolderAndSubfolders,
                     MessageKey::SearchScopeSubfolders,
-                ),
-            };
+                ));
+            }
+            scopes.push(scope_option(
+                SearchFolderScope::FolderOnly,
+                MessageKey::SearchScopeOnly,
+            ));
 
-            let mut row = hrow![
-                text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
-                // Folder chip with an X to remove — keyboard removable
+            hrow![
+                text(tr(locale, MessageKey::SearchInLabel)).size(meta),
+                // The folder, with an X to remove it -- keyboard removable
                 // (RFC-045 §20).
                 components::chip(
                     tokens,
                     sc,
                     None,
-                    &chip_label,
+                    location.display_name(),
                     Some(char::from(lucide::X)),
                     Message::SearchLocationCleared,
                 ),
+                components::choice(tokens, meta, scopes),
             ]
-            .spacing(tokens.spacing.xs);
-            if !folder_only {
-                // Scope toggle: ArrowUpDown says "switch to the other scope",
-                // which is what pressing it does.
-                row = row.push(components::chip(
-                    tokens,
-                    sc,
-                    Some(char::from(lucide::ArrowUpDown)),
-                    tr(locale, other_label_key),
-                    None,
-                    Message::SearchScopeChanged(other_scope),
-                ));
-            }
-            row.wrap().into()
+            .spacing(tokens.spacing.xs)
+            .wrap()
+            .into()
         }
     }
 }
@@ -377,30 +375,45 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     }
 
     if state.show_advanced {
+        // Task 118: the mode is a choice -- the current one is marked. By
+        // meaning has no keyword half, so without a model it can only return
+        // nothing (Task 053): it is the one unavailable option, disabled
+        // rather than hidden so all three stay discoverable.
+        let meta = theme::meta_s(tokens, sc);
+        let option = |key: MessageKey, mode: orbok_search::SearchMode, available: bool| {
+            components::ChoiceOption {
+                label: tr(locale, key).to_string(),
+                chosen: state.search_mode == mode,
+                available,
+                on_press: Message::SetSearchMode(mode),
+            }
+        };
         content = content.push(
             hrow![
-                text(tr(locale, MessageKey::SearchModeLabel)).size(theme::meta_s(tokens, sc)),
-                button(
-                    text(tr(locale, MessageKey::SearchModeAuto)).size(theme::meta_s(tokens, sc))
-                )
-                .on_press(Message::SetSearchMode(orbok_search::SearchMode::Auto)),
-                button(
-                    text(tr(locale, MessageKey::SearchModeExact)).size(theme::meta_s(tokens, sc))
-                )
-                .on_press(Message::SetSearchMode(orbok_search::SearchMode::Exact)),
-                button(
-                    text(tr(locale, MessageKey::SearchModeConceptual))
-                        .size(theme::meta_s(tokens, sc))
-                )
-                // Task 053: Conceptual has no keyword half, so without a
-                // model it can only return nothing. Disabled rather than
-                // hidden, so all three options stay discoverable.
-                .on_press_maybe(
-                    (state.capability != SearchCapability::KeywordOnly)
-                        .then_some(Message::SetSearchMode(orbok_search::SearchMode::Conceptual)),
+                text(tr(locale, MessageKey::SearchModeLabel)).size(meta),
+                components::choice(
+                    tokens,
+                    meta,
+                    vec![
+                        option(
+                            MessageKey::SearchModeAuto,
+                            orbok_search::SearchMode::Auto,
+                            true
+                        ),
+                        option(
+                            MessageKey::SearchModeExact,
+                            orbok_search::SearchMode::Exact,
+                            true
+                        ),
+                        option(
+                            MessageKey::SearchModeConceptual,
+                            orbok_search::SearchMode::Conceptual,
+                            state.capability != SearchCapability::KeywordOnly,
+                        ),
+                    ],
                 ),
             ]
-            .spacing(tokens.spacing.xs)
+            .spacing(tokens.spacing.sm)
             .wrap(),
         );
     }
@@ -822,30 +835,25 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 summary,
                 status_label,
                 detail,
-                components::CardCoverage {
-                    current: tr(
-                        locale,
-                        if card.covers_subfolders {
-                            MessageKey::SearchScopeSubfolders
-                        } else {
-                            MessageKey::SearchScopeOnly
+                components::choice(
+                    tokens,
+                    theme::meta(tokens),
+                    vec![
+                        components::ChoiceOption {
+                            label: tr(locale, MessageKey::SearchScopeSubfolders).to_string(),
+                            chosen: card.covers_subfolders,
+                            available: true,
+                            on_press: Message::WidenFolder(card.source_id.clone()),
                         },
-                    ),
-                    other: tr(
-                        locale,
-                        if card.covers_subfolders {
-                            MessageKey::SearchScopeOnly
-                        } else {
-                            MessageKey::SearchScopeSubfolders
+                        components::ChoiceOption {
+                            label: tr(locale, MessageKey::SearchScopeOnly).to_string(),
+                            chosen: !card.covers_subfolders,
+                            available: true,
+                            // Narrowing asks first (Task 114).
+                            on_press: Message::AskNarrowFolder(card.source_id.clone()),
                         },
-                    ),
-                    toggle: if card.covers_subfolders {
-                        Message::AskNarrowFolder(card.source_id.clone())
-                    } else {
-                        Message::WidenFolder(card.source_id.clone())
-                    },
-                    sc,
-                },
+                    ],
+                ),
                 refresh_action,
                 state.selected_source == Some(i),
                 // Task 062: the button was unlabelled, and removed directly.
@@ -1307,77 +1315,72 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     let tokens = &state.tokens;
     let sc = state.text_scale;
 
-    // Language picker
-    let mut language_row = hrow![].spacing(tokens.spacing.sm);
-    for candidate in Locale::ALL {
-        let label = text(candidate.display_name()).size(theme::body_s(tokens, sc));
-        let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
-        if *candidate != locale {
-            b = b.on_press(Message::SetLocale(*candidate));
-        }
-        language_row = language_row.push(b);
-    }
-
-    // Theme picker
-    let mut theme_row = hrow![].spacing(tokens.spacing.sm);
-    for candidate in Theme::ALL {
-        let label = text(tr(locale, candidate.label_key())).size(theme::body_s(tokens, sc));
-        let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
-        if *candidate != state.theme {
-            b = b.on_press(Message::SetTheme(*candidate));
-        }
-        theme_row = theme_row.push(b);
-    }
-
-    // Text size picker (RFC-035)
-    let mut scale_row = hrow![].spacing(tokens.spacing.sm);
-    for candidate in TextScale::ALL {
-        let label = text(tr(locale, candidate.label_key())).size(theme::body_s(tokens, sc));
-        let mut b = button(label).padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]));
-        if *candidate != sc {
-            b = b.on_press(Message::SetTextScale(*candidate));
-        }
-        scale_row = scale_row.push(b);
-    }
-
-    // Reduce motion toggle (RFC-035) — checkbox-style button
-    let motion_label = tr(locale, MessageKey::SettingsReduceMotion);
-    let motion_btn = if state.reduced_motion {
-        button(
-            hrow![
-                icon_text(char::from(lucide::Check), theme::body_s(tokens, sc).0),
-                text(motion_label.to_string()).size(theme::body_s(tokens, sc)),
-            ]
-            .spacing(tokens.spacing.xs),
-        )
-        .padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]))
-        .on_press(Message::SetReducedMotion(false))
-    } else {
-        button(text(motion_label.to_string()).size(theme::body_s(tokens, sc)))
-            .padding(Padding::from([tokens.spacing.sm, tokens.spacing.md]))
-            .on_press(Message::SetReducedMotion(true))
-    };
+    // Task 118: language, theme and text size are choices, each shown as
+    // `components::choice` (the chosen option marked, none drawn disabled).
+    let body = theme::body_s(tokens, sc);
+    let language_row = components::choice(
+        tokens,
+        body,
+        Locale::ALL
+            .iter()
+            .map(|candidate| components::ChoiceOption {
+                label: candidate.display_name().to_string(),
+                chosen: *candidate == locale,
+                available: true,
+                on_press: Message::SetLocale(*candidate),
+            })
+            .collect(),
+    );
+    let theme_row = components::choice(
+        tokens,
+        body,
+        Theme::ALL
+            .iter()
+            .map(|candidate| components::ChoiceOption {
+                label: tr(locale, candidate.label_key()).to_string(),
+                chosen: *candidate == state.theme,
+                available: true,
+                on_press: Message::SetTheme(*candidate),
+            })
+            .collect(),
+    );
+    let scale_row = components::choice(
+        tokens,
+        body,
+        TextScale::ALL
+            .iter()
+            .map(|candidate| components::ChoiceOption {
+                label: tr(locale, candidate.label_key()).to_string(),
+                chosen: *candidate == sc,
+                available: true,
+                on_press: Message::SetTextScale(*candidate),
+            })
+            .collect(),
+    );
 
     let content = column![
         heading(tokens, sc, tr(locale, MessageKey::SettingsTitle)),
         // Language
         text(tr(locale, MessageKey::SettingsLanguageHeading)).size(theme::body_s(tokens, sc)),
-        language_row.wrap(),
+        language_row,
         // Theme
         text(tr(locale, MessageKey::SettingsThemeHeading)).size(theme::body_s(tokens, sc)),
-        theme_row.wrap(),
+        theme_row,
         // Text size
         text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
-        scale_row.wrap(),
-        // Accessibility
-        hrow![
-            motion_btn,
-            text(tr(locale, MessageKey::SettingsReduceMotionHint))
-                .size(theme::meta_s(tokens, sc))
-                .line_height(theme::meta_lh(tokens)),
-        ]
-        .spacing(tokens.spacing.sm)
-        .wrap(),
+        scale_row,
+        // Accessibility: a switch, and what it does beneath it.
+        components::switch(
+            tokens,
+            body,
+            "reduce-motion",
+            tr(locale, MessageKey::SettingsReduceMotion),
+            state.reduced_motion,
+            Message::SetReducedMotion,
+        ),
+        text(tr(locale, MessageKey::SettingsReduceMotionHint))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
         // CVD note (always-on — informational, not a toggle)
         text(tr(locale, MessageKey::SettingsCvdNote))
             .size(theme::meta_s(tokens, sc))
@@ -1387,45 +1390,31 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
         text(tr(locale, MessageKey::SettingsPrivacyLocalOnly))
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
-        // RFC-042: Remember recent searches toggle + note.
-        hrow![
-            button(
-                text(if state.remember_recent_searches {
-                    tr(locale, MessageKey::SettingsToggleOn)
-                } else {
-                    tr(locale, MessageKey::SettingsToggleOff)
-                })
-                .size(theme::body_s(tokens, sc)),
-            )
-            .on_press(Message::ToggleRememberRecentSearches(
-                !state.remember_recent_searches
-            )),
-            text(tr(locale, MessageKey::RememberRecentSearches)).size(theme::body_s(tokens, sc)),
-        ]
-        .spacing(tokens.spacing.sm)
-        .wrap(),
+        // RFC-042: Remember recent searches, a switch, and its note.
+        components::switch(
+            tokens,
+            body,
+            "remember-recent-searches",
+            tr(locale, MessageKey::RememberRecentSearches),
+            state.remember_recent_searches,
+            Message::ToggleRememberRecentSearches,
+        ),
         text(tr(locale, MessageKey::RecentSearchesPrivacyNote))
             .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
         recent_searches_clear_control(state),
-        // Advanced
-        text(tr(locale, MessageKey::SettingsAdvancedHeading)).size(theme::body_s(tokens, sc)),
-        hrow![
-            button(
-                text(if state.show_advanced {
-                    tr(locale, MessageKey::SettingsToggleOn)
-                } else {
-                    tr(locale, MessageKey::SettingsToggleOff)
-                })
-                .size(theme::body_s(tokens, sc)),
-            )
-            .on_press(Message::ToggleAdvanced),
-            text(tr(locale, MessageKey::SettingsAdvancedHint))
-                .size(theme::meta_s(tokens, sc))
-                .line_height(theme::meta_lh(tokens)),
-        ]
-        .spacing(tokens.spacing.sm)
-        .wrap(),
+        // Advanced view: a switch (its label is the heading), and its hint.
+        components::switch(
+            tokens,
+            body,
+            "advanced-view",
+            tr(locale, MessageKey::SettingsAdvancedHeading),
+            state.show_advanced,
+            |_| Message::ToggleAdvanced,
+        ),
+        text(tr(locale, MessageKey::SettingsAdvancedHint))
+            .size(theme::meta_s(tokens, sc))
+            .line_height(theme::meta_lh(tokens)),
     ];
     page(tokens, content)
 }

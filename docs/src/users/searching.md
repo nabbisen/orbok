@@ -6,10 +6,11 @@ Type a question and press Search. If no folder is chosen yet, orbok asks you
 to choose one; you can also press **Choose a folder** on the search page at
 any time. Cancelling keeps what you typed.
 
-Beside the chosen folder, a button switches between **This folder and
-subfolders** and **This folder only** for this search. A folder that is set
-to **This folder only** on the **Folders** view offers no such button: nothing
-below it is prepared, so the search looks only in the folder. Choosing a
+Beside the chosen folder, two options, **This folder and subfolders** and
+**This folder only**, say where this search looks; the one with a check mark
+is chosen, and pressing the other changes it. A folder that is set to **This
+folder only** on the **Folders** view shows only its own option: nothing below
+it is prepared, so the search looks only in the folder. Choosing a
 folder inside a folder you added searches that added folder, limited to the
 folder you chose.
 

@@ -100,8 +100,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsLanguageHeading => "言語",
         SettingsPrivacyHeading => "プライバシー",
         SettingsAdvancedHeading => "詳細表示",
-        SettingsToggleOn => "オン",
-        SettingsToggleOff => "オフ",
         SettingsAdvancedHint => "検索結果・準備状況・ストレージに技術的な詳細を表示します。",
         SettingsPrivacyLocalOnly => "文書はこのコンピューター上でのみ処理されます。",
         SearchModeLabel => "モード",

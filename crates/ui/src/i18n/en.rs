@@ -100,8 +100,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SettingsLanguageHeading => "Language",
         SettingsPrivacyHeading => "Privacy",
         SettingsAdvancedHeading => "Advanced view",
-        SettingsToggleOn => "On",
-        SettingsToggleOff => "Off",
         SettingsAdvancedHint => {
             "Show technical detail in search results, preparation, and storage."
         }
