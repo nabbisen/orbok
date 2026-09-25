@@ -37,6 +37,14 @@ use orbok::runtime_context::{PlatformRuntimePaths, RuntimeSelection};
 use orbok_ui::i18n::Locale;
 use orbok_ui::state::{AppState, Message, ResultTrustDisplay, SearchResultDisplay, ViewId};
 
+/// A scratch folder for a test that adds folders. It is made inside the crate's
+/// own directory, not in the system temp folder: on Windows that folder lies
+/// under `AppData`, which orbok now asks about before adding (Task 120), so a
+/// test that added it would meet the question it is not about.
+fn tempdir() -> tempfile::TempDir {
+    tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap()
+}
+
 fn test_deps(dir: &std::path::Path) -> AppDeps {
     let runtime = RuntimeContext::resolve(
         RuntimeSelection::resolve(false, Some(dir.as_os_str().to_os_string())).unwrap(),
@@ -78,7 +86,7 @@ fn result_for(canonical_path: &str) -> SearchResultDisplay {
 
 #[test]
 fn removal_dispatches_the_deferred_message_not_a_fallthrough_update() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState {
         confirm_remove_source: Some("src-1".into()),
@@ -99,7 +107,7 @@ fn removal_dispatches_the_deferred_message_not_a_fallthrough_update() {
 
 #[test]
 fn reset_dispatches_a_measurement_task_not_a_fallthrough_update() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let task = route(&mut app, Message::ConfirmResetCatalog, &deps);
@@ -113,7 +121,7 @@ fn reset_dispatches_a_measurement_task_not_a_fallthrough_update() {
 
 #[test]
 fn cleanup_dispatches_a_measurement_task_not_a_fallthrough_update() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     for cleanup in [
         Message::CleanSnippets,
@@ -138,7 +146,7 @@ fn cleanup_dispatches_a_measurement_task_not_a_fallthrough_update() {
 /// fall-through* above this check, not deleting this arm's own `return`.
 #[test]
 fn notice_action_pressed_dispatches_the_stored_retry_not_a_fallthrough_update() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     app.state.update(&Message::ShowNoticeWithAction {
@@ -166,7 +174,7 @@ fn notice_action_pressed_dispatches_the_stored_retry_not_a_fallthrough_update() 
 
 #[test]
 fn clear_history_actually_clears_the_catalog() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let settings = bootstrap::load_runtime_settings(&deps.runtime).unwrap_or_default();
     history::record_search(
@@ -194,7 +202,7 @@ fn clear_history_actually_clears_the_catalog() {
 
 #[test]
 fn refresh_actually_reloads_sources_from_the_catalog() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let source_dir = temp.path().join("source");
     std::fs::create_dir_all(&source_dir).unwrap();
@@ -221,7 +229,7 @@ fn refresh_actually_reloads_sources_from_the_catalog() {
 
 #[test]
 fn settings_actually_persists_the_new_locale() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let task = route(&mut app, Message::PersistLocale(Locale::Ja), &deps);
@@ -239,7 +247,7 @@ fn settings_actually_persists_the_new_locale() {
 
 #[test]
 fn launch_raises_the_real_refusal_notice_for_a_path_outside_every_source() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let outside = temp.path().join("outside.md");
     std::fs::write(&outside, "not in any source").unwrap();
@@ -263,7 +271,7 @@ fn launch_raises_the_real_refusal_notice_for_a_path_outside_every_source() {
 /// cleanup, and finishing a reset each dispatch a real measurement task.
 #[test]
 fn storage_measurement_is_requested_by_switching_cleaning_and_resetting() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
 
     let mut switched = OrbokApp::with_state(AppState::default());
@@ -369,7 +377,7 @@ fn hold_a_read_transaction(path: &std::path::Path) -> rusqlite::Connection {
 /// only by the whole reset genuinely not running inline.
 #[test]
 fn confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 50);
 
@@ -415,7 +423,7 @@ fn confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction
 /// that could be deleted alongside a regression.
 #[test]
 fn the_shared_connection_stays_free_while_the_reset_runs_on_its_own() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 50);
 
@@ -455,7 +463,7 @@ fn the_shared_connection_stays_free_while_the_reset_runs_on_its_own() {
 /// in that plain sequential order, on the one connection it opens.
 #[test]
 fn the_post_reset_measurement_sees_the_compacted_catalog_size() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 4000);
 
@@ -513,7 +521,7 @@ fn the_post_reset_measurement_sees_the_compacted_catalog_size() {
 /// list to show.
 #[test]
 fn a_reset_whose_reload_also_fails_reports_no_sources_to_show() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let source_dir = temp.path().join("source");
     std::fs::create_dir_all(&source_dir).unwrap();
@@ -547,7 +555,7 @@ fn a_reset_whose_reload_also_fails_reports_no_sources_to_show() {
 /// catalog no longer holds the folder, so the list is empty.
 #[test]
 fn a_reset_that_fails_after_the_catalog_step_reports_what_the_catalog_holds() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let source_dir = temp.path().join("source");
     std::fs::create_dir_all(&source_dir).unwrap();
@@ -577,7 +585,7 @@ fn a_reset_that_fails_after_the_catalog_step_reports_what_the_catalog_holds() {
 /// (c) A reset that succeeds clears everything.
 #[test]
 fn a_reset_that_succeeds_reports_success_and_an_empty_catalog() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let source_dir = temp.path().join("source");
     std::fs::create_dir_all(&source_dir).unwrap();
@@ -597,7 +605,7 @@ fn a_reset_that_succeeds_reports_success_and_an_empty_catalog() {
 /// `Ok` makes this fail -- see the review request for the mutation run.
 #[test]
 fn a_failed_delete_is_never_reported_as_succeeded() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mover = rusqlite::Connection::open(deps.catalog.path()).unwrap();
     mover
@@ -624,7 +632,7 @@ fn a_failed_delete_is_never_reported_as_succeeded() {
 #[test]
 #[ignore = "measurement; run with --ignored --nocapture"]
 fn task097_measure_the_in_flight_window() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 100_000);
 
@@ -648,7 +656,7 @@ fn task097_measure_the_in_flight_window() {
 /// `confirming_a_reset_returns_promptly_even_when_a_reader_would_block_compaction`.
 #[test]
 fn confirming_a_keyword_rebuild_returns_promptly_even_when_a_reader_would_block() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 50);
 
@@ -676,7 +684,7 @@ fn confirming_a_keyword_rebuild_returns_promptly_even_when_a_reader_would_block(
 /// Same proof, `ConfirmDeleteVectorIndex`.
 #[test]
 fn confirming_a_vector_rebuild_returns_promptly_even_when_a_reader_would_block() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     seed_bulk_files(&deps.catalog, 50);
 
@@ -707,7 +715,7 @@ fn confirming_a_vector_rebuild_returns_promptly_even_when_a_reader_would_block()
 /// reported as if it had succeeded.
 #[test]
 fn a_failed_keyword_rebuild_raises_cleanup_did_not_finish_with_retry() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mover = rusqlite::Connection::open(deps.catalog.path()).unwrap();
     mover
@@ -754,7 +762,7 @@ fn typed(app: &mut OrbokApp, deps: &AppDeps, text: &str) -> iced::Task<Message> 
 /// the field, and opens no picker.
 #[test]
 fn a_typed_path_is_added_and_no_picker_opens() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let folder = temp.path().join("notes");
     std::fs::create_dir(&folder).unwrap();
@@ -772,7 +780,7 @@ fn a_typed_path_is_added_and_no_picker_opens() {
 /// nothing.
 #[test]
 fn a_bad_typed_path_is_kept_for_correction_and_adds_nothing() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let bad = temp
@@ -797,7 +805,7 @@ fn a_bad_typed_path_is_kept_for_correction_and_adds_nothing() {
 /// RFC-003 Amendment 1).
 #[test]
 fn a_typed_file_path_is_refused_and_creates_no_row() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let file = temp.path().join("one.md");
     std::fs::write(&file, "# one\n").unwrap();
@@ -816,7 +824,7 @@ fn a_typed_file_path_is_refused_and_creates_no_row() {
 /// §2.4: Enter with an empty (or blank) field does nothing.
 #[test]
 fn enter_in_an_empty_path_field_does_nothing() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
 
@@ -831,7 +839,7 @@ fn enter_in_an_empty_path_field_does_nothing() {
 /// §2.5: the Add folder button still opens the picker, and only it does.
 #[test]
 fn the_button_opens_the_picker_and_the_field_does_not() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
 
@@ -844,7 +852,7 @@ fn the_button_opens_the_picker_and_the_field_does_not() {
 /// one-picker flag: a second press while it is open does nothing.
 #[test]
 fn choose_a_folder_opens_the_picker_once() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState {
         query: "meeting notes".into(),
@@ -919,7 +927,7 @@ fn job_rows(deps: &AppDeps) -> i64 {
 #[test]
 fn every_way_of_adding_a_private_folder_asks_first_and_saves_nothing() {
     use orbok_ui::state::FolderAddOrigin;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let folder = private_folder(temp.path());
     let path = folder.to_string_lossy().to_string();
 
@@ -960,7 +968,7 @@ fn every_way_of_adding_a_private_folder_asks_first_and_saves_nothing() {
 /// typed text (Folders page) and the pending query (search page) are kept.
 #[test]
 fn cancelling_the_private_folder_question_changes_nothing() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let folder = private_folder(temp.path());
     let path = folder.to_string_lossy().to_string();
 
@@ -994,7 +1002,7 @@ fn cancelling_the_private_folder_question_changes_nothing() {
 /// was added" notice does not appear (only the ordinary "Folder added").
 #[test]
 fn add_anyway_adds_and_prepares_the_folder_without_the_old_notice() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let folder = private_folder(temp.path());
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
@@ -1023,7 +1031,7 @@ fn add_anyway_adds_and_prepares_the_folder_without_the_old_notice() {
 /// about.
 #[test]
 fn ordinary_and_already_added_folders_are_not_asked_about() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let ordinary = temp.path().join("notes");
     std::fs::create_dir(&ordinary).unwrap();
@@ -1068,7 +1076,7 @@ fn folder(root: &std::path::Path, rel: &str) -> std::path::PathBuf {
 #[test]
 fn a_typed_folder_inside_an_added_folder_adds_nothing_and_says_so() {
     use orbok_ui::notice::UserNotice;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let a = folder(temp.path(), "a");
     let b = folder(temp.path(), "a/b");
@@ -1100,7 +1108,7 @@ fn a_typed_folder_inside_an_added_folder_adds_nothing_and_says_so() {
 #[test]
 fn a_typed_folder_above_an_added_one_combines_them_and_says_so() {
     use orbok_ui::notice::UserNotice;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let a = folder(temp.path(), "a");
     let b = folder(temp.path(), "a/b");
@@ -1129,7 +1137,7 @@ fn a_typed_folder_above_an_added_one_combines_them_and_says_so() {
 /// different folder and is added.
 #[test]
 fn search_in_a_subfolder_registers_nothing() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let a = folder(temp.path(), "a");
     let b = folder(temp.path(), "a/b");
@@ -1163,7 +1171,7 @@ fn search_in_a_subfolder_registers_nothing() {
 /// above it; the search keeps looking at the same files.
 #[test]
 fn a_selected_search_folder_that_is_combined_keeps_its_meaning() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let a = folder(temp.path(), "a");
     let b = folder(temp.path(), "a/b");
@@ -1202,7 +1210,7 @@ fn a_selected_search_folder_that_is_combined_keeps_its_meaning() {
 #[test]
 fn search_in_a_folder_above_an_added_one_combines_them() {
     use orbok_ui::notice::UserNotice;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let a = folder(temp.path(), "a");
     let b = folder(temp.path(), "a/b");
@@ -1267,7 +1275,7 @@ fn file_count(deps: &AppDeps) -> i64 {
 /// erased when it returns** (the rows are still there).
 #[test]
 fn the_confirmed_narrowing_runs_off_the_update_thread() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let id = folder_with_a_subfolder(temp.path(), &deps, &mut app);
@@ -1295,7 +1303,7 @@ fn the_confirmed_narrowing_runs_off_the_update_thread() {
 /// confirming (Enter or the button) dispatches the request, not the erasure.
 #[test]
 fn asking_fetches_the_count_and_confirming_dispatches_the_request() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let id = folder_with_a_subfolder(temp.path(), &deps, &mut app);
@@ -1326,7 +1334,7 @@ fn asking_fetches_the_count_and_confirming_dispatches_the_request() {
 /// cards are re-read either way.
 #[test]
 fn a_failed_narrowing_says_so_and_retrying_asks_again() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     // A folder the catalog does not hold: the erasure fails.
     let (outcome, cards, health) = crate::narrow_folder_and_reload(&deps.runtime, "no-such-folder");
@@ -1366,7 +1374,7 @@ fn a_failed_narrowing_says_so_and_retrying_asks_again() {
 #[test]
 fn widening_over_an_added_subfolder_combines_them_and_says_so() {
     use orbok_ui::notice::UserNotice;
-    let temp = tempfile::tempdir().unwrap();
+    let temp = tempdir();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState::default());
     let f = folder(temp.path(), "f");
