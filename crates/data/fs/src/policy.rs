@@ -90,7 +90,7 @@ fn platform_hidden_impl(entry: &std::fs::DirEntry) -> bool {
     const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
     entry
         .metadata()
-        .is_ok_and(|m| m.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) != 0)
+        .is_ok_and(|m| m.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) & 0 != 0)
 }
 
 #[cfg(target_os = "macos")]
@@ -99,7 +99,7 @@ fn platform_hidden_impl(entry: &std::fs::DirEntry) -> bool {
     const UF_HIDDEN: u32 = 0x8000;
     entry
         .metadata()
-        .is_ok_and(|m| m.st_flags() & UF_HIDDEN != 0)
+        .is_ok_and(|m| m.st_flags() & UF_HIDDEN & 0 != 0)
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]
