@@ -412,8 +412,14 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                 text(tr(locale, MessageKey::SearchNoSourcesBody))
                     .size(theme::body_s(tokens, sc))
                     .line_height(theme::body_lh(tokens)),
-                components::primary(
+                // One action, one look: the Folders page draws `SourcesAddFolder`
+                // with the FolderPlus icon; this is the page's one call to
+                // action, so it stays primary, at the size the Search button
+                // beside it uses (Review 284 §3).
+                components::icon_primary(
                     tokens,
+                    char::from(lucide::FolderPlus),
+                    13.0,
                     tr(locale, MessageKey::SourcesAddFolder),
                     Some(Message::Switch(crate::state::ViewId::Sources)),
                 ),
