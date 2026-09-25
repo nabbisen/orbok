@@ -21,7 +21,7 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     .align_y(Alignment::Start);
     // Task 106: a control row wraps; a text-only row is out of the rule; a
     // builder is wrapped where it is used; a row that must not wrap says why.
-    let j = hrow![text(label), button(text(x)).on_press(m)]
+    let j = hrow![text(label), button(text(x)).on_press(m).style(components::outlined(tokens))]
         .spacing(tokens.spacing.sm)
         .wrap();
     let k = hrow![text(label), text(value)].spacing(tokens.spacing.sm);
@@ -32,7 +32,9 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     let mut inner = hrow![].spacing(tokens.spacing.xs);
     // Task 118: a press that does not depend on a comparison with the current
     // value, and an `if` that has no press in it.
-    let b = button(text(label)).on_press(m);
+    let b = button(text(label))
+        .on_press(m)
+        .style(components::outlined(tokens));
     if candidate != state.theme {
         log(candidate);
     }

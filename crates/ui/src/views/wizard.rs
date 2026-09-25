@@ -13,7 +13,7 @@
 //! [`crate::theme`] helpers and the token spacing scale; icon glyph dimensions
 //! stay explicit.
 
-use crate::components::{control_padding, hrow, input_padding};
+use crate::components::{self, control_padding, hrow, input_padding};
 use crate::i18n::{
     Locale, MessageKey, fmt_label_value, model_exact_size, model_file_position,
     model_transfer_progress, tr, wizard_file_size_mb,
@@ -185,7 +185,8 @@ fn page_setup<'a>(
                 ]
                 .spacing(tokens.spacing.xs),
             )
-            .on_press(Message::DownloadModel),
+            .on_press(Message::DownloadModel)
+            .style(components::filled(tokens)),
         ]
         .spacing(tokens.spacing.sm),
     )
@@ -247,7 +248,8 @@ fn page_setup<'a>(
                 .spacing(tokens.spacing.xs),
             )
             .padding(control_padding(tokens))
-            .on_press(Message::WizardValidate),
+            .on_press(Message::WizardValidate)
+            .style(components::outlined(tokens)),
         ]
         .spacing(tokens.spacing.sm)
         .wrap(),
@@ -256,7 +258,8 @@ fn page_setup<'a>(
     // ── Tertiary action: skip ─────────────────────────────────────────
     col = col.push(
         button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
-            .on_press(Message::WizardSkip),
+            .on_press(Message::WizardSkip)
+            .style(components::outlined(tokens)),
     );
 
     wizard_page(tokens, col)
@@ -330,11 +333,13 @@ fn page_download_consent<'a>(
             button(
                 text(tr(locale, MessageKey::ModelConsentConfirm)).size(theme::body_s(tokens, sc)),
             )
-            .on_press(Message::ConfirmModelDownload),
+            .on_press(Message::ConfirmModelDownload)
+            .style(components::filled(tokens)),
             button(
                 text(tr(locale, MessageKey::ModelConsentCancel)).size(theme::body_s(tokens, sc)),
             )
-            .on_press(Message::CancelModelDownload),
+            .on_press(Message::CancelModelDownload)
+            .style(components::outlined(tokens)),
         ]
         .spacing(tokens.spacing.sm)
         .wrap(),
@@ -412,7 +417,8 @@ fn page_downloading<'a>(
                 text(tr(locale, MessageKey::WizardActionCancelDownload))
                     .size(theme::meta_s(tokens, sc)),
             )
-            .on_press(Message::CancelDownloadInProgress),
+            .on_press(Message::CancelDownloadInProgress)
+            .style(components::outlined(tokens)),
         )
     });
 
@@ -444,9 +450,11 @@ fn page_download_failed(
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
         button(text(tr(locale, MessageKey::ModelDownloadRetry)).size(theme::body_s(tokens, sc)),)
-            .on_press(Message::RetryModelDownload),
+            .on_press(Message::RetryModelDownload)
+            .style(components::filled(tokens)),
         button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)),)
-            .on_press(Message::WizardSkip),
+            .on_press(Message::WizardSkip)
+            .style(components::outlined(tokens)),
     ]
     .spacing(tokens.spacing.md);
     wizard_page(tokens, col)
@@ -493,7 +501,8 @@ fn page_checked<'a>(
                 ]
                 .spacing(tokens.spacing.xs),
             )
-            .on_press(Message::WizardAccept),
+            .on_press(Message::WizardAccept)
+            .style(components::filled(tokens)),
         );
     } else {
         col = col.push(
@@ -522,7 +531,8 @@ fn page_checked<'a>(
                     .spacing(tokens.spacing.xs),
                 )
                 .padding(control_padding(tokens))
-                .on_press(Message::WizardValidate),
+                .on_press(Message::WizardValidate)
+                .style(components::filled(tokens)),
             ]
             .spacing(tokens.spacing.sm)
             .wrap(),
@@ -538,9 +548,11 @@ fn page_checked<'a>(
                 ]
                 .spacing(tokens.spacing.xs),
             )
-            .on_press(Message::WizardBack),
+            .on_press(Message::WizardBack)
+            .style(components::outlined(tokens)),
             button(text(tr(locale, MessageKey::WizardActionSkip)).size(theme::meta_s(tokens, sc)))
-                .on_press(Message::WizardSkip),
+                .on_press(Message::WizardSkip)
+                .style(components::outlined(tokens)),
         ]
         .spacing(tokens.spacing.sm)
         .wrap(),
@@ -586,7 +598,8 @@ fn page_ready<'a>(
                     ]
                     .spacing(tokens.spacing.xs),
                 )
-                .on_press(Message::WizardAccept),
+                .on_press(Message::WizardAccept)
+                .style(components::filled(tokens)),
             );
         }
         ModelPersistenceState::InFlight(_) => {
@@ -607,7 +620,8 @@ fn page_ready<'a>(
                         text(tr(locale, MessageKey::ModelLoadRetry))
                             .size(theme::body_s(tokens, sc)),
                     )
-                    .on_press(Message::WizardRetryModelLoad),
+                    .on_press(Message::WizardRetryModelLoad)
+                    .style(components::filled(tokens)),
                 )
                 // Task 059: a way out. The model stays saved, so the next
                 // startup tries to load it again.
@@ -616,7 +630,8 @@ fn page_ready<'a>(
                         text(tr(locale, MessageKey::WizardActionSkip))
                             .size(theme::meta_s(tokens, sc)),
                     )
-                    .on_press(Message::WizardSkip),
+                    .on_press(Message::WizardSkip)
+                    .style(components::outlined(tokens)),
                 );
         }
         ModelPersistenceState::Failed => {
@@ -631,7 +646,8 @@ fn page_ready<'a>(
                         text(tr(locale, MessageKey::ModelPersistenceRetry))
                             .size(theme::body_s(tokens, sc)),
                     )
-                    .on_press(Message::WizardAccept),
+                    .on_press(Message::WizardAccept)
+                    .style(components::filled(tokens)),
                 )
                 // Task 059: a way out of a save that keeps failing.
                 .push(
@@ -639,7 +655,8 @@ fn page_ready<'a>(
                         text(tr(locale, MessageKey::WizardActionSkip))
                             .size(theme::meta_s(tokens, sc)),
                     )
-                    .on_press(Message::WizardSkip),
+                    .on_press(Message::WizardSkip)
+                    .style(components::outlined(tokens)),
                 );
         }
     }

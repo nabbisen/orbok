@@ -27,5 +27,7 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     if *candidate != state.theme {
         b = b.on_press(Message::SetTheme(*candidate));
     }
+    // Category 10 (Task 118 follow-up): a button that takes iced's default fill.
+    let l = button(text(label)).on_press(m);
     a
 }

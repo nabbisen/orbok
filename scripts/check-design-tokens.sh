@@ -82,6 +82,19 @@ check_tokens() {
     flag "a button's press is decided by comparing with the current value — use components::choice (a choice) or components::switch (on/off) ($(echo "$by_comparison" | grep -c .) found)"
   fi
 
+  # Task 118 follow-up (Review 296 §2): a fill means one thing. A `button(..)`
+  # with no `.style(..)` takes iced's default, which is filled, so an ordinary
+  # action would look like a chosen option. Every button picks `components::filled`,
+  # `outlined` or `destructive` (or a snora style) with `.style(..)`. This catches a
+  # raw `button(..)` whose method chain has no `.style(`; it cannot say whether the
+  # look chosen is the right one -- that is the rule in `components.rs`.
+  local unstyled
+  unstyled=$(buttons_without_style "${files[@]}")
+  if [ -n "$unstyled" ]; then
+    echo "$unstyled"
+    flag "a button has no .style(..) — pick components::filled, outlined or destructive ($(echo "$unstyled" | grep -c .) found)"
+  fi
+
   local unwrapped
   unwrapped=$(control_rows_without_wrap "${files[@]}")
   if [ -n "$unwrapped" ]; then
@@ -99,6 +112,40 @@ presses_decided_by_comparison() {
       my $block = $1;
       my $line = (substr($src, 0, $-[0]) =~ tr/\n//) + 1;
       print "$ARGV:$line: if .. != .. { .. .on_press(..) }\n" if $block =~ /\.on_press\(/;
+    }
+  ' "$@"
+}
+
+# buttons_without_style <file...> — prints file:line for each `button(..)` whose
+# method chain (`.padding(..).on_press(..)` ...) holds no `.style(` (Task 118).
+buttons_without_style() {
+  perl -0777 -ne '
+    my $src = $_;
+    while ($src =~ /(?<![A-Za-z0-9_:.])button\(/g) {
+      my $start = $-[0];
+      my $pos = pos($src);
+      my $depth = 1;
+      while ($depth > 0 && $pos < length $src) {
+        my $c = substr($src, $pos, 1);
+        $depth++ if $c eq "(";
+        $depth-- if $c eq ")";
+        $pos++;
+      }
+      my $chain = "";
+      while (substr($src, $pos) =~ /^(\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*)\(/) {
+        my $len = length $1;
+        $chain .= " $2";
+        $pos += $len + 1;
+        my $d = 1;
+        while ($d > 0 && $pos < length $src) {
+          my $c = substr($src, $pos, 1);
+          $d++ if $c eq "(";
+          $d-- if $c eq ")";
+          $pos++;
+        }
+      }
+      my $line = (substr($src, 0, $start) =~ tr/\n//) + 1;
+      print "$ARGV:$line: button(..) with no .style(..)\n" unless $chain =~ /\bstyle\b/;
     }
   ' "$@"
 }

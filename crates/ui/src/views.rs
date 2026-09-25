@@ -50,6 +50,7 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
                 text(tr(locale, MessageKey::OpenRecentSearches)).size(theme::meta_s(tokens, sc))
             )
             .on_press(Message::OpenRecentSearches)
+            .style(components::outlined(tokens))
         ]
         .wrap()
         .into();
@@ -92,7 +93,8 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
             let search_again = button(
                 text(tr(locale, MessageKey::SearchAgainButton)).size(theme::meta_s(tokens, sc)),
             )
-            .on_press(Message::SearchAgain(entry.id.clone()));
+            .on_press(Message::SearchAgain(entry.id.clone()))
+            .style(components::outlined(tokens));
 
             entries = entries.push(column![entry_col, search_again].spacing(tokens.spacing.xs));
         }
@@ -101,7 +103,8 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
             button(
                 text(tr(locale, MessageKey::ClearRecentSearches)).size(theme::meta_s(tokens, sc)),
             )
-            .on_press(Message::AskClearRecentSearches),
+            .on_press(Message::AskClearRecentSearches)
+            .style(components::outlined(tokens)),
         );
     }
 
@@ -114,7 +117,8 @@ fn recent_searches_panel<'a>(state: &'a AppState) -> Element<'a, Message> {
                     char::from(lucide::X),
                     theme::meta_s(tokens, sc).0
                 ))
-                .on_press(Message::CloseRecentSearches),
+                .on_press(Message::CloseRecentSearches)
+                .style(components::outlined(tokens)),
                 text(tr(locale, MessageKey::NoticeDismiss)).size(theme::meta_s(tokens, sc)),
                 tooltip::Position::Bottom,
             ),
@@ -146,12 +150,14 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
                 .color(to_iced_color(tokens.palette.text_secondary)),
             hrow![
                 button(text(tr(locale, MessageKey::Cancel)).size(theme::meta_s(tokens, sc)))
-                    .on_press(Message::CancelClearRecentSearches),
+                    .on_press(Message::CancelClearRecentSearches)
+                    .style(components::outlined(tokens)),
                 button(
                     text(tr(locale, MessageKey::ClearRecentSearches))
                         .size(theme::meta_s(tokens, sc))
                 )
-                .on_press(Message::ConfirmClearRecentSearches),
+                .on_press(Message::ConfirmClearRecentSearches)
+                .style(components::destructive(tokens)),
             ]
             .spacing(tokens.spacing.sm)
             .wrap(),
@@ -161,6 +167,7 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
     } else {
         button(text(tr(locale, MessageKey::ClearRecentSearches)).size(theme::meta_s(tokens, sc)))
             .on_press(Message::AskClearRecentSearches)
+            .style(components::outlined(tokens))
             .into()
     }
 }

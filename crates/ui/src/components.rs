@@ -89,6 +89,41 @@ pub(crate) use hrow;
 // current value) in `views.rs`; it cannot see a hand-built shape it has not been
 // taught, so the standard is also this paragraph.
 
+// ── What a fill means (Task 118 follow-up, Review 296 §2) ────────────────
+//
+// **Filled** is for the chosen option of a choice and for the page's single
+// main action (Search; the empty state's Add folder). **Destructive** actions
+// keep the danger style (Remove from orbok). **Every other action is outlined.**
+//
+// A filled control beside a choice is read as "this one is chosen", so a fill
+// is never spent on an ordinary action. Every button a view builds picks one of
+// [`filled`], [`outlined`] or [`destructive`] with `.style(..)`; a button with
+// no style takes iced's default, which is filled, and so is a mistake.
+// `check-design-tokens.sh` fails on a raw button with no `.style` call; it cannot
+// say whether the look picked is the right one, so the rule above is the standard.
+
+/// The filled look: a chosen option, or the page's single main action.
+pub fn filled(tokens: &Tokens) -> impl Fn(&iced::Theme, button::Status) -> button::Style + 'static {
+    let t = tokens.clone();
+    move |_theme, status| btn_style::primary(&t, status)
+}
+
+/// The outlined look: every action that is not the page's main action.
+pub fn outlined(
+    tokens: &Tokens,
+) -> impl Fn(&iced::Theme, button::Status) -> button::Style + 'static {
+    let t = tokens.clone();
+    move |_theme, status| btn_style::secondary(&t, status)
+}
+
+/// The danger look: an action that removes or erases something.
+pub fn destructive(
+    tokens: &Tokens,
+) -> impl Fn(&iced::Theme, button::Status) -> button::Style + 'static {
+    let t = tokens.clone();
+    move |_theme, status| btn_style::danger(&t, status)
+}
+
 /// One option of a [`choice`].
 pub struct ChoiceOption {
     pub label: String,
@@ -607,6 +642,7 @@ pub fn cleanup_row<'a>(
         r = r.push(
             button(text(label.to_string()).size(theme::body(tokens)))
                 .padding(Padding::from([tokens.spacing.md, tokens.spacing.lg]))
+                .style(outlined(tokens))
                 .on_press(msg),
         );
     }
@@ -649,7 +685,8 @@ pub fn filter_chip<'a>(
     )
 }
 
-/// Task 072: one chip primitive -- token-styled (primary), with an optional
+/// Task 072: one chip primitive -- token-styled (outlined: a chip is an action,
+/// never a chosen option), with an optional
 /// leading and trailing lucide icon sharing the label's centre line. The
 /// label is the chip's accessible text: the whole chip is the control, so
 /// finding and pressing the label presses the chip. Icons are sized to the
@@ -675,7 +712,7 @@ pub fn chip<'a>(
     let t = tokens.clone();
     button(content)
         .padding(Padding::from([tokens.spacing.xs, tokens.spacing.sm]))
-        .style(move |_theme, status| btn_style::primary(&t, status))
+        .style(move |_theme, status| btn_style::secondary(&t, status))
         .on_press(on_press)
         .into()
 }

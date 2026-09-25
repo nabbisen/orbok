@@ -6,6 +6,7 @@
 //! catalog, no subscriptions beyond Escape. Its only action is Close; "start
 //! again" means relaunching, so nothing is ever half-open.
 
+use crate::components;
 use crate::i18n::{Locale, MessageKey, startup_failed_data_folder_body, tr};
 use crate::theme::{self, TextScale, Theme};
 use iced::keyboard::Key;
@@ -78,7 +79,8 @@ impl StartupFailureScreen {
                 text(tr(self.locale, MessageKey::StartupFailedClose))
                     .size(theme::body_s(tokens, sc))
             )
-            .on_press(StartupFailureMessage::Close),
+            .on_press(StartupFailureMessage::Close)
+            .style(components::filled(tokens)),
         ]
         .spacing(tokens.spacing.md);
         container(content)
