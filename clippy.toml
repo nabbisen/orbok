@@ -1,0 +1,7 @@
+# A catalog write transaction begins immediate (Task 119): a deferred one takes its
+# read snapshot at the first read and fails at once ("database is locked", the busy
+# timeout does not apply) if another connection commits before its first write.
+disallowed-methods = [
+    { path = "rusqlite::Connection::transaction", reason = "deferred: use transaction_with_behavior(TransactionBehavior::Immediate) (Task 119)" },
+    { path = "rusqlite::Connection::unchecked_transaction", reason = "deferred: use transaction_with_behavior(TransactionBehavior::Immediate) (Task 119)" },
+]

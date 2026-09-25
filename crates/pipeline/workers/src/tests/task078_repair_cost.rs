@@ -26,7 +26,9 @@ fn bulk_requeue_cost_at_20000_discovered_files_already_queued() {
     let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
     {
         let mut conn = catalog.lock();
-        let tx = conn.transaction().unwrap();
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
         let t = "2026-09-16T00:00:00Z";
         tx.execute(
             "INSERT INTO sources (source_id, source_type, persistence_mode, original_path, \

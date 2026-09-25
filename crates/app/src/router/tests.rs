@@ -318,7 +318,9 @@ fn seed_bulk_files(catalog: &orbok_db::Catalog, count: usize) {
 
     let padding = "x".repeat(600);
     let mut conn = catalog.lock();
-    let tx = conn.transaction().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
     for i in 0..count {
         tx.execute(
             "INSERT INTO files (file_id, source_id, original_path, canonical_path, \

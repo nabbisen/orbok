@@ -15,7 +15,9 @@ use std::time::Instant;
 
 fn seed_queued_jobs(catalog: &Catalog, n: usize) {
     let mut conn = catalog.lock();
-    let tx = conn.transaction().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
     {
         let mut stmt = tx
             .prepare(

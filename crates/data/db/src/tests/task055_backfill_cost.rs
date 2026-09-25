@@ -19,7 +19,9 @@ const CHUNKS_PER_FILE: usize = 10;
 
 fn build(catalog: &Catalog, embedded: bool) -> ModelId {
     let mut conn = catalog.lock();
-    let tx = conn.transaction().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
     let t = "2026-09-16T00:00:00Z";
     tx.execute(
         "INSERT INTO sources (source_id, source_type, persistence_mode, original_path, \

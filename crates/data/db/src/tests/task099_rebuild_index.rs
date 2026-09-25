@@ -16,7 +16,9 @@ const CHUNKS_PER_FILE: usize = 3;
 /// `"m"`. Mirrors `task055_backfill_cost.rs`'s fixture shape.
 fn build(catalog: &Catalog, embedded: bool) -> ModelId {
     let mut conn = catalog.lock();
-    let tx = conn.transaction().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
     let t = "2026-09-23T00:00:00Z";
     tx.execute(
         "INSERT INTO sources (source_id, source_type, persistence_mode, original_path, \
@@ -327,7 +329,9 @@ fn reset_would_fail_if_models_ran_before_sources() {
     let catalog = Catalog::open_in_memory().unwrap();
     build(&catalog, true);
     let mut conn = catalog.lock();
-    let tx = conn.transaction().unwrap();
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
     tx.execute("DELETE FROM models", []).expect_err(
         "deleting models before sources must fail the FK check, proving the order matters",
     );
