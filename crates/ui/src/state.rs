@@ -1256,9 +1256,15 @@ impl AppState {
                 // just ran).
             }
             Message::WizardBack => {
-                // Return to the initial setup step.
+                // Return to the initial setup step. From the ready page (Task 123)
+                // the path the user chose stays in the field: Back is "choose
+                // another folder", not "start over". From the checklist it is
+                // cleared, as before.
+                let from_ready = matches!(self.wizard, Some(WizardState::Ready { .. }));
                 self.wizard = Some(crate::state::WizardState::NotConfigured);
-                self.wizard_path_input = String::new();
+                if !from_ready {
+                    self.wizard_path_input = String::new();
+                }
             }
             Message::ShowNotice(n) => self.raise_notice(n.clone(), None),
             Message::ShowNoticeWithAction { notice, action } => {

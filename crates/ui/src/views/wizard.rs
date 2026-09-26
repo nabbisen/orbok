@@ -201,11 +201,6 @@ fn page_setup<'a>(
     // ── Primary action: Download ──────────────────────────────────────
     let download_card = container(
         column![
-            hrow![
-                icon_text(char::from(lucide::Download), 16.0),
-                text(tr(locale, MessageKey::WizardDownloadAction)).size(theme::body_s(tokens, sc)),
-            ]
-            .spacing(tokens.spacing.sm),
             text(
                 state
                     .model_download_consent
@@ -599,24 +594,48 @@ fn page_ready<'a>(
         .spacing(tokens.spacing.sm),
         text(model_dir).size(theme::meta_s(tokens, sc)),
         text(trust).size(theme::meta_s(tokens, sc)),
-        text(tr(locale, MessageKey::WizardReadyBody)).size(theme::body_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.md);
 
     match persistence {
         ModelPersistenceState::Idle => {
-            col = col.push(
-                button(
-                    hrow![
-                        icon_text(char::from(lucide::CheckCircle), 13.0),
-                        text(tr(locale, MessageKey::WizardActionUseModel))
-                            .size(theme::body_s(tokens, sc)),
-                    ]
-                    .spacing(tokens.spacing.xs),
+            // Task 123: the body says what pressing the button does, so it shows
+            // only while the button is offered; and Back returns to where the
+            // user came from (the folder choice, or the first page).
+            col = col
+                .push(
+                    text(crate::i18n::fmt_wizard_ready_body(locale))
+                        .size(theme::body_s(tokens, sc)),
                 )
-                .on_press(Message::WizardAccept)
-                .style(components::filled(tokens)),
-            );
+                .push(
+                    hrow![
+                        button(
+                            hrow![
+                                icon_text(char::from(lucide::CheckCircle), 13.0),
+                                text(tr(locale, MessageKey::WizardActionUseModel))
+                                    .size(theme::body_s(tokens, sc)),
+                            ]
+                            .spacing(tokens.spacing.xs),
+                        )
+                        .on_press(Message::WizardAccept)
+                        .style(components::filled(tokens)),
+                        button(
+                            hrow![
+                                icon_text(
+                                    char::from(lucide::ArrowLeft),
+                                    theme::meta_s(tokens, sc).0
+                                ),
+                                text(tr(locale, MessageKey::WizardBack))
+                                    .size(theme::meta_s(tokens, sc)),
+                            ]
+                            .spacing(tokens.spacing.xs),
+                        )
+                        .on_press(Message::WizardBack)
+                        .style(components::outlined(tokens)),
+                    ]
+                    .spacing(tokens.spacing.sm)
+                    .wrap(),
+                );
         }
         ModelPersistenceState::InFlight(_) => {
             col = col.push(

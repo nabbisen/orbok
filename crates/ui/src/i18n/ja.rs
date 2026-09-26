@@ -115,11 +115,11 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardTitleNotConfigured => "意味による検索の設定",
         WizardTitleFileMissing => "モデルが見つかりません",
         WizardTitleValidating => "モデルフォルダーを確認中",
-        WizardTitleReady => "意味による検索の準備完了",
+        WizardTitleReady => "モデルを使う準備ができました",
         WizardBodyNotConfigured => {
             "キーワード検索は利用可能です。意味による検索を使用するには、\
-             このコンピュータにローカルAIモデルが必要です。\
-             ファイルはアップロードされません。"
+             このコンピューターにローカルAIモデルが必要です。\
+             ファイルはアップロードされず、モデルはこのコンピューターで動作します。"
         }
         WizardBodyFileMissing => {
             "モデルフォルダーが指定された場所にありません。\
@@ -139,7 +139,6 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardOr => "または",
         WizardMissingMarker => "不足",
         WizardBack => "戻る",
-        WizardReadyBody => "意味による検索が利用可能になりました。",
         ModelConsentTitle => "モデルのダウンロードを確認",
         ModelConsentBody => {
             "続行すると、orbok は提供元に接続し、このモデルをローカルに保存します。"
@@ -156,7 +155,7 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelConsentVerification => "検証状態",
         ModelTrustAppWillVerify => "使用前に orbok がダウンロードを検証",
         ModelTrustAppVerified => "アプリによる検証",
-        ModelTrustUserSupplied => "ユーザー提供 / 出所未検証",
+        ModelTrustUserSupplied => "ご自身で用意したモデルです。入手元は orbok では確認できません。",
         ModelConsentConfirm => "同意してダウンロード",
         ModelConsentCancel => "戻る",
         ModelArtifactTokenizer => "語彙データ",

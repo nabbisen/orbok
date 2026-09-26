@@ -252,7 +252,6 @@ message_keys! {
     WizardOr,
     WizardMissingMarker,
     WizardBack,
-    WizardReadyBody,
     ModelConsentTitle,
     ModelConsentBody,
     ModelConsentPrivacy,
@@ -821,6 +820,18 @@ pub fn fmt_add_sensitive_body(locale: Locale) -> String {
              追加すると、その内容を orbok で検索できるようになります。\
              {local_only}「{folders}」の「{remove}」で、いつでも削除できます。"
         ),
+    }
+}
+
+/// Task 123 (owner-approved 2026-09-26): what the ready page says while **Use
+/// this model** is offered. It names the button by reading its label
+/// (`WizardActionUseModel`), so renaming the button cannot leave this sentence
+/// pointing at a label that no longer exists (Task 110's pattern).
+pub fn fmt_wizard_ready_body(locale: Locale) -> String {
+    let use_model = tr(locale, MessageKey::WizardActionUseModel);
+    match locale {
+        Locale::En => format!("Choose {use_model} to turn on search by meaning."),
+        Locale::Ja => format!("「{use_model}」を選ぶと、意味による検索が使えるようになります。"),
     }
 }
 

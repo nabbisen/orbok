@@ -527,6 +527,20 @@ const GLOSSARY: &[GlossaryTerm] = &[
         formatter_exemptions: &[],
         whole_word: false,
     },
+    // Task 123: the app writes 「コンピューター」 (with the long vowel mark); it drifted
+    // once, to 「コンピュータ」, which is what the entry rule is for.
+    GlossaryTerm {
+        concept: "the Japanese word for \"computer\" (Task 123)",
+        canonical: &[(Locale::Ja, "コンピューター")],
+        forbidden: &[(Locale::Ja, "コンピュータ")],
+        allowed_if_followed_by: Some("ー"),
+        exemptions: &[],
+        applies_to_docs: true,
+        doc_forbidden: &[],
+        doc_exemptions: &[],
+        formatter_exemptions: &[],
+        whole_word: false,
+    },
     GlossaryTerm {
         concept: "a file that changed since orbok prepared it",
         canonical: &[(Locale::En, "Needs update"), (Locale::Ja, "要更新")],
@@ -799,6 +813,7 @@ const FORMATTERS: &[(&str, Sampler)] = &[
     sampled!(fmt_storage_row: ("Sample", 1.5, 3)),
     sampled!(fmt_remove_source_title: ("Docs")),
     sampled!(fmt_add_sensitive_body: ()),
+    sampled!(fmt_wizard_ready_body: ()),
     sampled!(fmt_folder_already_included_body: ("notes", "Docs")),
     sampled!(fmt_folders_combined_body: (&["notes"], "Docs"), (&["notes", "drafts"], "Docs"), (&["a", "b", "c"], "Docs")),
     sampled!(fmt_narrow_folder_counted: (1), (3)),

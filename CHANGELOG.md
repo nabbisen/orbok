@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The model setup pages say what is true and let you go back (Task 123): the ready
+  page says the model is ready to use, not that search is on, and has **Back**; the
+  first page names the download once; two technical phrases are in plain words.
+
 - The search row's folder chip works as drawn in the design (Review 299): pressing
   the folder's name chooses another folder, and the **×** clears it and keeps your
   search text; the **×** has a "Clear this folder" tooltip.

@@ -117,11 +117,11 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardTitleNotConfigured => "Set up search by meaning",
         WizardTitleFileMissing => "Model not found",
         WizardTitleValidating => "Checking model folder",
-        WizardTitleReady => "Search by meaning is ready",
+        WizardTitleReady => "The model is ready to use",
         WizardBodyNotConfigured => {
             "Keyword search is ready. To also search by meaning, orbok needs \
-             a local AI model on this computer. No files are uploaded — \
-             inference runs locally."
+             a local AI model on this computer. No files are uploaded; the \
+             model runs on this computer."
         }
         WizardBodyFileMissing => {
             "The model folder is no longer at its expected location. This can \
@@ -142,7 +142,6 @@ pub fn message(key: MessageKey) -> &'static str {
         WizardOr => "or",
         WizardMissingMarker => "missing",
         WizardBack => "Back",
-        WizardReadyBody => "Search by meaning is now available.",
         ModelConsentTitle => "Review model download",
         ModelConsentBody => {
             "orbok will contact the provider and save this model locally only after you continue."
@@ -159,7 +158,9 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelConsentVerification => "Verification",
         ModelTrustAppWillVerify => "orbok will verify the download before use",
         ModelTrustAppVerified => "App verified",
-        ModelTrustUserSupplied => "User supplied / provenance not verified",
+        ModelTrustUserSupplied => {
+            "You provided this model. orbok cannot confirm where it came from."
+        }
         ModelConsentConfirm => "Agree and download",
         ModelConsentCancel => "Back",
         ModelArtifactTokenizer => "Vocabulary",

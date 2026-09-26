@@ -26,7 +26,9 @@ comes back the next time orbok starts.
   as you choose it, and says which file is missing if one is. When it has
   found both files, choose **Use this model**.
 
-When the model is ready, orbok says **Search by meaning is ready**.
+When orbok has the model, it says **The model is ready to use** and offers
+**Use this model**; choose **Back** to pick another folder instead. Search by
+meaning turns on when you choose **Use this model**.
 
 The **Models** view only shows the state: **Search by meaning** is
 **Available** or **Missing**. It has no buttons.
