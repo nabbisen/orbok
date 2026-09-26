@@ -440,6 +440,8 @@ message_keys! {
     SearchInLabel,
     /// Placeholder shown when no folder is selected yet.
     SearchChooseFolder,
+    /// Tooltip on the search row's folder chip's `×` (Review 299 §3.1).
+    SearchLocationClear,
     /// Scope toggle label shown when current scope is FolderAndSubfolders:
     /// offers to switch to folder-only.
     SearchScopeOnly,

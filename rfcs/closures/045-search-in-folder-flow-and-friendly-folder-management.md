@@ -123,6 +123,19 @@ than needing to infer it from criterion 7's entry (Review 201 §4).
 `source_id`; nothing proves — because nothing does — that the resulting
 scope narrows a search.
 
+**Amended 2026-09-26 (Task 118, Task 121 follow-up, Review 299 §3.1).** The "rendered chip label,
+via `search_location_chip`" above no longer exists: Task 118 deleted that combined label. The search
+row now shows the folder chip and the scope choice as two things. The **chip** is snora's two-part
+removable chip (`components::removable_chip`), as §7.3 draws it: its **label** (the folder's name)
+changes the folder, by opening the same picker "Choose a folder" opens (§7.3's [Change], which the
+earlier one-button chip never built); its **`×`** clears the folder and keeps the search text (§11.3),
+with the tooltip "Clear this folder" / 「このフォルダーの選択を解除」 (a visual tooltip, not an
+accessible name). The `×` target measures 24.8 × 26.2 px at every text scale (WCAG 2.5.8's floor is 24 × 24).
+The **scope** is a choice with both options shown, the current one chosen. Evidence:
+`crates/ui/src/tests/task121_folder_chip.rs` and
+`the_location_chip_and_the_scope_toggle_are_found_by_their_labels`
+(`crates/ui/src/tests/task072_align_icons_and_labels.rs`).
+
 ### 9. Changing folder scope does not create duplicate remembered folders.
 
 → what was run: code inspection of `SearchLocation::with_scope`

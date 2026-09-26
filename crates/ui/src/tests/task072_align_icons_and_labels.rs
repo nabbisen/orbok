@@ -59,17 +59,24 @@ fn clicked(state: &AppState, label: &str) -> Vec<Message> {
     ui.into_messages().collect()
 }
 
-/// §4 test 3: the location chip is found by its label and removes the
-/// location; the scope toggle is found by its label and changes scope.
+/// §4 test 3 (Review 299 §3.1, replacing Task 072's one-button chip): the folder chip is two
+/// controls. Its **label** changes the folder (opens the picker, RFC-045's [Change]); its
+/// **`×`** clears it. The scope choice beside it is found by its label.
 #[test]
 fn the_location_chip_and_the_scope_toggle_are_found_by_their_labels() {
     let _guard = iced_test_guard();
     let state = with_location(SearchFolderScope::FolderAndSubfolders);
-    // Task 118: the chip is the folder's own name; the scope is a choice beside it.
+    // The label is the folder's own name and changes the folder.
     let messages = clicked(&state, "Docs");
     assert!(
+        matches!(messages.as_slice(), [Message::ChooseSearchFolder]),
+        "the chip's label opens the picker, got {messages:?}"
+    );
+    // The `×` clears it.
+    let messages = clicked(&state, dismiss().as_str());
+    assert!(
         matches!(messages.as_slice(), [Message::SearchLocationCleared]),
-        "the chip removes the location, got {messages:?}"
+        "the chip's × removes the location, got {messages:?}"
     );
 
     let toggle = tr(Locale::En, MessageKey::SearchScopeOnly);

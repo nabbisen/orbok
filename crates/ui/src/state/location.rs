@@ -6,7 +6,7 @@
 //!
 //! User-facing copy never lives here: the chosen folder's display *name*
 //! is carried as a plain `String`, and the friendly chip label is built
-//! through the i18n catalog (see [`crate::i18n::search_location_chip`]),
+//! through the i18n catalog,
 //! so RFC-031 (every visible string is translated and compile-checked)
 //! still holds.
 //!

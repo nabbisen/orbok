@@ -6,7 +6,8 @@ Type a question and press Search. If no folder is chosen yet, orbok asks you
 to choose one; you can also press **Choose a folder** on the search page at
 any time. Cancelling keeps what you typed.
 
-Beside the chosen folder, two options, **This folder and subfolders** and
+The chosen folder is shown by name. Pressing its name lets you choose another
+folder, and its **×** clears it (your search text stays). Beside it, two options, **This folder and subfolders** and
 **This folder only**, say where this search looks; the one with a check mark
 is chosen, and pressing the other changes it. A folder that is set to **This
 folder only** on the **Folders** view shows only its own option: nothing below

@@ -370,6 +370,7 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-045: search-in-folder flow
         SearchInLabel => "検索場所",
         SearchChooseFolder => "フォルダーを選択",
+        SearchLocationClear => "このフォルダーの選択を解除",
         SearchScopeOnly => "このフォルダーのみ",
         SearchScopeSubfolders => "このフォルダーとサブフォルダー",
         SearchRecentFoldersLabel => "最近のフォルダー",

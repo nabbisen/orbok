@@ -458,10 +458,14 @@ guide §4). orbok renders no snora toast; its notices use `Notice`, whose dismis
 control is a lucide `X` from 0.51. This entry does not cite a measured size for
 the notice's dismiss target.
 
-**Not applicable:** snora's RFC-061 chip repair does not reach orbok. We do not
-use `snora::design::widget::chip`. Our chips are single `button`s
-(`components::chip`) whose content includes the remove icon (a lucide `X`), so
-the remove target is the whole chip, not a glyph-sized control.
+**Updated 2026-09-26 (Task 121 follow-up, Review 299 §3.1).** snora's RFC-061 chip
+repair **now does reach orbok**: the search row's folder chip is snora's two-part
+removable chip (`components::removable_chip`), so its `×` is a separate control.
+It is a glyph-sized control that snora pads to a target, and it is **measured**:
+24.8 × 26.2 px at every text scale (`crates/ui/src/tests/task121_folder_chip.rs`,
+`the_x_target_is_at_least_24_by_24`, reading the button's bounds in the simulator),
+above the 24 × 24 floor by 0.8 px in width. The recent-folder chips are still
+single `button`s (`components::chip`) whose whole face is the target.
 
 ### 4.1.2 Name, Role, Value
 

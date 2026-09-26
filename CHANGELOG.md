@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The search row's folder chip works as drawn in the design (Review 299): pressing
+  the folder's name chooses another folder, and the **×** clears it and keeps your
+  search text; the **×** has a "Clear this folder" tooltip.
+
 - **The model folder can be chosen with the folder picker** and is checked as
   soon as it is chosen (Task 122); there is no Validate button. Typing a path
   and pressing Enter checks it too.

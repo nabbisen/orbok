@@ -360,6 +360,7 @@ pub fn message(key: MessageKey) -> &'static str {
         // RFC-045: search-in-folder flow
         SearchInLabel => "Search in",
         SearchChooseFolder => "Choose a folder",
+        SearchLocationClear => "Clear this folder",
         SearchScopeOnly => "This folder only",
         SearchScopeSubfolders => "This folder and subfolders",
         SearchRecentFoldersLabel => "Recent folders",

@@ -238,15 +238,15 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
 
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
-                // The folder, with an X to remove it -- keyboard removable
-                // (RFC-045 §20).
-                components::chip(
+                // The folder: its name changes it (the same picker "Choose a
+                // folder" opens), its `×` clears it (RFC-045 §7.3, §11.3).
+                components::removable_chip(
                     tokens,
-                    sc,
-                    None,
                     location.display_name(),
-                    Some(char::from(lucide::X)),
+                    (!state.search_location.picker_in_progress)
+                        .then_some(Message::ChooseSearchFolder),
                     Message::SearchLocationCleared,
+                    tr(locale, MessageKey::SearchLocationClear),
                 ),
                 components::choice(tokens, meta, scopes),
             ]

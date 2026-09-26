@@ -685,6 +685,32 @@ pub fn filter_chip<'a>(
     )
 }
 
+/// The search row's folder chip (RFC-045 §7.3, Review 299 §3.1): two controls,
+/// as snora draws a removable chip. The **label** (the folder's name) changes the
+/// folder (`on_change`, RFC-045's [Change]); the **`×`** clears it (`on_clear`,
+/// §11.3) and has a visual tooltip. Always outlined -- a chip is not a choice, so
+/// it never takes the chosen look (Task 118). snora sizes the `×` target to at
+/// least 24 × 24 (WCAG 2.5.8), which the tests measure.
+///
+/// The tooltip is a visual tooltip, not an accessible name (snora, Task 121).
+pub fn removable_chip<'a>(
+    tokens: &Tokens,
+    label: &str,
+    on_change: Option<Message>,
+    on_clear: Message,
+    tooltip: &str,
+) -> Element<'a, Message> {
+    // `selected` is false: the outlined look, whatever the state.
+    snora::design::chip::removable_with_tooltip(
+        tokens,
+        label.to_string(),
+        false,
+        on_change,
+        Some(on_clear),
+        tooltip.to_string(),
+    )
+}
+
 /// Task 072: one chip primitive -- token-styled (outlined: a chip is an action,
 /// never a chosen option), with an optional
 /// leading and trailing lucide icon sharing the label's centre line. The

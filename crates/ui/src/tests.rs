@@ -81,4 +81,5 @@ pub(crate) fn iced_test_guard() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 mod task118_choice_and_switch;
+mod task121_folder_chip;
 mod task122_model_folder_button;
