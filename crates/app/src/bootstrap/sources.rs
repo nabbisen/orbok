@@ -279,6 +279,34 @@ pub fn check_and_refresh_source(
     }
 }
 
+/// A folder's **Prepare again** / **Check again**, asked for by the user
+/// (Review 281 §3): the folder is checked and scanned as at startup
+/// ([`check_and_refresh_source`]), and its `failed` files are asked for again,
+/// each through `enqueue_extraction_if_idle` -- the same `failed → discovered`
+/// transition the per-file Prepare again makes. Only this folder's, and only
+/// when the folder can be reached. Startup does not do this: a file that failed
+/// stays failed until the user asks, so it is not retried on every start.
+pub fn prepare_source_again(
+    catalog: &Catalog,
+    source_id_str: &str,
+) -> OrbokResult<orbok_ui::state::IndexHealth> {
+    use orbok_core::{SourceId, SourceStatus};
+    use orbok_db::repo::{FileRepository, IndexJobRepository, SourceRepository};
+
+    check_and_refresh_source(catalog, source_id_str)?;
+    let source_id = SourceId::from_string(source_id_str.to_string());
+    let reachable = SourceRepository::new(catalog)
+        .get(&source_id)?
+        .is_some_and(|source| source.status == SourceStatus::Active);
+    if reachable {
+        let jobs = IndexJobRepository::new(catalog);
+        for file_id in FileRepository::new(catalog).failed_file_ids(&source_id)? {
+            jobs.enqueue_extraction_if_idle(&file_id)?;
+        }
+    }
+    Ok(super::get_health(catalog))
+}
+
 /// Remove a source and its associated indexes from the catalog.
 pub fn remove_source(catalog: &Catalog, source_id_str: &str) -> OrbokResult<()> {
     use orbok_core::SourceId;

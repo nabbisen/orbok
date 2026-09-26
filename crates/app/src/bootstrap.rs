@@ -49,7 +49,7 @@ pub(crate) use sources::add_source_expect_added;
 pub use sources::{
     AddSourceOutcome, add_source, check_and_refresh_source, combine_overlapping_folders,
     covering_source, narrow_file_count, narrow_source, needs_private_folder_question,
-    remove_source, scan_and_index_source, widen_source,
+    prepare_source_again, remove_source, scan_and_index_source, widen_source,
 };
 // `get_sources` re-exported since Task 035: `Message::SourceRefreshRequested`'s
 // handler in `main.rs` needs to re-fetch the sources list after a refresh

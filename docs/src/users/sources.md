@@ -86,7 +86,9 @@ are **Queued**.
 
 - **Ready** — the file is prepared for search.
 - **Needs update** — the file changed after orbok prepared it.
-- **Failed** — orbok could not read the file.
+- **Failed** — orbok could not read the file. **Prepare again** on the folder
+  tries it again, so fixing the cause (a permission, a reconnected drive) is
+  enough.
 - **No text** — the file has no text orbok can search.
 
 A file orbok can no longer find shows **File not found** in search
@@ -99,8 +101,9 @@ up on their own. To ask sooner:
 
 - **A folder:** press **Prepare again** on its card, or `Ctrl/Cmd+R` with
   the folder selected on the **Folders** view. orbok checks the folder for
-  changes and prepares what changed. When the card says **Folder not
-  found** or **Cannot open**, it offers **Check again** instead.
+  changes, prepares what changed, and tries again the files that failed. When
+  the card says **Folder not found** or **Cannot open**, it offers **Check
+  again** instead.
 - **One result:** a result that shows **Needs update** offers **Prepare
   again**.
 - **All search data:** turn on **Advanced view** in **Settings**, then open

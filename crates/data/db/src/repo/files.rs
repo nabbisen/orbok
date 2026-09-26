@@ -366,6 +366,21 @@ impl<'a> FileRepository<'a> {
         Ok(n as u64)
     }
 
+    /// The ids of one source's files whose preparation failed (Review 281 §3), for
+    /// the folder's Prepare again to ask again for them.
+    pub fn failed_file_ids(&self, source_id: &orbok_core::SourceId) -> OrbokResult<Vec<FileId>> {
+        let conn = self.catalog.lock();
+        let mut stmt = conn
+            .prepare("SELECT file_id FROM files WHERE source_id = ?1 AND file_status = 'failed'")
+            .map_err(crate::catalog::db_err)?;
+        stmt.query_map(params![source_id.as_str()], |r| {
+            r.get::<_, String>(0).map(FileId::from_string)
+        })
+        .map_err(crate::catalog::db_err)?
+        .collect::<Result<_, _>>()
+        .map_err(crate::catalog::db_err)
+    }
+
     /// Count files for a specific source with a specific status.
     pub fn count_for_source_with_status(
         &self,

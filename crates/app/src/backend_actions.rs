@@ -139,7 +139,7 @@ pub(crate) fn run_cleanup(
 /// Row 6: "Check again" / "Prepare again" on a folder. The refreshed list
 /// is shown only if it can be read; either failure says so.
 pub(crate) fn refresh_source(catalog: &Catalog, state: &mut AppState, source_id: &str) {
-    let refreshed = bootstrap::check_and_refresh_source(catalog, source_id)
+    let refreshed = bootstrap::prepare_source_again(catalog, source_id)
         .and_then(|health| Ok((health, bootstrap::get_sources(catalog)?)));
     match refreshed {
         Ok((health, cards)) => {

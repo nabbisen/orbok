@@ -3111,6 +3111,110 @@ async fn prepare_again_works_on_a_failed_file_without_a_content_change() {
     assert_eq!(failed_jobs, 0, "no Chunk job met UNIQUE");
 }
 
+/// Review 281 §3: a folder's **Prepare again** also asks again for that folder's
+/// `failed` files. Two folders each hold a file that failed for a cause that
+/// leaves its bytes alone (it was not on disk while its jobs ran, and is put back
+/// byte for byte). Pressing Prepare again on the first ends its file `indexed`;
+/// the second folder's failed file is untouched until its own Prepare again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_folders_prepare_again_retries_its_own_failed_files_only() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+    let body = "# Later\n\nretrymarker content.\n";
+    let mut folders = Vec::new();
+    for name in ["one", "two"] {
+        let dir = temp.path().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{name}.md")), body).unwrap();
+        folders.push(dir);
+    }
+    let mut ids = Vec::new();
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        for dir in &folders {
+            let (card, _) =
+                bootstrap::add_source_expect_added(&catalog, &dir.to_string_lossy()).unwrap();
+            bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+            ids.push(card.source_id);
+        }
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    // Both files fail: take them away, then ask for them to be prepared.
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        for name in ["one.md", "two.md"] {
+            assert_eq!(task103_status(&catalog, name), "indexed");
+        }
+        catalog
+            .lock()
+            .execute_batch(
+                "UPDATE files SET file_status = 'discovered'; \
+                 UPDATE chunks SET chunk_status = 'deleted'; \
+                 DELETE FROM keyword_index_records; \
+                 INSERT INTO chunk_fts(chunk_fts) VALUES('delete-all'); \
+                 INSERT INTO chunk_fts_trigram(chunk_fts_trigram) VALUES('delete-all');",
+            )
+            .unwrap();
+        let cache = bootstrap::cache_service(&context).unwrap();
+        bootstrap::clean_temporary_extraction(&catalog, &cache).unwrap();
+        for name in ["one", "two"] {
+            std::fs::rename(
+                temp.path().join(name).join(format!("{name}.md")),
+                temp.path().join(format!("parked-{name}.md")),
+            )
+            .unwrap();
+        }
+        let jobs = orbok_db::repo::IndexJobRepository::new(&catalog);
+        let file_ids: Vec<String> = {
+            let conn = catalog.lock();
+            let mut stmt = conn.prepare("SELECT file_id FROM files").unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        for id in file_ids {
+            jobs.enqueue_extraction_if_idle(&orbok_core::FileId::from_string(id))
+                .unwrap();
+        }
+    }
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    for name in ["one.md", "two.md"] {
+        assert_eq!(task103_status(&catalog, name), "failed", "{name} failed");
+    }
+    // The cause goes away without touching the bytes.
+    for name in ["one", "two"] {
+        std::fs::rename(
+            temp.path().join(format!("parked-{name}.md")),
+            temp.path().join(name).join(format!("{name}.md")),
+        )
+        .unwrap();
+    }
+
+    let mut state = orbok_ui::AppState::default();
+    crate::backend_actions::refresh_source(&catalog, &mut state, &ids[0]);
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(
+        task103_status(&catalog, "one.md"),
+        "indexed",
+        "the folder's Prepare again retried its failed file"
+    );
+    assert_eq!(
+        task103_status(&catalog, "two.md"),
+        "failed",
+        "another folder's failed file is untouched"
+    );
+
+    crate::backend_actions::refresh_source(&catalog, &mut state, &ids[1]);
+    drop(catalog);
+    drain_scheduler_until_idle(&context, Duration::from_secs(60)).await;
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    assert_eq!(task103_status(&catalog, "two.md"), "indexed");
+}
+
 fn file_id(catalog: &orbok_db::Catalog) -> orbok_core::FileId {
     orbok_core::FileId::from_string(
         catalog
