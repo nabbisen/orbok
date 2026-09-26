@@ -432,45 +432,25 @@ impl OrbokApp {
             LayoutDirection::Ltr,
         );
 
-        // ── Tab bar: sub-views within the active group ─────────────────
-        let tab_bar_el: Option<Element<'_, Message>> = match self.state.active_view.group() {
-            NavGroup::Search => Some(build_tab_bar(
-                vec![
-                    Tab {
-                        id: ViewId::Search,
-                        label: tr(locale, MessageKey::NavSearch).to_string(),
-                        icon: None,
-                    },
-                    Tab {
-                        id: ViewId::Sources,
-                        label: tr(locale, MessageKey::NavSources).to_string(),
-                        icon: None,
-                    },
-                ],
-                self.state.active_view,
-            )),
-            NavGroup::Ai => Some(build_tab_bar(
-                vec![
-                    Tab {
-                        id: ViewId::Indexing,
-                        label: tr(locale, MessageKey::NavIndexing).to_string(),
-                        icon: None,
-                    },
-                    Tab {
-                        id: ViewId::Storage,
-                        label: tr(locale, MessageKey::NavStorage).to_string(),
-                        icon: None,
-                    },
-                    Tab {
-                        id: ViewId::Models,
-                        label: tr(locale, MessageKey::NavModels).to_string(),
-                        icon: None,
-                    },
-                ],
-                self.state.active_view,
-            )),
-            NavGroup::Settings => None,
-        };
+        // ── Tab bar: the pages of the active group, from the one list ────
+        // Task 124: a group with one page (Search) shows no tab bar, so its page
+        // starts at the top of the window and takes the space the bar would have
+        // (about 34 px), as Settings' page did before it had a second page.
+        let group = self.state.active_view.group();
+        let tab_bar_el: Option<Element<'_, Message>> =
+            (ViewId::pages(group).len() > 1).then(|| {
+                build_tab_bar(
+                    ViewId::pages(group)
+                        .iter()
+                        .map(|view| Tab {
+                            id: *view,
+                            label: tr(locale, view.label_key()).to_string(),
+                            icon: None,
+                        })
+                        .collect(),
+                    self.state.active_view,
+                )
+            });
 
         // ── Active page body ───────────────────────────────────────────
         let page_body = match self.state.active_view {

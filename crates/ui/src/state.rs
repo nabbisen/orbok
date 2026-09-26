@@ -51,9 +51,35 @@ impl ViewId {
     /// Which top-level navigation group this view belongs to.
     pub fn group(self) -> NavGroup {
         match self {
-            ViewId::Search | ViewId::Sources => NavGroup::Search,
-            ViewId::Indexing | ViewId::Storage | ViewId::Models => NavGroup::Ai,
-            ViewId::Settings => NavGroup::Settings,
+            // Task 124: AI is where it searches -- Folders, Preparing, Models;
+            // Storage is kept with Settings.
+            ViewId::Search => NavGroup::Search,
+            ViewId::Sources | ViewId::Indexing | ViewId::Models => NavGroup::Ai,
+            ViewId::Settings | ViewId::Storage => NavGroup::Settings,
+        }
+    }
+
+    /// The pages of a group, in tab order (Task 124). The one list the tab bars
+    /// are built from and the tests check; a group with one page shows no tab bar.
+    pub fn pages(group: NavGroup) -> &'static [ViewId] {
+        match group {
+            NavGroup::Search => &[ViewId::Search],
+            NavGroup::Ai => &[ViewId::Sources, ViewId::Indexing, ViewId::Models],
+            NavGroup::Settings => &[ViewId::Settings, ViewId::Storage],
+        }
+    }
+
+    /// The label a page has in the tab bar (and in the docs): the catalog's
+    /// navigation names, one per page (Task 107's page-name row).
+    pub fn label_key(self) -> crate::i18n::MessageKey {
+        use crate::i18n::MessageKey;
+        match self {
+            ViewId::Search => MessageKey::NavSearch,
+            ViewId::Sources => MessageKey::NavSources,
+            ViewId::Indexing => MessageKey::NavIndexing,
+            ViewId::Storage => MessageKey::NavStorage,
+            ViewId::Models => MessageKey::NavModels,
+            ViewId::Settings => MessageKey::NavSettings,
         }
     }
 
@@ -61,7 +87,7 @@ impl ViewId {
     pub fn group_default(group: NavGroup) -> Self {
         match group {
             NavGroup::Search => ViewId::Search,
-            NavGroup::Ai => ViewId::Indexing,
+            NavGroup::Ai => ViewId::Sources,
             NavGroup::Settings => ViewId::Settings,
         }
     }

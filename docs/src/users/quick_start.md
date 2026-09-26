@@ -82,9 +82,16 @@ from the Store, which Windows manages for you:
   folder that cannot be written to. orbok says so and exits without
   creating or opening anything.
 
+## Finding your way around
+
+The sidebar has three items. **Search** is the search page. **AI** holds
+**Folders** (where orbok searches), **Preparing** (its progress) and **Models**
+(search by meaning). **Settings** holds **Settings** and **Storage**. A group with
+several pages shows them as tabs across the top.
+
 ## First launch walkthrough
 
 1. **Set up search by meaning (optional)** — until a model is set up, orbok opens **Set up search by meaning**. Choose **Download from HuggingFace** (~490 MB) or enter the folder of a model you already have. **Skip — use keyword search only** leaves it for later; the screen comes back the next time orbok starts.
-2. **Add a folder** — on the **Folders** view, choose **Add folder**. orbok only scans folders you add.
-3. **Wait for preparing** — the **Preparing** view shows progress.
+2. **Add a folder** — under **AI** in the sidebar, on the **Folders** page, choose **Add folder**. orbok only scans folders you add.
+3. **Wait for preparing** — the **Preparing** page, next to Folders under **AI**, shows progress.
 4. **Search** — type an exact term or a natural-language question.

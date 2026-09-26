@@ -115,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Folders, Preparing and Models are under AI; Storage is under Settings** (Task
+  124). AI opens on Folders, and Search, which has one page, shows no tab bar.
+
 - The model setup pages say what is true and let you go back (Task 123): the ready
   page says the model is ready to use, not that search is on, and has **Back**; the
   first page names the download once; two technical phrases are in plain words.
