@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A folder's **Prepare again** now also tries again the files in that folder
+  that failed, so fixing the cause (a permission, a reconnected drive) is enough.
+- A problem notice ("Folder was not added", "Folder not removed", and the
+  others) goes away when the action it reported later succeeds; before, only
+  two of them did.
+
 - The top tab bar and the sidebar's labels draw cleanly (Task 121): a straight
   underline under the active tab, a rule under the bar only, the hover kept
   inside the tab, and a sidebar tooltip with its own background.
@@ -108,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the setting is on and there is something to clear.
 
 ### Changed
+
+- **The model folder can be chosen with the folder picker** and is checked as
+  soon as it is chosen (Task 122); there is no Validate button. Typing a path
+  and pressing Enter checks it too.
 
 - snora 0.51 (Task 121). A notice's dismiss control is now a close icon with a
   "Dismiss" tooltip.
