@@ -212,13 +212,15 @@ hour and produces a failure nobody can act on.
 
 RFC-034 already holds the honest position: §4.1.2 is recorded as **Partially
 met**, and its "Known renderer limitations" table lists limited AccessKit
-integration with i18n labels as the mitigation. The conformance record was right;
-this checklist was the part that overreached.
+integration (with no mitigation for icon-only controls, whose tooltips are visual
+only: corrected 2026-09-26, Task 121). The conformance record was right about the
+screen-reader step; this checklist was the part that overreached.
 
 **Reinstate this step when iced exposes an accessibility tree.** At that point
-the labels already exist — RFC-034 §4.1.2 states they are the authoritative
-accessible names and will flow through — so reinstating is a QA change, not a
-development one.
+the i18n strings already exist and would be the source of the names (RFC-034
+§4.1.2), so reinstating is a QA change, not a development one. For icon-only
+controls that holds only once iced also exposes accessible names: today they have
+none (`accessibility.md` §1.1.1).
 
 ### First launch
 

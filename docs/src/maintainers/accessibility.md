@@ -22,22 +22,26 @@ manual QA steps that gate each release at M13.
 
 ### 1.1.1 Non-text Content
 
-**Status: Met.**
+**Status: Not met for icon-only controls. Met for everything else.**
+Corrected 2026-09-26 (Task 121, Review 299 §2); this entry read "Met".
 
-Every status badge pairs a lucide icon glyph with a text label. No control
-communicates only through an image or icon. Icon-only sidebar navigation items
-carry `tooltip` strings sourced from the i18n catalog, which are the accessible
-text for those controls.
+Every status badge pairs a lucide icon glyph with a text label, so those are met.
 
-> **Annotated 2026-09-26 (Task 121).** snora states that its tooltips are
-> **visual tooltips, not accessible names**: they are not exposed to assistive
-> technology, because iced 0.14 has no accessible-name API for buttons and snora
-> has no accessibility tree. The sentence above says what orbok's catalog
-> *supplies* for those controls, not what assistive technology receives. The
-> dismiss tooltips added at snora 0.51 (`Notice::dismiss_tooltip`) are the same
-> kind, and are not cited here as meeting any naming criterion. Whether this
-> criterion's status stands is the architect's call; this note only removes the
-> ambiguity.
+**Icon-only controls have no accessible name.** They are the sidebar's three
+navigation items, the dismiss `X` on a notice, and the recent-searches close `X`.
+Each has a **visual tooltip** sourced from the i18n catalog. snora says plainly that
+its tooltips are visual tooltips, not accessible names: they are not exposed to
+assistive technology, because **iced 0.14 has no accessible-name API for buttons and
+no accessibility tree**, and snora has none either. So the catalog string is what a
+sighted pointer user sees on hover and is not what a screen reader receives. This
+entry previously called those strings "the accessible text for those controls",
+which they are not, and recorded the criterion as met on that basis.
+
+**Cause:** a platform limitation of iced 0.14, not an orbok defect that a change of
+ours could fix. **What would change the status:** iced exposing accessible names
+(AccessKit), at which point the same catalog strings are the source. Until then the
+dismiss tooltips added at snora 0.51 (`Notice::dismiss_tooltip`) are the same kind
+and are not cited as meeting any naming criterion.
 
 ### 1.4.1 Use of Color
 
@@ -463,11 +467,13 @@ the remove target is the whole chip, not a glyph-sized control.
 
 **Status: Partially met.**
 
-Every interactive control has a text label (name) and uses a native iced widget
-(role). Value exposure to the platform accessibility tree depends on iced's
-AccessKit integration, which is limited in v0.14. Labels sourced from the i18n
-catalog are the authoritative accessible names and will flow to AccessKit when
-iced exposes the tree.
+Every interactive control that shows text has a text label and uses a native iced
+widget (role). **Icon-only controls have no accessible name**: iced 0.14 exposes no
+accessibility tree and no accessible-name API, and a tooltip is a visual aid, not a
+name (see 1.1.1). Value exposure to the platform accessibility tree likewise depends
+on iced's AccessKit integration, which is limited in v0.14. Labels sourced from the
+i18n catalog are the source for the names when iced exposes the tree; until then
+that is a limitation, not a mitigation.
 
 ---
 
@@ -478,7 +484,7 @@ These are owned, tracked decisions — not silent gaps.
 | Limitation | Criterion | Mitigation | Upstream |
 |---|---|---|---|
 | No `Focused` widget status → iced cannot tell a style closure that a widget **iced owns** is focused | 2.4.7 | Application-owned selection *does* render a ring today, `tokens.focus`-driven and correct per preset since Task 031 (`components::selection_ring`); high-contrast themes | iced exposing focus state for its own widgets. **Narrowed 2026-08-18** — this row read "no CSS-style focus ring on buttons/cards", which over-stated it; see §2.4.7 |
-| AccessKit integration limited | 4.1.2 | i18n labels as authoritative names; tooltip strings on icon controls | iced roadmap item |
+| AccessKit integration limited: iced 0.14 has no accessible-name API and no accessibility tree | 4.1.2, 1.1.1 | **None for icon-only controls** (their tooltip is visual only, see 1.1.1). Controls with a visible text label: the label is the name, and the i18n catalog is the source for when iced exposes it | iced roadmap item |
 | `FocusSearch` targets a view switch, not the input directly | 2.4.3 (operability) | Switches to Search view; user's next keypress reaches input | Task 024 found `iced_runtime::widget::operation::focus::<T>(id)` genuinely exists in iced 0.14 (used for `focus_next`/`focus_previous` there) — this row's original claim that no such Task exists at all was wrong. Retargeting `FocusSearch` at it directly is a small, separate follow-up (needs an `Id` assigned to the search input), not done here. |
 
 ---
@@ -541,13 +547,14 @@ now:
 
 **This does not widen the conformance gap already recorded.** §4.1.2 above is
 marked *Partially met* and the "Known renderer limitations" table names limited
-AccessKit integration with i18n labels as the mitigation. What changes here is
+AccessKit integration, with no mitigation for icon-only controls (§1.1.1). What changes here is
 only that the QA procedure now matches that position instead of asking for an
 outcome the architecture cannot produce.
 
 **Reinstatement trigger:** iced exposing an accessibility tree. The labels are
-already in place and are the authoritative accessible names (§4.1.2), so
-reinstating this is a QA change rather than a development one. Run it on Linux
+already in place and would be the source of the names (§4.1.2), so
+reinstating this is a QA change rather than a development one (for icon-only
+controls, once iced also exposes accessible names: §1.1.1). Run it on Linux
 with Orca; on Windows use NVDA in preference to Narrator, as it is what blind
 Windows users predominantly run.
 
