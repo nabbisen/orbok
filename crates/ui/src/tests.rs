@@ -51,6 +51,7 @@ mod task073_removal_confirmation_matches_the_list;
 mod task081_storage_page;
 mod task099_rebuild_confirmation;
 mod task104_folders_and_preparing_agree;
+mod task105_a_problem_ends_when_resolved;
 mod task105_choosing_a_folder;
 mod task106_narrow_window;
 mod task108_a_folder_card_shows_what_is_true_now;

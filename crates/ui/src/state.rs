@@ -1090,6 +1090,15 @@ pub enum Message {
 impl AppState {
     pub fn update(&mut self, message: &Message) {
         let view_before = self.active_view;
+        // Review 283 §3: a problem notice ends when the action it reports
+        // later succeeds. Checked here, once, and *before* the message is
+        // applied, so that a success which raises its own notice (a folder
+        // added, "already added") is not blocked by the problem it resolves.
+        if let Some(notice) = &self.notice
+            && notice.is_resolved_by(message, self.notice_action.as_deref())
+        {
+            self.clear_notice();
+        }
         self.apply(message);
         // Task 069: a confirmation renders on one view, so changing view
         // closes every confirmation -- whatever message changed it (the tab
@@ -1268,23 +1277,9 @@ impl AppState {
                 self.search_running = false;
                 self.selected_result = None;
                 self.search_ui.trust_details_open.clear();
-                // Task 065: new results resolve a failed search, and make a
-                // launch-failure notice stale -- its Show-in-folder or Try
-                // again retry is a result index, which would now point at a
-                // different file.
-                // Other problem notices stay (Task 064).
-                if matches!(
-                    self.notice,
-                    Some(
-                        UserNotice::SearchDidNotFinish
-                            | UserNotice::FileCouldNotBeFound
-                            | UserNotice::FileCouldNotBeOpened
-                            | UserNotice::FileNotAllowed
-                            | UserNotice::FileCheckFailed
-                    )
-                ) {
-                    self.clear_notice();
-                }
+                // A failed search, and the launch-failure notices whose retry is
+                // a result index, end here: `UserNotice::is_resolved_by`, checked
+                // in `update`.
                 self.search_ui.results_status = self.results_status_for(count);
             }
             Message::SearchError { query, .. } => {
@@ -1566,13 +1561,7 @@ impl AppState {
             Message::SourceRemovalSucceeded(id) => {
                 self.sources.retain(|s| s.source_id != *id);
                 self.selected_source = None;
-                // The removal the notice reported as failed has now
-                // happened; "Folder not removed" would be untrue. Other
-                // problem notices stay (Task 064), as `SearchResultsReady`
-                // clears only the failures it resolves (Task 065).
-                if self.notice == Some(UserNotice::SourceCouldNotBeRemoved) {
-                    self.clear_notice();
-                }
+                // "Folder not removed" ends here too: `UserNotice::is_resolved_by`.
             }
             Message::FoldersCombined(combined) => self.apply_folders_combined(combined),
             Message::SourceRefreshRequested(_) => {} // handled by orbok; result arrives via SourcesLoaded/HealthUpdated

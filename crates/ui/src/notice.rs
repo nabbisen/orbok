@@ -6,6 +6,7 @@
 //! with a plain title, an explanation, and a suggested next action.
 
 use crate::i18n::{Locale, MessageKey, tr};
+use crate::state::Message;
 
 /// A friendly, actionable message shown to the user. Covers both problems
 /// (download failed) and confirmations (folder added).
@@ -111,6 +112,93 @@ impl UserNotice {
     pub fn is_problem(&self) -> bool {
         use snora::design::Tone;
         matches!(self.tone(), Tone::Danger | Tone::Warning)
+    }
+
+    /// Whether `message` -- an action succeeding -- makes this **problem**
+    /// notice untrue, so the reducer clears it (Review 283 §3). One rule, in one
+    /// place: a notice that reports a failure must not stay on screen after the
+    /// thing it reported has since worked (Task 064 keeps problems on screen so
+    /// they are not missed, not so they can outlive their cause).
+    ///
+    /// `retry` is the concrete action the notice stores, for the notices whose
+    /// resolution depends on *which* action failed. A success that is not the
+    /// resolving one leaves the problem in place. Every problem is matched here
+    /// with no wildcard, so a new one cannot be added without deciding.
+    ///
+    /// Problems with **no** resolving success, and why:
+    /// - `SettingCouldNotBeSaved`: a successful save raises no message the window
+    ///   sees;
+    /// - `FolderNotChecked`: a successful check arrives as `SourcesLoaded`, which
+    ///   any reload of the folder list also sends, so it cannot be told apart;
+    /// - `StorageUnavailable`: the notice does not record which action could not
+    ///   open storage;
+    /// - `ModelCouldNotBeLoaded`: its own Try again clears it, and a later load's
+    ///   success is not a message the window sees;
+    /// - `IndexingCouldNotStart`: background preparation does not restart within
+    ///   a session.
+    ///
+    /// The four file notices (`FileCouldNotBeFound`, `FileCouldNotBeOpened`,
+    /// `FileNotAllowed`, `FileCheckFailed`) are not resolved by opening another
+    /// file: they go when new results arrive, because their retry is an index into
+    /// the old result list (Task 065), which then points at a different file.
+    pub fn is_resolved_by(&self, message: &Message, retry: Option<&Message>) -> bool {
+        match self {
+            Self::FolderCouldNotBeAdded => matches!(
+                message,
+                Message::SourceAdded(_)
+                    | Message::ShowNotice(
+                        Self::FolderAlreadyAdded | Self::FolderAlreadyIncluded { .. }
+                    )
+            ),
+            Self::SearchDidNotFinish
+            | Self::FileCouldNotBeFound
+            | Self::FileCouldNotBeOpened
+            | Self::FileNotAllowed
+            | Self::FileCheckFailed => matches!(message, Message::SearchResultsReady(_)),
+            Self::DiagnosticsFileFailed => matches!(message, Message::DiagnosticsBundleCreated(_)),
+            Self::CatalogResetFailed => matches!(message, Message::CatalogResetSucceeded),
+            Self::SourceCouldNotBeRemoved => matches!(message, Message::SourceRemovalSucceeded(_)),
+            Self::RecentSearchesNotCleared => matches!(message, Message::RecentSearchesCleared),
+            Self::RecentSearchNotRemoved => matches!(
+                message,
+                Message::RecentSearchRemoved(_) | Message::RecentSearchesCleared
+            ),
+            Self::CleanupDidNotFinish => matches!(
+                (retry, message),
+                (
+                    Some(Message::CleanSnippets),
+                    Message::ShowNotice(Self::PreviewsCleared)
+                ) | (
+                    Some(Message::CleanSearchCache),
+                    Message::ShowNotice(Self::SearchCacheCleared)
+                ) | (
+                    Some(Message::CleanTemporaryExtraction),
+                    Message::ShowNotice(Self::ExtractedTextCleared)
+                ) | (
+                    Some(Message::RemoveReplacedStaleIndexes),
+                    Message::ShowNotice(Self::ReplacedDataRemoved)
+                )
+            ),
+            Self::SettingCouldNotBeSaved
+            | Self::FolderNotChecked
+            | Self::StorageUnavailable
+            | Self::ModelCouldNotBeLoaded
+            | Self::IndexingCouldNotStart => false,
+            // Confirmations and information are not problems: nothing to resolve.
+            Self::FolderAdded
+            | Self::FolderAlreadyAdded
+            | Self::FolderAlreadyIncluded { .. }
+            | Self::FoldersCombined { .. }
+            | Self::SettingsFileUnreadable
+            | Self::SearchReady
+            | Self::PreviewsCleared
+            | Self::SearchCacheCleared
+            | Self::ExtractedTextCleared
+            | Self::ReplacedDataRemoved
+            | Self::DiagnosticsFileCreated
+            | Self::RecentSearchesCleared
+            | Self::RecentSearchFilterDropped => false,
+        }
     }
 
     /// Map this notice to a Snora Design tone. Problem notices use Danger or
