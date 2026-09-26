@@ -902,6 +902,181 @@ fn both_add_arms_call_the_one_routine() {
     }
 }
 
+// ── Task 122: choosing a model folder works like choosing any folder ────
+
+/// A folder with both files the wizard needs (a presence check reads only their
+/// metadata).
+fn model_folder(root: &std::path::Path, complete: bool) -> std::path::PathBuf {
+    let folder = root.join(if complete { "complete" } else { "incomplete" });
+    std::fs::create_dir_all(folder.join("onnx")).unwrap();
+    std::fs::write(folder.join("onnx").join("model.onnx"), b"model").unwrap();
+    if complete {
+        std::fs::write(folder.join("tokenizer.json"), b"{}").unwrap();
+    }
+    folder
+}
+
+fn wizard_app() -> OrbokApp {
+    OrbokApp::with_state(AppState {
+        wizard: Some(orbok_ui::state::WizardState::NotConfigured),
+        ..AppState::default()
+    })
+}
+
+/// §2.1: the button opens the picker once; a second press while it is open does
+/// nothing.
+#[test]
+fn the_wizards_choose_a_folder_opens_the_picker_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = wizard_app();
+
+    let first = route(&mut app, Message::WizardChooseFolder, &deps);
+    assert_eq!(first.units(), 1, "the picker task");
+    assert!(app.state.wizard_picker_in_progress);
+    let second = route(&mut app, Message::WizardChooseFolder, &deps);
+    assert_eq!(second.units(), 0, "a second press does nothing");
+}
+
+/// §2.2: a picked folder is checked at once, with no further press: complete ->
+/// "Use this model" is offered (the Ready page); missing a file -> the checklist
+/// says which.
+#[test]
+fn a_picked_folder_is_checked_at_once() {
+    use orbok_ui::state::WizardState;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+
+    let mut app = wizard_app();
+    let complete = model_folder(temp.path(), true);
+    let _ = route(&mut app, Message::WizardChooseFolder, &deps);
+    let _ = route(
+        &mut app,
+        Message::WizardFolderPicked(complete.clone()),
+        &deps,
+    );
+    assert_eq!(
+        app.state.wizard_path_input,
+        complete.to_string_lossy(),
+        "the picker's answer fills the field"
+    );
+    assert!(!app.state.wizard_picker_in_progress);
+    assert!(
+        matches!(app.state.wizard, Some(WizardState::Ready { .. })),
+        "a complete folder is ready to use: {:?}",
+        app.state.wizard
+    );
+
+    let mut app = wizard_app();
+    let incomplete = model_folder(temp.path(), false);
+    let _ = route(&mut app, Message::WizardChooseFolder, &deps);
+    let _ = route(&mut app, Message::WizardFolderPicked(incomplete), &deps);
+    match &app.state.wizard {
+        Some(WizardState::Checked {
+            all_ok: false,
+            checks,
+            ..
+        }) => {
+            let found = |name: &str| {
+                checks
+                    .iter()
+                    .find(|c| c.relative_path == name)
+                    .map(|c| c.found)
+            };
+            assert_eq!(found("onnx/model.onnx"), Some(true));
+            assert_eq!(
+                found("tokenizer.json"),
+                Some(false),
+                "the checklist says which"
+            );
+        }
+        other => panic!("expected the checklist, got {other:?}"),
+    }
+}
+
+/// §2.3: Enter in the field checks what is typed; typing alone does not.
+#[test]
+fn enter_checks_the_typed_path_and_typing_alone_does_not() {
+    use orbok_ui::state::WizardState;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let complete = model_folder(temp.path(), true);
+    let mut app = wizard_app();
+
+    let _ = route(
+        &mut app,
+        Message::WizardPathChanged(complete.to_string_lossy().to_string()),
+        &deps,
+    );
+    assert!(
+        matches!(app.state.wizard, Some(WizardState::NotConfigured)),
+        "typing did not check"
+    );
+    let _ = route(&mut app, Message::WizardValidate, &deps);
+    assert!(
+        matches!(app.state.wizard, Some(WizardState::Ready { .. })),
+        "Enter checked it"
+    );
+}
+
+/// §2.4: a cancelled picker changes nothing.
+#[test]
+fn a_cancelled_model_folder_picker_changes_nothing() {
+    use orbok_ui::state::WizardState;
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = wizard_app();
+    app.state.wizard_path_input = "typed".into();
+    let _ = route(&mut app, Message::WizardChooseFolder, &deps);
+    let _ = route(&mut app, Message::WizardFolderPickerCancelled, &deps);
+    assert_eq!(app.state.wizard_path_input, "typed");
+    assert!(matches!(app.state.wizard, Some(WizardState::NotConfigured)));
+    assert!(!app.state.wizard_picker_in_progress);
+}
+
+/// §2.6: the three folder pickers (Folders, search, wizard) share one function,
+/// and `rfd` is called from exactly one place.
+#[test]
+fn the_three_pickers_share_one_function() {
+    let source = include_str!("../router.rs");
+    // Only the non-test part: this file's own text is not in `router.rs`.
+    assert_eq!(
+        source.matches("rfd::AsyncFileDialog").count(),
+        1,
+        "one place opens the system folder picker"
+    );
+    let arm = |start: &str, end: &str| {
+        let from = source.find(start).unwrap();
+        let to = from + source[from..].find(end).unwrap();
+        &source[from..to]
+    };
+    for (name, body) in [
+        (
+            "the search picker",
+            arm("fn open_search_folder_picker(", "/// Task 108:"),
+        ),
+        (
+            "RequestAddSource",
+            arm(
+                "Message::RequestAddSource =>",
+                "Message::AddSourceFolderPicked(folder) =>",
+            ),
+        ),
+        (
+            "WizardChooseFolder",
+            arm(
+                "Message::WizardChooseFolder =>",
+                "Message::WizardFolderPicked(",
+            ),
+        ),
+    ] {
+        assert!(
+            body.contains("open_folder_picker("),
+            "{name} must open the picker through open_folder_picker"
+        );
+    }
+}
+
 // ── Task 110: a private folder is asked about first ─────────────────────
 
 /// A directory the sensitive-folder check flags (`.ssh` is on its list).

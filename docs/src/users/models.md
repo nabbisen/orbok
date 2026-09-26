@@ -20,10 +20,11 @@ comes back the next time orbok starts.
   provider, the exact size and the license) under **Review model
   download**. **Agree and download** starts it, and orbok verifies the
   files before it uses them.
-- **Files you already have:** type the path of the folder that contains
-  `onnx/model.onnx` and `tokenizer.json` into **Folder path…**, then
-  choose **Validate**, and **Use this model** when orbok has found the
-  files.
+- **Files you already have:** choose **Choose a folder** and pick the folder
+  that contains `onnx/model.onnx` and `tokenizer.json`, or type or paste its
+  path into **Folder path…** and press Enter. orbok checks the folder as soon
+  as you choose it, and says which file is missing if one is. When it has
+  found both files, choose **Use this model**.
 
 When the model is ready, orbok says **Search by meaning is ready**.
 

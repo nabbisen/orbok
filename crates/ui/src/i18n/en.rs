@@ -132,7 +132,6 @@ pub fn message(key: MessageKey) -> &'static str {
              contains them."
         }
         WizardBodyFilesIncomplete => "That folder is missing some of the required files.",
-        WizardActionValidate => "Validate",
         WizardActionUseModel => "Use this model",
         WizardPathPlaceholder => "Folder path…",
         WizardDownloadAction => "Download from HuggingFace",

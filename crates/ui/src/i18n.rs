@@ -242,7 +242,6 @@ message_keys! {
     WizardBodyFileMissing,
     WizardBodyLocateExisting,
     WizardBodyFilesIncomplete,
-    WizardActionValidate,
     WizardActionUseModel,
     WizardPathPlaceholder,
     WizardDownloadAction,

@@ -58,6 +58,42 @@ fn file_check_line<'a>(
 }
 
 /// Standard wizard page wrapper: token page padding, fills the window.
+/// Task 122: the model folder's "Choose a folder" -- the Folders page's shape:
+/// the button opens the system folder picker, the text field beside it takes a
+/// typed path, and choosing (or Enter in the field) checks it. There is no
+/// Validate button. Unavailable while the picker is open (one at a time).
+/// `filled` only where choosing a folder is the page's one way forward
+/// (Task 118: a fill means a chosen option or the page's main action).
+fn choose_folder_button(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    locale: Locale,
+    state: &AppState,
+    filled: bool,
+) -> Element<'static, Message> {
+    let content = || {
+        hrow![
+            icon_text(char::from(lucide::FolderOpen), 13.0),
+            text(tr(locale, MessageKey::SearchChooseFolder)).size(theme::body_s(tokens, sc)),
+        ]
+        .spacing(tokens.spacing.xs)
+    };
+    let press = (!state.wizard_picker_in_progress).then_some(Message::WizardChooseFolder);
+    if filled {
+        button(content())
+            .padding(control_padding(tokens))
+            .on_press_maybe(press)
+            .style(components::filled(tokens))
+            .into()
+    } else {
+        button(content())
+            .padding(control_padding(tokens))
+            .on_press_maybe(press)
+            .style(components::outlined(tokens))
+            .into()
+    }
+}
+
 fn wizard_page<'a>(
     tokens: &Tokens,
     col: iced::widget::Column<'a, Message>,
@@ -239,17 +275,7 @@ fn page_setup<'a>(
     col = col.push(
         hrow![
             container(path_input).width(Length::Fill),
-            button(
-                hrow![
-                    icon_text(char::from(lucide::FolderOpen), 13.0),
-                    text(tr(locale, MessageKey::WizardActionValidate))
-                        .size(theme::body_s(tokens, sc)),
-                ]
-                .spacing(tokens.spacing.xs),
-            )
-            .padding(control_padding(tokens))
-            .on_press(Message::WizardValidate)
-            .style(components::outlined(tokens)),
+            choose_folder_button(tokens, sc, locale, state, false),
         ]
         .spacing(tokens.spacing.sm)
         .wrap(),
@@ -516,23 +542,13 @@ fn page_checked<'a>(
         )
         .on_input(Message::WizardPathChanged)
         .on_submit(Message::WizardValidate)
-        // Task 072: matches the Validate button beside it.
+        // Task 072: matches the Choose a folder button beside it.
         .size(theme::body_s(tokens, sc))
         .padding(input_padding(tokens));
         col = col.push(
             hrow![
                 container(path_input).width(Length::Fill),
-                button(
-                    hrow![
-                        icon_text(char::from(lucide::ScanEye), 13.0),
-                        text(tr(locale, MessageKey::WizardActionValidate))
-                            .size(theme::body_s(tokens, sc)),
-                    ]
-                    .spacing(tokens.spacing.xs),
-                )
-                .padding(control_padding(tokens))
-                .on_press(Message::WizardValidate)
-                .style(components::filled(tokens)),
+                choose_folder_button(tokens, sc, locale, state, true),
             ]
             .spacing(tokens.spacing.sm)
             .wrap(),

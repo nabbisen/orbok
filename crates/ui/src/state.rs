@@ -308,12 +308,12 @@ pub enum WizardKind {
     DownloadFailed,
     /// `Checked { all_ok: true, .. }` — primary action is `WizardAccept`.
     CheckedOk,
-    /// `Checked { all_ok: false, .. }`. Primary action is `WizardValidate`
-    /// itself -- the same action its own `text_input`'s
-    /// `on_submit(WizardValidate)` already gives a keyboard path whenever
-    /// that input has focus. Left unbound here (unlike `Setup`) because
-    /// binding `Enter` to the same message a second time would be
-    /// redundant, not because of a conflict -- see `shell::confirm_message`.
+    /// `Checked { all_ok: false, .. }`. Its way forward is choosing a folder
+    /// (Task 122: `WizardChooseFolder`, checked at once when chosen), and the
+    /// page's own `text_input` sends `WizardValidate` on Enter whenever it has
+    /// focus. `Enter` is left unbound here (unlike `Setup`) because binding it
+    /// to a check the input already gives would be redundant, not because of a
+    /// conflict -- see `shell::confirm_message`.
     CheckedNotOk,
     /// `Ready { persistence: Idle, .. }` — primary action is `WizardAccept`.
     ReadyIdle,
@@ -608,6 +608,9 @@ pub struct AppState {
     pub wizard: Option<WizardState>,
     /// Text-input path the user is typing in the wizard.
     pub wizard_path_input: String,
+    /// Task 122: the wizard's folder picker is open (one at a time, as the
+    /// Folders page's and the search row's pickers are).
+    pub wizard_picker_in_progress: bool,
     /// App-populated, path-aware facts for the reviewed default-model offer.
     pub model_download_consent: Option<ModelDownloadConsent>,
     /// Non-reusing identities used to correlate Ready and persistence events.
@@ -701,6 +704,7 @@ impl Default for AppState {
             active_model_provenance: None,
             wizard: None,
             wizard_path_input: String::new(),
+            wizard_picker_in_progress: false,
             model_download_consent: None,
             model_flow_ids: ModelFlowIdentitySequence::default(),
             source_path_input: String::new(),
@@ -896,7 +900,18 @@ pub enum Message {
     StorageMeasurementFailed,
     // Startup wizard
     WizardPathChanged(String),
+    /// Task 122: Enter in the model-folder field checks what was typed. Typing
+    /// alone never checks (a check per keystroke would flash "not found" while
+    /// the user is still typing).
     WizardValidate,
+    /// Task 122: the wizard's "Choose a folder" -- opens the system folder
+    /// picker (orbok opens it off the update thread, one at a time).
+    WizardChooseFolder,
+    /// Task 122: the picker's answer. It fills the field and is checked at once.
+    WizardFolderPicked(std::path::PathBuf),
+    /// Task 122: the picker was cancelled: nothing changes but the picker
+    /// being open.
+    WizardFolderPickerCancelled,
     WizardChecked {
         model_dir: String,
         checks: Vec<WizardFileCheck>,
@@ -1497,6 +1512,14 @@ impl AppState {
             }
             Message::WizardPathChanged(p) => self.wizard_path_input = p.clone(),
             Message::WizardValidate => {} // handled in orbok update
+            // Task 122: orbok opens the picker (one at a time) and checks what
+            // it answers; here the field and the flag follow.
+            Message::WizardChooseFolder => self.wizard_picker_in_progress = true,
+            Message::WizardFolderPicked(folder) => {
+                self.wizard_picker_in_progress = false;
+                self.wizard_path_input = folder.to_string_lossy().into_owned();
+            }
+            Message::WizardFolderPickerCancelled => self.wizard_picker_in_progress = false,
             Message::WizardChecked {
                 model_dir: _,
                 checks: _,

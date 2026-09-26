@@ -260,6 +260,31 @@ fn widen_folder(app: &mut OrbokApp, deps: &AppDeps, source_id: &str) {
     }
 }
 
+/// The one place a system folder picker is opened (Task 122; the Folders page's,
+/// the search row's and the setup wizard's all call it). It is an async `Task`,
+/// so the dialog never blocks the iced event loop (RFC-045 §19.0, RFC-061 §7
+/// Slice 5). Each caller checks and sets its own one-picker-at-a-time flag
+/// (Task 047) before calling, and says what a pick and a cancel mean.
+fn open_folder_picker(
+    title: String,
+    picked: fn(std::path::PathBuf) -> Message,
+    cancelled: Message,
+) -> iced::Task<Message> {
+    iced::Task::perform(
+        async move {
+            rfd::AsyncFileDialog::new()
+                .set_title(title)
+                .pick_folder()
+                .await
+                .map(|h| h.path().to_path_buf())
+        },
+        move |result| match result {
+            Some(path) => picked(path),
+            None => cancelled.clone(),
+        },
+    )
+}
+
 /// Open the OS folder picker for the search page (RFC-045), unless one is
 /// already open (Task 047's rule, which `search_location.picker_in_progress`
 /// records but nothing checked before Task 105). Used by a submitted search
@@ -269,21 +294,10 @@ fn open_search_folder_picker(app: &mut OrbokApp) -> iced::Task<Message> {
         return iced::Task::none();
     }
     app.update(Message::ChooseFolderRequested);
-    // The actual rfd call is an async Task so it does not block the iced
-    // event loop (RFC-045 §19.0).
-    let locale = app.state.locale;
-    iced::Task::perform(
-        async move {
-            rfd::AsyncFileDialog::new()
-                .set_title(dialog_title_choose_search_folder(locale))
-                .pick_folder()
-                .await
-                .map(|h| h.path().to_path_buf())
-        },
-        |result| match result {
-            Some(path) => Message::FolderPicked(path),
-            None => Message::FolderPickerCancelled,
-        },
+    open_folder_picker(
+        dialog_title_choose_search_folder(app.state.locale).to_string(),
+        Message::FolderPicked,
+        Message::FolderPickerCancelled,
     )
 }
 
@@ -294,6 +308,22 @@ fn cards_follow_the_queue(app: &mut OrbokApp, catalog: &Catalog) {
     if let Ok(cards) = bootstrap::get_sources(catalog) {
         app.update(Message::SourceCardsRefreshed(cards));
     }
+}
+
+/// Check the model folder in the wizard's field and show the result (Task 122).
+/// A presence check -- `verify_embedding_model` reads the metadata of the two
+/// required files and nothing more, no hashing and no load -- so it runs here on
+/// the update thread; there is no reason to make the user ask for it.
+fn check_wizard_path(app: &mut OrbokApp) {
+    let path = app.state.wizard_path_input.trim().to_string();
+    let outcome = orbok_workers::verify_embedding_model(Some(&path));
+    let (checks, all_ok) = crate::build_wizard_checks(&outcome, &path);
+    let checked = Message::WizardChecked {
+        model_dir: path,
+        checks,
+        all_ok,
+    };
+    let _ = model_flow::reduce(&mut app.state, &checked);
 }
 
 /// The message router: every message `iced` delivers to the running app
@@ -484,16 +514,38 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         return iced::Task::none();
     }
     match &message {
+        // Task 122: Enter in the model-folder field checks what was typed.
+        // Typing alone (`WizardPathChanged`) never does.
         Message::WizardValidate => {
-            let path = app.state.wizard_path_input.trim().to_string();
-            let outcome = orbok_workers::verify_embedding_model(Some(&path));
-            let (checks, all_ok) = crate::build_wizard_checks(&outcome, &path);
-            let checked = Message::WizardChecked {
-                model_dir: path,
-                checks,
-                all_ok,
-            };
-            let _ = model_flow::reduce(&mut app.state, &checked);
+            check_wizard_path(app);
+            return iced::Task::none();
+        }
+        // Task 122: the wizard's "Choose a folder" opens the same picker the
+        // other two use, one at a time.
+        Message::WizardChooseFolder => {
+            if app.state.wizard_picker_in_progress {
+                return iced::Task::none();
+            }
+            app.update(message.clone());
+            return open_folder_picker(
+                orbok_ui::i18n::tr(
+                    app.state.locale,
+                    orbok_ui::i18n::MessageKey::SearchChooseFolder,
+                )
+                .to_string(),
+                Message::WizardFolderPicked,
+                Message::WizardFolderPickerCancelled,
+            );
+        }
+        // The picker's answer fills the field (the reducer) and is checked at
+        // once: choosing is the act, there is nothing more to press.
+        Message::WizardFolderPicked(_) => {
+            app.update(message.clone());
+            check_wizard_path(app);
+            return iced::Task::none();
+        }
+        Message::WizardFolderPickerCancelled => {
+            app.update(message.clone());
             return iced::Task::none();
         }
         Message::RequestAddSource => {
@@ -509,19 +561,10 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 return iced::Task::none();
             }
             app.update(message.clone());
-            let locale = app.state.locale;
-            return iced::Task::perform(
-                async move {
-                    rfd::AsyncFileDialog::new()
-                        .set_title(dialog_title_add_source(locale))
-                        .pick_folder()
-                        .await
-                        .map(|h| h.path().to_path_buf())
-                },
-                |result| match result {
-                    Some(path) => Message::AddSourceFolderPicked(path),
-                    None => Message::AddSourceFolderPickerCancelled,
-                },
+            return open_folder_picker(
+                dialog_title_add_source(app.state.locale).to_string(),
+                Message::AddSourceFolderPicked,
+                Message::AddSourceFolderPickerCancelled,
             );
         }
         Message::AddSourceFolderPicked(folder) => {

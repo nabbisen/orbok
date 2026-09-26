@@ -129,7 +129,6 @@ pub fn message(key: MessageKey) -> &'static str {
             "モデルファイルをすでにお持ちの場合は、そのフォルダーを指定してください。"
         }
         WizardBodyFilesIncomplete => "そのフォルダーには必要なファイルの一部がありません。",
-        WizardActionValidate => "検証",
         WizardActionUseModel => "このモデルを使用",
         WizardPathPlaceholder => "フォルダーのパス…",
         WizardDownloadAction => "HuggingFaceからダウンロード",
