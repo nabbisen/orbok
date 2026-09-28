@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.26.1"
+version = "0.27.0"
 edition                 = "2024"
 rust-version            = "1.91"
 license                 = "Apache-2.0"
@@ -37,17 +37,17 @@ repository              = "https://github.com/nabbisen/orbok"
 # eleven lines must be bumped by hand at every release -- see
 # docs/src/maintainers/release_readiness.md's "Publish to crates.io" step,
 # added for exactly this.
-orbok-core                  = { version = "0.26.1", path = "crates/core" }
-orbok-db                    = { version = "0.26.1", path = "crates/data/db" }
-orbok-fs                    = { version = "0.26.1", path = "crates/data/fs" }
-orbok-cache                 = { version = "0.26.1", path = "crates/data/cache" }
-orbok-extract               = { version = "0.26.1", path = "crates/pipeline/extract" }
-orbok-search                = { version = "0.26.1", path = "crates/search/engine" }
-orbok-models                = { version = "0.26.1", path = "crates/search/models" }
-orbok-workers               = { version = "0.26.1", path = "crates/pipeline/workers" }
-orbok-bench                 = { version = "0.26.1", path = "crates/bench" }
-orbok-embed                 = { version = "0.26.1", path = "crates/search/embed" }
-orbok-ui                    = { version = "0.26.1", path = "crates/ui" }
+orbok-core                  = { version = "0.27.0", path = "crates/core" }
+orbok-db                    = { version = "0.27.0", path = "crates/data/db" }
+orbok-fs                    = { version = "0.27.0", path = "crates/data/fs" }
+orbok-cache                 = { version = "0.27.0", path = "crates/data/cache" }
+orbok-extract               = { version = "0.27.0", path = "crates/pipeline/extract" }
+orbok-search                = { version = "0.27.0", path = "crates/search/engine" }
+orbok-models                = { version = "0.27.0", path = "crates/search/models" }
+orbok-workers               = { version = "0.27.0", path = "crates/pipeline/workers" }
+orbok-bench                 = { version = "0.27.0", path = "crates/bench" }
+orbok-embed                 = { version = "0.27.0", path = "crates/search/embed" }
+orbok-ui                    = { version = "0.27.0", path = "crates/ui" }
 
 # ai
 tract-onnx                  = { version = "0.23" }

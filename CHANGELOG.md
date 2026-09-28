@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-09-29
+
+**Upgrading.** The first start after upgrading rewrites orbok's stored data
+(RFC-062); once it has, an older orbok cannot open it again — it shows a
+"newer data" page instead. Your settings are kept. Nothing is prepared again
+because of the upgrade: your folders' files keep the state they were already in.
+
 ### Added
 
 - **A folder can leave out its subfolders** (Task 114): each card on the
@@ -28,26 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A folder's **Prepare again** now also tries again the files in that folder
-  that failed, so fixing the cause (a permission, a reconnected drive) is enough.
-- A problem notice ("Folder was not added", "Folder not removed", and the
-  others) goes away when the action it reported later succeeds; before, only
-  two of them did.
-
-- The top tab bar and the sidebar's labels draw cleanly (Task 121): a straight
-  underline under the active tab, a rule under the bar only, the hover kept
-  inside the tab, and a sidebar tooltip with its own background.
-- On the software renderer (used when the graphics driver cannot start, as in
-  some virtual machines), the active tab's label is readable again.
-
-- On Windows and macOS, orbok no longer prepares files the system keeps hidden
-  (Task 120): `AppData` and `Library`, and anything else marked Hidden or
-  System (Windows) or hidden (macOS), are skipped, and files already prepared
-  from them are removed the next time the folder is checked. Adding `AppData`
-  or `Library` itself asks first, like other private folders.
-
-- A catalog write that reads first (queueing a file to be prepared again, and the other read-then-write steps) no longer fails with "database is locked" when the background scheduler writes at the same moment: every catalog write now takes the write lock first and waits for it.
-
 - **A file could be marked missing, and dropped from search, during the scan
   that saw it** (Task 116): stored times were written with a varying number of
   digits, so text comparison could order a later moment before an earlier one
@@ -61,12 +48,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `settings.json.unreadable` instead of being overwritten, and orbok says so once. Three settings
   nothing read (index mode, reranking, clear previews on exit) are removed.
 
+- **"Database is locked" failures** (Task 119): a catalog write that reads
+  first (queueing a file to be prepared again, and the other read-then-write
+  steps) no longer fails when the background scheduler writes at the same
+  moment; every catalog write now takes the write lock first and waits for it.
+
 - **A folder inside another is no longer prepared twice** (Task 113): adding
   a folder that an added folder already covers now says "Folder already
   included" instead of listing it again, choosing a subfolder to search in
   no longer adds it, and adding a folder above added ones combines them into
   it, keeping what was prepared. Folders that overlap in an existing profile
   are combined once at startup.
+
+- **On Windows and macOS, orbok no longer prepares files the system keeps
+  hidden** (Task 120): `AppData` and `Library`, and anything else marked
+  Hidden or System (Windows) or hidden (macOS), are skipped, and files
+  already prepared from them are removed the next time the folder is
+  checked. Adding `AppData` or `Library` itself asks first, like other
+  private folders.
+
+- **The top tab bar and the sidebar's labels draw cleanly** (Task 121): a
+  straight underline under the active tab, a rule under the bar only, the
+  hover kept inside the tab, and a sidebar tooltip with its own background.
+  On the software renderer (used when the graphics driver cannot start, as
+  in some virtual machines), the active tab's label is readable again.
 
 - **Controls stay reachable in a narrow window** (Task 106): with a narrow
   window and larger text, rows of buttons (the theme choices in Settings, the
@@ -87,7 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A file orbok cannot prepare is shown as failed** (Task 103), and it is no
   longer retried at every start. Before, it stayed "waiting" for ever and the
-  "Failed" counts on the Folders and Preparing pages were always zero.
+  "Failed" counts on the Folders and Preparing pages were always zero. A
+  folder's **Prepare again** also tries again that folder's own failed files,
+  so fixing the cause (a permission, a reconnected drive) is enough.
+- **A problem notice goes away once the action it reported later succeeds**
+  (Task 105): "Folder was not added", "Folder not removed" and the others
+  used to stay on screen even after a retry worked; only two of them did
+  before.
 - **Folder cards show preparation as it happens** (Task 108): a folder says
   "Preparing" while it has work to do, and its counts rise until it says
   "Ready", instead of showing "Ready 0" until the next restart.
