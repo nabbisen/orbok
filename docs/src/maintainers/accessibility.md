@@ -245,7 +245,7 @@ navigation/list/dialog surface:
 |---|---|
 | `Ctrl/Cmd + K` | Focus Search view |
 | `Ctrl/Cmd + ,` | Open Settings |
-| `Ctrl/Cmd + 1`..`6` | Jump directly to each of the six views |
+| `Ctrl/Cmd + 1`..`6` | Jump directly to a view, in the sidebar/tab-bar order (Task 124): 1 Search, 2 Folders, 3 Preparing, 4 Models, 5 Settings, 6 Storage |
 | `Tab` / `Shift+Tab` | Move focus among the 4 text inputs |
 | `Escape` | Close overlay / dismiss notice / **skip or back out of the wizard** / **cancel an in-progress model download** / cancel a confirm dialog / clear a list selection (priority order, first match wins) |
 | `Enter` (search input focused) | Submit search |
@@ -510,8 +510,8 @@ bound; do not extend it to cover 2.1.1's known-open items until they are.
    wizard closes and the Search view renders behind it — this is the
    walkthrough that originally found *"nothing worked at all."*
 2. From the Search view, press `Ctrl/Cmd+1` through `Ctrl/Cmd+6` in turn:
-   confirm each lands on Search, Sources, Indexing, Storage, Models,
-   Settings respectively.
+   confirm each lands on Search, Folders, Preparing, Models, Settings,
+   Storage respectively (Task 124's order).
 3. On the Search view, `Tab` into the query input, type a query, press
    `Enter`: confirm it submits. With results showing, use `Arrow Down`/
    `Arrow Up` (not while typing) to move the selection; confirm the

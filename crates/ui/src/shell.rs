@@ -87,28 +87,23 @@ pub fn key_to_message(
             Some(Message::Switch(ViewId::Settings))
         }
         // Ctrl/Cmd + 1..6  →  jump directly to a view (RFC-034 §2.1.1 /
-        // Task 024 §3.2). The same primary-modifier convention as the two
-        // shortcuts above, applied to the fixed six-view navigation
-        // surface `ViewId::ALL` already enumerates -- not a literal
-        // bare-Ctrl binding, for the same cross-platform reason Ctrl+K
-        // uses `command()` rather than `Modifiers::CTRL`.
-        Key::Character(c) if modifiers.command() && c.as_str() == "1" => {
-            Some(Message::Switch(ViewId::Search))
-        }
-        Key::Character(c) if modifiers.command() && c.as_str() == "2" => {
-            Some(Message::Switch(ViewId::Sources))
-        }
-        Key::Character(c) if modifiers.command() && c.as_str() == "3" => {
-            Some(Message::Switch(ViewId::Indexing))
-        }
-        Key::Character(c) if modifiers.command() && c.as_str() == "4" => {
-            Some(Message::Switch(ViewId::Storage))
-        }
-        Key::Character(c) if modifiers.command() && c.as_str() == "5" => {
-            Some(Message::Switch(ViewId::Models))
-        }
-        Key::Character(c) if modifiers.command() && c.as_str() == "6" => {
-            Some(Message::Switch(ViewId::Settings))
+        // Task 024 §3.2), in the order the sidebar and tab bars show them
+        // (Task 124 review §3.2: `ViewId::shortcut_order`, not a hand-written
+        // list, so this cannot diverge from what is on screen again). The
+        // same primary-modifier convention as the two shortcuts above, for
+        // the same cross-platform reason Ctrl+K uses `command()` rather than
+        // `Modifiers::CTRL`.
+        Key::Character(c)
+            if modifiers.command()
+                && c.as_str().len() == 1
+                && c.as_str()
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_digit() && ch != '0') =>
+        {
+            let digit = c.as_str().chars().next().unwrap().to_digit(10).unwrap();
+            let index = digit as usize - 1;
+            ViewId::shortcut_order().nth(index).map(Message::Switch)
         }
         // Ctrl/Cmd + R  →  RFC-037 §10.2 manual refresh for the selected
         // source (Task 035). The conventional "refresh" key, and free:
@@ -433,24 +428,21 @@ impl OrbokApp {
         );
 
         // ── Tab bar: the pages of the active group, from the one list ────
-        // Task 124: a group with one page (Search) shows no tab bar, so its page
-        // starts at the top of the window and takes the space the bar would have
-        // (about 34 px), as Settings' page did before it had a second page.
+        // Task 124 review: every group shows its bar, a one-page group included
+        // (Search shows a single "Search" tab), so every page's title starts at
+        // the same height and the bar always names where the user is.
         let group = self.state.active_view.group();
-        let tab_bar_el: Option<Element<'_, Message>> =
-            (ViewId::pages(group).len() > 1).then(|| {
-                build_tab_bar(
-                    ViewId::pages(group)
-                        .iter()
-                        .map(|view| Tab {
-                            id: *view,
-                            label: tr(locale, view.label_key()).to_string(),
-                            icon: None,
-                        })
-                        .collect(),
-                    self.state.active_view,
-                )
-            });
+        let tab_bar_el: Element<'_, Message> = build_tab_bar(
+            ViewId::pages(group)
+                .iter()
+                .map(|view| Tab {
+                    id: *view,
+                    label: tr(locale, view.label_key()).to_string(),
+                    icon: None,
+                })
+                .collect(),
+            self.state.active_view,
+        );
 
         // ── Active page body ───────────────────────────────────────────
         let page_body = match self.state.active_view {
@@ -468,9 +460,7 @@ impl OrbokApp {
         if let Some(notice) = notice_region {
             body = body.push(notice);
         }
-        if let Some(tabs) = tab_bar_el {
-            body = body.push(tabs);
-        }
+        body = body.push(tab_bar_el);
         let body: Element<'_, Message> = body.push(page_body).into();
 
         render(AppLayout::new(body).side_bar(side_bar))

@@ -143,21 +143,21 @@ fn key_map_shortcuts() {
 
 // RFC-034 §2.1.1 / Task 024 §3.2: Ctrl/Cmd+1..6 reach the six fixed views
 // directly, using the same primary-modifier convention as Ctrl+K/Ctrl+,.
+// Task 124 review §3.2: the order is the sidebar and tab bars' visible order
+// (`ViewId::shortcut_order`), read here rather than pinned by hand, so this
+// test moves with that order instead of fighting it.
 #[test]
 fn key_map_view_shortcuts() {
     let primary = Modifiers::COMMAND;
-    let expected = [
-        ("1", ViewId::Search),
-        ("2", ViewId::Sources),
-        ("3", ViewId::Indexing),
-        ("4", ViewId::Storage),
-        ("5", ViewId::Models),
-        ("6", ViewId::Settings),
-    ];
+    let expected: Vec<(String, ViewId)> = ViewId::shortcut_order()
+        .enumerate()
+        .map(|(i, view)| ((i + 1).to_string(), view))
+        .collect();
+    assert_eq!(expected.len(), 6, "one digit per view");
     for (digit, view) in expected {
         assert!(
             matches!(
-                key_to_message(&Key::Character(digit.into()), primary, &ctx(false)),
+                key_to_message(&Key::Character(digit.clone().into()), primary, &ctx(false)),
                 Some(Message::Switch(v)) if v == view
             ),
             "Cmd/Ctrl+{digit} → Switch({view:?})"

@@ -27,6 +27,11 @@ pub enum NavGroup {
     Settings,
 }
 
+impl NavGroup {
+    /// The sidebar's groups, top to bottom.
+    pub const ALL: &'static [NavGroup] = &[NavGroup::Search, NavGroup::Ai, NavGroup::Settings];
+}
+
 /// Top-level pages (GUI external design §3.1 order).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ViewId {
@@ -60,7 +65,7 @@ impl ViewId {
     }
 
     /// The pages of a group, in tab order (Task 124). The one list the tab bars
-    /// are built from and the tests check; a group with one page shows no tab bar.
+    /// are built from and the tests check.
     pub fn pages(group: NavGroup) -> &'static [ViewId] {
         match group {
             NavGroup::Search => &[ViewId::Search],
@@ -81,6 +86,16 @@ impl ViewId {
             ViewId::Models => MessageKey::NavModels,
             ViewId::Settings => MessageKey::NavSettings,
         }
+    }
+
+    /// Every page, in the order the sidebar and tab bars show them: each
+    /// group's pages (Task 124 review §3.2), in `NavGroup::ALL` order. What the
+    /// numbered shortcuts (`Ctrl/Cmd+1`..`6`) are built from, so that map cannot
+    /// diverge from what the tab bars show again.
+    pub fn shortcut_order() -> impl Iterator<Item = ViewId> {
+        NavGroup::ALL
+            .iter()
+            .flat_map(|g| ViewId::pages(*g).iter().copied())
     }
 
     /// Default view to activate when the user first enters a group.

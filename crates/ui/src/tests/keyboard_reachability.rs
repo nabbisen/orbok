@@ -57,25 +57,37 @@ fn press(app: &mut OrbokApp, key: Key, modifiers: Modifiers, ctx: &KeyboardConte
 
 // RFC-034 §2.1.1 / Task 024 §4 bullet 1: from a fresh state, reach each of
 // the six views by keyboard (Ctrl/Cmd+1..6) and find() text that only
-// that view renders.
+// that view renders. Task 124 review §3.2: the digit each view has is read
+// from `ViewId::shortcut_order` (the sidebar/tab-bar order), not pinned by
+// hand, so this test moves with that order instead of fighting it.
 #[test]
 fn ctrl_digit_reaches_each_view_by_keyboard() {
     let _guard = iced_test_guard();
     let primary = Modifiers::COMMAND;
 
-    let expected = [
-        ("1", ViewId::Search, MessageKey::NavSearch),
-        ("2", ViewId::Sources, MessageKey::SourcesTitle),
-        ("3", ViewId::Indexing, MessageKey::IndexingTitle),
-        ("4", ViewId::Storage, MessageKey::StorageTitle),
-        ("5", ViewId::Models, MessageKey::ModelsTitle),
-        ("6", ViewId::Settings, MessageKey::SettingsTitle),
-    ];
+    let heading_key = |view: ViewId| match view {
+        ViewId::Search => MessageKey::NavSearch,
+        ViewId::Sources => MessageKey::SourcesTitle,
+        ViewId::Indexing => MessageKey::IndexingTitle,
+        ViewId::Storage => MessageKey::StorageTitle,
+        ViewId::Models => MessageKey::ModelsTitle,
+        ViewId::Settings => MessageKey::SettingsTitle,
+    };
+    let expected: Vec<(String, ViewId, MessageKey)> = ViewId::shortcut_order()
+        .enumerate()
+        .map(|(i, view)| ((i + 1).to_string(), view, heading_key(view)))
+        .collect();
+    assert_eq!(expected.len(), 6, "one digit per view");
 
     for (digit, view, heading_key) in expected {
         let mut app = OrbokApp::with_state(AppState::default());
         let ctx = neutral_ctx(app.state.active_view);
-        press(&mut app, Key::Character(digit.into()), primary, &ctx);
+        press(
+            &mut app,
+            Key::Character(digit.clone().into()),
+            primary,
+            &ctx,
+        );
         assert_eq!(
             app.state.active_view, view,
             "Ctrl/Cmd+{digit} must switch active_view to {view:?}"
