@@ -3,8 +3,12 @@
 
 use crate::path_guard::{GuardedSource, PathGuard};
 use crate::sensitive::sensitive_warning;
-use crate::tests::common::{register_dir_source, register_dir_source_with};
-use orbok_core::{HiddenFilePolicy, OrbokError, SymlinkPolicy};
+use crate::tests::common::register_dir_source;
+#[cfg(unix)]
+use crate::tests::common::register_dir_source_with;
+use orbok_core::OrbokError;
+#[cfg(unix)]
+use orbok_core::{HiddenFilePolicy, SymlinkPolicy};
 use orbok_db::Catalog;
 use std::fs;
 use std::path::Path;

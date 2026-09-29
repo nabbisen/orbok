@@ -416,7 +416,11 @@ impl<'a> SourceRepository<'a> {
 
     /// The non-removed source registered at `canonical_path`, newest first if
     /// a catalog already holds more than one (Task 047: nothing prevented
-    /// duplicates before, and no unique constraint exists).
+    /// duplicates before, and no unique constraint exists). Ordered by
+    /// `rowid DESC`, not `created_at` (Task 116's rule: an order of events is
+    /// an event, not a time), the same as [`Self::list`] (Task 126). Since
+    /// Task 113 a path cannot hold two live rows any more, so this ordering
+    /// is only a tie-break that should never actually be needed.
     pub fn find_by_canonical_path(
         &self,
         canonical_path: &str,
@@ -425,7 +429,7 @@ impl<'a> SourceRepository<'a> {
         let mut stmt = conn
             .prepare(&format!(
                 "SELECT {COLUMNS} FROM sources WHERE canonical_path = ?1 \
-                 AND status != 'removed' ORDER BY created_at DESC LIMIT 1"
+                 AND status != 'removed' ORDER BY rowid DESC LIMIT 1"
             ))
             .map_err(db_err)?;
         let mut rows = stmt
