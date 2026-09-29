@@ -13,8 +13,9 @@ use crate::views;
 use iced::Element;
 use snora::lucide;
 use snora::{
-    AppLayout, Icon, LayoutDirection, SideBar, SideBarItem, Tab, TabBar, render,
-    widget::{app_side_bar, app_tab_bar},
+    AppLayout, Icon, LayoutDirection, SideBar, SideBarItem, Tab, TabBar,
+    design::widget::{app_side_bar, app_tab_bar},
+    render,
 };
 
 /// Everything [`key_to_message`] needs beyond the raw key event, snapshotted
@@ -300,8 +301,13 @@ fn tab_action_to_msg(action: snora::TabAction<ViewId>) -> Message {
     Message::Switch(id)
 }
 
-fn build_tab_bar(tabs: Vec<Tab<ViewId>>, active: ViewId) -> Element<'static, Message> {
+fn build_tab_bar(
+    tokens: &snora::design::Tokens,
+    tabs: Vec<Tab<ViewId>>,
+    active: ViewId,
+) -> Element<'static, Message> {
     app_tab_bar(
+        tokens,
         TabBar { tabs, active },
         &tab_action_to_msg,
         LayoutDirection::Ltr,
@@ -374,6 +380,11 @@ impl OrbokApp {
 
     pub fn view(&self) -> Element<'_, Message> {
         let locale = self.state.locale;
+        // Task 127: the one Tokens copy snora's own chrome (the sidebar and
+        // the tab bar) reads, so Text size reaches them too -- see
+        // `theme::chrome_tokens`'s own doc comment for why this must never
+        // reach `body_s`/`title_s`/`heading_s`.
+        let chrome = crate::theme::chrome_tokens(&self.state.tokens, self.state.text_scale);
 
         // Task 064: the one notice region, above the wizard and above every
         // view, so a notice is visible wherever the user acted.
@@ -420,6 +431,7 @@ impl OrbokApp {
             },
         ];
         let side_bar = app_side_bar(
+            &chrome,
             SideBar {
                 items: sidebar_items,
                 active: self.state.active_view.group(),
@@ -433,6 +445,7 @@ impl OrbokApp {
         // the same height and the bar always names where the user is.
         let group = self.state.active_view.group();
         let tab_bar_el: Element<'_, Message> = build_tab_bar(
+            &chrome,
             ViewId::pages(group)
                 .iter()
                 .map(|view| Tab {

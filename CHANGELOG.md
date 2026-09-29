@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under your pointer. It is now always the order the folders were added,
   oldest first.
 
+- **Text size now reaches the tab bar and the sidebar's tooltips** (Task 127):
+  they used to stay at a fixed size no matter what Default, Large or Larger
+  was set to; now they follow it, like the rest of the app. A long, unbroken
+  folder name or path in a notice now wraps instead of running off the edge.
+
+### Changed
+
+- snora 0.52 (Task 127).
+
 ## [0.27.0] — 2026-09-29
 
 **Upgrading.** The first start after upgrading rewrites orbok's stored data
