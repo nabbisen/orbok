@@ -380,18 +380,22 @@ impl OrbokApp {
 
     pub fn view(&self) -> Element<'_, Message> {
         let locale = self.state.locale;
-        // Task 127: the one Tokens copy snora's own chrome (the sidebar and
-        // the tab bar) reads, so Text size reaches them too -- see
-        // `theme::chrome_tokens`'s own doc comment for why this must never
-        // reach `body_s`/`title_s`/`heading_s`.
-        let chrome = crate::theme::chrome_tokens(&self.state.tokens, self.state.text_scale);
+        // Task 127, Review 305 §2: `AppState::snora_tokens` is the one Tokens
+        // copy every snora-drawn surface reads, so Text size reaches all of
+        // them -- see `theme::snora_tokens`'s own doc comment for the rule
+        // and for why this must never reach `body_s`/`title_s`/`heading_s`.
+        // A field, not a local: `snora::design::notice::Notice` stores its
+        // `&'a Tokens` reference for as long as the `Element<'a, _>` it
+        // returns, and `view()`'s own output is tied to `&self`'s lifetime --
+        // a value computed fresh inside this function cannot outlive it.
+        let snora_tokens = &self.state.snora_tokens;
 
         // Task 064: the one notice region, above the wizard and above every
         // view, so a notice is visible wherever the user acted.
         let notice_region: Option<Element<'_, Message>> =
             self.state.notice.as_ref().map(|notice| {
                 iced::widget::container(views::friendly_notice(
-                    &self.state.tokens,
+                    snora_tokens,
                     locale,
                     notice,
                     self.state.notice_action.is_some(),
@@ -431,7 +435,7 @@ impl OrbokApp {
             },
         ];
         let side_bar = app_side_bar(
-            &chrome,
+            snora_tokens,
             SideBar {
                 items: sidebar_items,
                 active: self.state.active_view.group(),
@@ -445,7 +449,7 @@ impl OrbokApp {
         // the same height and the bar always names where the user is.
         let group = self.state.active_view.group();
         let tab_bar_el: Element<'_, Message> = build_tab_bar(
-            &chrome,
+            snora_tokens,
             ViewId::pages(group)
                 .iter()
                 .map(|view| Tab {

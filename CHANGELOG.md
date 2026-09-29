@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under your pointer. It is now always the order the folders were added,
   oldest first.
 
-- **Text size now reaches the tab bar and the sidebar's tooltips** (Task 127):
-  they used to stay at a fixed size no matter what Default, Large or Larger
-  was set to; now they follow it, like the rest of the app. A long, unbroken
-  folder name or path in a notice now wraps instead of running off the edge.
+- **Text size now reaches the tab bar, the sidebar's tooltips, the notice
+  banner and the search row's folder chip** (Task 127): they used to stay at
+  a fixed size no matter what Default, Large or Larger was set to; now they
+  follow it, like the rest of the app. A long, unbroken folder name or path
+  in a notice now wraps instead of running off the edge.
 
 ### Changed
 

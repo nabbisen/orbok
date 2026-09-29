@@ -708,8 +708,19 @@ pub struct AppState {
     /// RFC-042: awaiting confirmation before clearing recent searches.
     pub confirm_clear_history: bool,
     /// Snora Design tokens, derived from `theme`. The single styling source of
-    /// truth for the whole view tree (RFC-032).
+    /// truth for the whole view tree (RFC-032). Orbok's own text reads this,
+    /// unscaled, and multiplies by `text_scale` itself (`theme::body_s` and its
+    /// siblings): see `theme::snora_tokens`'s own doc comment for the rule.
     pub tokens: snora::design::Tokens,
+    /// `tokens`, scaled by `text_scale`, for the snora-drawn surfaces that hold
+    /// onto their `Tokens` reference for as long as the `Element` they return
+    /// (`snora::design::notice::Notice`, notably) -- so it cannot be a value
+    /// computed inside `view()` itself, only ever borrowed for that one call;
+    /// it has to live as long as `AppState` does, kept in sync here exactly as
+    /// `tokens` already is (Task 127, Review 305 §2). Derived, always: the two
+    /// `Message` arms that can change either input recompute it from
+    /// `theme::snora_tokens(&self.tokens, self.text_scale)`, never by hand.
+    pub snora_tokens: snora::design::Tokens,
     /// The user's selected theme. `System` is resolved to a concrete preset at
     /// startup in `orbok`; `tokens` always holds the resolved bundle.
     pub theme: crate::theme::Theme,
@@ -765,6 +776,10 @@ impl Default for AppState {
             remember_recent_searches: true,
             confirm_clear_history: false,
             tokens: snora::design::Tokens::light(),
+            snora_tokens: crate::theme::snora_tokens(
+                &snora::design::Tokens::light(),
+                crate::theme::TextScale::default(),
+            ),
             theme: crate::theme::Theme::default(),
             text_scale: crate::theme::TextScale::default(),
             reduced_motion: false,
@@ -1184,8 +1199,12 @@ impl AppState {
             Message::SetTheme(theme) => {
                 self.theme = *theme;
                 self.tokens = theme.tokens();
+                self.snora_tokens = crate::theme::snora_tokens(&self.tokens, self.text_scale);
             }
-            Message::SetTextScale(scale) => self.text_scale = *scale,
+            Message::SetTextScale(scale) => {
+                self.text_scale = *scale;
+                self.snora_tokens = crate::theme::snora_tokens(&self.tokens, self.text_scale);
+            }
             Message::SetReducedMotion(val) => self.reduced_motion = *val,
             Message::AskResetCatalog => {
                 self.confirm_reset = true;

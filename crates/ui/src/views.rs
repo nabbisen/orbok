@@ -241,7 +241,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 // The folder: its name changes it (the same picker "Choose a
                 // folder" opens), its `×` clears it (RFC-045 §7.3, §11.3).
                 components::removable_chip(
-                    tokens,
+                    &state.snora_tokens,
                     location.display_name(),
                     (!state.search_location.picker_in_progress)
                         .then_some(Message::ChooseSearchFolder),

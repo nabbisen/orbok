@@ -177,36 +177,41 @@ fn scale(px: Pixels, s: TextScale) -> Pixels {
     Pixels(px.0 * s.factor())
 }
 
-// ── Chrome tokens (Task 127) ───────────────────────────────────────────────
+// ── snora tokens (Task 127, Review 305 §2) ─────────────────────────────────
 //
-// snora 0.52 makes its own chrome -- the tab bar and the sidebar tooltip --
-// read `Typography` (the `design` widgets orbok now uses for them) instead of
-// a fixed literal. To make Text size actually reach them, orbok builds a
-// *separate* copy of `Tokens` with every role's size pre-multiplied by the
-// scale, and hands only that copy to the chrome widgets.
+// snora 0.52's `design` widgets read `Typography` for their own text instead
+// of a fixed literal. **The rule this file now follows, on both sides:**
 //
-// This is the one place that copy is built. `AppState::tokens` itself stays
-// unscaled -- every other call in this file reads it and multiplies by `s`
-// itself (`body_s`, `title_s`, `heading_s`), so if this scaled copy ever
-// reached one of those, the result would be scaled twice. It never does:
-// nothing but [`chrome_tokens`]'s own caller (`shell::view`, building the
-// sidebar and tab bar) touches it.
+//   Everything snora draws takes the scaled tokens ([`snora_tokens`]).
+//   Everything orbok draws takes the base tokens (`AppState::tokens`) times
+//   `sc`, through `body_s`/`title_s`/`heading_s` below.
+//
+// One scale, applied once, on each side. [`snora_tokens`] is the *only*
+// place the scaled copy is built, and it must never reach `body_s` and its
+// siblings -- they already multiply by `s` themselves, so a scaled input
+// would scale twice (`orbok_s_own_text_is_scaled_once_not_twice`, the UI
+// crate's own test, proves the arithmetic both ways).
+//
+// Every snora-drawn surface orbok renders takes this: the sidebar and its
+// tooltip, the tab bar (`shell::view`), the notice (`views::friendly_notice`)
+// and the search row's folder chip (`components::removable_chip`, called
+// from `views::search_location_row`).
 
 /// A copy of `tokens` with every [`snora::design::Tokens::typography`] role's
 /// size multiplied by `s`; line heights are untouched (already a multiplier
-/// of the size, not a size themselves). Pass this, never `tokens` itself, to
-/// `snora::design::widget::app_side_bar` / `app_tab_bar` -- the only two
-/// callers this is for.
-pub fn chrome_tokens(tokens: &Tokens, s: TextScale) -> Tokens {
-    let mut chrome = tokens.clone();
+/// of the size, not a size themselves). Pass this, never the base tokens, to
+/// any `snora::design` widget that renders its own text -- see the rule
+/// above.
+pub fn snora_tokens(tokens: &Tokens, s: TextScale) -> Tokens {
+    let mut scaled = tokens.clone();
     let f = s.factor();
-    chrome.typography.body.size *= f;
-    chrome.typography.body_small.size *= f;
-    chrome.typography.label.size *= f;
-    chrome.typography.title.size *= f;
-    chrome.typography.heading.size *= f;
-    chrome.typography.display.size *= f;
-    chrome
+    scaled.typography.body.size *= f;
+    scaled.typography.body_small.size *= f;
+    scaled.typography.label.size *= f;
+    scaled.typography.title.size *= f;
+    scaled.typography.heading.size *= f;
+    scaled.typography.display.size *= f;
+    scaled
 }
 
 /// Page / section heading size (unscaled).

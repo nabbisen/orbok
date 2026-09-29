@@ -205,11 +205,18 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
     } else {
         Vec::new()
     };
+    let tokens = resolved_theme.tokens();
+    let text_scale = TextScale::parse(&settings.text_scale).unwrap_or_default();
     let state = AppState {
         locale,
         theme: stored_theme,
-        tokens: resolved_theme.tokens(),
-        text_scale: TextScale::parse(&settings.text_scale).unwrap_or_default(),
+        // Task 127, Review 305 §2: `snora_tokens` is `tokens` scaled by
+        // `text_scale`, kept in sync wherever either is set -- `AppState`'s
+        // own reducer arms do this for `SetTheme`/`SetTextScale`; this is the
+        // other place either is set, at startup, from the persisted settings.
+        snora_tokens: orbok_ui::theme::snora_tokens(&tokens, text_scale),
+        tokens,
+        text_scale,
         reduced_motion: settings.reduced_motion || super::resolve_os_reduced_motion(),
         capability: projection.capability,
         active_model_provenance: projection.active_provenance,
