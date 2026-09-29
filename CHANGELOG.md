@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The folder list keeps its order** (Task 126): reloading the Folders page
+  (Prepare again, Check again, a startup check) used to show the newest
+  folder first, while adding one appended it, so the cards could swap order
+  under your pointer. It is now always the order the folders were added,
+  oldest first.
+
 ## [0.27.0] — 2026-09-29
 
 **Upgrading.** The first start after upgrading rewrites orbok's stored data

@@ -437,10 +437,15 @@ impl<'a> SourceRepository<'a> {
         }
     }
 
-    /// All sources except Removed, newest first.
+    /// All sources except Removed, in the order they were added, oldest
+    /// first -- the order the Folders page shows and keeps through a reload,
+    /// a refresh or a combine (Task 126). By `rowid`, SQLite's own insertion
+    /// order, not `created_at`: Task 116's rule (an order of events is an
+    /// event, not a time) applies here too -- two folders added within the
+    /// same stored instant must not tie.
     pub fn list(&self) -> OrbokResult<Vec<SourceRecord>> {
         self.query_records(&format!(
-            "SELECT {COLUMNS} FROM sources WHERE status != 'removed' ORDER BY created_at DESC"
+            "SELECT {COLUMNS} FROM sources WHERE status != 'removed' ORDER BY rowid"
         ))
     }
 

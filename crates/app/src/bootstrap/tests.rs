@@ -21,3 +21,4 @@ mod task113_one_folder_per_file;
 #[cfg(test)]
 mod task114_a_folder_can_leave_out_its_subfolders;
 mod task120_one_home;
+mod task126_the_folder_list_keeps_its_order;
