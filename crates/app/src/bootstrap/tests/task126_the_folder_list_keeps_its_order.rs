@@ -44,16 +44,23 @@ fn names(catalog: &Catalog) -> Vec<String> {
 #[test]
 fn the_order_is_the_add_order_after_a_reload_a_prepare_again_and_a_combine() {
     let dir = tempfile::tempdir().unwrap();
+    // Canonicalized once, up front (Task 113's own tests do the same): on
+    // macOS `/tmp` is itself a symlink, and on Windows canonicalizing adds
+    // the `\\?\` verbatim prefix, so an un-canonicalized root would make the
+    // combine below compare the parent's canonicalized path against "one"/
+    // "two"'s un-canonicalized ones and never match (observed on both CI
+    // legs: the combine step silently absorbed nothing).
+    let root = dir.path().canonicalize().unwrap();
     // "group/one" and "group/two" registered on their own first, so a later
     // add of "group" itself combines them (Task 113): the parent must exist
     // on disk, above already-registered folders, at add time.
-    let group = dir.path().join("group");
+    let group = root.join("group");
     std::fs::create_dir(&group).unwrap();
-    let catalog = Catalog::open(dir.path().join("catalog.sqlite3")).unwrap();
+    let catalog = Catalog::open(root.join("catalog.sqlite3")).unwrap();
 
     let _one = add(&catalog, &group, "one");
     let two = add(&catalog, &group, "two");
-    let _three = add(&catalog, dir.path(), "three");
+    let _three = add(&catalog, &root, "three");
     assert_eq!(names(&catalog), ["one", "two", "three"], "insertion order");
 
     // A reload -- the exact call the Folders page and startup make.
