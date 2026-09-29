@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-09-22)
+## Current Status (2026-09-29)
 
-Shipped: **0.26.1**. Latest tagged release: **0.26.1**, also the newest on crates.io. Each RFC's state is
+Shipped: **0.27.0**. Latest tagged release: **0.27.0**, also the newest on crates.io. Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -39,8 +39,16 @@ across v0.16.0–v0.24.0:
 - 0.26.1 — a packaging release: orbok's library crates pinned each other
   loosely, so a published `orbok` could have taken a sibling from an older
   release. First version published to crates.io since 0.24.0 (Task 089).
+- 0.27.0 — three data fixes: a scan could mark files it had just seen as
+  missing (Task 116), upgrading could reset every setting (Task 117), and
+  "database is locked" failures (Task 119); what a folder covers, with each
+  file in one folder (RFC-064, Tasks 113–114); a private folder is asked
+  about first (Task 110, RFC-003 closed); what orbok skips follows the
+  platform (Task 120); every setting shows what it is set to (Task 118); the
+  sidebar's AI section is where it searches (Task 124); RFC-011 closed.
+  Migrates the catalog one way (RFC-062).
 
-Stack: snora 0.50 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.51 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 
