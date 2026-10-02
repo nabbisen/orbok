@@ -13,6 +13,7 @@ use crate::state::{
 use crate::tests::iced_test_guard;
 use crate::views::{self, card_heading_line};
 use iced_test::simulator;
+use orbok_search::ResultTrustState;
 
 /// The title and heading line the architect's own screenshot showed, for
 /// `Documents/Trips/kyoto-autumn-trip.md` and the query "how much will the
@@ -118,6 +119,54 @@ fn the_kyoto_card_shows_the_title_once_and_the_snippet_uncut() {
         ui.find(KYOTO_SNIPPET).is_ok(),
         "the snippet must reach the screen exactly as the engine built it, \
          not cut a second time by the card"
+    );
+}
+
+/// Review 306 §3.2: a suppressed heading (title == heading, Task 128 §1.1)
+/// must render **no row**, not an empty `text("")` that still reserves a
+/// line's height -- a blank gap would sit between the path and the
+/// snippet. Measured, not guessed: the snippet's own vertical position must
+/// be strictly higher (smaller y) with the heading suppressed than with a
+/// real heading line present, since nothing should separate it from the
+/// path line in that case. Red before the fix: `text("")` took the same
+/// line height as any other one-line text, so the two positions were equal.
+#[test]
+fn a_suppressed_heading_reserves_no_row() {
+    let _guard = iced_test_guard();
+    use snora::design::Tokens;
+    let tokens = Tokens::light();
+    let card = |heading: &str| {
+        crate::components::result_card(
+            &tokens,
+            crate::i18n::Locale::En,
+            "My document.md".to_string(),
+            "/docs/My document.md".to_string(),
+            heading.to_string(),
+            "A short snippet of content.".to_string(),
+            &[],
+            ResultTrustState::Ready,
+            false,
+            false,
+            Message::SelectResult(0),
+        )
+    };
+    let mut no_heading = simulator(card(""));
+    let no_heading_y = no_heading
+        .find("A short snippet of content.")
+        .unwrap()
+        .bounds()
+        .y;
+    let mut with_heading = simulator(card("Some section"));
+    let with_heading_y = with_heading
+        .find("A short snippet of content.")
+        .unwrap()
+        .bounds()
+        .y;
+    assert!(
+        no_heading_y < with_heading_y,
+        "a suppressed heading must not reserve its row's height: snippet y \
+         was {no_heading_y} with no heading, {with_heading_y} with one -- \
+         they must differ, not match"
     );
 }
 

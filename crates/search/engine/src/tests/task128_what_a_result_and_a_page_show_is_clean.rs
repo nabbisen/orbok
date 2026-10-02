@@ -10,6 +10,7 @@ use orbok_core::{ChunkId, FileId};
 use orbok_db::repo::ChunkRecord;
 use orbok_extract::{ExtractOutput, ExtractedSegment, LocationKind, LocationQuality, SegmentKind};
 use orbok_fs::{GuardedSource, PathGuard};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Same shape as `task034_snippet_robustness.rs`'s own `record`/`guard_over`
 /// -- kept local rather than shared, since the two files test different
@@ -229,12 +230,15 @@ fn a_long_snippet_is_cut_at_a_word_boundary_and_marked() {
 }
 
 /// Japanese has no spaces to cut at: the fallback is the display limit
-/// itself, always a whole grapheme, never split mid-character.
+/// itself, always a whole grapheme, never split mid-character. No sentence
+/// punctuation at the boundary either, so this test stays about the
+/// character-boundary fallback alone -- the punctuation-spacing rule has
+/// its own test below.
 #[test]
 fn japanese_text_with_no_spaces_is_cut_at_a_character_boundary() {
-    // 140 repetitions of a 3-byte-per-character Japanese sentence fragment,
-    // comfortably past the display cap, with no whitespace anywhere in it.
-    let long: String = "てきとうなぶんしょうをながくつづけてひづけをたしかめるぶん。".repeat(5);
+    // Repetitions of a sentence fragment with no punctuation and no
+    // whitespace anywhere in it, comfortably past the display cap.
+    let long: String = "てきとうなぶんしょうをながくつづけてひづけをたしかめるぶん".repeat(5);
     assert!(long.chars().count() > 120);
     let cut = crate::snippet::cut_for_display(&long);
     assert!(
@@ -252,6 +256,78 @@ fn japanese_text_with_no_spaces_is_cut_at_a_character_boundary() {
         long.starts_with(before_ellipsis),
         "the kept text must be an unbroken, validly-encoded prefix of the original \
          -- a `String` that failed to build at all would mean a character was split"
+    );
+}
+
+/// Review 306 §3.1: a word boundary far back must not be used. One Latin
+/// word at the very start of an otherwise space-free Japanese sentence puts
+/// "the nearest preceding boundary" 100+ graphemes before the limit --
+/// without a lookback floor the snippet collapsed to almost nothing
+/// (`"orbok…"`). Red before the floor: the old backward search ran
+/// `0..SNIPPET_DISPLAY_CHARS` with no lower bound.
+#[test]
+fn a_word_boundary_far_back_is_not_used() {
+    let tail: String = "はこのフォルダーの中にあるファイルをすべて対象として検索します".repeat(4);
+    let text = format!("orbok {tail}");
+    assert!(text.graphemes(true).count() > 120);
+    let cut = crate::snippet::cut_for_display(&text);
+    let before_ellipsis = cut.strip_suffix('…').unwrap();
+    assert!(
+        before_ellipsis.graphemes(true).count() > 100,
+        "a word boundary 100+ graphemes back must not be used, got {before_ellipsis:?}"
+    );
+}
+
+/// Review 306 §3.1, the English-language version of the same rule: an
+/// ordinary sentence whose nearest word boundary is close to the limit
+/// still cuts there -- the floor must not make *normal* cutting worse.
+#[test]
+fn an_ordinary_english_sentence_still_cuts_at_its_nearby_word_boundary() {
+    let long = "Train tickets, lodging, and the amount we set aside in the emergency fund \
+                for unexpected costs during the entire length of the trip, which turned out \
+                to be considerably more than we had originally planned for.";
+    let cut = crate::snippet::cut_for_display(long);
+    let before_ellipsis = cut.strip_suffix('…').unwrap();
+    assert!(
+        long.starts_with(before_ellipsis.trim_end()),
+        "an ordinary sentence's nearby boundary must still be used, got {before_ellipsis:?}"
+    );
+    assert!(
+        before_ellipsis
+            .trim_end()
+            .ends_with(|c: char| !c.is_whitespace() && c != '.'),
+        "this fixture's own nearest boundary must not itself be sentence-ending \
+         punctuation, or it would not exercise this rule: got {before_ellipsis:?}"
+    );
+}
+
+/// Review 306 §3.2: the cut mark must not glue onto sentence-ending
+/// punctuation. `"...the spring.…"` reads as a typo; a space before the `…`
+/// does not. Red before the fix: `cut_for_display` pushed `'…'` straight
+/// after trimming whitespace, with no punctuation check.
+#[test]
+fn the_cut_mark_does_not_glue_onto_a_period() {
+    let text = "Train tickets, lodging, meals, and transportation were paid for well before \
+                the trip began in the spring. \
+                Thecostsfollowedlaterintheautumnseasonaswellunexpectedlyandcontinuedformonths";
+    let cut = crate::snippet::cut_for_display(text);
+    assert!(
+        cut.ends_with(". …"),
+        "a cut landing right after a period must read \"... . …\", not glued, got {cut:?}"
+    );
+}
+
+/// The same rule in Japanese, whose sentence-ending mark is `。`, not `.`.
+#[test]
+fn the_cut_mark_does_not_glue_onto_a_japanese_period() {
+    // The same fixture `japanese_text_with_no_spaces_is_cut_at_a_character_boundary`
+    // would use, except this one's repeating unit ends in `。`, which lands
+    // exactly on the display limit for this length and repeat count.
+    let long: String = "てきとうなぶんしょうをながくつづけてひづけをたしかめるぶん。".repeat(5);
+    let cut = crate::snippet::cut_for_display(&long);
+    assert!(
+        cut.ends_with("。 …"),
+        "a cut landing right after 。 must read \"。 …\", not glued, got {cut:?}"
     );
 }
 

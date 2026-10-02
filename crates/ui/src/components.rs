@@ -441,14 +441,15 @@ pub fn result_card<'a>(
         title_text.into()
     };
 
-    let body = column![
-        title_line,
-        text(display_path).size(theme::meta(tokens)),
-        if !heading_str.is_empty() {
-            text(heading_str).size(theme::meta(tokens))
-        } else {
-            text("").size(theme::meta(tokens))
-        },
+    // Review 306 §3.2: an empty heading renders no row at all, not an empty
+    // `text("")` -- that still reserved a line's height, leaving a blank
+    // gap between the path and the snippet.
+    let mut body = column![title_line, text(display_path).size(theme::meta(tokens))]
+        .spacing(tokens.spacing.xs);
+    if !heading_str.is_empty() {
+        body = body.push(text(heading_str).size(theme::meta(tokens)));
+    }
+    body = body.push(
         // A genuine excerpt, meant to give context across more than one
         // line -- the wrapping-prose case this task exists for. Shown as
         // the engine built it: cutting again here would be a second rule
@@ -456,9 +457,8 @@ pub fn result_card<'a>(
         text(snippet)
             .size(theme::meta(tokens))
             .line_height(theme::meta_lh(tokens)),
-        badge_row,
-    ]
-    .spacing(tokens.spacing.xs);
+    );
+    body = body.push(badge_row);
 
     let inner = if is_selected {
         selection_ring(tokens, body)

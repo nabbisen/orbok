@@ -5,7 +5,7 @@
 [![Dependency Status](https://deps.rs/crate/orbok/latest/status.svg)](https://deps.rs/crate/orbok)
 [![License](https://img.shields.io/github/license/nabbisen/orbok)](LICENSE)
 
-**Local-first AI document search — private, storage-aware, offline.**
+**Local-first AI document search — private and storage-aware.**
 
 ---
 

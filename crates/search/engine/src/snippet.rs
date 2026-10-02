@@ -28,6 +28,14 @@ const MAX_SNIPPET_READ_BYTES: u64 = 64 * 1024;
 /// second time with no `…` and no care for where a word ended.
 const SNIPPET_DISPLAY_CHARS: usize = 120;
 
+/// How far back [`cut_for_display`] will look for a word boundary before
+/// giving up and cutting at the limit itself (Review 306 §3.1). Without a
+/// floor, a single early space -- one Latin word at the start of an
+/// otherwise space-free Japanese sentence, or a long URL -- is "the nearest
+/// preceding boundary" from the engine's point of view even when it is 100
+/// graphemes back, and the snippet collapses to almost nothing.
+const WORD_BOUNDARY_LOOKBACK: usize = 20;
+
 /// True if `line` is a Markdown ATX heading ("#" through "######" followed
 /// by a space) -- CommonMark's own definition, not a guess.
 fn is_markdown_heading_line(line: &str) -> bool {
@@ -81,12 +89,22 @@ pub(crate) fn drop_heading_lines(lines: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+/// True if `s` ends in sentence-ending punctuation, ASCII or the full-width
+/// forms Japanese uses -- checked so the cut mark never glues onto one
+/// (Review 306 §3.2): `"spring.…"` reads as a typo, `"spring. …"` does not.
+fn ends_with_sentence_punctuation(s: &str) -> bool {
+    matches!(s.chars().last(), Some('.' | '!' | '?' | '。' | '！' | '？'))
+}
+
 /// Cut `text` to at most [`SNIPPET_DISPLAY_CHARS`] graphemes for display,
 /// marked with a trailing `…` when it does. Prefers the nearest preceding
 /// word boundary (whitespace) over the limit itself, so a word is never
-/// shown cut in half; falls back to the limit itself -- always a whole
-/// grapheme, never split mid-cluster -- when the window has no word
-/// boundary to fall back to (Japanese and other scripts with no spaces).
+/// shown cut in half -- but only within the last [`WORD_BOUNDARY_LOOKBACK`]
+/// graphemes (Review 306 §3.1): a boundary further back than that is not
+/// "nearby", it is a different, much shorter snippet. Falls back to the
+/// limit itself -- always a whole grapheme, never split mid-cluster -- when
+/// the window has no word boundary to fall back to (Japanese and other
+/// scripts with no spaces) or none close enough.
 pub(crate) fn cut_for_display(text: &str) -> String {
     let graphemes: Vec<&str> = text.graphemes(true).collect();
     if graphemes.len() <= SNIPPET_DISPLAY_CHARS {
@@ -95,10 +113,11 @@ pub(crate) fn cut_for_display(text: &str) -> String {
     let at_word_boundary = graphemes[SNIPPET_DISPLAY_CHARS]
         .chars()
         .all(char::is_whitespace);
+    let earliest_acceptable = SNIPPET_DISPLAY_CHARS.saturating_sub(WORD_BOUNDARY_LOOKBACK);
     let cut = if at_word_boundary {
         SNIPPET_DISPLAY_CHARS
     } else {
-        (0..SNIPPET_DISPLAY_CHARS)
+        (earliest_acceptable..SNIPPET_DISPLAY_CHARS)
             .rev()
             .find(|&i| graphemes[i].chars().all(char::is_whitespace))
             .unwrap_or(SNIPPET_DISPLAY_CHARS)
@@ -106,6 +125,9 @@ pub(crate) fn cut_for_display(text: &str) -> String {
     let mut out: String = graphemes[..cut].concat();
     while out.ends_with(char::is_whitespace) {
         out.pop();
+    }
+    if ends_with_sentence_punctuation(&out) {
+        out.push(' ');
     }
     out.push('…');
     out
