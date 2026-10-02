@@ -461,7 +461,25 @@ const GLOSSARY: &[GlossaryTerm] = &[
         applies_to_docs: false,
         doc_forbidden: &[],
         doc_exemptions: &[],
-        formatter_exemptions: &[],
+        // Task 128: `fmt_storage_cache_size` composes `StorageCacheFileSize`
+        // (already exempted above by key, same reason) with a size -- the
+        // same catalog text, reached through a new formatter rather than a
+        // bare `tr()` call, is still the Advanced-view technical detail
+        // RFC-011 §11 names and that page's own copy says it shows.
+        formatter_exemptions: &[
+            (
+                "fmt_storage_cache_size",
+                "cache",
+                "RFC-011 §11's storage-category label, shown only in Advanced view, \
+                 whose own copy says it shows technical detail",
+            ),
+            (
+                "fmt_storage_cache_size",
+                "キャッシュ",
+                "RFC-011 §11's storage-category label, shown only in Advanced view, \
+                 whose own copy says it shows technical detail",
+            ),
+        ],
         whole_word: false,
     },
     GlossaryTerm {
@@ -808,9 +826,11 @@ const FORMATTERS: &[(&str, Sampler)] = &[
     sampled!(search_result_count: (1), (3)),
     sampled!(fmt_reset_removes: (2, 3, false), (1, 1, true)),
     sampled!(fmt_rebuild_prepares: (1), (3)),
-    sampled!(fmt_gib: (1.5)),
-    sampled!(fmt_mib_bucket: ("Sample", 1.5)),
-    sampled!(fmt_storage_row: ("Sample", 1.5, 3)),
+    sampled!(fmt_size: (1_610_612_736)),
+    sampled!(fmt_storage_total: (1_610_612_736)),
+    sampled!(fmt_storage_bucket: ("Sample", 1_610_612_736)),
+    sampled!(fmt_storage_row: ("Sample", 1_610_612_736, 3)),
+    sampled!(fmt_storage_cache_size: (1_610_612_736)),
     sampled!(fmt_remove_source_title: ("Docs")),
     sampled!(fmt_add_sensitive_body: ()),
     sampled!(fmt_wizard_ready_body: ()),

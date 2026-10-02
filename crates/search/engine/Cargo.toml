@@ -20,6 +20,7 @@ orbok-models                = { workspace = true }
 rusqlite                    = { workspace = true }
 serde                       = { workspace = true }
 tracing                     = { workspace = true }
+unicode-segmentation        = { workspace = true }
 
 [dev-dependencies]
 tempfile                    = { workspace = true }

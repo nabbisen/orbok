@@ -3637,6 +3637,7 @@ dependencies = [
  "serde",
  "tempfile",
  "tracing",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -27,7 +27,7 @@
     <Application Id="App" Executable="orbok.exe"
       EntryPoint="Windows.FullTrustApplication"
       uap10:TrustLevel="mediumIL">
-      <uap:VisualElements DisplayName="orbok" Description="Local-first AI document search — private, storage-aware, offline."
+      <uap:VisualElements DisplayName="orbok" Description="Local-first AI document search — private and storage-aware."
                           BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
                           Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />

@@ -450,8 +450,10 @@ pub fn result_card<'a>(
             text("").size(theme::meta(tokens))
         },
         // A genuine excerpt, meant to give context across more than one
-        // line -- the wrapping-prose case this task exists for.
-        text(snippet.chars().take(120).collect::<String>())
+        // line -- the wrapping-prose case this task exists for. Shown as
+        // the engine built it: cutting again here would be a second rule
+        // on top of the engine's one (Task 128, `orbok_search::snippet`).
+        text(snippet)
             .size(theme::meta(tokens))
             .line_height(theme::meta_lh(tokens)),
         badge_row,

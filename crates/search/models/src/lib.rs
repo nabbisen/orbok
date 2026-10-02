@@ -84,55 +84,21 @@ impl ModelStatus {
 
 /// Search capability derived from model availability. Keyword search
 /// never depends on models (RFC-007: works with zero models installed).
+///
+/// Two variants, not three (Task 128): orbok has no reranker a user could
+/// ever have (Task 040 kept `CrossEncoderReranker` as a documented seam,
+/// deleted the only wiring to it), so a `HybridWithRerank` tier and the
+/// function that derived it existed only to feed a Models page line that
+/// named a feature which did not exist. Removed with that line, not kept
+/// as a seam: unlike the reranker contract, nothing here is an
+/// intentional insertion point for later, it was this enum's own dead
+/// branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchCapability {
     /// Keyword only: no embedding model available.
     KeywordOnly,
     /// Keyword + semantic: embedding model available.
     Hybrid,
-    /// Keyword + semantic + rerank refinement.
-    HybridWithRerank,
-}
-
-/// Derive the capability shown in the UI from model statuses.
-pub fn search_capability(
-    embedding: Option<ModelStatus>,
-    reranker: Option<ModelStatus>,
-) -> SearchCapability {
-    match (embedding, reranker) {
-        (Some(ModelStatus::Available), Some(ModelStatus::Available)) => {
-            SearchCapability::HybridWithRerank
-        }
-        (Some(ModelStatus::Available), _) => SearchCapability::Hybrid,
-        _ => SearchCapability::KeywordOnly,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // RFC-007/RFC-010: search degrades gracefully without models.
-    #[test]
-    fn capability_degrades_gracefully() {
-        assert_eq!(search_capability(None, None), SearchCapability::KeywordOnly);
-        assert_eq!(
-            search_capability(Some(ModelStatus::Missing), None),
-            SearchCapability::KeywordOnly
-        );
-        assert_eq!(
-            search_capability(Some(ModelStatus::Available), None),
-            SearchCapability::Hybrid
-        );
-        assert_eq!(
-            search_capability(Some(ModelStatus::Available), Some(ModelStatus::Missing)),
-            SearchCapability::Hybrid
-        );
-        assert_eq!(
-            search_capability(Some(ModelStatus::Available), Some(ModelStatus::Available)),
-            SearchCapability::HybridWithRerank
-        );
-    }
 }
 
 /// A vector search candidate (RFC-008 §13).

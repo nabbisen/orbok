@@ -15,9 +15,9 @@ use crate::components::{
     self, health_cell, hrow, icon_text, job_progress, result_card, source_card,
 };
 use crate::i18n::{
-    Locale, MessageKey, files_ready_for_search, fmt_gib, fmt_label_value, fmt_mib_bucket,
-    fmt_query, fmt_rebuild_prepares, fmt_reset_removes, fmt_storage_row,
-    preparing_folder_for_search, search_result_count, source_summary, tr,
+    Locale, MessageKey, files_ready_for_search, fmt_label_value, fmt_query, fmt_rebuild_prepares,
+    fmt_reset_removes, fmt_storage_bucket, fmt_storage_cache_size, fmt_storage_row,
+    fmt_storage_total, preparing_folder_for_search, search_result_count, source_summary, tr,
 };
 use crate::state::{AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope};
 use crate::theme::{self, TextScale, Theme};
@@ -300,6 +300,19 @@ fn heading<'a>(tokens: &Tokens, sc: TextScale, label: &'a str) -> iced::widget::
     text(label.to_string()).size(theme::heading_s(tokens, sc))
 }
 
+/// Task 128: a result card's heading line shows only what the title does
+/// not already say -- it disappears entirely when it equals the title.
+/// `title` is `heading_path` itself whenever one exists
+/// (`orbok_search::service`/`hybrid`'s `enrich`/`fuse`), so the two are
+/// always either both empty or identical, never partially overlapping: an
+/// exact-equality check is the whole rule, not a heuristic.
+pub(crate) fn card_heading_line<'a>(title: &str, heading_path: Option<&'a str>) -> &'a str {
+    match heading_path {
+        Some(heading) if heading != title => heading,
+        _ => "",
+    }
+}
+
 // ── Search view ──────────────────────────────────────────────────────────
 
 pub fn search_view(state: &AppState) -> Element<'_, Message> {
@@ -489,7 +502,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                         .snippet
                         .as_deref()
                         .unwrap_or(tr(locale, MessageKey::SearchSnippetUnavailable));
-                    let heading_str = result.heading_path.as_deref().unwrap_or("");
+                    let heading_str = card_heading_line(&title_str, result.heading_path.as_deref());
                     content = content.push(result_card(
                         tokens,
                         locale,
@@ -1116,8 +1129,8 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 orbok_core::StorageMeasurement::Unknown => None,
             })
             .sum();
-        let gib = total_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-        breakdown = breakdown.push(text(fmt_gib(locale, gib)).size(theme::title_s(tokens, sc)));
+        breakdown = breakdown
+            .push(text(fmt_storage_total(locale, total_bytes)).size(theme::title_s(tokens, sc)));
         breakdown = breakdown.push(components::secondary(
             tokens,
             tr(locale, MessageKey::StorageCalculateNow),
@@ -1129,8 +1142,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 let label = storage_category_label(locale, *category);
                 let line = match measurement {
                     orbok_core::StorageMeasurement::Measured { bytes, items } => {
-                        let mib = *bytes as f64 / (1024.0 * 1024.0);
-                        fmt_storage_row(locale, &label, mib, *items)
+                        fmt_storage_row(locale, &label, *bytes, *items)
                     }
                     orbok_core::StorageMeasurement::Unknown => format!(
                         "  {}",
@@ -1148,17 +1160,9 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             // it, and it does not shrink to match them until a VACUUM --
             // Task 079 §2) rather than one of RFC-011's eight categories.
             if let Some(cache_bytes) = state.storage_cache_file_bytes {
-                let mib = cache_bytes as f64 / (1024.0 * 1024.0);
                 breakdown = breakdown.push(
-                    text(format!(
-                        "  {}",
-                        fmt_label_value(
-                            locale,
-                            tr(locale, MessageKey::StorageCacheFileSize),
-                            format!("{mib:.1} MiB")
-                        )
-                    ))
-                    .size(theme::meta_s(tokens, sc)),
+                    text(fmt_storage_cache_size(locale, cache_bytes))
+                        .size(theme::meta_s(tokens, sc)),
                 );
             }
         } else {
@@ -1180,7 +1184,6 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                     _ => {}
                 }
             }
-            let mib = |b: u64| b as f64 / (1024.0 * 1024.0);
             for (label, bytes) in [
                 (
                     tr(locale, MessageKey::StorageGroupSearchIndex),
@@ -1191,7 +1194,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             ] {
                 if bytes > 0 {
                     breakdown = breakdown.push(
-                        text(fmt_mib_bucket(locale, label, mib(bytes)))
+                        text(fmt_storage_bucket(locale, label, bytes))
                             .size(theme::body_s(tokens, sc)),
                     );
                 }
@@ -1272,10 +1275,12 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
     let sc = state.text_scale;
     let available = tr(locale, MessageKey::ModelsStatusAvailable);
     let missing = tr(locale, MessageKey::ModelsStatusMissing);
-    let (embedding, reranker) = match state.capability {
-        SearchCapability::KeywordOnly => (missing, missing),
-        SearchCapability::Hybrid => (available, missing),
-        SearchCapability::HybridWithRerank => (available, available),
+    // Task 128: orbok has no reranker (Task 040 kept the contract, deleted
+    // the wiring -- `SearchCapability` itself now has only the two
+    // capabilities a user can actually have).
+    let embedding = match state.capability {
+        SearchCapability::KeywordOnly => missing,
+        SearchCapability::Hybrid => available,
     };
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::ModelsTitle)),
@@ -1283,12 +1288,6 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
             locale,
             tr(locale, MessageKey::ModelsEmbeddingRole),
             embedding
-        ))
-        .size(theme::body_s(tokens, sc)),
-        text(fmt_label_value(
-            locale,
-            tr(locale, MessageKey::ModelsRerankerRole),
-            reranker
         ))
         .size(theme::body_s(tokens, sc)),
     ];

@@ -88,7 +88,6 @@ pub fn message(key: MessageKey) -> &'static str {
         RebuildConfirm => "準備し直す",
         ModelsTitle => "モデル",
         ModelsEmbeddingRole => "意味による検索",
-        ModelsRerankerRole => "リランカー",
         ModelsStatusAvailable => "利用可能",
         ModelsStatusMissing => "未導入",
         ModelsKeywordOnlyHint => {

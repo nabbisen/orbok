@@ -98,6 +98,39 @@ fn never_measured_shows_the_empty_state_not_a_zero() {
     );
 }
 
+/// Task 128 test 5: a small but real total must never render as "0.000" --
+/// `fmt_gib`'s fixed-GiB, three-decimal rounding used to do exactly that
+/// for any total under about 1 MiB, directly above a correctly-readable
+/// per-category line (the owner's own screenshot: "0.000 GiB total" over
+/// "Search data: 0.1 MiB"). `fmt_storage_total` now picks the unit that
+/// actually fits.
+#[test]
+fn a_small_total_never_renders_as_zero_point_zero_zero_zero() {
+    let _guard = iced_test_guard();
+    let rows: Vec<(StorageCategory, StorageMeasurement)> = vec![(
+        StorageCategory::SearchCache,
+        StorageMeasurement::Measured {
+            bytes: 100,
+            items: 1,
+        },
+    )];
+    let state = AppState {
+        storage_rows: rows,
+        active_view: crate::state::ViewId::Storage,
+        ..AppState::default()
+    };
+    let app = OrbokApp::with_state(state);
+    let mut ui = simulator(app.view());
+    assert!(
+        ui.find("0.000").is_err(),
+        "a real, small total must never render as a false 0.000"
+    );
+    assert!(
+        ui.find("100 bytes total").is_ok(),
+        "a 100-byte total must render in a unit that shows it is not zero"
+    );
+}
+
 /// An `Unknown` category renders the owner-approved "Unknown" copy in
 /// Advanced view, never a zero.
 #[test]

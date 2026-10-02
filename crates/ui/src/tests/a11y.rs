@@ -876,26 +876,44 @@ fn line_height_helpers_track_tokens_not_constants() {
 
 #[test]
 fn locale_aware_size_formatting() {
-    use crate::i18n::{Locale, fmt_gib, fmt_mib_bucket};
+    use crate::i18n::{Locale, fmt_storage_bucket, fmt_storage_total};
 
-    // fmt_gib: takes pre-converted GiB f64.
-    let result_en = fmt_gib(Locale::En, 1.397);
+    // fmt_storage_total: takes raw bytes now (Task 128), not pre-converted GiB.
+    let result_en = fmt_storage_total(Locale::En, 1_500_000_000);
     assert!(!result_en.is_empty());
     assert!(
         result_en.chars().any(|c| c.is_ascii_digit()),
-        "fmt_gib should contain a digit: {result_en}"
+        "fmt_storage_total should contain a digit: {result_en}"
     );
 
-    let result_ja = fmt_gib(Locale::Ja, 1.397);
+    let result_ja = fmt_storage_total(Locale::Ja, 1_500_000_000);
     assert!(!result_ja.is_empty());
 
-    // fmt_mib_bucket: produces a non-empty labelled string.
-    let bucket_en = fmt_mib_bucket(Locale::En, "Search index", 190.7);
+    // fmt_storage_bucket: produces a non-empty labelled string.
+    let bucket_en = fmt_storage_bucket(Locale::En, "Search index", 200_000_000);
     assert!(!bucket_en.is_empty());
     assert!(
         bucket_en.chars().any(|c| c.is_ascii_digit()),
-        "fmt_mib_bucket should contain a digit: {bucket_en}"
+        "fmt_storage_bucket should contain a digit: {bucket_en}"
     );
+}
+
+/// Task 128 test 4: [`fmt_size`] picks bytes, KiB, MiB or GiB, whichever
+/// keeps the number at 1 or more, at one decimal place -- except a true
+/// zero, which must still read as zero, not a unit-scaled "0.0" that looks
+/// like a rounding error (the owner's own complaint about "0.000 GiB").
+#[test]
+fn fmt_size_picks_the_unit_that_fits() {
+    use crate::i18n::fmt_size;
+    for locale in [Locale::En, Locale::Ja] {
+        assert_eq!(fmt_size(locale, 0), "0 bytes", "{locale:?}");
+        assert_eq!(fmt_size(locale, 500), "500 bytes", "{locale:?}");
+        assert_eq!(fmt_size(locale, 100 * 1024), "100.0 KiB", "{locale:?}");
+        // 0.1 MiB = 104_857.6 bytes.
+        assert_eq!(fmt_size(locale, 104_858), "102.4 KiB", "{locale:?}");
+        // 1.5 GiB, exactly.
+        assert_eq!(fmt_size(locale, 1_610_612_736), "1.5 GiB", "{locale:?}");
+    }
 }
 
 // ── RFC-035: RTL readiness ─────────────────────────────────────────────────

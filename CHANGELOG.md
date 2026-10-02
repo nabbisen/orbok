@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   follow it, like the rest of the app. A long, unbroken folder name or path
   in a notice now wraps instead of running off the edge.
 
+- **Search results show each heading once, and snippets end at a whole
+  word** (Task 128): a result's title, its heading line, and the snippet's
+  own first line used to repeat the same heading up to three times, and a
+  long snippet was cut mid-word with nothing to show it had been. The
+  heading line now appears only when it says more than the title, and a
+  snippet that needs cutting ends at a word boundary, marked with "…".
+
+- **The Models page no longer lists a reranker** (Task 128): orbok has
+  never had one to offer (Task 040 kept the reranker's contract as a seam,
+  deleted the only wiring to it), so the "Reranker: Missing" line read as a
+  broken feature rather than one that was never built.
+
+- **Storage sizes use a readable unit** (Task 128): the total used to round
+  to three decimal places of GiB, which could show "0.000 GiB total" for a
+  real, small amount of data directly above a category line correctly
+  showing it in MiB. Every size on the page now picks bytes, KiB, MiB or
+  GiB, whichever keeps the number at 1 or more.
+
 ### Changed
 
 - snora 0.52 (Task 127).

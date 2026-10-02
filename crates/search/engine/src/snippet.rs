@@ -13,6 +13,7 @@ use orbok_fs::{GuardedSource, PathGuard, ValidatedPath};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Read cap applied before line-splitting (Task 034 §5, audit S-18):
 /// `BufRead::lines()` allocates one `String` per line with no cap of its
@@ -22,8 +23,93 @@ const MAX_SNIPPET_READ_BYTES: u64 = 64 * 1024;
 
 /// Display cap, shared by both rendering paths (read-from-file and
 /// cached-segments) so a PDF page's snippet is no longer than a text
-/// file's.
-const MAX_SNIPPET_CHARS: usize = 400;
+/// file's -- the **only** place a snippet's length is decided (Task 128):
+/// the card used to cut again at 120, so a snippet was cut twice, the
+/// second time with no `…` and no care for where a word ended.
+const SNIPPET_DISPLAY_CHARS: usize = 120;
+
+/// True if `line` is a Markdown ATX heading ("#" through "######" followed
+/// by a space) -- CommonMark's own definition, not a guess.
+fn is_markdown_heading_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+    (1..=6).contains(&hashes) && trimmed.as_bytes().get(hashes) == Some(&b' ')
+}
+
+/// `line` with its leading "#".."######" marker removed, or `line`
+/// unchanged if it is not a heading line.
+fn strip_markdown_heading_marker(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+    if (1..=6).contains(&hashes) && trimmed.as_bytes().get(hashes) == Some(&b' ') {
+        trimmed[hashes..].trim_start()
+    } else {
+        line
+    }
+}
+
+/// The chunk's own text, with its leading heading line(s) dropped -- a
+/// result's title already shows the full heading chain
+/// (`SearchResult::heading_path`), so repeating it as the snippet's first
+/// line is the same words a third time (Task 128). Any heading-looking
+/// line that is not leading is kept (it may carry real content a
+/// subheading inside the chunk's own body), but has its `#` marker
+/// stripped so raw Markdown syntax never reaches the display either way.
+///
+/// Shared by every rendering path below (a line-numbered text file, a
+/// cached extraction segment): one rule, not a per-format copy of it.
+pub(crate) fn drop_heading_lines(lines: Vec<String>) -> Vec<String> {
+    let mut lines = lines;
+    let mut dropped_heading = false;
+    while let Some(first) = lines.first() {
+        if is_markdown_heading_line(first) {
+            lines.remove(0);
+            dropped_heading = true;
+        } else if dropped_heading && first.trim().is_empty() {
+            // The blank line Markdown convention puts between a heading and
+            // its first paragraph -- only once a heading was actually
+            // dropped, so a plain-text chunk that happens to start blank is
+            // untouched.
+            lines.remove(0);
+        } else {
+            break;
+        }
+    }
+    lines
+        .iter()
+        .map(|l| strip_markdown_heading_marker(l).to_string())
+        .collect()
+}
+
+/// Cut `text` to at most [`SNIPPET_DISPLAY_CHARS`] graphemes for display,
+/// marked with a trailing `…` when it does. Prefers the nearest preceding
+/// word boundary (whitespace) over the limit itself, so a word is never
+/// shown cut in half; falls back to the limit itself -- always a whole
+/// grapheme, never split mid-cluster -- when the window has no word
+/// boundary to fall back to (Japanese and other scripts with no spaces).
+pub(crate) fn cut_for_display(text: &str) -> String {
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
+    if graphemes.len() <= SNIPPET_DISPLAY_CHARS {
+        return text.to_string();
+    }
+    let at_word_boundary = graphemes[SNIPPET_DISPLAY_CHARS]
+        .chars()
+        .all(char::is_whitespace);
+    let cut = if at_word_boundary {
+        SNIPPET_DISPLAY_CHARS
+    } else {
+        (0..SNIPPET_DISPLAY_CHARS)
+            .rev()
+            .find(|&i| graphemes[i].chars().all(char::is_whitespace))
+            .unwrap_or(SNIPPET_DISPLAY_CHARS)
+    };
+    let mut out: String = graphemes[..cut].concat();
+    while out.ends_with(char::is_whitespace) {
+        out.pop();
+    }
+    out.push('…');
+    out
+}
 
 /// Read a snippet from the file itself, for a chunk whose stored
 /// positions really are line numbers. The caller has already validated
@@ -195,7 +281,7 @@ pub struct RenderedResult {
 /// The cached segments whose own position range overlaps this chunk's --
 /// the same span arithmetic `embedding.rs` uses to rebuild a chunk's text,
 /// in the same units, since both read the positions the extractor wrote.
-fn segment_text_for(record: &ChunkRecord, extraction: &ExtractOutput) -> Option<String> {
+pub(crate) fn segment_text_for(record: &ChunkRecord, extraction: &ExtractOutput) -> Option<String> {
     let text: String = extraction
         .segments
         .iter()
@@ -205,11 +291,16 @@ fn segment_text_for(record: &ChunkRecord, extraction: &ExtractOutput) -> Option<
         .map(|segment| segment.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
+    if text.trim().is_empty() {
         return None;
     }
-    Some(trimmed.chars().take(MAX_SNIPPET_CHARS).collect())
+    let lines: Vec<String> = text.trim().lines().map(str::to_string).collect();
+    let lines = drop_heading_lines(lines);
+    let joined = lines.join("\n");
+    if joined.trim().is_empty() {
+        return None;
+    }
+    Some(cut_for_display(joined.trim()))
 }
 
 /// A guard over exactly the sources a search may read from -- the same
@@ -251,12 +342,11 @@ pub(crate) fn load_snippet_from(record: &ChunkRecord, source: impl Read) -> Opti
         .filter_map(|l| l.ok())
         .collect();
 
+    let lines = drop_heading_lines(lines);
     if lines.is_empty() {
         None
     } else {
-        let snippet = lines.join("\n");
-        // Trim to a reasonable display length.
-        Some(snippet.chars().take(MAX_SNIPPET_CHARS).collect())
+        Some(cut_for_display(&lines.join("\n")))
     }
 }
 

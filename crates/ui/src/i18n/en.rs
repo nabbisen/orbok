@@ -88,7 +88,6 @@ pub fn message(key: MessageKey) -> &'static str {
         RebuildConfirm => "Prepare again",
         ModelsTitle => "Models",
         ModelsEmbeddingRole => "Search by meaning",
-        ModelsRerankerRole => "Reranker",
         ModelsStatusAvailable => "Available",
         ModelsStatusMissing => "Missing",
         ModelsKeywordOnlyHint => {

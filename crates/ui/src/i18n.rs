@@ -208,7 +208,6 @@ message_keys! {
     // Models view
     ModelsTitle,
     ModelsEmbeddingRole,
-    ModelsRerankerRole,
     ModelsStatusAvailable,
     ModelsStatusMissing,
     ModelsKeywordOnlyHint,
@@ -764,29 +763,83 @@ pub fn fmt_narrow_folder_counted(locale: Locale, files: u64) -> String {
     }
 }
 
-/// Locale-aware byte/storage size formatting (RFC-035 §5.5).
-/// Routes views away from ad-hoc `format!("{gib:.3} GiB total")` calls.
-pub fn fmt_gib(locale: Locale, gib: f64) -> String {
-    match locale {
-        Locale::En => format!("{gib:.3} GiB total"),
-        Locale::Ja => format!("合計 {gib:.3} GiB"),
+/// Bytes, KiB, MiB or GiB, whichever keeps the number at 1 or more, at one
+/// decimal place -- Task 128. A true zero reads as "0 bytes", never a
+/// unit-scaled "0.0 KiB" that looks like a rounding error (Task 081 named
+/// exactly that failure for "0.000 GiB").
+///
+/// The **one** function that decides a storage size's unit and precision:
+/// before Task 128, the total (ex-`fmt_gib`) picked GiB at three decimals
+/// and the per-category lines (ex-`fmt_mib_bucket`) picked MiB at one,
+/// two rules that could only ever agree by coincidence -- the screenshot
+/// this task started from is the total and a category line disagreeing.
+///
+/// Takes `locale` like every other formatter here (Task 104's scan
+/// requires it of every `pub fn … -> String`) but does not use it: the
+/// unit is not translated (`Copy: none new` -- units are not wording), so
+/// its output is identical in both locales, like the sentences in
+/// [`fmt_storage_bucket`] that wrap it.
+pub fn fmt_size(_locale: Locale, bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    if bytes == 0 {
+        return "0 bytes".to_string();
+    }
+    let b = bytes as f64;
+    if b < KIB {
+        format!("{bytes} bytes")
+    } else if b < MIB {
+        format!("{:.1} KiB", b / KIB)
+    } else if b < GIB {
+        format!("{:.1} MiB", b / MIB)
+    } else {
+        format!("{:.1} GiB", b / GIB)
     }
 }
 
-/// Locale-aware MiB bucket formatting for the storage view friendly buckets.
-pub fn fmt_mib_bucket(locale: Locale, label: &str, mib: f64) -> String {
+/// Locale-aware total storage size (RFC-035 §5.5, Task 128; was `fmt_gib`,
+/// fixed at GiB). Delegates the number and its unit to [`fmt_size`].
+pub fn fmt_storage_total(locale: Locale, bytes: u64) -> String {
+    let size = fmt_size(locale, bytes);
     match locale {
-        Locale::En => format!("  {label}: {mib:.1} MiB"),
-        Locale::Ja => format!("  {label}: {mib:.1} MiB"),
+        Locale::En => format!("{size} total"),
+        Locale::Ja => format!("合計 {size}"),
     }
 }
 
-/// Locale-aware advanced storage row formatting (category + count).
-pub fn fmt_storage_row(locale: Locale, category: &str, mib: f64, count: u64) -> String {
+/// Locale-aware storage-bucket formatting for the storage view's friendly
+/// buckets (Task 128; was `fmt_mib_bucket`, fixed at MiB).
+pub fn fmt_storage_bucket(locale: Locale, label: &str, bytes: u64) -> String {
+    let size = fmt_size(locale, bytes);
     match locale {
-        Locale::En => format!("  {category}: {mib:.1} MiB ({count} items)"),
-        Locale::Ja => format!("  {category}: {mib:.1} MiB（{count} 件）"),
+        Locale::En => format!("  {label}: {size}"),
+        Locale::Ja => format!("  {label}: {size}"),
     }
+}
+
+/// Locale-aware advanced storage row formatting (category + count; Task
+/// 128: the size was fixed at MiB, now [`fmt_size`]).
+pub fn fmt_storage_row(locale: Locale, category: &str, bytes: u64, count: u64) -> String {
+    let size = fmt_size(locale, bytes);
+    match locale {
+        Locale::En => format!("  {category}: {size} ({count} items)"),
+        Locale::Ja => format!("  {category}: {size}（{count} 件）"),
+    }
+}
+
+/// Locale-aware cache-file-size row (Task 081 §2 / Task 128): the fixed
+/// `"  {label}: {size}"` lead-in and [`fmt_size`] in the one place, so
+/// `views.rs` does not build it by hand.
+pub fn fmt_storage_cache_size(locale: Locale, bytes: u64) -> String {
+    format!(
+        "  {}",
+        fmt_label_value(
+            locale,
+            tr(locale, MessageKey::StorageCacheFileSize),
+            fmt_size(locale, bytes)
+        )
+    )
 }
 
 /// Locale-aware last-query display (search view "no results" state).
