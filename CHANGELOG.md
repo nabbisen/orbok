@@ -9,27 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-10-03
+
 ### Added
+
+- A privacy policy, `PRIVACY.md` (Task 130).
 
 - Arch Linux packaging files and publishing guides (Task 129): a PKGBUILD
   template, a desktop entry and icons, and `packaging/linux/aur-prepare.sh`
   for preparing a verified AUR submission by hand.
 
-- A privacy policy, `PRIVACY.md` (Task 130).
-
 ### Fixed
 
-- **The folder list keeps its order** (Task 126): reloading the Folders page
-  (Prepare again, Check again, a startup check) used to show the newest
-  folder first, while adding one appended it, so the cards could swap order
-  under your pointer. It is now always the order the folders were added,
-  oldest first.
+- **Choosing a language in Settings now actually saves it** (Task 131):
+  picking 日本語 or English changed the app at once, but the choice was
+  never written to disk, so it silently reverted to the system language
+  on the next start. Found while checking that 0.28.0's upgrade keeps
+  your settings; present since the language choice was added, not caused
+  by anything in this release.
 
-- **Text size now reaches the tab bar, the sidebar's tooltips, the notice
-  banner and the search row's folder chip** (Task 127): they used to stay at
-  a fixed size no matter what Default, Large or Larger was set to; now they
-  follow it, like the rest of the app. A long, unbroken folder name or path
-  in a notice now wraps instead of running off the edge.
+- **The window itself now shows orbok's icon** (Task 130): an unpackaged
+  run showed a generic icon on Windows, and nothing at all in an X11 title
+  bar. Native Wayland and macOS take their icon from elsewhere already
+  (the desktop entry, and the `.app` bundle) and are unaffected.
 
 - **Search results show each heading once, and snippets end at a whole
   word** (Task 128): a result's title, its heading line, and the snippet's
@@ -37,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long snippet was cut mid-word with nothing to show it had been. The
   heading line now appears only when it says more than the title, and a
   snippet that needs cutting ends at a word boundary, marked with "…".
+
+- **Text size now reaches the tab bar, the sidebar's tooltips, the notice
+  banner and the search row's folder chip** (Task 127): they used to stay at
+  a fixed size no matter what Default, Large or Larger was set to; now they
+  follow it, like the rest of the app. A long, unbroken folder name or path
+  in a notice now wraps instead of running off the edge.
+
+- **The folder list keeps its order** (Task 126): reloading the Folders page
+  (Prepare again, Check again, a startup check) used to show the newest
+  folder first, while adding one appended it, so the cards could swap order
+  under your pointer. It is now always the order the folders were added,
+  oldest first.
 
 - **The Models page no longer lists a reranker** (Task 128): orbok has
   never had one to offer (Task 040 kept the reranker's contract as a seam,
@@ -52,11 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **On Linux, orbok's window now carries its own identity** (Task 129): a
   desktop environment had nothing to match it to `orbok.desktop` by, so no
   icon appeared in the task bar or dock. Windows and macOS are unaffected.
-
-- **The window itself now shows orbok's icon** (Task 130): an unpackaged
-  run showed a generic icon on Windows, and nothing at all in an X11 title
-  bar. Native Wayland and macOS take their icon from elsewhere already
-  (the desktop entry, and the `.app` bundle) and are unaffected.
 
 ### Changed
 

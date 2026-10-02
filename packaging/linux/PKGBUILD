@@ -13,7 +13,7 @@
 
 pkgname=orbok
 # Matches [workspace.package] version in Cargo.toml at the tagged commit.
-pkgver=0.27.0
+pkgver=0.28.0
 pkgrel=1
 pkgdesc="Local-first AI document search -- private and storage-aware"
 arch=('x86_64')
