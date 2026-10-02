@@ -451,6 +451,56 @@ version works; you do not need to check out the tag itself, since the
 script downloads the released archive rather than building from the
 working tree).
 
+**How `packaging/linux/PKGBUILD`'s `depends`/`optdepends`/`options` were
+decided** (re-run this measurement whenever a dependency, not just a
+version, might have changed — a new windowing library, a new bundled C
+crate, and so on):
+
+- **`options=('!lto')`:** makepkg's default `lto` option injects GCC's
+  `-flto=auto` into `CFLAGS`, which reaches the C sources `rusqlite`'s and
+  `zstd`'s `-sys` crates compile and vendor (no system package is
+  involved). Cargo's own `lto = true` release profile separately links
+  with `rust-lld`, which cannot read GCC's fat-LTO object format — the
+  bundled objects' real code never reaches the final link, and symbols
+  like `sqlite3_bind_text64`/`ZSTD_createDCtx` come back undefined. Found
+  by actually running `makepkg`, not by reading the PKGBUILD; confirmed
+  the fix by building the full package both ways.
+- **`depends`:** `LD_DEBUG=libs` on a `--release` build, run twice — once
+  under `WAYLAND_DISPLAY` (native Wayland) and once under
+  `env -u WAYLAND_DISPLAY` (XWayland) — each run opening the window,
+  adding a folder by typed path (Folders page, no native picker), and
+  running a search. Every `.so` loaded, mapped to its package with
+  `pacman -Qo`, keeping only the windowing/input/Vulkan-loader packages
+  that appeared in *either* run and are not GPU-vendor-specific:
+
+  ```
+  depends=(
+      'libxkbcommon' 'libxkbcommon-x11' 'wayland' 'libx11'
+      'libxcursor' 'libxi' 'vulkan-icd-loader'
+  )
+  ```
+
+  Excluded deliberately: `nvidia-utils`, `mesa`
+  (`libgallium`/`libEGL_mesa`/`libgbm`), `vulkan-radeon`, `llvm-libs`,
+  `libdrm`, `libpciaccess`, `lm_sensors`, `vulkan-mesa-implicit-layers` —
+  the GPU driver stack, already a system requirement for any
+  Vulkan/GL-accelerated application, supplied by whichever ICD the user's
+  own hardware needs. `vulkan-icd-loader` is the vendor-neutral dependency
+  that actually belongs here. `libxrandr` does not appear: no
+  `libXrandr.so` loaded in either run (only `libxcb-randr`, already pulled
+  in transitively by `libx11`'s own dependency on `libxcb`) — list only
+  what a measurement actually shows, not what seems likely.
+- **`optdepends`:** without `xdg-desktop-portal` (and a backend for it),
+  the native "Add folder" picker has nothing to talk to; typing the path
+  into the Folders page's own field still works (confirmed by using
+  exactly that field for every folder added during the measurement above).
+  Without a CJK-capable font, Japanese text does not fall back to tofu
+  boxes and does not crash orbok — the Japanese characters simply do not
+  render at all, leaving gaps in the sentence, while surrounding ASCII
+  text renders normally (confirmed non-destructively: `FONTCONFIG_FILE`
+  pointed at a config that excludes every CJK-covering font directory,
+  rather than uninstalling anything).
+
 **Prerequisites, once:**
 
 - an AUR account, with an SSH key added to it (Account Settings → SSH

@@ -1,48 +1,32 @@
 # Maintainer: nabbisen <19984221+nabbisen@users.noreply.github.com>
 #
-# Arch Linux PKGBUILD for orbok (Task 129, RFC-051, RFC-017 §6a).
+# Arch Linux PKGBUILD for orbok: local-first AI document search.
 #
 # Template only -- this file is never run directly with `makepkg -si` to
-# publish. `packaging/linux/aur-prepare.sh <version> <work-dir>` writes the
-# real, hash-verified copy that actually goes to the AUR; see the "Publish
-# to the AUR" section of docs/src/maintainers/release_readiness.md.
+# publish. `packaging/linux/aur-prepare.sh <version> <work-dir>`, in the
+# orbok repository, writes the real, hash-verified copy that actually goes
+# to the AUR.
 #
-# Builds from the released source archive, not GitHub's automatic per-tag
-# archive (RFC-051): that archive has no top-level directory, so `prepare()`
+# Builds from orbok's released source archive, not GitHub's automatic
+# per-tag archive: that archive has no top-level directory, so `prepare()`
 # extracts it into one of its own.
 
 pkgname=orbok
-# Kept in sync with [workspace.package] version in Cargo.toml by hand at
-# each release (checked by scripts/check-pkgbuild.sh, run from the release
-# checklist, not CI -- the owner's instruction, Task 129).
+# Matches [workspace.package] version in Cargo.toml at the tagged commit.
 pkgver=0.27.0
 pkgrel=1
 pkgdesc="Local-first AI document search -- private and storage-aware"
 arch=('x86_64')
 url="https://github.com/nabbisen/orbok"
 license=('Apache-2.0')
-# Measured, not assumed: makepkg's default `lto` option injects `-flto=auto`
-# (GCC's own LTO) into CFLAGS, which reaches the bundled C sources
-# rusqlite's and zstd's `-sys` crates compile (both vendor and build their
-# C library from source, no system package involved). Cargo's own release
-# profile separately sets `lto = true` for the Rust code, linked with
-# `rust-lld` -- which cannot read GCC's fat-LTO object format, so the
-# bundled C objects' real machine code never reaches the final link and
-# `sqlite3_bind_text64`/`ZSTD_createDCtx`/etc. come back undefined. A real
-# build failure, found by actually running `makepkg`, not by reading the
-# PKGBUILD. Rust already has its own LTO; this package does not need
-# makepkg's C-level one too.
+# makepkg's C-level LTO (the default `lto` option) breaks the link of the
+# bundled SQLite/zstd objects against rust-lld; Rust's own LTO is kept.
 options=('!lto')
-# Measured, not guessed (Task 129 §2.2): `LD_DEBUG=libs` on a release build
-# of the binary, once on native Wayland and once under XWayland
-# (`env -u WAYLAND_DISPLAY`), each run opening the window, adding a folder
-# by typed path, and running a search. Every `.so` loaded that `pacman -Qo`
-# attributed to a package, other than glibc/libgcc (base, always present)
-# and the GPU vendor driver stack itself (nvidia-utils / mesa / the
-# vulkan-radeon ICD and their own transitive libs: already a requirement
-# for any Vulkan/GL application on this machine, supplied by whichever
-# driver the user's own hardware needs -- not orbok-specific, and not
-# something this package should pin to one vendor).
+# Windowing, input and the Vulkan loader -- measured from the libraries the
+# binary actually loads, on both Wayland and X11. The GPU driver itself
+# (mesa, nvidia-utils, or another vendor's) is not listed: it is already a
+# system requirement for any accelerated application, not specific to
+# orbok, and pinning one vendor here would be wrong on different hardware.
 depends=(
     'libxkbcommon'
     'libxkbcommon-x11'
@@ -52,17 +36,10 @@ depends=(
     'libxi'
     'vulkan-icd-loader'
 )
-# Measured, not guessed (Task 129 §2.2):
-# - without xdg-desktop-portal (and a backend for it), the native "Add
-#   folder" picker has nothing to talk to; typing the path into the
-#   Folders page's own field still works (Task 105), confirmed by using
-#   exactly that field for every folder this package's own check() and the
-#   measurement above added.
-# - without a CJK-capable font installed, Japanese text does not fall back
-#   to tofu boxes and does not crash orbok -- the Japanese characters
-#   simply do not render at all, leaving gaps in the sentence, while ASCII
-#   text around them renders normally (confirmed with `FONTCONFIG_FILE`
-#   pointed at a config excluding every CJK-covering font directory).
+# Without xdg-desktop-portal, the native folder picker has nothing to talk
+# to; typing the path into the Folders page's own field still works.
+# Without a CJK-capable font, Japanese text renders as gaps, not tofu
+# boxes, and does not crash orbok.
 optdepends=(
     'xdg-desktop-portal: a native folder picker for Add folder'
     'noto-fonts-cjk: Japanese text (otherwise it renders as gaps, not boxes)'
@@ -70,17 +47,16 @@ optdepends=(
 makedepends=('cargo')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/nabbisen/orbok/releases/download/$pkgver/$pkgname-$pkgver.tar.gz")
 noextract=("$pkgname-$pkgver.tar.gz")
-# Permanent, not a gap to close before publishing (see this file's own
-# header comment and aur-prepare.sh): the real hash is computed there, from
-# the released archive's own .sha256, and written only into the copy that
-# script produces for the AUR -- never into this repository.
+# Permanent, not a gap to close before publishing -- aur-prepare.sh
+# computes the real hash from the released archive's own .sha256 and
+# writes it only into the copy it produces for the AUR.
 sha256sums=('SKIP')
 
 prepare() {
     mkdir -p "$pkgname-$pkgver"
-    # The archive's own entries start with "./" at its root (RFC-051 §5) --
-    # there is no "$pkgname-$pkgver/" top-level directory to `cd` into, so
-    # this extracts into one built here instead.
+    # The archive's own entries start with "./" at its root -- there is no
+    # "$pkgname-$pkgver/" top-level directory to `cd` into, so this
+    # extracts into one built here instead.
     tar -xzf "$pkgname-$pkgver.tar.gz" -C "$pkgname-$pkgver"
     cd "$pkgname-$pkgver"
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
@@ -90,10 +66,8 @@ build() {
     cd "$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
-    # The default build already includes search by meaning: orbok-workers
-    # depends on orbok-embed with the tract feature unconditionally, not
-    # behind a Cargo feature of its own (confirmed by reading
-    # crates/pipeline/workers/Cargo.toml -- no --features flag needed here).
+    # The default build already includes search by meaning -- no extra
+    # --features flag needed.
     cargo build --frozen --release -p orbok
 }
 
@@ -109,10 +83,8 @@ package() {
     install -Dm755 target/release/orbok "$pkgdir/usr/bin/orbok"
     install -Dm644 packaging/linux/orbok.desktop \
         "$pkgdir/usr/share/applications/orbok.desktop"
-    # Every size this repository carries (packaging/linux/icons/hicolor/),
-    # so the desktop entry's Icon=orbok (above) always resolves -- the
-    # reference project's own packaging shipped a desktop entry naming an
-    # icon it never installed (Task 129 §0's first trap).
+    # Every size this repository carries, so Icon=orbok (above) always
+    # resolves.
     for size in 16 32 48 64 128; do
         install -Dm644 "packaging/linux/icons/hicolor/${size}x${size}/apps/orbok.png" \
             "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/orbok.png"
