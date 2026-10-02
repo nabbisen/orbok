@@ -743,7 +743,12 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             app.update(message);
             return iced::widget::operation::focus_previous();
         }
-        Message::PersistLocale(locale) => {
+        // Task 131: `SetLocale` is what the Settings page's own language
+        // buttons dispatch (`views.rs`'s `language_row`) -- routed the same
+        // as `PersistLocale` so a language choice is actually saved, not
+        // only shown until the next restart (found during the 0.28.0
+        // manual pass; pre-existing, not caused by Tasks 126-130).
+        Message::SetLocale(locale) | Message::PersistLocale(locale) => {
             backend_actions::persist_locale(&deps.catalog, &mut app.state, *locale);
             return iced::Task::none();
         }

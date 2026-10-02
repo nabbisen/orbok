@@ -242,6 +242,34 @@ fn settings_actually_persists_the_new_locale() {
     );
 }
 
+/// Task 131: the Settings page's own language buttons (`views.rs`'s
+/// `language_row`) dispatch `Message::SetLocale`, not `PersistLocale` --
+/// confirmed by `grep`, the only production call site is
+/// `on_press: Message::SetLocale(*candidate)`. The test above only ever
+/// routed `PersistLocale` directly, so it stayed green while the real
+/// button press silently never reached `backend_actions::persist_locale`:
+/// the choice showed at once (`AppState::update`'s shared match arm) and
+/// reverted to "auto" on the next start. Found during the 0.28.0 manual
+/// pass (RFC-051), reproduced on both 0.27.0 and this commit's parent.
+#[test]
+fn clicking_the_language_button_actually_persists_the_choice() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    let task = route(&mut app, Message::SetLocale(Locale::Ja), &deps);
+    assert_eq!(task.units(), 0, "persisting a setting runs synchronously");
+    assert_eq!(app.state.locale, Locale::Ja);
+    let stored = orbok_db::repo::SettingsRepository::new(&deps.catalog)
+        .get::<String>("ui.locale")
+        .unwrap();
+    assert_eq!(
+        stored.as_deref(),
+        Some(Locale::Ja.as_str()),
+        "the language button must actually write the new locale to the catalog, \
+         not only show it until the next restart"
+    );
+}
+
 #[test]
 fn launch_raises_the_real_refusal_notice_for_a_path_outside_every_source() {
     let temp = tempfile::tempdir().unwrap();
