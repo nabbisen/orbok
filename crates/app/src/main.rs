@@ -40,6 +40,8 @@ mod search_model;
 mod settings;
 mod source_removal;
 mod startup_failure;
+#[cfg(test)]
+mod task129_window_identity;
 mod trust_actions;
 #[cfg(test)]
 mod wired_application_tests;
@@ -237,6 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         OrbokApp::view,
     )
+    .window(window_settings())
     .title(|app: &OrbokApp| app.title())
     .theme(|app: &OrbokApp| app.iced_theme())
     .font(orbok_ui::LUCIDE_FONT_BYTES)
@@ -270,6 +273,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .run()?;
     Ok(())
+}
+
+/// Task 129 §2.1: the window's application id, so a desktop environment can
+/// match it to `orbok.desktop` for the task bar / dock icon -- measured
+/// absent (`niri msg windows` showed an empty `app_id`), not assumed.
+/// `window::Settings::default()` otherwise, so nothing else about the
+/// window changes.
+///
+/// Linux-only, cfg-gated rather than written unconditionally: iced's
+/// `PlatformSpecific` is a different struct per platform (`application_id`
+/// exists only on Linux, where it sets both the Wayland surface's app_id
+/// and the X11 window's `WM_CLASS` from the one field -- `iced_winit`'s
+/// `conversion.rs` calls `with_name(application_id, application_id)` for
+/// both backends). Windows and macOS keep their own default
+/// `PlatformSpecific`, untouched (the task's own stop condition: report
+/// before changing anything there -- this avoids the question by changing
+/// nothing on those platforms at all).
+fn window_settings() -> iced::window::Settings {
+    #[allow(unused_mut)]
+    let mut settings = iced::window::Settings::default();
+    #[cfg(target_os = "linux")]
+    {
+        settings.platform_specific.application_id = "orbok".to_string();
+    }
+    settings
 }
 
 /// Task 071: a GUI startup that failed, and the locale to explain it in.
@@ -332,6 +360,7 @@ fn show_startup_failure(failed: FailedStartup) -> ! {
     .title(StartupFailureScreen::title)
     .theme(StartupFailureScreen::iced_theme)
     .font(orbok_ui::LUCIDE_FONT_BYTES)
+    .window(window_settings())
     .window_size((560.0, 260.0))
     .subscription(|_: &StartupFailureScreen| {
         iced::keyboard::listen().filter_map(|event| match event {

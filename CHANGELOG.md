@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Arch Linux packaging files and publishing guides (Task 129): a PKGBUILD
+  template, a desktop entry and icons, and `packaging/linux/aur-prepare.sh`
+  for preparing a verified AUR submission by hand.
+
 ### Fixed
 
 - **The folder list keeps its order** (Task 126): reloading the Folders page
@@ -40,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real, small amount of data directly above a category line correctly
   showing it in MiB. Every size on the page now picks bytes, KiB, MiB or
   GiB, whichever keeps the number at 1 or more.
+
+- **On Linux, orbok's window now carries its own identity** (Task 129): a
+  desktop environment had nothing to match it to `orbok.desktop` by, so no
+  icon appeared in the task bar or dock. Windows and macOS are unaffected.
 
 ### Changed
 

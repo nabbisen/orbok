@@ -327,6 +327,10 @@ id, name, version, and dimension.
       red (the mechanism only ever shrinks going forward — see the allowlist
       file's own header — so this is the one point where a human, not the
       gate, decides an entry has served its purpose)
+- [ ] **After tagging and the GitHub release:** AUR — run the "Publish to
+      the AUR" guide below
+- [ ] **After tagging and the GitHub release:** Store — run the "Publish to
+      the Microsoft Store" guide below
 
 ---
 
@@ -436,6 +440,195 @@ all eleven crates at 0.26.0: every file listed is source, a migration
 modules — no binary asset ships in any crate).
 
 ---
+
+## Publish to the AUR (by hand)
+
+**Manual, like Microsoft Store below — not wired into CI (the owner's
+instruction, Task 129).** Run this after the tag and the GitHub release
+exist, from this repository's own checkout (any commit on `main` that has
+`packaging/linux/PKGBUILD` with `pkgver` already bumped to the released
+version works; you do not need to check out the tag itself, since the
+script downloads the released archive rather than building from the
+working tree).
+
+**Prerequisites, once:**
+
+- an AUR account, with an SSH key added to it (Account Settings → SSH
+  Public Key) — **hide the account's email** in its privacy settings; the
+  AUR shows it on every package page otherwise;
+- `base-devel` installed locally, for `makepkg`.
+
+**Each release:**
+
+```sh
+./packaging/linux/aur-prepare.sh <version> /tmp/orbok-aur
+```
+
+Downloads the release's own `orbok-<version>.tar.gz` and its `.sha256`
+from GitHub, verifies one against the other, and writes
+`/tmp/orbok-aur/PKGBUILD` (the real hash in place of `SKIP`) and
+`/tmp/orbok-aur/.SRCINFO`. Refuses if the archive does not match its
+checksum, or if the template's `pkgver` does not already equal
+`<version>`.
+
+Look at both files before going further:
+
+```sh
+cat /tmp/orbok-aur/PKGBUILD
+cat /tmp/orbok-aur/.SRCINFO
+```
+
+If `namcap` is installed (it is not part of this project's own gates, and
+installing it is the owner's call):
+
+```sh
+cd /tmp/orbok-aur && makepkg --nodeps && namcap PKGBUILD && namcap *.pkg.tar.zst
+```
+
+**Clone the AUR package** (the first push creates it — there is no
+separate "create a new package" step):
+
+```sh
+git clone ssh://aur@aur.archlinux.org/orbok.git /tmp/orbok-aur-git
+```
+
+**Before committing, set this clone's own identity** — AUR commits are
+public, and your global `git config user.email` may be a personal
+address:
+
+```sh
+cd /tmp/orbok-aur-git
+git config user.name "nabbisen"
+git config user.email "19984221+nabbisen@users.noreply.github.com"
+```
+
+Copy the prepared files in and push:
+
+```sh
+cp /tmp/orbok-aur/PKGBUILD /tmp/orbok-aur/.SRCINFO .
+git add PKGBUILD .SRCINFO
+git commit -m "orbok <version>"
+git push
+```
+
+**Only `PKGBUILD` and `.SRCINFO` are ever committed here** — never the
+downloaded archive, never a built package.
+
+**Verify the push landed:**
+
+```sh
+curl -fsSL https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=orbok
+```
+
+should print the `pkgver`/`sha256sums` you just pushed.
+
+**A packaging-only fix** (the recipe changed, the source did not) bumps
+only `pkgrel` in `packaging/linux/PKGBUILD` — `pkgver` stays at the
+already-published version — then runs `aur-prepare.sh` and the push steps
+again.
+
+**Once this has been done for the first time**, tell the architect: the
+"Install" section of `docs/src/users/` naming `paru -S orbok` / `yay -S
+orbok` is written only after the package is actually live (Task 129 §3.4)
+— a doc claiming an install method that does not exist yet would be worse
+than no doc at all.
+
+## Publish to the Microsoft Store (by hand, on Windows)
+
+**Manual — no `store-submit.yml`-style workflow exists for this project**
+(Task 129's own scope: CI automation for either channel is excluded for
+now). Run from a Windows machine, with the Windows SDK installed (for
+`makeappx.exe`) and PowerShell.
+
+### Before you start: build from the tag, not from `main`
+
+**`AppxManifest.xml` in a `main` checkout names whatever version was bumped
+to after the last release, not the one you are about to publish.**
+Packaging from `main` risks submitting a version the tag does not actually
+name.
+
+```powershell
+git fetch --tags
+git checkout <version>          # the tag you are publishing, not main
+Select-String -Path packaging\windows\AppxManifest.xml -Pattern 'Version="'
+# must read Version="<version>.0" -- e.g. 0.27.0.0 for tag 0.27.0
+```
+
+If it does not match, stop — nothing below fixes it.
+
+### 1. Build
+
+```powershell
+cargo build --release --locked -p orbok
+```
+
+### 2. Stage exactly four things
+
+**Do not pack `packaging\windows\` as-is** — `makeappx pack /d` packs
+*everything* in the directory it is given, which would ship this
+project's own README and scripts inside the product. Stage only the
+executable, the manifest, and the `Assets\` tile images:
+
+```powershell
+$stage = "$env:TEMP\orbok-msix"
+Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $stage | Out-Null
+
+Copy-Item target\release\orbok.exe           $stage\
+Copy-Item packaging\windows\AppxManifest.xml $stage\
+Copy-Item packaging\windows\Assets           $stage\ -Recurse
+```
+
+### 3. Pack
+
+`makeappx.exe` lives under the Windows SDK, whose version is part of the
+path — find it rather than hard-coding it, so this keeps working after an
+SDK update:
+
+```powershell
+$makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+& $makeappx.FullName pack /d $stage /p "$env:TEMP\orbok-$(git describe --tags --abbrev=0).msix"
+```
+
+### 4. Before the first submission only: a signed install on a real machine
+
+(Task 061 §6.5.) Partner Center signs the package you actually upload, but
+an **unsigned** `.msix` cannot be installed locally to prove it works
+first — a self-signed certificate whose subject matches the manifest's
+`Publisher` lets you sideload and verify once, before the Store has ever
+seen the package:
+
+```powershell
+$cert = New-SelfSignedCertificate -Type Custom -Subject "CN=C4BA37E8-8670-4C82-8365-5ECB57373921" `
+    -KeyUsage DigitalSignature -FriendlyName "orbok test" -CertStoreLocation "Cert:\CurrentUser\My" `
+    -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+Export-Certificate -Cert $cert -FilePath "$env:TEMP\orbok-test.cer"
+Import-Certificate -FilePath "$env:TEMP\orbok-test.cer" -CertStoreLocation "Cert:\LocalMachine\TrustedPeople"
+
+$msix = "$env:TEMP\orbok-$(git describe --tags --abbrev=0).msix"
+& (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+    Sort-Object FullName -Descending | Select-Object -First 1).FullName `
+    sign /fd SHA256 /sha1 $cert.Thumbprint $msix
+
+Add-AppxPackage -Path $msix
+# start orbok from the Start menu, confirm it opens, then:
+Get-AppxPackage *orbok* | Remove-AppxPackage
+```
+
+The certificate and its Trusted People entry are test-only scaffolding --
+remove them (`Remove-Item Cert:\CurrentUser\My\<thumbprint>` and the
+matching entry under `Cert:\LocalMachine\TrustedPeople`) once satisfied;
+they sign nothing that reaches the Store.
+
+### 5. Submit to Partner Center
+
+Manual, in the browser: upload the **unsigned** `.msix` built in step 3
+(not the one signed for step 4's local test) to the submission's Packages
+page, then copy the listing text from `packaging/windows/store-listing/`
+(once Task 129 §4 has moved it into the repository) onto the submission's
+Store Listing page. The Store signs the package you upload; no
+certificate of this project's own is involved in the real submission.
 
 ## RFC Status Lifecycle
 

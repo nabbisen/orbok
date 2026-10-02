@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=orbok
+GenericName=Document search
+GenericName[ja]=文書検索
+Comment=Search your documents by meaning, on your computer
+Comment[ja]=お使いのコンピューターで、意味から文書を検索します
+Exec=orbok
+Icon=orbok
+Terminal=false
+Categories=Utility;
+Keywords=search;documents;
+StartupWMClass=orbok
