@@ -35,6 +35,10 @@ depends=(
     'libxcursor'
     'libxi'
     'vulkan-icd-loader'
+    # The hicolor theme hierarchy this package installs its icons into
+    # (package()'s loop below) -- a data/trigger dependency LD_DEBUG
+    # cannot see, found by namcap (Task 130).
+    'hicolor-icon-theme'
 )
 # Without xdg-desktop-portal, the native folder picker has nothing to talk
 # to; typing the path into the Folders page's own field still works.

@@ -535,6 +535,28 @@ installing it is the owner's call):
 cd /tmp/orbok-aur && makepkg --nodeps && namcap PKGBUILD && namcap *.pkg.tar.zst
 ```
 
+**Expected `namcap *.pkg.tar.zst` output** (Task 130 — read any other
+line as a real finding, not noise):
+
+```
+orbok W: Dependency glibc detected and implicitly satisfied (...)
+orbok W: Dependency libgcc detected and implicitly satisfied (...)
+orbok W: Dependency included, but may not be needed ('libxkbcommon')
+orbok W: Dependency included, but may not be needed ('libxkbcommon-x11')
+orbok W: Dependency included, but may not be needed ('wayland')
+orbok W: Dependency included, but may not be needed ('libx11')
+orbok W: Dependency included, but may not be needed ('libxcursor')
+orbok W: Dependency included, but may not be needed ('libxi')
+orbok W: Dependency included, but may not be needed ('vulkan-icd-loader')
+```
+
+The two `glibc`/`libgcc` lines are pacman's own implicit guarantees.
+The seven "may not be needed" lines are namcap's static ELF
+`.dynamic`-entry scan missing winit's `dlopen`-based backend selection
+among X11/Wayland/Vulkan — the `LD_DEBUG` measurement above is the
+empirical, runtime proof that each of these seven packages is genuinely
+loaded, and it outranks a static scan that cannot see a `dlopen` call.
+
 **Clone the AUR package** (the first push creates it — there is no
 separate "create a new package" step):
 
