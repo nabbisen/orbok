@@ -675,10 +675,16 @@ they sign nothing that reaches the Store.
 
 Manual, in the browser: upload the **unsigned** `.msix` built in step 3
 (not the one signed for step 4's local test) to the submission's Packages
-page, then copy the listing text from `packaging/windows/store-listing/`
-(once Task 129 §4 has moved it into the repository) onto the submission's
-Store Listing page. The Store signs the package you upload; no
-certificate of this project's own is involved in the real submission.
+page, then copy each field from `packaging/windows/store-listing/en-us/
+listing.md` and `ja-jp/listing.md` onto the submission's Store Listing
+page for that market, uploading that market's `screenshots/` and (if the
+Store asks for one) `logo-300.png`. The Store signs the package you
+upload; no certificate of this project's own is involved in the real
+submission.
+
+**Privacy policy URL:** `https://github.com/nabbisen/orbok/blob/main/
+PRIVACY.md` — the GitHub-rendered page, not a raw file link, so it reads
+as a normal page rather than plain text.
 
 ## RFC Status Lifecycle
 

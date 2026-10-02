@@ -2,7 +2,10 @@
 
 **Does orbok upload my files?**
 No. All processing is local. Even with an embedding model installed,
-inference runs on your computer only.
+inference runs on your computer only. See the
+[privacy policy](https://github.com/nabbisen/orbok/blob/main/PRIVACY.md)
+for the one exception (downloading the model itself) and what it does and
+does not send.
 
 **Can I search encrypted files?**
 Not in v0.x. orbok cannot read the text of an encrypted file, so it is

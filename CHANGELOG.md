@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template, a desktop entry and icons, and `packaging/linux/aur-prepare.sh`
   for preparing a verified AUR submission by hand.
 
+- A privacy policy, `PRIVACY.md` (Task 130).
+
 ### Fixed
 
 - **The folder list keeps its order** (Task 126): reloading the Folders page
@@ -51,8 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desktop environment had nothing to match it to `orbok.desktop` by, so no
   icon appeared in the task bar or dock. Windows and macOS are unaffected.
 
+- **The window itself now shows orbok's icon** (Task 130): an unpackaged
+  run showed a generic icon on Windows, and nothing at all in an X11 title
+  bar. Native Wayland and macOS take their icon from elsewhere already
+  (the desktop entry, and the `.app` bundle) and are unaffected.
+
 ### Changed
 
+- A new app icon, everywhere orbok shows one (Task 130).
 - snora 0.52 (Task 127).
 
 ## [0.27.0] — 2026-09-29

@@ -291,13 +291,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// before changing anything there -- this avoids the question by changing
 /// nothing on those platforms at all).
 fn window_settings() -> iced::window::Settings {
-    #[allow(unused_mut)]
     let mut settings = iced::window::Settings::default();
     #[cfg(target_os = "linux")]
     {
         settings.platform_specific.application_id = "orbok".to_string();
     }
+    settings.icon = Some(window_icon());
     settings
+}
+
+/// Task 130 §1.3: orbok set no window icon before this -- Windows showed a
+/// generic one on an unpackaged run, and X11 title bars showed none.
+/// winit's `with_window_icon` (what this setting reaches,
+/// `iced_winit::conversion`) only has an effect on Windows and X11; native
+/// Wayland and macOS windows take their icon from elsewhere (the desktop
+/// entry's `app_id` match, and the `.app` bundle, respectively) and simply
+/// ignore this, so it is set unconditionally rather than per-platform.
+///
+/// Raw RGBA, not a PNG: `iced::window::icon::from_rgba` takes exactly this
+/// shape, so decoding it needs no image-decoding dependency orbok does not
+/// already have (this function's own stop condition, Task 130 §5) --
+/// `scripts/generate-icons.sh` does the one-time PNG decode with
+/// ImageMagick, and the committed output is these already-decoded bytes.
+fn window_icon() -> iced::window::Icon {
+    const ICON_SIZE: u32 = 256;
+    const ICON_BYTES: &[u8] = include_bytes!("../assets/icon-256.rgba");
+    iced::window::icon::from_rgba(ICON_BYTES.to_vec(), ICON_SIZE, ICON_SIZE)
+        .expect("assets/icon-256.rgba must be ICON_SIZE x ICON_SIZE raw RGBA bytes")
 }
 
 /// Task 071: a GUI startup that failed, and the locale to explain it in.

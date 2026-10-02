@@ -85,7 +85,7 @@ package() {
         "$pkgdir/usr/share/applications/orbok.desktop"
     # Every size this repository carries, so Icon=orbok (above) always
     # resolves.
-    for size in 16 32 48 64 128; do
+    for size in 16 32 48 64 128 256 512; do
         install -Dm644 "packaging/linux/icons/hicolor/${size}x${size}/apps/orbok.png" \
             "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/orbok.png"
     done
