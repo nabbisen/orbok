@@ -897,6 +897,163 @@ fn choose_a_folder_opens_the_picker_once() {
     assert_eq!(second.units(), 0, "a second press does nothing");
 }
 
+/// Task 132 §2 test 3: a picker future that never resolves, raced against a
+/// short deadline, times out instead of hanging the race forever -- the
+/// exact shape of Review Request 309 §4.4's portal-with-no-backend case,
+/// without depending on `rfd` or a real OS dialog.
+#[tokio::test]
+async fn a_picker_future_that_never_resolves_times_out() {
+    let result = race_with_deadline(
+        std::future::pending::<()>(),
+        std::time::Duration::from_millis(20),
+    )
+    .await;
+    assert!(result.is_none(), "the deadline, not the future, decides");
+}
+
+/// The companion case: a future that resolves well inside the deadline is
+/// not mistaken for a timeout.
+#[tokio::test]
+async fn a_picker_future_that_resolves_in_time_is_not_timed_out() {
+    let result = race_with_deadline(async { 42 }, std::time::Duration::from_millis(200)).await;
+    assert_eq!(result, Some(42));
+}
+
+/// Task 132 §2 test 3, end to end for the search picker: once the deadline
+/// message arrives, `picker_in_progress` is false again and the "did not
+/// open" notice is raised; pressing "Choose a folder" again opens a new
+/// request rather than being swallowed by a flag the timeout forgot to
+/// clear. Red before Task 132: `SearchFolderPickerTimedOut` did not exist,
+/// so nothing cleared the flag a hung request left set.
+#[test]
+fn a_search_picker_timeout_clears_the_flag_and_a_retry_opens_a_new_request() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    // The picker is open, as a real press would leave it.
+    let _ = route(&mut app, Message::ChooseSearchFolder, &deps);
+    assert!(app.state.search_location.picker_in_progress);
+
+    let timeout_task = route(&mut app, Message::SearchFolderPickerTimedOut, &deps);
+    assert_eq!(timeout_task.units(), 0, "no task of its own");
+    assert!(
+        !app.state.search_location.picker_in_progress,
+        "the deadline clears the flag a hung request left set"
+    );
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderPickerDidNotOpen)
+    );
+
+    let retry = route(&mut app, Message::ChooseSearchFolder, &deps);
+    assert_eq!(
+        retry.units(),
+        1,
+        "pressing Choose a folder again opens a new request, not nothing"
+    );
+}
+
+/// Task 132 §1.1: choosing an already-added folder promotes it to the
+/// search location and resumes the search that was pending -- the same
+/// outcome `folder_picked` gives a brand new path, without the picker in
+/// between. Red before Task 132: `ExistingSearchFolderChosen` did not exist.
+#[test]
+fn choosing_an_existing_folder_resumes_the_pending_search() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState {
+        query: "renewal policy".into(),
+        sources: vec![orbok_ui::state::SourceCard {
+            display_name: "Docs".into(),
+            display_path: "/docs".into(),
+            indexed: 1,
+            stale: 0,
+            failed: 0,
+            no_text_found: 0,
+            unfinished_jobs: 0,
+            covers_subfolders: true,
+            status: orbok_core::SourceStatus::Active,
+            source_id: "s_docs".into(),
+        }],
+        ..AppState::default()
+    });
+    // As a submitted search with no location leaves it (Task 132 §1.1): the
+    // choices are already on the page, so only the query is remembered.
+    let _ = route(&mut app, Message::SubmitSearch, &deps);
+    assert!(app.state.search_location.pending_query.is_some());
+
+    let source_id = orbok_core::SourceId::from_string("s_docs".to_string());
+    let task = route(
+        &mut app,
+        Message::ExistingSearchFolderChosen(source_id.clone()),
+        &deps,
+    );
+
+    assert_eq!(
+        app.state
+            .search_location
+            .selected
+            .as_ref()
+            .map(|l| l.source_id()),
+        Some(Some(&source_id)),
+        "the chosen folder is now the search location"
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "the pending search resumes through RetrySearch -> SubmitSearch"
+    );
+}
+
+/// A folder removed from another view between the offer rendering and the
+/// click lands here has nothing to promote -- a no-op, not a panic.
+#[test]
+fn choosing_a_folder_that_was_removed_meanwhile_does_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let task = route(
+        &mut app,
+        Message::ExistingSearchFolderChosen(orbok_core::SourceId::from_string(
+            "s_gone".to_string(),
+        )),
+        &deps,
+    );
+
+    assert_eq!(task.units(), 0);
+    assert!(app.state.search_location.selected.is_none());
+}
+
+/// The same deadline message, for each of the other two pickers (Task 122):
+/// one function, so all three callers get the same timeout behaviour.
+#[test]
+fn the_add_source_and_wizard_pickers_also_clear_their_flag_on_timeout() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+
+    let _ = route(&mut app, Message::RequestAddSource, &deps);
+    assert!(app.state.add_source_picker_in_progress);
+    let _ = route(&mut app, Message::AddSourceFolderPickerTimedOut, &deps);
+    assert!(!app.state.add_source_picker_in_progress);
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderPickerDidNotOpen)
+    );
+
+    let mut app = OrbokApp::with_state(AppState::default());
+    let _ = route(&mut app, Message::WizardChooseFolder, &deps);
+    assert!(app.state.wizard_picker_in_progress);
+    let _ = route(&mut app, Message::WizardFolderPickerTimedOut, &deps);
+    assert!(!app.state.wizard_picker_in_progress);
+    assert_eq!(
+        app.state.notice,
+        Some(orbok_ui::notice::UserNotice::FolderPickerDidNotOpen)
+    );
+}
+
 /// §2.7: the picker's arm and the typed path's arm both call the one
 /// routine, so a notice, the already-added check and the scan cannot differ.
 #[test]

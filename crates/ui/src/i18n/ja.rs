@@ -185,6 +185,10 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFolderFailBody => {
             "そのフォルダーを追加できませんでした。別のフォルダーを選ぶか、開けるか確認してください。"
         }
+        NoticeFolderPickerTimedOutTitle => "フォルダー選択ダイアログが開きませんでした",
+        NoticeFolderPickerTimedOutBody => {
+            "システムのフォルダー選択ダイアログが応答しませんでした。別のフォルダーを選ぶか、もう一度お試しください。"
+        }
         NoticeSearchFailTitle => "検索が完了しませんでした",
         NoticeSearchFailBody => "検索中に問題が発生しました。もう一度お試しください。",
         NoticeFolderAddedTitle => "フォルダーを追加しました",
@@ -371,7 +375,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchLocationClear => "このフォルダーの選択を解除",
         SearchScopeOnly => "このフォルダーのみ",
         SearchScopeSubfolders => "このフォルダーとサブフォルダー",
-        SearchRecentFoldersLabel => "最近のフォルダー",
         // RFC-042: search history
         RecentSearchesLabel => "最近の検索",
         SearchAgainButton => "もう一度検索",

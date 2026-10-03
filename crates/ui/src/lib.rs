@@ -34,7 +34,7 @@ pub use state::{
     ModelDownloadConsent, ModelFlowIdentitySequence, ModelPersistenceResult, ModelPersistenceState,
     ModelProvenance, ModelTrustPresentation, NavGroup, PersistenceAttemptId, ReadyId,
     ResultTrustDisplay, ResultsStatus, SearchFolderScope, SearchLocation, SearchLocationState,
-    SearchLocationSummary, SearchResultDisplay, SearchUiState, SourceCard, ViewId, WizardFileCheck,
-    WizardKind, WizardState,
+    SearchResultDisplay, SearchUiState, SourceCard, ViewId, WizardFileCheck, WizardKind,
+    WizardState,
 };
 pub use theme::{TextScale, Theme};

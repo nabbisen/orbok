@@ -98,6 +98,10 @@ pub enum UserNotice {
     /// Task 057: background preparation could not load a model that was
     /// saved during this session. Its action asks it to load the model again.
     ModelCouldNotBeLoaded,
+    /// Task 132: the system folder picker did not answer within its
+    /// deadline (no portal backend, Review Request 309 §4.4). Raised by
+    /// any of the three pickers; its action retries that same one.
+    FolderPickerDidNotOpen,
 }
 
 impl UserNotice {
@@ -135,7 +139,9 @@ impl UserNotice {
     /// - `ModelCouldNotBeLoaded`: its own Try again clears it, and a later load's
     ///   success is not a message the window sees;
     /// - `IndexingCouldNotStart`: background preparation does not restart within
-    ///   a session.
+    ///   a session;
+    /// - `FolderPickerDidNotOpen`: three different pickers can raise this; a
+    ///   success from one says nothing about whether another retry would work.
     ///
     /// The four file notices (`FileCouldNotBeFound`, `FileCouldNotBeOpened`,
     /// `FileNotAllowed`, `FileCheckFailed`) are not resolved by opening another
@@ -183,7 +189,10 @@ impl UserNotice {
             | Self::FolderNotChecked
             | Self::StorageUnavailable
             | Self::ModelCouldNotBeLoaded
-            | Self::IndexingCouldNotStart => false,
+            | Self::IndexingCouldNotStart
+            // Three different pickers can raise this; a success from one
+            // says nothing about whether another retry would also work.
+            | Self::FolderPickerDidNotOpen => false,
             // Confirmations and information are not problems: nothing to resolve.
             Self::FolderAdded
             | Self::FolderAlreadyAdded
@@ -220,7 +229,8 @@ impl UserNotice {
             | Self::FolderNotChecked
             | Self::StorageUnavailable
             | Self::IndexingCouldNotStart
-            | Self::ModelCouldNotBeLoaded => Tone::Danger,
+            | Self::ModelCouldNotBeLoaded
+            | Self::FolderPickerDidNotOpen => Tone::Danger,
             // Cautions: action succeeded but the user should be aware.
             Self::FileCouldNotBeFound
             | Self::FileCouldNotBeOpened
@@ -275,6 +285,7 @@ impl UserNotice {
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailedTitle,
+            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerTimedOutTitle,
         };
         tr(locale, key)
     }
@@ -317,6 +328,7 @@ impl UserNotice {
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableBody,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
+            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerTimedOutBody,
         };
         tr(locale, key).to_string()
     }
@@ -363,6 +375,9 @@ impl UserNotice {
             // text names the recovery step (restart orbok) as prose instead.
             Self::IndexingCouldNotStart => return None,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadRetry,
+            // Reuses the existing "Choose another folder" label (Task 132):
+            // the retry each raise site stores is that same picker again.
+            Self::FolderPickerDidNotOpen => MessageKey::NoticeActionChooseFolder,
         };
         Some(tr(locale, key))
     }

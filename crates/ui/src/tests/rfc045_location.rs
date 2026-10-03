@@ -7,9 +7,7 @@
 //! identity (RFC-045 §6.3).
 
 use crate::i18n::Locale;
-use crate::state::{
-    AppState, SearchFolderScope, SearchLocation, SearchLocationState, SearchLocationSummary,
-};
+use crate::state::{AppState, SearchFolderScope, SearchLocation, SearchLocationState};
 use orbok_core::id::SourceId;
 
 fn sample_location() -> SearchLocation {
@@ -21,7 +19,6 @@ fn default_location_state_has_nothing_selected() {
     let state = SearchLocationState::default();
     assert!(state.selected.is_none());
     assert!(!state.has_selected());
-    assert!(state.recent_locations.is_empty());
     assert!(!state.picker_in_progress);
 }
 
@@ -114,14 +111,4 @@ fn clearing_location_preserves_query_text() {
 
     assert!(app.search_location.selected.is_none());
     assert_eq!(app.query, "renewal policy");
-}
-
-#[test]
-fn recent_location_summary_carries_name_and_id() {
-    let summary = SearchLocationSummary {
-        source_id: SourceId::from_string("src_downloads"),
-        display_name: "Downloads".to_string(),
-    };
-    assert_eq!(summary.display_name, "Downloads");
-    assert_eq!(summary.source_id.as_str(), "src_downloads");
 }

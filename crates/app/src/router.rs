@@ -260,29 +260,65 @@ fn widen_folder(app: &mut OrbokApp, deps: &AppDeps, source_id: &str) {
     }
 }
 
+/// Task 132: how long `open_folder_picker` waits for the system picker
+/// before giving up. Review Request 309 §4.4 found a portal present but
+/// with no backend installed never answers the request at all -- not a
+/// slow answer, no answer. 10 seconds is generous for a real backend's own
+/// dialog to appear (a local D-Bus round trip, then a GTK/Qt window) while
+/// still resolving well inside what a user would tolerate before
+/// suspecting orbok itself had frozen, rather than the system dialog.
+const FOLDER_PICKER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The one place a system folder picker is opened (Task 122; the Folders page's,
 /// the search row's and the setup wizard's all call it). It is an async `Task`,
 /// so the dialog never blocks the iced event loop (RFC-045 §19.0, RFC-061 §7
 /// Slice 5). Each caller checks and sets its own one-picker-at-a-time flag
-/// (Task 047) before calling, and says what a pick and a cancel mean.
+/// (Task 047) before calling, and says what a pick, a cancel and a timeout
+/// mean -- Task 132: a deadline here, not a cooperative check the backend
+/// would need to honor, is what actually catches a request that never
+/// answers, so every one of the three callers gets it for free.
 fn open_folder_picker(
     title: String,
     picked: fn(std::path::PathBuf) -> Message,
     cancelled: Message,
+    timed_out: Message,
 ) -> iced::Task<Message> {
     iced::Task::perform(
         async move {
-            rfd::AsyncFileDialog::new()
-                .set_title(title)
-                .pick_folder()
-                .await
-                .map(|h| h.path().to_path_buf())
+            race_with_deadline(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(title)
+                        .pick_folder()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
+                FOLDER_PICKER_DEADLINE,
+            )
+            .await
         },
-        move |result| match result {
-            Some(path) => picked(path),
-            None => cancelled.clone(),
+        move |outcome| match outcome {
+            Some(Some(path)) => picked(path),
+            Some(None) => cancelled.clone(),
+            None => timed_out.clone(),
         },
     )
+}
+
+/// Task 132: `future`, or `None` if `deadline` passes first. Pulled out of
+/// `open_folder_picker` so the race itself -- not just its effect on
+/// `picker_in_progress` -- has a test that does not depend on `rfd` or a
+/// real OS dialog: a future that never resolves, raced against a short
+/// deadline, is exactly what Review Request 309 §4.4's portal-with-no-
+/// backend case looks like from here.
+async fn race_with_deadline<T>(
+    future: impl std::future::Future<Output = T>,
+    deadline: std::time::Duration,
+) -> Option<T> {
+    tokio::select! {
+        result = future => Some(result),
+        () = tokio::time::sleep(deadline) => None,
+    }
 }
 
 /// Open the OS folder picker for the search page (RFC-045), unless one is
@@ -298,6 +334,7 @@ fn open_search_folder_picker(app: &mut OrbokApp) -> iced::Task<Message> {
         dialog_title_choose_search_folder(app.state.locale).to_string(),
         Message::FolderPicked,
         Message::FolderPickerCancelled,
+        Message::SearchFolderPickerTimedOut,
     )
 }
 
@@ -535,6 +572,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 .to_string(),
                 Message::WizardFolderPicked,
                 Message::WizardFolderPickerCancelled,
+                Message::WizardFolderPickerTimedOut,
             );
         }
         // The picker's answer fills the field (the reducer) and is checked at
@@ -546,6 +584,11 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         }
         Message::WizardFolderPickerCancelled => {
             app.update(message.clone());
+            return iced::Task::none();
+        }
+        Message::WizardFolderPickerTimedOut => {
+            app.update(message.clone());
+            app.update(notice_retry::wizard_folder_picker_timed_out());
             return iced::Task::none();
         }
         Message::RequestAddSource => {
@@ -565,6 +608,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 dialog_title_add_source(app.state.locale).to_string(),
                 Message::AddSourceFolderPicked,
                 Message::AddSourceFolderPickerCancelled,
+                Message::AddSourceFolderPickerTimedOut,
             );
         }
         Message::AddSourceFolderPicked(folder) => {
@@ -587,6 +631,11 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         }
         Message::AddSourceFolderPickerCancelled => {
             app.update(message.clone());
+            return iced::Task::none();
+        }
+        Message::AddSourceFolderPickerTimedOut => {
+            app.update(message.clone());
+            app.update(notice_retry::add_folder_picker_timed_out());
             return iced::Task::none();
         }
         // Task 075: each backend action's result, reflected truthfully
@@ -772,13 +821,48 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         }
         // Task 105: the control behind "Search in Choose a folder".
         Message::ChooseSearchFolder => return open_search_folder_picker(app),
+        Message::SearchFolderPickerTimedOut => {
+            app.update(message.clone());
+            app.update(notice_retry::search_folder_picker_timed_out());
+            return iced::Task::none();
+        }
+        // Task 132 §1.1: an already-added folder, chosen directly instead
+        // of through the system picker -- already registered and indexed,
+        // so this only promotes it to the search location and resumes
+        // whatever search was pending (RFC-045 §8.1), the same way
+        // `folder_picked` resumes one after the system picker returns a
+        // brand new path.
+        Message::ExistingSearchFolderChosen(source_id) => {
+            let Some(card) = app
+                .state
+                .sources
+                .iter()
+                .find(|c| c.source_id == source_id.as_str())
+                .cloned()
+            else {
+                // Stale: the folder was removed from another view meanwhile.
+                return iced::Task::none();
+            };
+            app.update(Message::SearchLocationSelected(
+                orbok_ui::SearchLocation::remembered(source_id.clone(), card.display_name),
+            ));
+            return search_flow::after_folder_picked(&app.state)
+                .map_or_else(iced::Task::none, iced::Task::done);
+        }
         Message::SubmitSearch => {
             let query = app.state.query.trim().to_string();
             if !query.is_empty() {
                 // RFC-045: if no search location is selected, open the
-                // folder picker first and store the pending query.
+                // folder picker first and store the pending query -- unless
+                // added folders are offered directly instead (Task 132
+                // §1.1): those are already on the page, so nothing new
+                // opens here, only the pending query is remembered.
                 if !app.state.search_location.has_selected() {
-                    return open_search_folder_picker(app);
+                    if app.state.sources.is_empty() {
+                        return open_search_folder_picker(app);
+                    }
+                    app.update(Message::SearchFolderChoicesPending);
+                    return iced::Task::none();
                 }
                 // RFC-061 §7 Slice 5: show "Searching…" immediately
                 // (was previously only shown *after* the search

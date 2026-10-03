@@ -185,6 +185,11 @@ pub fn message(key: MessageKey) -> &'static str {
             "We could not add that folder. Please choose another folder \
              or check that you can open it."
         }
+        NoticeFolderPickerTimedOutTitle => "Folder picker did not open",
+        NoticeFolderPickerTimedOutBody => {
+            "The system's folder picker did not respond. Choose another \
+             folder, or try again."
+        }
         NoticeSearchFailTitle => "Search did not finish",
         NoticeSearchFailBody => "Something went wrong while searching. Please try again.",
         NoticeFolderAddedTitle => "Folder added",
@@ -363,7 +368,6 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchLocationClear => "Clear this folder",
         SearchScopeOnly => "This folder only",
         SearchScopeSubfolders => "This folder and subfolders",
-        SearchRecentFoldersLabel => "Recent folders",
         // RFC-042: search history
         RecentSearchesLabel => "Recent searches",
         SearchAgainButton => "Search again",

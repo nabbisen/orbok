@@ -141,30 +141,17 @@ impl SearchLocation {
     }
 }
 
-// ── Recent / remembered folder summary ────────────────────────────────
-
-/// A compact remembered-folder entry for the recent-folder chips
-/// (RFC-045 §7.4). Carries only what a chip needs: a friendly name and
-/// the source id to select.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SearchLocationSummary {
-    pub source_id: SourceId,
-    pub display_name: String,
-}
-
 // ── Search-location state ─────────────────────────────────────────────
 
 /// The "where to search" portion of the search UI state (RFC-045 §17).
 ///
 /// Sits alongside `SearchUiState` in `AppState`. Defaults to no selected
-/// location (the first-run empty state, RFC-045 §7.1), an empty recent
-/// list, and no picker in flight.
+/// location (the first-run empty state, RFC-045 §7.1) and no picker in
+/// flight.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SearchLocationState {
     /// The current search location, or `None` before a folder is chosen.
     pub selected: Option<SearchLocation>,
-    /// Recent / remembered folders offered as quick chips (RFC-045 §7.4).
-    pub recent_locations: Vec<SearchLocationSummary>,
     /// True while the OS folder picker is open, to guard against opening
     /// duplicate dialogs on repeated Search clicks (RFC-045 §19.0).
     pub picker_in_progress: bool,

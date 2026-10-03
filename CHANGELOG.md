@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Folders you added can be chosen directly when searching** (Task 132):
+  "Choose a folder" now offers them by name, in the order the Folders page
+  shows them, instead of only opening the system's folder picker to browse
+  for something already registered.
+
+### Fixed
+
+- **A folder picker that never opens no longer blocks searching** (Task 132):
+  on Linux, without a portal backend installed, the system folder picker
+  could fail to open at all -- and every later attempt did nothing, with no
+  explanation, until orbok was restarted. It now gives up after a few
+  seconds, tells you, and lets you try again.
+
 ## [0.28.0] — 2026-10-03
 
 ### Added

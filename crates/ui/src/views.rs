@@ -23,6 +23,7 @@ use crate::state::{AppState, FileCountState, Message, ResultTrustDisplay, Search
 use crate::theme::{self, TextScale, Theme};
 use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
 use iced::{Element, Length, Padding};
+use orbok_core::SourceId;
 use orbok_models::SearchCapability;
 use orbok_search::{ResultRecoveryAction, ResultTrustState, ResultWarningSummary};
 use snora::design::Tokens;
@@ -186,11 +187,11 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
     let sc = state.text_scale;
 
     match &state.search_location.selected {
-        None => {
-            // First-run / no-folder state: the one-line prompt, and its
-            // second half is the control that opens the picker (Task 105,
-            // RFC-045 §7.1 Amendment): after a cancelled picker the next
-            // step is something to press, not only text.
+        None if state.sources.is_empty() => {
+            // Nothing added yet: the one-line prompt, and its second half is
+            // the control that opens the picker (Task 105, RFC-045 §7.1
+            // Amendment): after a cancelled picker the next step is
+            // something to press, not only text.
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
                 components::ghost(
@@ -199,6 +200,41 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                     (!state.search_location.picker_in_progress)
                         .then_some(Message::ChooseSearchFolder),
                 ),
+            ]
+            .spacing(tokens.spacing.xs)
+            .align_y(iced::Alignment::Center)
+            .wrap()
+            .into()
+        }
+        None => {
+            // Task 132 §1.1: folders already added are offered directly, in
+            // the Folders page's own order (Task 126) -- no need to browse
+            // the filesystem again for something already registered. The
+            // system picker is still one choice away, as "Choose another
+            // folder" (the existing NoticeActionChooseFolder label -- no
+            // new copy needed).
+            let meta = theme::meta_s(tokens, sc);
+            let mut options: Vec<components::ChoiceOption> = state
+                .sources
+                .iter()
+                .map(|card| components::ChoiceOption {
+                    label: card.display_name.clone(),
+                    chosen: false,
+                    available: true,
+                    on_press: Message::ExistingSearchFolderChosen(SourceId::from_string(
+                        card.source_id.clone(),
+                    )),
+                })
+                .collect();
+            options.push(components::ChoiceOption {
+                label: tr(locale, MessageKey::NoticeActionChooseFolder).to_string(),
+                chosen: false,
+                available: !state.search_location.picker_in_progress,
+                on_press: Message::ChooseSearchFolder,
+            });
+            hrow![
+                text(tr(locale, MessageKey::SearchInLabel)).size(meta),
+                components::choice(tokens, meta, options),
             ]
             .spacing(tokens.spacing.xs)
             .align_y(iced::Alignment::Center)
@@ -350,31 +386,6 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         // RFC-045: "Search in" location row.
         search_location_row(state),
     ];
-
-    // RFC-045 §7.4: recent / remembered folder quick-select chips.
-    // Shown only when there are remembered folders and no folder is already
-    // selected (they disappear once a choice is made — progressive disclosure).
-    if !state.search_location.recent_locations.is_empty()
-        && state.search_location.selected.is_none()
-    {
-        let mut chips = hrow![
-            text(tr(locale, MessageKey::SearchRecentFoldersLabel))
-                .size(theme::meta_s(tokens, sc))
-                .color(to_iced_color(tokens.palette.text_secondary)),
-        ]
-        .spacing(tokens.spacing.xs);
-        for summary in &state.search_location.recent_locations {
-            chips = chips.push(components::chip(
-                tokens,
-                sc,
-                Some(char::from(lucide::Folder)),
-                &summary.display_name,
-                None,
-                Message::RecentFolderSelected(summary.source_id.clone()),
-            ));
-        }
-        content = content.push(chips.wrap());
-    }
 
     // RFC-042: Recent searches (collapsed button or expanded panel).
     content = content.push(recent_searches_panel(state));

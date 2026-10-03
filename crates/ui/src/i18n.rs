@@ -283,6 +283,9 @@ message_keys! {
     // Common actions
     NoticeFolderFailTitle,
     NoticeFolderFailBody,
+    /// Task 132: the system folder picker did not answer within its deadline.
+    NoticeFolderPickerTimedOutTitle,
+    NoticeFolderPickerTimedOutBody,
     NoticeSearchFailTitle,
     NoticeSearchFailBody,
     NoticeFolderAddedTitle,
@@ -446,8 +449,6 @@ message_keys! {
     /// Scope toggle label shown when current scope is FolderOnly: offers to
     /// switch to including subfolders.
     SearchScopeSubfolders,
-    /// Header for the recent / remembered folder chip row.
-    SearchRecentFoldersLabel,
     // RFC-042: search history
     /// Panel / section header.
     RecentSearchesLabel,

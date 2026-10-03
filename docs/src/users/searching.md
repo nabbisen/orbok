@@ -2,9 +2,16 @@
 
 ## Choosing where to search
 
-Type a question and press Search. If no folder is chosen yet, orbok asks you
-to choose one; you can also press **Choose a folder** on the search page at
-any time. Cancelling keeps what you typed.
+Type a question and press Search. If no folder is chosen yet and you have
+already added one or more, orbok offers them by name right there -- pick one
+and your search runs. **Choose another folder** opens your system's own
+folder picker instead, for a folder you have not added yet. With no folders
+added, Search goes straight to that picker. Cancelling keeps what you typed.
+
+If the system's folder picker does not open within a few seconds (no portal
+backend installed, on Linux), orbok tells you and lets you try again or
+choose a different folder, instead of leaving the button looking like
+nothing happened.
 
 The chosen folder is shown by name. Pressing its name lets you choose another
 folder, and its **×** clears it (your search text stays). Beside it, two options, **This folder and subfolders** and

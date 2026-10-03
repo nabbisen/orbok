@@ -4,8 +4,7 @@
 use crate::i18n::Locale;
 use crate::notice::UserNotice;
 use crate::state::{
-    AppState, CombinedFolder, FoldersCombined, Message, SearchLocation, SearchLocationSummary,
-    SourceCard,
+    AppState, CombinedFolder, FoldersCombined, Message, SearchLocation, SourceCard,
 };
 use orbok_core::{SourceId, SourceStatus};
 
@@ -173,23 +172,14 @@ fn a_location_inside_a_combined_folder_keeps_its_own_limit() {
     assert_eq!(location.limit_path(), Some("/docs/Notes/Sub"));
 }
 
+/// A selected location unrelated to the combined folder is left alone.
 #[test]
-fn a_location_elsewhere_and_the_recent_list_are_handled() {
+fn an_unrelated_selected_location_is_not_touched() {
     let mut state = AppState::default();
     state.search_location.selected = Some(SearchLocation::remembered(
         SourceId::from_string("s_other".to_string()),
         "Other",
     ));
-    state.search_location.recent_locations = vec![
-        SearchLocationSummary {
-            source_id: SourceId::from_string("s_notes".to_string()),
-            display_name: "Notes".into(),
-        },
-        SearchLocationSummary {
-            source_id: SourceId::from_string("s_other".to_string()),
-            display_name: "Other".into(),
-        },
-    ];
     state.update(&combined("s_docs", &[("s_notes", "Notes")]));
 
     let location = state.search_location.selected.clone().unwrap();
@@ -197,17 +187,6 @@ fn a_location_elsewhere_and_the_recent_list_are_handled() {
         location.source_id().unwrap().as_str(),
         "s_other",
         "not touched"
-    );
-    let recent: Vec<_> = state
-        .search_location
-        .recent_locations
-        .iter()
-        .map(|s| s.source_id.as_str().to_string())
-        .collect();
-    assert_eq!(
-        recent,
-        ["s_other"],
-        "a chip for a folder that is gone is dropped"
     );
 }
 

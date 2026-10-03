@@ -316,12 +316,11 @@ Search in: [Documents and subfolders ×] [Change]
 
 ### 7.4. Recent Folders
 
-```text
-Recent folders:
-[Documents] [Downloads] [Project notes]
-```
-
-Clicking one sets it as the current search location.
+Superseded by Task 132: a separate "recent folders" list was never
+populated in production, so this mockup was never reachable. "Choose a
+folder" (§1.1) now offers every added folder directly, in the Folders
+page's own order, instead of a second, parallel list of the same
+folders — see Task 132 §1.1 and §1.3.
 
 ### 7.5. Remembered Folder Status
 

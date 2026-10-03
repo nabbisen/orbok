@@ -9,7 +9,7 @@ pub mod location;
 pub mod model_consent;
 pub mod search;
 
-pub use location::{SearchFolderScope, SearchLocation, SearchLocationState, SearchLocationSummary};
+pub use location::{SearchFolderScope, SearchLocation, SearchLocationState};
 pub use model_consent::{ModelDownloadConsent, ModelTrustPresentation};
 pub use search::{ResultTrustDisplay, ResultsStatus, SearchUiState};
 
@@ -968,6 +968,9 @@ pub enum Message {
     /// Task 122: the picker was cancelled: nothing changes but the picker
     /// being open.
     WizardFolderPickerCancelled,
+    /// Task 132: the picker never answered (no portal backend). Same effect
+    /// as a cancel; the raise site also shows a notice explaining why.
+    WizardFolderPickerTimedOut,
     WizardChecked {
         model_dir: String,
         checks: Vec<WizardFileCheck>,
@@ -1025,6 +1028,9 @@ pub enum Message {
     AddSourceFolderPicked(std::path::PathBuf),
     /// The "Add source" folder picker was cancelled -- neutral, no error.
     AddSourceFolderPickerCancelled,
+    /// Task 132: the picker never answered (no portal backend). Same effect
+    /// as a cancel; the raise site also shows a notice explaining why.
+    AddSourceFolderPickerTimedOut,
     SourceAdded(SourceCard),
     /// Task 073: a request to remove this folder, sent once its
     /// confirmation is confirmed. Changes no state: `orbok` removes it from
@@ -1108,6 +1114,11 @@ pub enum Message {
     /// User submitted a search but no folder is selected: open the OS folder
     /// picker. Sets `picker_in_progress = true` to block duplicate dialogs.
     ChooseFolderRequested,
+    /// Task 132: a submitted search has no folder selected, but added
+    /// folders are offered on the page itself instead of the system picker
+    /// -- only the pending query needs remembering, so this does not touch
+    /// `picker_in_progress` (no dialog is opening, nothing to guard).
+    SearchFolderChoicesPending,
     /// Task 105: "Choose a folder" on the search page's no-folder line, the
     /// control behind the prompt: opens the same picker a submitted search
     /// opens. Ignored while one is already open (Task 047's rule).
@@ -1115,6 +1126,9 @@ pub enum Message {
     /// The OS folder picker was cancelled — keep query, show no error
     /// (RFC-045 §8.2).
     FolderPickerCancelled,
+    /// Task 132: the picker never answered (no portal backend). Same effect
+    /// as a cancel; the raise site also shows a notice explaining why.
+    SearchFolderPickerTimedOut,
     /// The OS folder picker returned `path`. The app will create or reuse a
     /// remembered folder record then dispatch `SearchLocationSelected`.
     FolderPicked(std::path::PathBuf),
@@ -1127,9 +1141,11 @@ pub enum Message {
     /// User switched between "and subfolders" / "only" for the current
     /// location (RFC-045 §6.3). Does not create a duplicate source record.
     SearchScopeChanged(crate::state::location::SearchFolderScope),
-    /// User clicked a recent-folder chip — reuse that remembered folder as
-    /// the current search location (RFC-045 §7.4).
-    RecentFolderSelected(orbok_core::id::SourceId),
+    /// Task 132 §1.1: a folder already added, chosen directly instead of
+    /// through the system picker -- already registered and indexed, so
+    /// `orbok` only promotes it to the search location and resumes any
+    /// pending search.
+    ExistingSearchFolderChosen(orbok_core::id::SourceId),
     // RFC-042: search history
     /// Open the Recent searches panel.
     OpenRecentSearches,
@@ -1586,6 +1602,7 @@ impl AppState {
                 self.wizard_path_input = folder.to_string_lossy().into_owned();
             }
             Message::WizardFolderPickerCancelled => self.wizard_picker_in_progress = false,
+            Message::WizardFolderPickerTimedOut => self.wizard_picker_in_progress = false,
             Message::WizardChecked {
                 model_dir: _,
                 checks: _,
@@ -1636,6 +1653,7 @@ impl AppState {
             Message::RequestAddSource => self.add_source_picker_in_progress = true,
             Message::AddSourceFolderPicked(_) => self.add_source_picker_in_progress = false,
             Message::AddSourceFolderPickerCancelled => self.add_source_picker_in_progress = false,
+            Message::AddSourceFolderPickerTimedOut => self.add_source_picker_in_progress = false,
             Message::SourceAdded(card) => {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();
@@ -1692,8 +1710,20 @@ impl AppState {
                 let query = self.query.trim();
                 self.search_location.pending_query = (!query.is_empty()).then(|| query.to_string());
             }
+            Message::SearchFolderChoicesPending => {
+                // Task 132: the choices are already on the page; only the
+                // pending query needs remembering so picking one resumes it.
+                let query = self.query.trim();
+                self.search_location.pending_query = (!query.is_empty()).then(|| query.to_string());
+            }
             Message::FolderPickerCancelled => {
                 // RFC-045 §8.2: cancel is neutral — no error, query preserved.
+                self.search_location.picker_in_progress = false;
+                self.search_location.pending_query = None;
+            }
+            Message::SearchFolderPickerTimedOut => {
+                // Task 132: same effect as a cancel; the router also raises
+                // a notice explaining why (handled there, not here).
                 self.search_location.picker_in_progress = false;
                 self.search_location.pending_query = None;
             }
@@ -1717,20 +1747,10 @@ impl AppState {
                 // RFC-045 §6.3: scope change never duplicates the source record.
                 self.search_location.set_scope(*scope);
             }
-            Message::RecentFolderSelected(source_id) => {
-                // Find the recent summary and promote it to the selected location.
-                if let Some(summary) = self
-                    .search_location
-                    .recent_locations
-                    .iter()
-                    .find(|s| &s.source_id == source_id)
-                    .cloned()
-                {
-                    self.search_location.selected = Some(SearchLocation::remembered(
-                        summary.source_id,
-                        summary.display_name,
-                    ));
-                }
+            Message::ExistingSearchFolderChosen(_) => {
+                // Handled in orbok (router): looks up the folder's card,
+                // promotes it via SearchLocationSelected and resumes any
+                // pending search (Task 132 §1.1).
             }
             // RFC-042: search history
             Message::OpenRecentSearches => {
@@ -1847,9 +1867,6 @@ impl AppState {
         {
             self.cancel_narrowing();
         }
-        self.search_location
-            .recent_locations
-            .retain(|summary| absorbed(summary.source_id.as_str()).is_none());
         // A search that was looking at a combined folder keeps looking at
         // the same files: the folder that holds it now, limited to it.
         if let Some(location) = self.search_location.selected.clone()

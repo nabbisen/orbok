@@ -75,6 +75,10 @@ const NEVER_RESOLVED: &[(&str, &str)] = &[
         "IndexingCouldNotStart",
         "background preparation does not restart within a session",
     ),
+    (
+        "FolderPickerDidNotOpen",
+        "three different pickers can raise this; a success from one says nothing about another",
+    ),
 ];
 
 fn shown(state: &AppState) -> Option<UserNotice> {

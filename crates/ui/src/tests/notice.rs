@@ -76,7 +76,8 @@ every_user_notice! {
     FolderNotChecked,
     StorageUnavailable,
     IndexingCouldNotStart,
-    ModelCouldNotBeLoaded
+    ModelCouldNotBeLoaded,
+    FolderPickerDidNotOpen
     ;
     FolderAlreadyIncluded => UserNotice::FolderAlreadyIncluded {
         folder: "Notes".into(),
