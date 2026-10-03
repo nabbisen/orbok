@@ -490,16 +490,22 @@ crate, and so on):
   `libXrandr.so` loaded in either run (only `libxcb-randr`, already pulled
   in transitively by `libx11`'s own dependency on `libxcb`) — list only
   what a measurement actually shows, not what seems likely.
-- **`optdepends`:** without `xdg-desktop-portal` (and a backend for it),
-  the native "Add folder" picker has nothing to talk to; typing the path
-  into the Folders page's own field still works (confirmed by using
-  exactly that field for every folder added during the measurement above).
-  Without a CJK-capable font, Japanese text does not fall back to tofu
-  boxes and does not crash orbok — the Japanese characters simply do not
-  render at all, leaving gaps in the sentence, while surrounding ASCII
-  text renders normally (confirmed non-destructively: `FONTCONFIG_FILE`
-  pointed at a config that excludes every CJK-covering font directory,
-  rather than uninstalling anything).
+- **`xdg-desktop-portal` + `xdg-desktop-portal-impl`, also `depends`, not
+  `optdepends`** (Task 131 review): adding a folder has a typed-path
+  fallback with no portal, but *choosing where to search* (Search's own
+  "Choose a folder") has none — `Message::SubmitSearch` always opens the
+  system folder picker when no location is already selected, and nothing
+  in the UI ever offers a remembered one instead. Without a portal
+  backend, a user can add folders and never search them.
+  `xdg-desktop-portal-impl` is a virtual package; pacman offers a concrete
+  backend (`xdg-desktop-portal-gtk`/`-gnome`/`-kde`/...) at install time if
+  none is already present.
+- **`optdepends`:** without a CJK-capable font, Japanese text does not
+  fall back to tofu boxes and does not crash orbok — the Japanese
+  characters simply do not render at all, leaving gaps in the sentence,
+  while surrounding ASCII text renders normally (confirmed
+  non-destructively: `FONTCONFIG_FILE` pointed at a config that excludes
+  every CJK-covering font directory, rather than uninstalling anything).
 
 **Prerequisites, once:**
 
@@ -535,7 +541,7 @@ installing it is the owner's call):
 cd /tmp/orbok-aur && makepkg --nodeps && namcap PKGBUILD && namcap *.pkg.tar.zst
 ```
 
-**Expected `namcap *.pkg.tar.zst` output** (Task 130 — read any other
+**Expected `namcap *.pkg.tar.zst` output** (Tasks 130/131 — read any other
 line as a real finding, not noise):
 
 ```
@@ -548,14 +554,18 @@ orbok W: Dependency included, but may not be needed ('libx11')
 orbok W: Dependency included, but may not be needed ('libxcursor')
 orbok W: Dependency included, but may not be needed ('libxi')
 orbok W: Dependency included, but may not be needed ('vulkan-icd-loader')
+orbok W: Dependency included, but may not be needed ('xdg-desktop-portal')
+orbok W: Dependency included, but may not be needed ('xdg-desktop-portal-impl')
 ```
 
 The two `glibc`/`libgcc` lines are pacman's own implicit guarantees.
-The seven "may not be needed" lines are namcap's static ELF
-`.dynamic`-entry scan missing winit's `dlopen`-based backend selection
-among X11/Wayland/Vulkan — the `LD_DEBUG` measurement above is the
-empirical, runtime proof that each of these seven packages is genuinely
-loaded, and it outranks a static scan that cannot see a `dlopen` call.
+The nine "may not be needed" lines are namcap's static ELF
+`.dynamic`-entry scan missing a runtime call it cannot see: winit's
+`dlopen`-based backend selection among X11/Wayland/Vulkan (the
+`LD_DEBUG` measurement above is the empirical, runtime proof each of
+those seven is genuinely loaded), and `xdg-desktop-portal`/`-impl`'s own
+D-Bus call, made only when Search's "Choose a folder" actually opens the
+picker (Task 131 review) -- a static scan sees neither kind of call.
 
 **Clone the AUR package** (the first push creates it — there is no
 separate "create a new package" step):

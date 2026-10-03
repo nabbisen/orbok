@@ -39,13 +39,18 @@ depends=(
     # (package()'s loop below) -- a data/trigger dependency LD_DEBUG
     # cannot see, found by namcap (Task 130).
     'hicolor-icon-theme'
+    # Choosing where to search (Search's own "Choose a folder", not just
+    # adding one) always uses the system folder picker -- there is no
+    # typed-path fallback for that step, unlike Add folder. xdg-desktop-
+    # portal-impl is a virtual package; pacman offers a concrete backend
+    # (xdg-desktop-portal-gtk/-gnome/-kde/...) if none is installed yet
+    # (Task 131 review).
+    'xdg-desktop-portal'
+    'xdg-desktop-portal-impl'
 )
-# Without xdg-desktop-portal, the native folder picker has nothing to talk
-# to; typing the path into the Folders page's own field still works.
 # Without a CJK-capable font, Japanese text renders as gaps, not tofu
 # boxes, and does not crash orbok.
 optdepends=(
-    'xdg-desktop-portal: a native folder picker for Add folder'
     'noto-fonts-cjk: Japanese text (otherwise it renders as gaps, not boxes)'
 )
 makedepends=('cargo')
