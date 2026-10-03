@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-09-29)
+## Current Status (2026-10-03)
 
-Shipped: **0.27.0**. Latest tagged release: **0.27.0**, also the newest on crates.io. Each RFC's state is
+Shipped: **0.28.0**. Latest tagged release: **0.28.0**, also the newest on crates.io. Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -47,8 +47,13 @@ across v0.16.0–v0.24.0:
   platform (Task 120); every setting shows what it is set to (Task 118); the
   sidebar's AI section is where it searches (Task 124); RFC-011 closed.
   Migrates the catalog one way (RFC-062).
+- 0.28.0 — the language choice is saved at last (Task 131); a new app icon,
+  shown by the window too (Task 130); search results show each heading once
+  and cut at a whole word (Task 128); Text size reaches snora's chrome
+  (Task 127); the folder list keeps its order (Task 126); a privacy policy
+  and Arch Linux packaging (Tasks 129–130). No migration.
 
-Stack: snora 0.51 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.52 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 
