@@ -11,9 +11,13 @@ use iced_test::simulator;
 use orbok_core::SourceId;
 
 fn folder(id: &str, name: &str) -> SourceCard {
+    folder_at(id, name, &format!("/docs/{name}"))
+}
+
+fn folder_at(id: &str, name: &str, path: &str) -> SourceCard {
     SourceCard {
         display_name: name.into(),
-        display_path: format!("/docs/{name}"),
+        display_path: path.into(),
         indexed: 1,
         stale: 0,
         failed: 0,
@@ -91,6 +95,78 @@ fn no_added_folders_falls_back_to_the_plain_prompt() {
     let state = AppState::default();
     let messages = clicked(&state, tr(Locale::En, MessageKey::SearchChooseFolder));
     assert!(matches!(messages.as_slice(), [Message::ChooseSearchFolder]));
+}
+
+/// Review 310 §3.3: two folders with the same name are told apart by the
+/// shortest trailing path that makes them different, not left identical
+/// (or worse, ambiguous about which `ExistingSearchFolderChosen` a click
+/// would send).
+#[test]
+fn same_named_folders_are_told_apart_by_their_shortest_distinguishing_path() {
+    let sources = vec![
+        folder_at("s_work", "Documents", "/home/user/Work/Documents"),
+        folder_at("s_home", "Documents", "/home/user/Personal/Home/Documents"),
+    ];
+    let labels = crate::views::disambiguated_folder_labels(&sources);
+    assert_eq!(labels, vec!["Work/Documents", "Home/Documents"]);
+}
+
+/// A folder whose name is not shared with any other offered folder is
+/// unaffected -- plain names stay plain, most of the time.
+#[test]
+fn a_unique_name_is_not_disambiguated() {
+    let sources = vec![
+        folder_at("s_docs", "Docs", "/home/user/Docs"),
+        folder_at("s_work", "Documents", "/home/user/Work/Documents"),
+        folder_at("s_home", "Documents", "/home/user/Personal/Home/Documents"),
+    ];
+    let labels = crate::views::disambiguated_folder_labels(&sources);
+    assert_eq!(labels, vec!["Docs", "Work/Documents", "Home/Documents"]);
+}
+
+/// Three folders sharing a name all grow until they are pairwise distinct,
+/// not just distinct from the first one found.
+#[test]
+fn three_colliding_names_each_grow_until_distinct_from_every_sibling() {
+    let sources = vec![
+        folder_at("a", "Notes", "/mnt/a/Team/Notes"),
+        folder_at("b", "Notes", "/mnt/b/Team/Notes"),
+        folder_at("c", "Notes", "/mnt/c/Personal/Notes"),
+    ];
+    let labels = crate::views::disambiguated_folder_labels(&sources);
+    assert_eq!(
+        labels,
+        vec!["a/Team/Notes", "b/Team/Notes", "Personal/Notes"]
+    );
+}
+
+/// The disambiguated label is what actually renders and what a click
+/// resolves to -- not just what the helper function returns in isolation.
+#[test]
+fn the_search_page_shows_the_disambiguated_labels() {
+    let _guard = iced_test_guard();
+    let state = AppState {
+        sources: vec![
+            folder_at("s_work", "Documents", "/home/user/Work/Documents"),
+            folder_at("s_home", "Documents", "/home/user/Personal/Home/Documents"),
+        ],
+        ..AppState::default()
+    };
+    let mut ui = simulator(views::search_view(&state));
+    assert!(
+        ui.find("Work/Documents").is_ok(),
+        "the first Documents is told apart by its path"
+    );
+    assert!(
+        ui.find("Home/Documents").is_ok(),
+        "the second Documents is told apart by its path"
+    );
+    let messages = clicked(&state, "Home/Documents");
+    let expected = SourceId::from_string("s_home");
+    assert!(
+        matches!(messages.as_slice(), [Message::ExistingSearchFolderChosen(id)] if *id == expected),
+        "clicking the disambiguated label chooses the right folder, got {messages:?}"
+    );
 }
 
 /// Both locales offer the same two folders and the same fallback label --

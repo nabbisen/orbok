@@ -185,8 +185,8 @@ pub fn message(key: MessageKey) -> &'static str {
             "We could not add that folder. Please choose another folder \
              or check that you can open it."
         }
-        NoticeFolderPickerTimedOutTitle => "Folder picker did not open",
-        NoticeFolderPickerTimedOutBody => {
+        NoticeFolderPickerUnavailableTitle => "Folder picker did not open",
+        NoticeFolderPickerUnavailableBody => {
             "The system's folder picker did not respond. Choose another \
              folder, or try again."
         }

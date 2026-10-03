@@ -19,7 +19,9 @@ use crate::i18n::{
     fmt_reset_removes, fmt_storage_bucket, fmt_storage_cache_size, fmt_storage_row,
     fmt_storage_total, preparing_folder_for_search, search_result_count, source_summary, tr,
 };
-use crate::state::{AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope};
+use crate::state::{
+    AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope, SourceCard,
+};
 use crate::theme::{self, TextScale, Theme};
 use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
 use iced::{Element, Length, Padding};
@@ -175,6 +177,50 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
 
 // ── Search location row ───────────────────────────────────────────────────
 
+/// Task 132 review §3.3: a label per folder in `sources`' own order --
+/// each folder's bare `display_name`, unless another folder shares it, in
+/// which case the shortest trailing part of its path that tells every
+/// same-named folder apart (e.g. `Work/Documents` and `Home/Documents` for
+/// two folders both named `Documents`). A folder whose name is unique among
+/// the ones shown is unaffected.
+pub(crate) fn disambiguated_folder_labels(sources: &[SourceCard]) -> Vec<String> {
+    let path_components: Vec<Vec<&str>> = sources
+        .iter()
+        .map(|card| card.display_path.split(['/', '\\']).rev().collect())
+        .collect();
+
+    sources
+        .iter()
+        .enumerate()
+        .map(|(i, card)| {
+            let collides = sources
+                .iter()
+                .enumerate()
+                .any(|(j, other)| j != i && other.display_name == card.display_name);
+            if !collides {
+                return card.display_name.clone();
+            }
+            let max_depth = path_components[i].len();
+            let mut depth = 1;
+            while depth < max_depth {
+                depth += 1;
+                let mine = &path_components[i][..depth];
+                let distinct = sources.iter().enumerate().all(|(j, other)| {
+                    j == i
+                        || other.display_name != card.display_name
+                        || path_components[j].get(..depth) != Some(mine)
+                });
+                if distinct {
+                    break;
+                }
+            }
+            let mut suffix = path_components[i][..depth.min(max_depth)].to_vec();
+            suffix.reverse();
+            suffix.join("/")
+        })
+        .collect()
+}
+
 /// "Search in: [Folder and subfolders ×] [Change]" row (RFC-045 §7.3, §11).
 ///
 /// When no folder is selected, renders a passive prompt ("Choose a folder").
@@ -209,16 +255,18 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
         None => {
             // Task 132 §1.1: folders already added are offered directly, in
             // the Folders page's own order (Task 126) -- no need to browse
-            // the filesystem again for something already registered. The
-            // system picker is still one choice away, as "Choose another
-            // folder" (the existing NoticeActionChooseFolder label -- no
-            // new copy needed).
+            // the filesystem again for something already registered.
+            // Review 310 §3.2: the system picker is a trailing *action*
+            // ("Choose another folder", Task 105's own ghost/link style),
+            // not a fourth folder pill inside the same choice row.
             let meta = theme::meta_s(tokens, sc);
-            let mut options: Vec<components::ChoiceOption> = state
+            let labels = disambiguated_folder_labels(&state.sources);
+            let options: Vec<components::ChoiceOption> = state
                 .sources
                 .iter()
-                .map(|card| components::ChoiceOption {
-                    label: card.display_name.clone(),
+                .zip(labels)
+                .map(|(card, label)| components::ChoiceOption {
+                    label,
                     chosen: false,
                     available: true,
                     on_press: Message::ExistingSearchFolderChosen(SourceId::from_string(
@@ -226,15 +274,15 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                     )),
                 })
                 .collect();
-            options.push(components::ChoiceOption {
-                label: tr(locale, MessageKey::NoticeActionChooseFolder).to_string(),
-                chosen: false,
-                available: !state.search_location.picker_in_progress,
-                on_press: Message::ChooseSearchFolder,
-            });
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
                 components::choice(tokens, meta, options),
+                components::ghost(
+                    tokens,
+                    tr(locale, MessageKey::NoticeActionChooseFolder),
+                    (!state.search_location.picker_in_progress)
+                        .then_some(Message::ChooseSearchFolder),
+                ),
             ]
             .spacing(tokens.spacing.xs)
             .align_y(iced::Alignment::Center)

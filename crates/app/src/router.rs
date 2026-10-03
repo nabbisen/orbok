@@ -260,57 +260,132 @@ fn widen_folder(app: &mut OrbokApp, deps: &AppDeps, source_id: &str) {
     }
 }
 
-/// Task 132: how long `open_folder_picker` waits for the system picker
-/// before giving up. Review Request 309 §4.4 found a portal present but
-/// with no backend installed never answers the request at all -- not a
-/// slow answer, no answer. 10 seconds is generous for a real backend's own
-/// dialog to appear (a local D-Bus round trip, then a GTK/Qt window) while
-/// still resolving well inside what a user would tolerate before
-/// suspecting orbok itself had frozen, rather than the system dialog.
-const FOLDER_PICKER_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+/// Task 132 review §2: how long the Linux-only portal probe (below) waits
+/// for an answer, not how long the picker itself gets. `rfd` gives no
+/// "the dialog has opened" event, so a deadline on `pick_folder()` itself
+/// cannot tell a user who is still browsing from a request that will never
+/// answer -- the first version of this fix raced the whole pick, and
+/// quietly discarded the folder of anyone who took more than ten seconds
+/// to choose one. What actually distinguishes Review Request 309 §4.4's
+/// case (a FileChooser portal with no backend behind it) is that *opening*
+/// never starts, not that it is slow -- checked before the dialog, not
+/// raced alongside it. 2 seconds is generous for a real backend's own
+/// D-Bus property read while still resolving quickly if nothing answers.
+#[cfg(target_os = "linux")]
+const FOLDER_PICKER_PROBE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// What `run_folder_picker` decided. A plain enum, not nested `Option`s, so
+/// the three outcomes read at the call site instead of being inferred from
+/// `Some(Some(_))`/`Some(None)`/`None`.
+enum PickerOutcome {
+    Picked(std::path::PathBuf),
+    Cancelled,
+    /// Task 132 review §2: there is no picker to open -- the Linux-only
+    /// probe found no portal backend to answer. Never reached on Windows
+    /// or macOS, where the native dialogs do not hang this way.
+    Unavailable,
+}
+
+/// Task 132 review §2/§3.1: on Linux, whether a FileChooser portal backend
+/// exists to answer at all -- read directly with `zbus`, the same crate
+/// `rfd`'s own `ashpd` already pulls in on this platform, rather than
+/// through `rfd` itself, which has no "is one there" query. A portal with
+/// no backend (Review Request 309 §4.4's case) never answers this either,
+/// which is exactly the failure this is meant to catch -- `race_with_
+/// deadline` below bounds the wait for that non-answer.
+#[cfg(target_os = "linux")]
+async fn linux_portal_file_chooser_is_available() -> bool {
+    let Ok(connection) = zbus::Connection::session().await else {
+        return false;
+    };
+    let Ok(proxy) = zbus::Proxy::new(
+        &connection,
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.FileChooser",
+    )
+    .await
+    else {
+        return false;
+    };
+    proxy.get_property::<u32>("version").await.is_ok()
+}
+
+/// Task 132 review §2: Linux probes; Windows and macOS do not need to --
+/// their native dialogs do not hang the way a backend-less portal does, so
+/// nothing here may ever delay or refuse them. Kept as its own function
+/// (rather than a `#[cfg]` block inside `run_folder_picker`) so that
+/// function stays platform-generic and directly testable.
+#[cfg(target_os = "linux")]
+async fn folder_picker_probe() -> bool {
+    race_with_deadline(
+        linux_portal_file_chooser_is_available(),
+        FOLDER_PICKER_PROBE_DEADLINE,
+    )
+    .await
+    .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn folder_picker_probe() -> bool {
+    true
+}
+
+/// Task 132 review §2/§3.1: `probe_available` decides whether `dialog` is
+/// even tried -- a short, bounded question asked once, before anything
+/// opens. `dialog` itself is then awaited for as long as it takes: nothing
+/// here races the user. Generic over both futures so this is testable
+/// without `rfd`, a real OS dialog, or a real D-Bus session (`open_folder_
+/// picker` below is the only caller that supplies the real ones).
+async fn run_folder_picker(
+    probe_available: impl std::future::Future<Output = bool>,
+    dialog: impl std::future::Future<Output = Option<std::path::PathBuf>>,
+) -> PickerOutcome {
+    if !probe_available.await {
+        return PickerOutcome::Unavailable;
+    }
+    match dialog.await {
+        Some(path) => PickerOutcome::Picked(path),
+        None => PickerOutcome::Cancelled,
+    }
+}
 
 /// The one place a system folder picker is opened (Task 122; the Folders page's,
 /// the search row's and the setup wizard's all call it). It is an async `Task`,
 /// so the dialog never blocks the iced event loop (RFC-045 §19.0, RFC-061 §7
 /// Slice 5). Each caller checks and sets its own one-picker-at-a-time flag
-/// (Task 047) before calling, and says what a pick, a cancel and a timeout
-/// mean -- Task 132: a deadline here, not a cooperative check the backend
-/// would need to honor, is what actually catches a request that never
-/// answers, so every one of the three callers gets it for free.
+/// (Task 047) before calling, and says what a pick, a cancel and "there is
+/// no picker to open" (Task 132 review §2) each mean.
 fn open_folder_picker(
     title: String,
     picked: fn(std::path::PathBuf) -> Message,
     cancelled: Message,
-    timed_out: Message,
+    unavailable: Message,
 ) -> iced::Task<Message> {
     iced::Task::perform(
-        async move {
-            race_with_deadline(
-                async {
-                    rfd::AsyncFileDialog::new()
-                        .set_title(title)
-                        .pick_folder()
-                        .await
-                        .map(|h| h.path().to_path_buf())
-                },
-                FOLDER_PICKER_DEADLINE,
-            )
-            .await
-        },
+        run_folder_picker(folder_picker_probe(), async move {
+            rfd::AsyncFileDialog::new()
+                .set_title(title)
+                .pick_folder()
+                .await
+                .map(|h| h.path().to_path_buf())
+        }),
         move |outcome| match outcome {
-            Some(Some(path)) => picked(path),
-            Some(None) => cancelled.clone(),
-            None => timed_out.clone(),
+            PickerOutcome::Picked(path) => picked(path),
+            PickerOutcome::Cancelled => cancelled.clone(),
+            PickerOutcome::Unavailable => unavailable.clone(),
         },
     )
 }
 
-/// Task 132: `future`, or `None` if `deadline` passes first. Pulled out of
-/// `open_folder_picker` so the race itself -- not just its effect on
-/// `picker_in_progress` -- has a test that does not depend on `rfd` or a
-/// real OS dialog: a future that never resolves, raced against a short
-/// deadline, is exactly what Review Request 309 §4.4's portal-with-no-
-/// backend case looks like from here.
+/// Task 132 review §2: `future`, or `None` if `deadline` passes first.
+/// Linux-only, like its one caller (`folder_picker_probe`) -- Windows and
+/// macOS never probe, so nothing here may race anything on those
+/// platforms. Its own test does not depend on `zbus`, a real D-Bus session,
+/// or the actual portal query: a future that never resolves, raced against
+/// a short deadline, is exactly what a session with no answer looks like
+/// from here.
+#[cfg(target_os = "linux")]
 async fn race_with_deadline<T>(
     future: impl std::future::Future<Output = T>,
     deadline: std::time::Duration,
@@ -334,7 +409,7 @@ fn open_search_folder_picker(app: &mut OrbokApp) -> iced::Task<Message> {
         dialog_title_choose_search_folder(app.state.locale).to_string(),
         Message::FolderPicked,
         Message::FolderPickerCancelled,
-        Message::SearchFolderPickerTimedOut,
+        Message::SearchFolderPickerUnavailable,
     )
 }
 
@@ -572,7 +647,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 .to_string(),
                 Message::WizardFolderPicked,
                 Message::WizardFolderPickerCancelled,
-                Message::WizardFolderPickerTimedOut,
+                Message::WizardFolderPickerUnavailable,
             );
         }
         // The picker's answer fills the field (the reducer) and is checked at
@@ -586,9 +661,9 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             app.update(message.clone());
             return iced::Task::none();
         }
-        Message::WizardFolderPickerTimedOut => {
+        Message::WizardFolderPickerUnavailable => {
             app.update(message.clone());
-            app.update(notice_retry::wizard_folder_picker_timed_out());
+            app.update(notice_retry::wizard_folder_picker_unavailable());
             return iced::Task::none();
         }
         Message::RequestAddSource => {
@@ -608,7 +683,7 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
                 dialog_title_add_source(app.state.locale).to_string(),
                 Message::AddSourceFolderPicked,
                 Message::AddSourceFolderPickerCancelled,
-                Message::AddSourceFolderPickerTimedOut,
+                Message::AddSourceFolderPickerUnavailable,
             );
         }
         Message::AddSourceFolderPicked(folder) => {
@@ -633,9 +708,9 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
             app.update(message.clone());
             return iced::Task::none();
         }
-        Message::AddSourceFolderPickerTimedOut => {
+        Message::AddSourceFolderPickerUnavailable => {
             app.update(message.clone());
-            app.update(notice_retry::add_folder_picker_timed_out());
+            app.update(notice_retry::add_folder_picker_unavailable());
             return iced::Task::none();
         }
         // Task 075: each backend action's result, reflected truthfully
@@ -821,9 +896,9 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         }
         // Task 105: the control behind "Search in Choose a folder".
         Message::ChooseSearchFolder => return open_search_folder_picker(app),
-        Message::SearchFolderPickerTimedOut => {
+        Message::SearchFolderPickerUnavailable => {
             app.update(message.clone());
-            app.update(notice_retry::search_folder_picker_timed_out());
+            app.update(notice_retry::search_folder_picker_unavailable());
             return iced::Task::none();
         }
         // Task 132 §1.1: an already-added folder, chosen directly instead

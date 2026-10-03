@@ -970,7 +970,7 @@ pub enum Message {
     WizardFolderPickerCancelled,
     /// Task 132: the picker never answered (no portal backend). Same effect
     /// as a cancel; the raise site also shows a notice explaining why.
-    WizardFolderPickerTimedOut,
+    WizardFolderPickerUnavailable,
     WizardChecked {
         model_dir: String,
         checks: Vec<WizardFileCheck>,
@@ -1030,7 +1030,7 @@ pub enum Message {
     AddSourceFolderPickerCancelled,
     /// Task 132: the picker never answered (no portal backend). Same effect
     /// as a cancel; the raise site also shows a notice explaining why.
-    AddSourceFolderPickerTimedOut,
+    AddSourceFolderPickerUnavailable,
     SourceAdded(SourceCard),
     /// Task 073: a request to remove this folder, sent once its
     /// confirmation is confirmed. Changes no state: `orbok` removes it from
@@ -1128,7 +1128,7 @@ pub enum Message {
     FolderPickerCancelled,
     /// Task 132: the picker never answered (no portal backend). Same effect
     /// as a cancel; the raise site also shows a notice explaining why.
-    SearchFolderPickerTimedOut,
+    SearchFolderPickerUnavailable,
     /// The OS folder picker returned `path`. The app will create or reuse a
     /// remembered folder record then dispatch `SearchLocationSelected`.
     FolderPicked(std::path::PathBuf),
@@ -1602,7 +1602,7 @@ impl AppState {
                 self.wizard_path_input = folder.to_string_lossy().into_owned();
             }
             Message::WizardFolderPickerCancelled => self.wizard_picker_in_progress = false,
-            Message::WizardFolderPickerTimedOut => self.wizard_picker_in_progress = false,
+            Message::WizardFolderPickerUnavailable => self.wizard_picker_in_progress = false,
             Message::WizardChecked {
                 model_dir: _,
                 checks: _,
@@ -1653,7 +1653,7 @@ impl AppState {
             Message::RequestAddSource => self.add_source_picker_in_progress = true,
             Message::AddSourceFolderPicked(_) => self.add_source_picker_in_progress = false,
             Message::AddSourceFolderPickerCancelled => self.add_source_picker_in_progress = false,
-            Message::AddSourceFolderPickerTimedOut => self.add_source_picker_in_progress = false,
+            Message::AddSourceFolderPickerUnavailable => self.add_source_picker_in_progress = false,
             Message::SourceAdded(card) => {
                 self.sources.push(card.clone());
                 self.source_path_input = String::new();
@@ -1721,7 +1721,7 @@ impl AppState {
                 self.search_location.picker_in_progress = false;
                 self.search_location.pending_query = None;
             }
-            Message::SearchFolderPickerTimedOut => {
+            Message::SearchFolderPickerUnavailable => {
                 // Task 132: same effect as a cancel; the router also raises
                 // a notice explaining why (handled there, not here).
                 self.search_location.picker_in_progress = false;

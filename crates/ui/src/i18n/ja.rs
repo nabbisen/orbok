@@ -185,8 +185,8 @@ pub fn message(key: MessageKey) -> &'static str {
         NoticeFolderFailBody => {
             "そのフォルダーを追加できませんでした。別のフォルダーを選ぶか、開けるか確認してください。"
         }
-        NoticeFolderPickerTimedOutTitle => "フォルダー選択ダイアログが開きませんでした",
-        NoticeFolderPickerTimedOutBody => {
+        NoticeFolderPickerUnavailableTitle => "フォルダー選択ダイアログが開きませんでした",
+        NoticeFolderPickerUnavailableBody => {
             "システムのフォルダー選択ダイアログが応答しませんでした。別のフォルダーを選ぶか、もう一度お試しください。"
         }
         NoticeSearchFailTitle => "検索が完了しませんでした",

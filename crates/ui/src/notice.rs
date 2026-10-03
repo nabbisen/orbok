@@ -285,7 +285,7 @@ impl UserNotice {
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableTitle,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartTitle,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailedTitle,
-            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerTimedOutTitle,
+            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerUnavailableTitle,
         };
         tr(locale, key)
     }
@@ -328,7 +328,7 @@ impl UserNotice {
             Self::StorageUnavailable => MessageKey::NoticeStorageUnavailableBody,
             Self::IndexingCouldNotStart => MessageKey::NoticePreparationCouldNotStartBody,
             Self::ModelCouldNotBeLoaded => MessageKey::ModelLoadFailed,
-            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerTimedOutBody,
+            Self::FolderPickerDidNotOpen => MessageKey::NoticeFolderPickerUnavailableBody,
         };
         tr(locale, key).to_string()
     }

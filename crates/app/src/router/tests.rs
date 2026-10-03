@@ -897,12 +897,14 @@ fn choose_a_folder_opens_the_picker_once() {
     assert_eq!(second.units(), 0, "a second press does nothing");
 }
 
-/// Task 132 §2 test 3: a picker future that never resolves, raced against a
-/// short deadline, times out instead of hanging the race forever -- the
-/// exact shape of Review Request 309 §4.4's portal-with-no-backend case,
-/// without depending on `rfd` or a real OS dialog.
+/// `race_with_deadline` itself (Task 132 review §2: now used only around
+/// the Linux portal *probe*, never around the dialog itself -- see
+/// `a_slow_user_still_gets_their_folder` below for that distinction). A
+/// future that never resolves, raced against a short deadline, times out
+/// instead of hanging the race forever. Linux-only, like the function.
+#[cfg(target_os = "linux")]
 #[tokio::test]
-async fn a_picker_future_that_never_resolves_times_out() {
+async fn a_probe_future_that_never_resolves_times_out() {
     let result = race_with_deadline(
         std::future::pending::<()>(),
         std::time::Duration::from_millis(20),
@@ -913,18 +915,67 @@ async fn a_picker_future_that_never_resolves_times_out() {
 
 /// The companion case: a future that resolves well inside the deadline is
 /// not mistaken for a timeout.
+#[cfg(target_os = "linux")]
 #[tokio::test]
-async fn a_picker_future_that_resolves_in_time_is_not_timed_out() {
+async fn a_probe_future_that_resolves_in_time_is_not_timed_out() {
     let result = race_with_deadline(async { 42 }, std::time::Duration::from_millis(200)).await;
     assert_eq!(result, Some(42));
 }
 
-/// Task 132 §2 test 3, end to end for the search picker: once the deadline
-/// message arrives, `picker_in_progress` is false again and the "did not
-/// open" notice is raised; pressing "Choose a folder" again opens a new
-/// request rather than being swallowed by a flag the timeout forgot to
-/// clear. Red before Task 132: `SearchFolderPickerTimedOut` did not exist,
-/// so nothing cleared the flag a hung request left set.
+/// Task 132 review §2/§3.1: a probe that finds nothing to answer never
+/// touches the dialog future at all -- if it did, this `panic!` would fire.
+#[tokio::test]
+async fn a_failed_probe_returns_unavailable_without_touching_the_dialog() {
+    let outcome = run_folder_picker(std::future::ready(false), async {
+        panic!("the dialog must never be awaited when the probe fails")
+    })
+    .await;
+    assert!(matches!(outcome, PickerOutcome::Unavailable));
+}
+
+/// The companion case: a working probe proceeds to the dialog, and its
+/// pick comes through unchanged.
+#[tokio::test]
+async fn a_working_probe_proceeds_to_the_dialog() {
+    let outcome = run_folder_picker(std::future::ready(true), async {
+        Some(std::path::PathBuf::from("/chosen"))
+    })
+    .await;
+    assert!(matches!(
+        outcome,
+        PickerOutcome::Picked(p) if p == std::path::Path::new("/chosen")
+    ));
+}
+
+/// Task 132 review §2/§3.1, the regression this whole follow-up exists to
+/// prevent: nothing may race the dialog itself once the probe has passed.
+/// A dialog future that takes 30 *real* seconds -- compressed to
+/// effectively nothing by `start_paused`, which advances virtual time
+/// through any pending timer once nothing else can make progress -- still
+/// delivers its pick, with no "did not open" outcome in between. Red
+/// against the version of this fix Review 310 rejected: that version raced
+/// the *whole* `pick_folder()` future against a 10s deadline, so this
+/// future would have resolved to `Unavailable` at 10s, long before the
+/// pick at 30s ever had a chance to land.
+#[tokio::test(start_paused = true)]
+async fn a_slow_user_still_gets_their_folder() {
+    let outcome = run_folder_picker(std::future::ready(true), async {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        Some(std::path::PathBuf::from("/chosen-after-a-while"))
+    })
+    .await;
+    assert!(matches!(
+        outcome,
+        PickerOutcome::Picked(p) if p == std::path::Path::new("/chosen-after-a-while")
+    ));
+}
+
+/// Task 132 §2 test 3, end to end for the search picker: once the
+/// "unavailable" message arrives, `picker_in_progress` is false again and
+/// the "did not open" notice is raised; pressing "Choose a folder" again
+/// opens a new request rather than being swallowed by a flag a failed
+/// probe forgot to clear. Red before Task 132: `SearchFolderPickerUnavailable`
+/// did not exist, so nothing cleared the flag a hung request left set.
 #[test]
 fn a_search_picker_timeout_clears_the_flag_and_a_retry_opens_a_new_request() {
     let temp = tempfile::tempdir().unwrap();
@@ -935,7 +986,7 @@ fn a_search_picker_timeout_clears_the_flag_and_a_retry_opens_a_new_request() {
     let _ = route(&mut app, Message::ChooseSearchFolder, &deps);
     assert!(app.state.search_location.picker_in_progress);
 
-    let timeout_task = route(&mut app, Message::SearchFolderPickerTimedOut, &deps);
+    let timeout_task = route(&mut app, Message::SearchFolderPickerUnavailable, &deps);
     assert_eq!(timeout_task.units(), 0, "no task of its own");
     assert!(
         !app.state.search_location.picker_in_progress,
@@ -952,6 +1003,41 @@ fn a_search_picker_timeout_clears_the_flag_and_a_retry_opens_a_new_request() {
         1,
         "pressing Choose a folder again opens a new request, not nothing"
     );
+}
+
+/// Task 132 review §3.4: the message `search_folder_failed()` stores as its
+/// retry, when actually routed (as pressing the notice's button would route
+/// it), opens a real picker request -- not just that the stored message's
+/// *identity* is `ChooseSearchFolder` (already covered in
+/// `notice_retry::tests`). `NoticeActionPressed` itself returns
+/// `Task::done(retry)` regardless of what `retry` is, so `units() == 1`
+/// there alone cannot tell a working retry from a dead one; this routes
+/// the extracted message itself, the way iced would once that `Task`
+/// resolves. Red before the review's §3.4 fix: the stored retry was
+/// `ChooseFolderRequested`, which only sets `picker_in_progress` and never
+/// calls `open_folder_picker` -- `route`'s generic fallthrough for it
+/// returns `units() == 0`, and the flag it set would have blocked every
+/// later "Choose a folder" press too.
+#[test]
+fn the_search_folder_failed_retry_actually_opens_a_request() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState::default());
+    app.state
+        .update(&crate::notice_retry::search_folder_failed());
+    let retry = app
+        .state
+        .take_notice_action()
+        .expect("search_folder_failed always stores a retry");
+
+    let task = route(&mut app, retry, &deps);
+
+    assert_eq!(
+        task.units(),
+        1,
+        "the retry must open a real picker task, not silently mark one pending"
+    );
+    assert!(app.state.search_location.picker_in_progress);
 }
 
 /// Task 132 §1.1: choosing an already-added folder promotes it to the
@@ -1036,7 +1122,7 @@ fn the_add_source_and_wizard_pickers_also_clear_their_flag_on_timeout() {
 
     let _ = route(&mut app, Message::RequestAddSource, &deps);
     assert!(app.state.add_source_picker_in_progress);
-    let _ = route(&mut app, Message::AddSourceFolderPickerTimedOut, &deps);
+    let _ = route(&mut app, Message::AddSourceFolderPickerUnavailable, &deps);
     assert!(!app.state.add_source_picker_in_progress);
     assert_eq!(
         app.state.notice,
@@ -1046,7 +1132,7 @@ fn the_add_source_and_wizard_pickers_also_clear_their_flag_on_timeout() {
     let mut app = OrbokApp::with_state(AppState::default());
     let _ = route(&mut app, Message::WizardChooseFolder, &deps);
     assert!(app.state.wizard_picker_in_progress);
-    let _ = route(&mut app, Message::WizardFolderPickerTimedOut, &deps);
+    let _ = route(&mut app, Message::WizardFolderPickerUnavailable, &deps);
     assert!(!app.state.wizard_picker_in_progress);
     assert_eq!(
         app.state.notice,

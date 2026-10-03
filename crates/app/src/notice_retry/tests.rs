@@ -23,11 +23,17 @@ fn adding_a_folder_retries_with_the_add_folder_picker() {
     assert!(matches!(action, Some(Message::RequestAddSource)));
 }
 
+/// Task 132 review §3.4: the retry is `ChooseSearchFolder`, the message the
+/// button itself sends and the only one `router.rs`'s `route` matches to
+/// actually reopen the picker -- `ChooseFolderRequested` alone (this
+/// test's claim before the review) only marks a request pending and sets
+/// `picker_in_progress`; dispatched standalone, as a notice's retry is, it
+/// would never have opened anything.
 #[test]
 fn adding_a_search_folder_retries_with_the_search_folder_picker() {
     let (notice, action) = raise(search_folder_failed());
     assert_eq!(notice, Some(UserNotice::FolderCouldNotBeAdded));
-    assert!(matches!(action, Some(Message::ChooseFolderRequested)));
+    assert!(matches!(action, Some(Message::ChooseSearchFolder)));
 }
 
 /// Task 065: each launch failure's notice and button.

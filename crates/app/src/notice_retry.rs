@@ -32,37 +32,46 @@ pub(crate) fn add_folder_failed() -> Message {
 
 /// Adding the folder picked for a search failed: "Choose another folder"
 /// opens the search-in-folder picker again.
+///
+/// Task 132 review §3.4: the retry is `ChooseSearchFolder` -- the message
+/// the button itself sends -- not `ChooseFolderRequested`. A notice's
+/// stored retry is dispatched standalone, through `NoticeActionPressed`
+/// (`router.rs`'s `route`), never from inside `open_search_folder_picker`;
+/// `ChooseFolderRequested` alone only marks a request pending and sets
+/// `picker_in_progress`, it does not call `open_folder_picker`, so this
+/// button would have set the flag and opened nothing.
 pub(crate) fn search_folder_failed() -> Message {
     with_action(
         UserNotice::FolderCouldNotBeAdded,
-        Message::ChooseFolderRequested,
+        Message::ChooseSearchFolder,
     )
 }
 
-/// Task 132: the search-in-folder picker never answered. "Choose another
-/// folder" is `ChooseSearchFolder`, not `ChooseFolderRequested` --
-/// `ChooseFolderRequested` alone only marks a request pending, it does not
-/// reopen a dialog, and this retry is dispatched standalone (via
-/// `NoticeActionPressed`), not from inside `open_search_folder_picker`.
-pub(crate) fn search_folder_picker_timed_out() -> Message {
+/// Task 132 review §2: the search-in-folder picker's probe found no portal
+/// backend to answer. "Choose another folder" is `ChooseSearchFolder` for
+/// the same reason `search_folder_failed` above uses it, not
+/// `ChooseFolderRequested`.
+pub(crate) fn search_folder_picker_unavailable() -> Message {
     with_action(
         UserNotice::FolderPickerDidNotOpen,
         Message::ChooseSearchFolder,
     )
 }
 
-/// Task 132: the Folders-page "Add folder" picker never answered. "Choose
-/// another folder" re-sends `RequestAddSource`, which opens it again.
-pub(crate) fn add_folder_picker_timed_out() -> Message {
+/// Task 132 review §2: the Folders-page "Add folder" picker's probe found
+/// no portal backend to answer. "Choose another folder" re-sends
+/// `RequestAddSource`, which opens it again.
+pub(crate) fn add_folder_picker_unavailable() -> Message {
     with_action(
         UserNotice::FolderPickerDidNotOpen,
         Message::RequestAddSource,
     )
 }
 
-/// Task 132: the model-setup wizard's picker never answered. "Choose
-/// another folder" re-sends `WizardChooseFolder`, which opens it again.
-pub(crate) fn wizard_folder_picker_timed_out() -> Message {
+/// Task 132 review §2: the model-setup wizard's picker's probe found no
+/// portal backend to answer. "Choose another folder" re-sends
+/// `WizardChooseFolder`, which opens it again.
+pub(crate) fn wizard_folder_picker_unavailable() -> Message {
     with_action(
         UserNotice::FolderPickerDidNotOpen,
         Message::WizardChooseFolder,

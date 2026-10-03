@@ -136,6 +136,13 @@ futures                     = "0.3"
 fs4                         = "1.1"
 reqwest                     = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 windows-sys                 = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming"] }
+# Linux only (crates/app's own target.cfg): Task 132 review -- probing
+# whether a FileChooser portal backend is even there to answer, before
+# opening the folder picker, so a slow user is never mistaken for a portal
+# that never will answer. Already in the tree, transitively, through rfd's
+# own `ashpd` dependency on Linux; 5.16 here is that same resolved version,
+# made direct and explicit rather than relied upon implicitly. MIT licence.
+zbus                        = { version = "5.16" }
 
 # dev
 tempfile                    = "3"

@@ -284,8 +284,8 @@ message_keys! {
     NoticeFolderFailTitle,
     NoticeFolderFailBody,
     /// Task 132: the system folder picker did not answer within its deadline.
-    NoticeFolderPickerTimedOutTitle,
-    NoticeFolderPickerTimedOutBody,
+    NoticeFolderPickerUnavailableTitle,
+    NoticeFolderPickerUnavailableBody,
     NoticeSearchFailTitle,
     NoticeSearchFailBody,
     NoticeFolderAddedTitle,
