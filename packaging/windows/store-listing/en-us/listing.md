@@ -93,14 +93,13 @@ here promises anything 0.27.0 does not do.
   it as the app says it, and its caption (listing text) says "your
   computer".
 
-## What's new in this version (0.27.0)
+## What's new in this version (0.28.0)
 
-> - Fixed: a file could drop out of search during a check of its folder.
-> - Fixed: upgrading could reset your settings.
-> - A folder can include or leave out its subfolders.
-> - orbok asks before adding a folder that may contain private files.
-> - Files your system keeps hidden are skipped.
-> - Every setting shows what it is set to.
+> - New app icon.
+> - Search results are cleaner: each heading appears once, and excerpts end at a whole word.
+> - Text size now applies to tabs, tooltips and notices.
+> - Fixed: the language you choose is now remembered.
+> - The folder list keeps its order.
 
 ## Additional system requirements
 
