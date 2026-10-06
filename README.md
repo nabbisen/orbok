@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packaging/linux/icons/hicolor/256x256/apps/orbok.png" alt="orbok icon" width="128" height="128">
+</p>
+
 # orbok
 
 [![crates.io](https://img.shields.io/crates/v/orbok?label=rust)](https://crates.io/crates/orbok)
