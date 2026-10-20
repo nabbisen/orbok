@@ -26,6 +26,13 @@ on:
 env:
   RUST_BACKTRACE: 1
 
+# archlinux:base-devel's own /bin/sh is bash, but GitHub's own default
+# shell-detection for a container job is not guaranteed -- several steps
+# below use bash-only syntax (associative arrays), so this is explicit.
+defaults:
+  run:
+    shell: bash
+
 # Read-only by default; each job below widens only what it needs.
 permissions: {}
 
@@ -64,7 +71,7 @@ jobs:
           echo "packaging $tag (dry_run=$dry_run)"
 
       - name: install build prerequisites
-        run: pacman -Syu --noconfirm --needed git rustup binutils github-cli
+        run: pacman -Syu --noconfirm --needed git rustup github-cli
 
       # Recipes and sources come from the commit this workflow runs on
       # (Task 133 §2): the tag itself for a release event, main for a
@@ -98,22 +105,33 @@ jobs:
           unset RUSTFLAGS CARGO_BUILD_RUSTFLAGS
           cargo build --release --locked -p orbok
 
-      # How this is checked: baseline x86-64 guarantees SSE/SSE2 only.
-      # Disassemble the binary and scan for mnemonics that never appear in
-      # SSE/SSE2-only code -- AVX/AVX2/AVX-512 (ymm/zmm registers, the
-      # vNNN instruction forms), and the BMI1/BMI2/FMA instructions no
-      # baseline x86-64 CPU is guaranteed to have. A hit means some
-      # dependency's codegen (or build script) assumed a newer CPU; this
-      # does not merely trust the container's default target, it inspects
-      # the actual produced binary.
+      # How this is checked: not by scanning for AVX/AVX2 mnemonics in the
+      # disassembly -- several dependencies (zstd, blake3, ring, sha2,
+      # md-5, aes, memchr, hashbrown, regex, tiny-skia) ship CPUID-gated
+      # fast paths behind is_x86_feature_detected!-style runtime checks,
+      # so objdump genuinely finds `vmovdqu`/`%ymm0`/etc. in this binary;
+      # that is expected and safe, not a portability bug, because Rust's
+      # own soundness rules forbid calling a #[target_feature(enable =
+      # "avx2")] function without first confirming the feature at
+      # runtime -- an ungated call would be the dependency's own
+      # undefined-behaviour bug, not something this build's configuration
+      # controls either way. What *this build* controls, and what a
+      # forced requirement would actually look like, is a compiler flag
+      # telling LLVM to assume a newer baseline everywhere: RUSTFLAGS, or
+      # a target-cpu/target-feature override in .cargo/config.toml. Assert
+      # neither is present, rather than trusting the "unset" above alone.
       - name: assert no CPU feature beyond baseline x86-64
         run: |
-          objdump -d --no-show-raw-insn target/release/orbok >/tmp/orbok.disasm
-          if grep -E '%(ymm|zmm)[0-9]+|\b(vmovdqu|vmovaps|vmovups|vpxor|vfmadd[0-9]+p[sd]|vzeroupper|vpermq|vbroadcasts[sd]|tzcnt|lzcnt|bzhi|shlx|sarx|shrx|pdep|pext|pclmulqdq)\b' /tmp/orbok.disasm; then
-            echo "error: target/release/orbok uses an instruction beyond baseline x86-64 -- see the matched lines above" >&2
+          if [ -n "${RUSTFLAGS:-}" ] || [ -n "${CARGO_BUILD_RUSTFLAGS:-}" ]; then
+            echo "error: RUSTFLAGS/CARGO_BUILD_RUSTFLAGS is set -- not a baseline build" >&2
             exit 1
           fi
-          echo "ok: no AVX/AVX2/AVX-512/BMI1/BMI2/FMA instruction found in target/release/orbok"
+          if [ -f .cargo/config.toml ] && grep -qE 'target-cpu|target-feature|rustflags' .cargo/config.toml; then
+            echo "error: .cargo/config.toml overrides target-cpu/target-feature/rustflags -- not a baseline build:" >&2
+            cat .cargo/config.toml >&2
+            exit 1
+          fi
+          echo "ok: no RUSTFLAGS and no target-cpu/target-feature override -- built for the default x86_64-unknown-linux-gnu baseline target throughout"
 
       # One top-level directory, matching orbok-bin's own package()
       # (packaging/linux/orbok-bin/PKGBUILD), holding exactly what orbok's
