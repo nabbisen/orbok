@@ -55,4 +55,26 @@ ignore = [
     # REMOVE WHEN: iced ships a cryoglyph requiring lru >= 0.18.2. Re-check on
     # any iced upgrade; this entry must not outlive that release.
     "RUSTSEC-2026-0253",
+
+    # ── zbus_names, zvariant, zvariant_derive -- "unmaintained" (RustSec,
+    #    published 2026-10-16), Task 134. zbus's own D-Bus variant/name-
+    #    encoding helpers, pulled in by zbus 5.16 (Task 132's portal probe)
+    #    and by ashpd 0.11.1 (rfd's own XDG portal backend on Linux)
+    #    through the same zbus 5.x line. Not a known vulnerability -- a
+    #    maintenance-status warning for a proc-macro/encoding helper orbok
+    #    calls only to probe for a FileChooser portal backend and read one
+    #    D-Bus property (Task 132 review §2), never to parse untrusted
+    #    D-Bus input from outside the local session bus.
+    #
+    #    zbus 6.0.0 has in fact dropped all three, replaced internally by a
+    #    new zbus_utils crate with no zvariant/zbus_names dependency at
+    #    all -- but ashpd, even its own latest release (0.13.13), still
+    #    requires `zbus = "^5.13"` (checked against crates.io's own
+    #    dependency API, not assumed), so orbok's own zbus cannot move to
+    #    6.x without a version conflict against ashpd's pin.
+    #
+    # REMOVE WHEN: ashpd (or whichever portal crate orbok then depends on
+    # for Task 132's probe) itself moves to zbus >= 6.0.0 -- check on every
+    # ashpd/rfd upgrade, not just this one.
+    "RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372",
 ]

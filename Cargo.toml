@@ -130,7 +130,7 @@ tracing-subscriber          = { version = "0.3", features = ["env-filter"] }
 uuid                        = { version = "1", features = ["v7"] }
 
 dirs                        = "6"
-zip                         = { version = "2", default-features = false, features = ["deflate"] }
+zip                         = { version = "9", default-features = false, features = ["deflate"] }
 lopdf                       = "0.42"
 futures                     = "0.3"
 fs4                         = "1.1"

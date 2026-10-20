@@ -95,13 +95,28 @@ fn docx_xml_wrapping(paragraph_text: &str) -> String {
     )
 }
 
-/// The lied-size archive must not bypass the cap: real content far larger
-/// than `max_docx_xml_bytes`, declared size far under it. Confirmed failing
-/// against the pre-fix code (gated on `entry.size()`) before landing the
-/// fix -- the extractor read the full oversized content and returned no
-/// warning.
+/// The lied-size archive must never be read successfully with no sign of
+/// the lie. Confirmed failing against the pre-fix code (gated on
+/// `entry.size()`) before landing the original Task 034 fix -- the
+/// extractor read the full oversized content and returned no warning.
+///
+/// **Task 134:** since `zip` 9.0.0, the crate's own reader independently
+/// validates actual decompressed bytes against the entry's declared
+/// uncompressed size and returns an `io::Error` ("File is larger than its
+/// declared uncompressed size") the moment the two disagree -- before this
+/// task's own `take(limit + 1)` bound even has a chance to truncate
+/// anything. That is a stricter, earlier rejection than the bounded,
+/// truncated-with-a-warning result this test asserted against `zip` 2.x, so
+/// the assertion now checks the thing that is actually true and still the
+/// point of Task 034: the lie is never read successfully, and this is a
+/// clean `OrbokError::Extraction`, not a panic or (as the pre-fix code did)
+/// a silent oversized read. `docx_with_lied_size_field_does_not_decompress_
+/// the_whole_bomb` below keeps this task's own bound under test on its own,
+/// using a declared size that is *not* a lie, so a future `zip` upgrade
+/// that removed its own check could not quietly make that test meaningless
+/// too.
 #[test]
-fn docx_with_lied_size_field_is_still_bounded() {
+fn docx_with_lied_size_field_is_rejected_cleanly() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("bomb.docx");
 
@@ -126,42 +141,42 @@ fn docx_with_lied_size_field_is_still_bounded() {
     };
     let ctx = ExtractContext { limits };
 
-    let output = ExtractorRegistry::default()
+    let err = ExtractorRegistry::default()
         .extract_with_context(&validated(&file), &ctx)
-        .unwrap();
+        .expect_err("a lied-about declared size must never be read as if it were honest");
 
     assert!(
-        output.char_count <= 1024,
-        "char_count {} must be bounded by max_docx_xml_bytes regardless of the declared ZIP size",
-        output.char_count
-    );
-    assert!(
-        output
-            .warnings
-            .iter()
-            .any(|w| matches!(w, crate::types::ExtractWarning::SizeLimitReached { .. })),
-        "SizeLimitReached must be reported even though the ZIP header declared a small size"
+        matches!(
+            err,
+            orbok_core::OrbokError::Extraction {
+                category: orbok_core::ErrorCategory::ParserError,
+                ..
+            }
+        ),
+        "expected a clean ParserError extraction failure, got {err:?}"
     );
 }
 
-/// Review 197 §2: `docx_with_lied_size_field_is_still_bounded` above asserts
-/// only on the *output* (`char_count`, the warning) -- both survive a
-/// mutation that removes the read bound entirely (`take(limit + 1)` ->
-/// `take(u64::MAX)`), because the fix's own truncation step still runs
-/// after an unbounded read and produces byte-identical output. That test
-/// guards the branch shape, not the bound. S-01 was unbounded memory
-/// *allocation during decompression* (1.4 MB in, 1.24 GB RSS) -- a
-/// property of work done, not of the final bytes. Asserted here by
-/// elapsed time, the same technique `no_newline_file_does_not_materialize_the_whole_file`
+/// Review 197 §2: `docx_with_lied_size_field_is_rejected_cleanly` above
+/// asserts only that a lied-about size is refused -- it says nothing about
+/// *this* task's own bound, since (Task 134) `zip` 9.x's own declared-size
+/// check now rejects that specific archive well before `take(limit + 1)`
+/// ever runs. S-01 was unbounded memory *allocation during decompression*
+/// (1.4 MB in, 1.24 GB RSS) -- a property of work done, not of the final
+/// bytes, and specifically a property of *this task's own* bound, not of
+/// whatever `zip` happens to check this year. Asserted here by elapsed
+/// time, the same technique `no_newline_file_does_not_materialize_the_whole_file`
 /// (§5) uses: a `Deflated` entry whose real, decompressed content is ~50 MB
 /// (`"word ".repeat(10_000_000)`, trivially compressible so the on-disk
-/// archive itself stays small) with its declared size lied down to 10
-/// bytes. A bounded read stops after ~1 KB of decompressed output,
-/// regardless of what the rest of the stream contains; a read that
-/// decompresses the whole entry before truncating cannot avoid the cost of
-/// actually producing those ~50 MB.
+/// archive itself stays small), with its declared size left *accurate* --
+/// not lied about -- so `zip`'s own check has nothing to catch and
+/// `take(limit + 1)` is the only thing standing between this call and a
+/// full 50 MB decompression. A bounded read stops after ~1 KB of
+/// decompressed output, regardless of what the rest of the stream
+/// contains; a read that decompresses the whole entry before truncating
+/// cannot avoid the cost of actually producing those ~50 MB.
 #[test]
-fn docx_with_lied_size_field_does_not_decompress_the_whole_bomb() {
+fn docx_with_accurate_size_does_not_decompress_the_whole_bomb() {
     use std::time::Instant;
 
     let dir = tempfile::tempdir().unwrap();
@@ -174,13 +189,18 @@ fn docx_with_lied_size_field_does_not_decompress_the_whole_bomb() {
         "fixture must be tens of MB to make unbounded decompression measurable"
     );
 
+    let declared_size = real_xml.len() as u32;
     let docx_bytes = build_docx_with_lied_size_and_method(
         real_xml.as_bytes(),
-        10,
+        declared_size,
         zip::CompressionMethod::Deflated,
     );
+    // zip 9.x's own compressor produces a slightly larger archive for this
+    // input than the 2.x baseline this threshold was first set against
+    // (measured: ~243 KB) -- the property under test is "small on-disk
+    // archive, huge decompressed content", not a specific byte count.
     assert!(
-        docx_bytes.len() < 200_000,
+        docx_bytes.len() < 500_000,
         "the on-disk archive must stay small -- {} bytes -- so a slow \
          decompression time can only come from inflating the entry, not \
          from reading the archive itself",
@@ -240,5 +260,50 @@ fn docx_with_accurate_small_size_extracts_cleanly() {
             .iter()
             .any(|s| s.text.contains("hello world")),
         "expected the real paragraph text to be extracted"
+    );
+}
+
+/// Task 134 §2: a truncated archive -- the other malformation named
+/// alongside a lied-about size -- fails cleanly, never panics. Cutting off
+/// the tail removes the end-of-central-directory record, so
+/// `zip::ZipArchive::new` itself refuses to open the archive at all;
+/// `docx.rs`'s existing `.map_err(...)` on that call (not the later read)
+/// is what turns this into a clean `OrbokError::Extraction`. This was
+/// already true before this task -- both call sites `docx.rs` can fail at
+/// were already behind `.map_err`, with no `.unwrap()`/`.expect()`/`panic!`
+/// anywhere on the path a malformed archive reaches -- so this test was
+/// never red; it is here to keep it that way.
+#[test]
+fn docx_truncated_archive_fails_cleanly_not_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("truncated.docx");
+
+    let real_xml = docx_xml_wrapping("hello world");
+    let true_len = real_xml.len() as u32;
+    let docx_bytes = build_docx_with_lied_size(real_xml.as_bytes(), true_len);
+    assert!(
+        docx_bytes.len() > 100,
+        "fixture must be long enough to truncate meaningfully"
+    );
+
+    // Cut off the tail: the end-of-central-directory record (and part of
+    // the central directory itself) is gone, so there is no valid archive
+    // structure to parse at all -- not merely a truncated entry.
+    let truncated = &docx_bytes[..docx_bytes.len() - 50];
+    std::fs::write(&file, truncated).unwrap();
+
+    let err = ExtractorRegistry::default()
+        .extract_with_context(&validated(&file), &ExtractContext::default())
+        .expect_err("a truncated archive must never extract successfully");
+
+    assert!(
+        matches!(
+            err,
+            orbok_core::OrbokError::Extraction {
+                category: orbok_core::ErrorCategory::ParserError,
+                ..
+            }
+        ),
+        "expected a clean ParserError extraction failure, got {err:?}"
     );
 }
