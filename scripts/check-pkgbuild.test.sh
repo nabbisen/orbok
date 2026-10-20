@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# check-pkgbuild.test.sh — regression test for check-pkgbuild.sh (Task 129
-# §1.5). Runs against copies of the real Cargo.toml and PKGBUILD in a temp
-# directory; touches nothing in the real repository.
+# check-pkgbuild.test.sh — regression test for check-pkgbuild.sh. Runs
+# against copies of the real Cargo.toml and both PKGBUILD templates in a
+# temp directory; touches nothing in the real repository.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,9 +21,10 @@ check() {
 
 reset_fixture() {
   rm -rf "$tmp/work"
-  mkdir -p "$tmp/work/packaging/linux" "$tmp/work/scripts"
+  mkdir -p "$tmp/work/packaging/linux/orbok-bin" "$tmp/work/scripts"
   cp "$repo_root/Cargo.toml" "$tmp/work/Cargo.toml"
   cp "$repo_root/packaging/linux/PKGBUILD" "$tmp/work/packaging/linux/PKGBUILD"
+  cp "$repo_root/packaging/linux/orbok-bin/PKGBUILD" "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
   cp "${GATE_UNDER_TEST:-$repo_root/scripts/check-pkgbuild.sh}" "$tmp/work/scripts/check-pkgbuild.sh"
 }
 
@@ -42,28 +43,49 @@ expect_message() {
 
 workspace_version="$(awk '/^\[/ { s = ($0 == "[workspace.package]"); next } s && /^version/ { gsub(/.*"|".*/, ""); print; exit }' "$repo_root/Cargo.toml")"
 
-# (a) The real files pass.
+# (a) Both real templates pass together.
 reset_fixture
-check "(a) the real Cargo.toml and PKGBUILD pass" "pass" "$(run_gate)"
+check "(a) the real Cargo.toml and both PKGBUILD templates pass" "pass" "$(run_gate)"
 
-# (b) A PKGBUILD pkgver that is not the workspace version fails.
+# (b) orbok's pkgver not matching the workspace version fails.
 reset_fixture
 sed -i -E 's/^pkgver=.*/pkgver=0.0.0/' "$tmp/work/packaging/linux/PKGBUILD"
-check "(b) a mismatched pkgver fails" "fail" "$(run_gate)"
-expect_message "does not match the workspace version $workspace_version"
+check "(b) a mismatched orbok pkgver fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/PKGBUILD pkgver=0.0.0 does not match the workspace version $workspace_version"
 
-# (c) A workspace version bump without the PKGBUILD fails.
+# (c) orbok-bin's pkgver not matching the workspace version fails, and
+#     names orbok-bin's own path -- not orbok's.
+reset_fixture
+sed -i -E 's/^pkgver=.*/pkgver=0.0.0/' "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+check "(c) a mismatched orbok-bin pkgver fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/orbok-bin/PKGBUILD pkgver=0.0.0 does not match the workspace version $workspace_version"
+
+# (d) A workspace version bump without either PKGBUILD fails.
 reset_fixture
 sed -i -E '/^\[workspace.package\]/,/^\[/ s/^version = "[^"]*"/version = "9.9.9"/' "$tmp/work/Cargo.toml"
-check "(c) a workspace version bump alone fails" "fail" "$(run_gate)"
+check "(d) a workspace version bump alone fails" "fail" "$(run_gate)"
 expect_message "workspace version 9.9.9"
 
-# (d) sha256sums with a real hash (not SKIP) fails -- it must never reach
-#     the repository (aur-prepare.sh writes that only into its own output).
+# (e) sha256sums with a real hash (not SKIP) fails in orbok's template --
+#     it must never reach the repository (aur-prepare.sh writes that only
+#     into its own output).
 reset_fixture
 sed -i -E "s/^sha256sums=\('SKIP'\)\$/sha256sums=('$(printf '0%.0s' {1..64})')/" "$tmp/work/packaging/linux/PKGBUILD"
-check "(d) a real hash in the repository copy fails" "fail" "$(run_gate)"
-expect_message "must keep sha256sums=('SKIP')"
+check "(e) a real hash in orbok's repository copy fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/PKGBUILD must keep sha256sums=('SKIP')"
+
+# (f) The same, for orbok-bin's template.
+reset_fixture
+sed -i -E "s/^sha256sums=\('SKIP'\)\$/sha256sums=('$(printf '0%.0s' {1..64})')/" "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+check "(f) a real hash in orbok-bin's repository copy fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/orbok-bin/PKGBUILD must keep sha256sums=('SKIP')"
+
+# (g) A missing template (e.g. orbok-bin's, if it were ever deleted) fails
+#     outright, rather than silently checking only what is left.
+reset_fixture
+rm "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+check "(g) a missing orbok-bin template fails" "fail" "$(run_gate)"
+expect_message "missing packaging/linux/orbok-bin/PKGBUILD"
 
 # Self-check: a gutted gate must fail this self-test, proving the 'fail'
 # results above were the real gate firing, not this harness.

@@ -1,0 +1,414 @@
+# orbok release packages: a baseline-x86-64 Linux binary, and the AUR
+# publication of both orbok and orbok-bin, gated on the owner's approval
+# (Task 133). Supersedes the earlier "no CI automation for the AUR"
+# instruction, per the owner's 2026-10-20 decision.
+#
+# Every third-party action below is pinned by commit SHA, not a tag --
+# stricter than ci.yml's tag-based pins, because this workflow holds an
+# AUR-publishing SSH key (ci.yml holds no comparable secret).
+name: Release packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package, e.g. 0.28.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run: do everything except push to the AUR"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  RUST_BACKTRACE: 1
+
+# Read-only by default; each job below widens only what it needs.
+permissions: {}
+
+jobs:
+  # ── Job 1: the release binary, built at baseline x86-64 ────────────
+  # A fresh archlinux container, not this (or any) developer machine: a
+  # developer's own `makepkg`/`cargo` defaults to native-CPU codegen
+  # (-march=native), which would stop with "illegal instruction" on most
+  # other computers. No RUSTFLAGS, no -march, anywhere in this job.
+  linux-binary:
+    name: Linux binary (baseline x86-64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: archlinux:base-devel
+    permissions:
+      # write only to attach assets to the release in a real run; a dry
+      # run's "upload as artifact" step needs no elevated permission, but
+      # the permission is fixed for the whole job, not per step.
+      contents: write
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
+    steps:
+      - name: resolve the tag and dry-run flag
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+            dry_run="false"
+          else
+            tag="${{ inputs.tag }}"
+            dry_run="${{ inputs.dry_run }}"
+          fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >>"$GITHUB_OUTPUT"
+          echo "packaging $tag (dry_run=$dry_run)"
+
+      - name: install build prerequisites
+        run: pacman -Syu --noconfirm --needed git rustup binutils github-cli
+
+      # Recipes and sources come from the commit this workflow runs on
+      # (Task 133 §2): the tag itself for a release event, main for a
+      # dispatch -- checking out the tag explicitly here means a dispatch
+      # still builds the binary from that tag's own source, not from
+      # whatever main happens to hold.
+      - name: checkout the tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
+
+      - name: workspace version matches the tag
+        run: |
+          version="$(awk -F '"' '/^version = / { print $2; exit }' Cargo.toml)"
+          if [ "$version" != "${{ steps.resolve.outputs.tag }}" ]; then
+            echo "error: workspace version $version does not match tag ${{ steps.resolve.outputs.tag }} -- refusing to package a mismatch" >&2
+            exit 1
+          fi
+
+      - name: install the pinned toolchain (matches ci.yml's dtolnay/rust-toolchain@1.98.1)
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          rustup default 1.98.1
+          # Each step runs a fresh non-login shell (no .profile/.bashrc
+          # sourced), so rustup's own ~/.cargo/bin shims need adding to
+          # PATH explicitly for the steps below to find cargo/rustc.
+          echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+
+      - name: build --release (no RUSTFLAGS, no -march)
+        run: |
+          unset RUSTFLAGS CARGO_BUILD_RUSTFLAGS
+          cargo build --release --locked -p orbok
+
+      # How this is checked: baseline x86-64 guarantees SSE/SSE2 only.
+      # Disassemble the binary and scan for mnemonics that never appear in
+      # SSE/SSE2-only code -- AVX/AVX2/AVX-512 (ymm/zmm registers, the
+      # vNNN instruction forms), and the BMI1/BMI2/FMA instructions no
+      # baseline x86-64 CPU is guaranteed to have. A hit means some
+      # dependency's codegen (or build script) assumed a newer CPU; this
+      # does not merely trust the container's default target, it inspects
+      # the actual produced binary.
+      - name: assert no CPU feature beyond baseline x86-64
+        run: |
+          objdump -d --no-show-raw-insn target/release/orbok >/tmp/orbok.disasm
+          if grep -E '%(ymm|zmm)[0-9]+|\b(vmovdqu|vmovaps|vmovups|vpxor|vfmadd[0-9]+p[sd]|vzeroupper|vpermq|vbroadcasts[sd]|tzcnt|lzcnt|bzhi|shlx|sarx|shrx|pdep|pext|pclmulqdq)\b' /tmp/orbok.disasm; then
+            echo "error: target/release/orbok uses an instruction beyond baseline x86-64 -- see the matched lines above" >&2
+            exit 1
+          fi
+          echo "ok: no AVX/AVX2/AVX-512/BMI1/BMI2/FMA instruction found in target/release/orbok"
+
+      # One top-level directory, matching orbok-bin's own package()
+      # (packaging/linux/orbok-bin/PKGBUILD), holding exactly what orbok's
+      # source package installs: the binary, the desktop entry, every
+      # hicolor icon size, LICENSE and NOTICE.
+      - name: assemble the release tarball
+        run: |
+          tag="${{ steps.resolve.outputs.tag }}"
+          stage="orbok-$tag-x86_64-linux"
+          rm -rf "$stage" "$stage.tar.gz"
+          mkdir -p "$stage/icons"
+          cp target/release/orbok "$stage/orbok"
+          cp packaging/linux/orbok.desktop "$stage/orbok.desktop"
+          cp -r packaging/linux/icons/hicolor "$stage/icons/hicolor"
+          cp LICENSE NOTICE "$stage/"
+          tar -czf "$stage.tar.gz" "$stage"
+          sha256sum "$stage.tar.gz" >"$stage.tar.gz.sha256"
+          echo "TARBALL=$stage.tar.gz" >>"$GITHUB_ENV"
+
+      - name: attach to the release (real run only)
+        if: steps.resolve.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.resolve.outputs.tag }}" \
+            "$TARBALL" "$TARBALL.sha256" \
+            --clobber --repo "${{ github.repository }}"
+
+      - name: upload as a workflow artifact (dry run only)
+        if: steps.resolve.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orbok-bin-archive
+          path: |
+            ${{ env.TARBALL }}
+            ${{ env.TARBALL }}.sha256
+          retention-days: 7
+
+  # ── Job 2: prepare, build, install and namcap both packages ────────
+  aur-check:
+    name: AUR check (build, install, namcap)
+    needs: linux-binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.linux-binary.outputs.tag }}
+      DRY_RUN: ${{ needs.linux-binary.outputs.dry_run }}
+    steps:
+      # cargo (orbok's own makedepends) is installed from the Arch repos
+      # directly, not the project's pinned 1.98.1 -- an AUR build always
+      # builds with whatever system toolchain the installing machine has,
+      # the same as any other AUR package's makedepends.
+      - name: install build prerequisites
+        run: pacman -Syu --noconfirm --needed git namcap curl cargo
+
+      - name: checkout the tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+
+      # makepkg refuses to run as root. A non-root user is created once,
+      # here, and every makepkg/aur-prepare.sh/namcap step below runs as
+      # it via `su` (not `sudo`: switching to a *less* privileged user
+      # from root needs no password with `su`, unlike relying on a
+      # particular PAM/sudoers configuration being present in the image).
+      # `pacman -U`/`-R` (installing/removing a package) still needs root,
+      # and keeps running as the job's default user.
+      - name: create a non-root build user
+        run: |
+          useradd -m builder
+          chmod -R a+rX "$GITHUB_WORKSPACE"
+
+      - name: download orbok-bin's archive (dry run only)
+        if: env.DRY_RUN == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orbok-bin-archive
+          path: /tmp/orbok-bin-artifact
+
+      # Task 133 §2: refuse to continue if pkgrel is not 1 for a new
+      # version, or not above the AUR's current pkgrel for a recipe fix of
+      # the same version. Read anonymously over HTTPS -- no AUR
+      # credentials are needed, or available, in this job.
+      - name: refuse a pkgrel regression against the AUR's live .SRCINFO
+        run: |
+          set -euo pipefail
+          declare -A TEMPLATE=(
+            [orbok]="packaging/linux/PKGBUILD"
+            [orbok-bin]="packaging/linux/orbok-bin/PKGBUILD"
+          )
+          for pkg in orbok orbok-bin; do
+            tpl="${TEMPLATE[$pkg]}"
+            tpl_pkgrel="$(awk -F= '/^pkgrel=/{print $2; exit}' "$tpl")"
+            live="$(curl -fsSL "https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=$pkg")"
+            live_pkgver="$(awk -F'= ' '/^[[:space:]]*pkgver = /{print $2; exit}' <<<"$live")"
+            live_pkgrel="$(awk -F'= ' '/^[[:space:]]*pkgrel = /{print $2; exit}' <<<"$live")"
+            echo "$pkg: template pkgver=$TAG pkgrel=$tpl_pkgrel; AUR live pkgver=$live_pkgver pkgrel=$live_pkgrel"
+            if [ "$TAG" != "$live_pkgver" ]; then
+              if [ "$tpl_pkgrel" != "1" ]; then
+                echo "error: $pkg is a new version ($TAG, AUR currently has $live_pkgver) but pkgrel=$tpl_pkgrel, not 1" >&2
+                exit 1
+              fi
+            elif [ "$tpl_pkgrel" -le "$live_pkgrel" ]; then
+              echo "error: $pkg recipe fix for the same version $TAG must raise pkgrel above the AUR's current $live_pkgrel, got $tpl_pkgrel" >&2
+              exit 1
+            fi
+          done
+
+      - name: prepare orbok (source package)
+        run: su builder -c "HOME=/home/builder bash packaging/linux/aur-prepare.sh orbok $TAG /home/builder/orbok"
+
+      - name: prepare orbok-bin (prebuilt binary package)
+        run: |
+          set -euo pipefail
+          extra=""
+          if [ "$DRY_RUN" = "true" ]; then
+            extra="LOCAL_ARCHIVE=/tmp/orbok-bin-artifact/orbok-$TAG-x86_64-linux.tar.gz"
+          fi
+          su builder -c "HOME=/home/builder $extra bash packaging/linux/aur-prepare.sh orbok-bin $TAG /home/builder/orbok-bin"
+
+      - name: namcap on both recipes
+        run: |
+          set -euo pipefail
+          for pkg in orbok orbok-bin; do
+            out="/tmp/namcap-$pkg-pkgbuild.txt"
+            su builder -c "namcap /home/builder/$pkg/PKGBUILD" >"$out" || true
+            if [ -s "$out" ]; then
+              echo "error: unexpected namcap finding on $pkg's PKGBUILD:" >&2
+              cat "$out" >&2
+              exit 1
+            fi
+            echo "ok: $pkg's PKGBUILD is namcap-clean"
+          done
+
+      - name: build, install and verify orbok
+        run: |
+          set -euo pipefail
+          su builder -c "cd /home/builder/orbok && HOME=/home/builder makepkg --noconfirm"
+          pacman -R --noconfirm orbok-bin 2>/dev/null || true
+          pacman -U --noconfirm /home/builder/orbok/orbok-*.pkg.tar.zst
+          orbok --version
+          ORBOK_DATA_DIR="$(mktemp -d)" orbok --check
+
+      - name: build, install and verify orbok-bin
+        run: |
+          set -euo pipefail
+          su builder -c "cd /home/builder/orbok-bin && HOME=/home/builder makepkg --noconfirm"
+          pacman -R --noconfirm orbok 2>/dev/null || true
+          pacman -U --noconfirm /home/builder/orbok-bin/orbok-bin-*.pkg.tar.zst
+          orbok --version
+          ORBOK_DATA_DIR="$(mktemp -d)" orbok --check
+
+      # The AUR guide's documented expected list (release_readiness.md's
+      # "Publish to the AUR" §3): two pacman-implicit-guarantee lines, and
+      # nine "may not be needed" lines from namcap's static ELF scan
+      # missing winit's dlopen-based backend selection and the portal's
+      # D-Bus call -- confirmed at runtime by the LD_DEBUG measurement
+      # that list is based on (Tasks 130/131). orbok-bin declares the same
+      # depends as orbok and is the same kind of dynamically-linked ELF,
+      # so the same list applies to it. Anything else is a real finding.
+      - name: namcap on both built packages
+        run: |
+          set -euo pipefail
+          check_namcap() {
+            local file="$1" pkg="$2"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              case "$line" in
+                "$pkg W: Dependency glibc detected and implicitly satisfied"*) ;;
+                "$pkg W: Dependency libgcc detected and implicitly satisfied"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('libxkbcommon')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('libxkbcommon-x11')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('wayland')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('libx11')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('libxcursor')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('libxi')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('vulkan-icd-loader')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('xdg-desktop-portal')"*) ;;
+                "$pkg W: Dependency included, but may not be needed ('xdg-desktop-portal-impl')"*) ;;
+                *)
+                  echo "error: unexpected namcap finding for $pkg: $line" >&2
+                  return 1
+                  ;;
+              esac
+            done <"$file"
+          }
+          su builder -c "namcap /home/builder/orbok/orbok-*.pkg.tar.zst" >/tmp/namcap-orbok-pkg.txt
+          cat /tmp/namcap-orbok-pkg.txt
+          check_namcap /tmp/namcap-orbok-pkg.txt orbok
+
+          su builder -c "namcap /home/builder/orbok-bin/orbok-bin-*.pkg.tar.zst" >/tmp/namcap-orbok-bin-pkg.txt
+          cat /tmp/namcap-orbok-bin-pkg.txt
+          check_namcap /tmp/namcap-orbok-bin-pkg.txt orbok-bin
+
+      - name: upload orbok's prepared recipe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aur-recipe-orbok
+          path: |
+            /home/builder/orbok/PKGBUILD
+            /home/builder/orbok/.SRCINFO
+          retention-days: 7
+
+      - name: upload orbok-bin's prepared recipe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aur-recipe-orbok-bin
+          path: |
+            /home/builder/orbok-bin/PKGBUILD
+            /home/builder/orbok-bin/.SRCINFO
+          retention-days: 7
+
+      - name: upload namcap outputs (evidence)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: namcap-outputs
+          path: /tmp/namcap-*.txt
+          retention-days: 7
+
+  # ── Job 3: push to the AUR, after the owner approves ────────────────
+  # Skipped entirely in a dry run. `environment: aur` is the approval
+  # gate -- the job pauses until the owner (the environment's required
+  # reviewer, configured in the repository's own Settings -> Environments,
+  # not by this workflow file) approves it.
+  aur-publish:
+    name: AUR publish (owner-approved)
+    needs: [linux-binary, aur-check]
+    if: needs.linux-binary.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: aur
+    permissions:
+      contents: read
+    steps:
+      # Checkout happens before the key touches disk -- after that, this
+      # job runs only git, ssh and cp (Task 133 §2's hardening list).
+      - name: checkout (for the pinned known_hosts file only)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: packaging/linux/aur-known-hosts
+          sparse-checkout-cone-mode: false
+
+      - name: download orbok's prepared recipe
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aur-recipe-orbok
+          path: /tmp/aur-recipe-orbok
+
+      - name: download orbok-bin's prepared recipe
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aur-recipe-orbok-bin
+          path: /tmp/aur-recipe-orbok-bin
+
+      # The key is written to disk only in this one step. The host key is
+      # the file pinned in the repository (packaging/linux/aur-known-hosts,
+      # captured from Arch's own published fingerprints) -- never
+      # ssh-keyscan at run time.
+      - name: write the AUR SSH key and its pinned host key
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" >~/.ssh/aur_ed25519
+          chmod 600 ~/.ssh/aur_ed25519
+          cp packaging/linux/aur-known-hosts ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur_ed25519\n  IdentitiesOnly yes\n' >~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: push each package (git, ssh, cp only from here on)
+        run: |
+          set -euo pipefail
+          declare -A SRC=(
+            [orbok]="/tmp/aur-recipe-orbok"
+            [orbok-bin]="/tmp/aur-recipe-orbok-bin"
+          )
+          for pkg in orbok orbok-bin; do
+            work="$(mktemp -d)"
+            git clone "ssh://aur@aur.archlinux.org/$pkg.git" "$work"
+            git -C "$work" config user.name "nabbisen"
+            git -C "$work" config user.email "19984221+nabbisen@users.noreply.github.com"
+            cp "${SRC[$pkg]}/PKGBUILD" "${SRC[$pkg]}/.SRCINFO" "$work/"
+            if git -C "$work" status --porcelain | grep -q .; then
+              pkgver="$(awk -F= '/^pkgver=/{print $2; exit}' "$work/PKGBUILD")"
+              pkgrel="$(awk -F= '/^pkgrel=/{print $2; exit}' "$work/PKGBUILD")"
+              git -C "$work" add PKGBUILD .SRCINFO
+              git -C "$work" commit -m "$pkgver-$pkgrel"
+              git -C "$work" push
+              echo "$pkg: pushed $pkgver-$pkgrel"
+            else
+              echo "$pkg: nothing changed, nothing to push"
+            fi
+          done

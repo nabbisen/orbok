@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Release packages for Arch Linux** (Task 133): `orbok` and `orbok-bin`
+  are published to the AUR automatically with each release, after the
+  owner's approval.
+
 ### Changed
 
 - **Folders you added can be chosen directly when searching** (Task 132):

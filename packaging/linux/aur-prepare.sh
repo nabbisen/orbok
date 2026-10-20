@@ -1,34 +1,50 @@
 #!/usr/bin/env bash
-# Task 129 §1.4: prepare a real, hash-verified PKGBUILD for AUR publication.
+# aur-prepare.sh — prepare a real, hash-verified PKGBUILD for AUR
+# publication, for either orbok (source) or orbok-bin (prebuilt binary).
 #
 # Writes into $WORK_DIR only -- never pushes, never commits, and never
-# touches the AUR itself. Run by hand, from the "Publish to the AUR" guide
-# in docs/src/maintainers/release_readiness.md, after a GitHub release
-# exists for the requested version. Not wired into CI (the owner's
-# instruction): a human runs this when they decide to publish, not on
-# every push.
+# touches the AUR itself. Run by hand from the "Publish to the AUR" guide
+# in docs/src/maintainers/release_readiness.md, or by
+# .github/workflows/release-packages.yml's aur-check job, after a release
+# exists for the requested version.
 #
-# Usage: aur-prepare.sh <version> <work-dir>
+# Usage: aur-prepare.sh <orbok|orbok-bin> <version> <work-dir>
 #
-# Reads packaging/linux/PKGBUILD from the current checkout. Downloads that
-# same version's released archive and its .sha256 from GitHub, verifies one
-# against the other, computes the real sha256sums line, and writes the
-# result to $WORK_DIR/PKGBUILD alongside a freshly generated $WORK_DIR/.SRCINFO.
+# Reads the package's own PKGBUILD template from the current checkout.
+# Downloads that version's release archive and its .sha256 from GitHub --
+# or, with LOCAL_ARCHIVE set, copies them from disk instead (the dry run in
+# release-packages.yml, where orbok-bin's archive is still job 1's workflow
+# artifact, not yet a release asset) -- verifies one against the other,
+# computes the real sha256sums line, and writes the result to
+# $WORK_DIR/PKGBUILD alongside a freshly generated $WORK_DIR/.SRCINFO.
 
 set -euo pipefail
 
-VERSION="${1:?usage: aur-prepare.sh <version> <work-dir>}"
-WORK_DIR="${2:?usage: aur-prepare.sh <version> <work-dir>}"
-REPO_PKGBUILD="packaging/linux/PKGBUILD"
-ARCHIVE_NAME="orbok-$VERSION.tar.gz"
+PKG="${1:?usage: aur-prepare.sh <orbok|orbok-bin> <version> <work-dir>}"
+VERSION="${2:?usage: aur-prepare.sh <orbok|orbok-bin> <version> <work-dir>}"
+WORK_DIR="${3:?usage: aur-prepare.sh <orbok|orbok-bin> <version> <work-dir>}"
+
+case "$PKG" in
+    orbok)
+        REPO_PKGBUILD="packaging/linux/PKGBUILD"
+        ARCHIVE_NAME="orbok-$VERSION.tar.gz"
+        ;;
+    orbok-bin)
+        REPO_PKGBUILD="packaging/linux/orbok-bin/PKGBUILD"
+        ARCHIVE_NAME="orbok-$VERSION-x86_64-linux.tar.gz"
+        ;;
+    *)
+        echo "aur-prepare: unknown package '$PKG' -- expected orbok or orbok-bin" >&2
+        exit 1
+        ;;
+esac
 BASE_URL="https://github.com/nabbisen/orbok/releases/download/$VERSION"
 
 [ -f "$REPO_PKGBUILD" ] || { echo "aur-prepare: missing $REPO_PKGBUILD (run from the repository root)" >&2; exit 1; }
 
 # ── The checked-out PKGBUILD must already claim this version. Automation
-#    never writes pkgver -- it comes from a human commit (the same rule
-#    forskscope's own aur-publish.sh follows), this script only refuses a
-#    mismatch. ─────────────────────────────────────────────────────────────
+#    never writes pkgver -- it comes from a human commit, this script only
+#    refuses a mismatch. ─────────────────────────────────────────────────────
 REPO_PKGVER="$(awk -F= '/^pkgver=/{print $2; exit}' "$REPO_PKGBUILD")"
 if [ "$REPO_PKGVER" != "$VERSION" ]; then
     echo "aur-prepare: $REPO_PKGBUILD has pkgver=$REPO_PKGVER, not the requested $VERSION -- checkout the release commit first" >&2
@@ -37,12 +53,20 @@ fi
 
 mkdir -p "$WORK_DIR"
 
-# ── Download the release's own archive and its .sha256, and verify one
-#    against the other before trusting either (RFC-051: build from the
-#    release archive, not GitHub's automatic tag archive). ─────────────────
-echo "Downloading $ARCHIVE_NAME and its .sha256 from $BASE_URL ..."
-curl -fsSL -o "$WORK_DIR/$ARCHIVE_NAME" "$BASE_URL/$ARCHIVE_NAME"
-curl -fsSL -o "$WORK_DIR/$ARCHIVE_NAME.sha256" "$BASE_URL/$ARCHIVE_NAME.sha256"
+# ── Get the release's own archive and its .sha256, and verify one against
+#    the other before trusting either (RFC-051: build from the release
+#    archive, not GitHub's automatic tag archive). LOCAL_ARCHIVE substitutes
+#    a local file pair for the download -- the verification below is the
+#    same either way. ─────────────────────────────────────────────────────────
+if [ -n "${LOCAL_ARCHIVE:-}" ]; then
+    echo "Using local archive $LOCAL_ARCHIVE in place of a release download"
+    cp "$LOCAL_ARCHIVE" "$WORK_DIR/$ARCHIVE_NAME"
+    cp "$LOCAL_ARCHIVE.sha256" "$WORK_DIR/$ARCHIVE_NAME.sha256"
+else
+    echo "Downloading $ARCHIVE_NAME and its .sha256 from $BASE_URL ..."
+    curl -fsSL -o "$WORK_DIR/$ARCHIVE_NAME" "$BASE_URL/$ARCHIVE_NAME"
+    curl -fsSL -o "$WORK_DIR/$ARCHIVE_NAME.sha256" "$BASE_URL/$ARCHIVE_NAME.sha256"
+fi
 
 EXPECTED_HASH="$(awk '{print $1; exit}' "$WORK_DIR/$ARCHIVE_NAME.sha256")"
 if [ -z "$EXPECTED_HASH" ] || [ "${#EXPECTED_HASH}" -ne 64 ]; then
@@ -58,9 +82,7 @@ echo "Verified $ARCHIVE_NAME against its .sha256: $ACTUAL_HASH"
 
 # ── Write the real PKGBUILD. sha256sums=('SKIP') must never reach this
 #    point -- checked explicitly rather than trusted to the substitution
-#    below having worked (the same defensive double-check forskscope's own
-#    script uses for the same reason: this is the one line most likely to
-#    be "obviously fine" and skipped). ──────────────────────────────────────
+#    below having worked. ────────────────────────────────────────────────────
 sed "s/^sha256sums=('SKIP')\$/sha256sums=('${ACTUAL_HASH}')/" "$REPO_PKGBUILD" >"$WORK_DIR/PKGBUILD"
 
 if grep -q "sha256sums=('SKIP')" "$WORK_DIR/PKGBUILD"; then
@@ -74,7 +96,7 @@ fi
 
 # ── .SRCINFO, generated from the real PKGBUILD -- what the AUR itself
 #    reads to index the package, so it must be the AUR-ready copy's own
-#    metadata, not the template's. ──────────────────────────────────────────
+#    metadata, not the template's. ───────────────────────────────────────────
 ( cd "$WORK_DIR" && makepkg --printsrcinfo >.SRCINFO )
 
-echo "Prepared $WORK_DIR/PKGBUILD and $WORK_DIR/.SRCINFO for pkgver=$VERSION"
+echo "Prepared $WORK_DIR/PKGBUILD and $WORK_DIR/.SRCINFO for $PKG pkgver=$VERSION"

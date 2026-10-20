@@ -1,0 +1,65 @@
+# Maintainer: nabbisen <19984221+nabbisen@users.noreply.github.com>
+#
+# Arch Linux PKGBUILD for orbok-bin: local-first AI document search,
+# prebuilt binary.
+#
+# Template only -- this file is never run directly with `makepkg -si` to
+# publish. `packaging/linux/aur-prepare.sh orbok-bin <version> <work-dir>`,
+# in the orbok repository, writes the real, hash-verified copy that
+# actually goes to the AUR.
+#
+# Installs a binary built by GitHub Actions on release, at baseline x86-64
+# (no CPU-specific flags), not compiled here. `orbok` is the source package
+# for anyone who wants to build it themselves; this package is for anyone
+# who does not.
+
+pkgname=orbok-bin
+# Matches [workspace.package] version in Cargo.toml at the tagged commit.
+pkgver=0.28.0
+pkgrel=1
+pkgdesc="Local-first AI document search -- private and storage-aware"
+arch=('x86_64')
+url="https://github.com/nabbisen/orbok"
+license=('Apache-2.0')
+provides=('orbok')
+conflicts=('orbok')
+# Same libraries as orbok's own depends -- the binary this package installs
+# links exactly what that source build produces.
+depends=(
+    'libxkbcommon'
+    'libxkbcommon-x11'
+    'wayland'
+    'libx11'
+    'libxcursor'
+    'libxi'
+    'vulkan-icd-loader'
+    'hicolor-icon-theme'
+    'xdg-desktop-portal'
+    'xdg-desktop-portal-impl'
+)
+optdepends=(
+    'noto-fonts-cjk: Japanese text (otherwise it renders as gaps, not boxes)'
+)
+makedepends=()
+# The release's prebuilt-binary asset, not the source archive -- its own
+# top-level directory already matches the archive's own name, so no
+# noextract/prepare() is needed to reshape it.
+source=("https://github.com/nabbisen/orbok/releases/download/$pkgver/orbok-$pkgver-$CARCH-linux.tar.gz")
+# Permanent, not a gap to close before publishing -- aur-prepare.sh
+# computes the real hash from the released archive's own .sha256 and
+# writes it only into the copy it produces for the AUR.
+sha256sums=('SKIP')
+
+package() {
+    cd "orbok-$pkgver-$CARCH-linux"
+    install -Dm755 orbok "$pkgdir/usr/bin/orbok"
+    install -Dm644 orbok.desktop "$pkgdir/usr/share/applications/orbok.desktop"
+    # Every size this repository carries, so Icon=orbok (above) always
+    # resolves.
+    for size in 16 32 48 64 128 256 512; do
+        install -Dm644 "icons/hicolor/${size}x${size}/apps/orbok.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/orbok.png"
+    done
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+}

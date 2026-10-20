@@ -441,15 +441,52 @@ modules — no binary asset ships in any crate).
 
 ---
 
-## Publish to the AUR (by hand)
+## Publish to the AUR
 
-**Manual, like Microsoft Store below — not wired into CI (the owner's
-instruction, Task 129).** Run this after the tag and the GitHub release
-exist, from this repository's own checkout (any commit on `main` that has
+**Automatic on release, with the owner's approval** (Task 133 — supersedes
+Task 129's "not wired into CI"). `.github/workflows/release-packages.yml`
+runs on every GitHub release and builds, checks and prepares both `orbok`
+(source) and `orbok-bin` (prebuilt binary) automatically; it pauses before
+the actual AUR push at a GitHub *Environment* approval gate (`aur`), which
+only the owner can approve. A packaging-only fix (the recipe changed, the
+source did not) is a manual dispatch of the same workflow with the
+already-published tag and a `pkgrel` bumped above the AUR's current one —
+no new release needed.
+
+**A dispatch defaults to a dry run** (`dry_run: true`): every job runs
+except the actual push, which shows as skipped. Use this to rehearse a
+change to either `PKGBUILD` template before it ever reaches the AUR:
+
+```sh
+gh workflow run release-packages.yml -f tag=<version> -f dry_run=true
+```
+
+**The real push** happens automatically when a GitHub release is
+published (`dry_run` is forced to `false` for that trigger), or via the
+same dispatch with `dry_run=false`. Either way, the `aur-publish` job
+pauses at the `aur` environment's approval gate until the owner approves
+it — nothing pushes without that approval.
+
+**One-time repository setup** (not something this workflow can do for
+itself):
+
+- an `AUR_SSH_PRIVATE_KEY` repository secret, holding an SSH private key
+  already added to the AUR account that owns `orbok`/`orbok-bin`;
+- a GitHub Environment named `aur`, with the owner as its required
+  reviewer — this is what makes the `aur-publish` job pause for approval.
+
+**The AUR's own SSH host key is pinned in the repository**
+(`packaging/linux/aur-known-hosts`), captured once from the fingerprints
+Arch itself publishes at <https://aur.archlinux.org/>, never from
+`ssh-keyscan` at run time. Re-verify against that page (never trust a
+fresh `ssh-keyscan` as the source) before ever replacing this file.
+
+### Fallback: by hand
+
+The manual steps below still work on any commit on `main` that has
 `packaging/linux/PKGBUILD` with `pkgver` already bumped to the released
-version works; you do not need to check out the tag itself, since the
-script downloads the released archive rather than building from the
-working tree).
+version — useful if the workflow itself needs debugging, or the owner
+wants to publish outside the normal release flow.
 
 **How `packaging/linux/PKGBUILD`'s `depends`/`optdepends`/`options` were
 decided** (re-run this measurement whenever a dependency, not just a
@@ -514,14 +551,15 @@ crate, and so on):
   AUR shows it on every package page otherwise;
 - `base-devel` installed locally, for `makepkg`.
 
-**Each release:**
+**Each release, once per package** (`orbok` and/or `orbok-bin`):
 
 ```sh
-./packaging/linux/aur-prepare.sh <version> /tmp/orbok-aur
+./packaging/linux/aur-prepare.sh <orbok|orbok-bin> <version> /tmp/orbok-aur
 ```
 
-Downloads the release's own `orbok-<version>.tar.gz` and its `.sha256`
-from GitHub, verifies one against the other, and writes
+Downloads that package's release archive (`orbok-<version>.tar.gz` for
+`orbok`, `orbok-<version>-x86_64-linux.tar.gz` for `orbok-bin`) and its
+`.sha256` from GitHub, verifies one against the other, and writes
 `/tmp/orbok-aur/PKGBUILD` (the real hash in place of `SKIP`) and
 `/tmp/orbok-aur/.SRCINFO`. Refuses if the archive does not match its
 checksum, or if the template's `pkgver` does not already equal
@@ -568,10 +606,11 @@ D-Bus call, made only when Search's "Choose a folder" actually opens the
 picker (Task 131 review) -- a static scan sees neither kind of call.
 
 **Clone the AUR package** (the first push creates it — there is no
-separate "create a new package" step):
+separate "create a new package" step; both `orbok` and `orbok-bin` are
+already registered on the AUR):
 
 ```sh
-git clone ssh://aur@aur.archlinux.org/orbok.git /tmp/orbok-aur-git
+git clone ssh://aur@aur.archlinux.org/<orbok|orbok-bin>.git /tmp/orbok-aur-git
 ```
 
 **Before committing, set this clone's own identity** — AUR commits are
@@ -605,15 +644,16 @@ curl -fsSL https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=orbok
 should print the `pkgver`/`sha256sums` you just pushed.
 
 **A packaging-only fix** (the recipe changed, the source did not) bumps
-only `pkgrel` in `packaging/linux/PKGBUILD` — `pkgver` stays at the
+only `pkgrel` in the affected package's `PKGBUILD` — `pkgver` stays at the
 already-published version — then runs `aur-prepare.sh` and the push steps
-again.
+again. (The automatic path above does the same thing via a dispatch with
+the same tag and a higher `pkgrel`.)
 
-**Once this has been done for the first time**, tell the architect: the
-"Install" section of `docs/src/users/` naming `paru -S orbok` / `yay -S
-orbok` is written only after the package is actually live (Task 129 §3.4)
-— a doc claiming an install method that does not exist yet would be worse
-than no doc at all.
+**Once either package has been published for the first time**, tell the
+architect: the "Install" section of `docs/src/users/` naming
+`paru -S orbok` / `paru -S orbok-bin` is written only after the package is
+actually live (Tasks 129 §3.4, 133 §3) — a doc claiming an install method
+that does not exist yet would be worse than no doc at all.
 
 ## Publish to the Microsoft Store (by hand, on Windows)
 
