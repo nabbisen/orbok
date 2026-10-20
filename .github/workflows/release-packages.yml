@@ -275,10 +275,15 @@ jobs:
             echo "ok: $pkg's PKGBUILD is namcap-clean"
           done
 
+      # --nodeps: the same flag the manual guide uses (release_readiness.md
+      # §"Publish to the AUR" fallback), for the same reason -- `depends`
+      # is dlopen'd at runtime, never a build-time requirement, so building
+      # does not need those packages installed; pacman -U below verifies
+      # the real runtime requirement by actually installing and running it.
       - name: build, install and verify orbok
         run: |
           set -euo pipefail
-          su builder -c "cd /home/builder/orbok && HOME=/home/builder makepkg --noconfirm"
+          su builder -c "cd /home/builder/orbok && HOME=/home/builder makepkg --noconfirm --nodeps"
           pacman -R --noconfirm orbok-bin 2>/dev/null || true
           pacman -U --noconfirm /home/builder/orbok/orbok-*.pkg.tar.zst
           orbok --version
@@ -287,7 +292,7 @@ jobs:
       - name: build, install and verify orbok-bin
         run: |
           set -euo pipefail
-          su builder -c "cd /home/builder/orbok-bin && HOME=/home/builder makepkg --noconfirm"
+          su builder -c "cd /home/builder/orbok-bin && HOME=/home/builder makepkg --noconfirm --nodeps"
           pacman -R --noconfirm orbok 2>/dev/null || true
           pacman -U --noconfirm /home/builder/orbok-bin/orbok-bin-*.pkg.tar.zst
           orbok --version
