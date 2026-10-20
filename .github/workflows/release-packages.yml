@@ -71,7 +71,7 @@ jobs:
           echo "packaging $tag (dry_run=$dry_run)"
 
       - name: install build prerequisites
-        run: pacman -Syu --noconfirm --needed git rustup github-cli
+        run: pacman -Syu --noconfirm --needed git rustup github-cli qemu-user
 
       # Recipes and sources come from the commit this workflow runs on
       # (Task 133 §2): the tag itself for a release event, main for a
@@ -131,6 +131,20 @@ jobs:
             exit 1
           fi
           echo "ok: no RUSTFLAGS and no target-cpu/target-feature override -- built for the default x86_64-unknown-linux-gnu baseline target throughout"
+
+      # Review 311 §2: the flag check above proves orbok asked for
+      # nothing beyond baseline x86-64; it does not prove the binary
+      # actually runs on a CPU that old. Measured instead: qemu-x86_64's
+      # own -cpu qemu64 model exposes nothing past the original AMD64
+      # baseline (no AVX/AVX2/BMI/FMA) -- an instruction the model lacks
+      # stops the emulated process with SIGILL, so a clean --version/
+      # --check run here is the binary actually executing correctly with
+      # none of its CPUID-gated fast paths able to fire.
+      - name: run under qemu-x86_64 -cpu qemu64 (a CPU with nothing past baseline x86-64)
+        run: |
+          qemu-x86_64 -cpu qemu64 target/release/orbok --version
+          ORBOK_DATA_DIR="$(mktemp -d)" qemu-x86_64 -cpu qemu64 target/release/orbok --check
+          echo "ok: target/release/orbok ran --version and --check under qemu64 without SIGILL"
 
       # One top-level directory, matching orbok-bin's own package()
       # (packaging/linux/orbok-bin/PKGBUILD), holding exactly what orbok's
@@ -390,7 +404,30 @@ jobs:
     environment: aur
     permissions:
       contents: read
+      deployments: read
     steps:
+      # Review 311 §3: GitHub auto-creates an environment a workflow
+      # names but that does not exist yet -- with *no* protection rules.
+      # A real run before the owner's one-time setup would reach this job
+      # with no approval gate at all, and fail only later, on the missing
+      # secret. This fails closed instead: any outcome other than a
+      # positively confirmed required_reviewers rule refuses, before the
+      # checkout below or the key-writing step after it.
+      - name: refuse unless the 'aur' environment has a required reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          setup_hint="see docs/src/maintainers/release_readiness.md's 'Publish to the AUR' section for the owner's one-time setup (an environment named 'aur' with the owner as required reviewer, and the AUR_SSH_PRIVATE_KEY secret)"
+          if ! response="$(gh api "repos/${{ github.repository }}/environments/aur" 2>&1)"; then
+            echo "error: could not read the 'aur' environment's configuration -- refusing to proceed. $setup_hint. (gh api said: $response)" >&2
+            exit 1
+          fi
+          if ! echo "$response" | jq -e '.protection_rules[]? | select(.type == "required_reviewers")' >/dev/null 2>&1; then
+            echo "error: the 'aur' environment has no required-reviewer protection rule -- refusing to proceed without the owner's approval gate in place. $setup_hint." >&2
+            exit 1
+          fi
+          echo "ok: the 'aur' environment has a required-reviewer protection rule"
+
       # Checkout happens before the key touches disk -- after that, this
       # job runs only git, ssh and cp (Task 133 §2's hardening list).
       - name: checkout (for the pinned known_hosts file only)
