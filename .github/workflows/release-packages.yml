@@ -75,13 +75,12 @@ jobs:
 
       # Recipes and sources come from the commit this workflow runs on
       # (Task 133 §2): the tag itself for a release event, main for a
-      # dispatch -- checking out the tag explicitly here means a dispatch
-      # still builds the binary from that tag's own source, not from
-      # whatever main happens to hold.
-      - name: checkout the tag
+      # dispatch -- which is how 0.28.0, whose tag predates the
+      # orbok-bin template, still gets packaged. No explicit `ref:`:
+      # actions/checkout's own default (github.sha) already resolves to
+      # the tag for a release event and to the dispatched ref otherwise.
+      - name: checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ steps.resolve.outputs.tag }}
 
       - name: workspace version matches the tag
         run: |
@@ -190,10 +189,9 @@ jobs:
       - name: install build prerequisites
         run: pacman -Syu --noconfirm --needed git namcap curl cargo
 
-      - name: checkout the tag
+      # No explicit `ref:` here either -- see job 1's checkout comment.
+      - name: checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ env.TAG }}
 
       # makepkg refuses to run as root. A non-root user is created once,
       # here, and every makepkg/aur-prepare.sh/namcap step below runs as
@@ -213,6 +211,10 @@ jobs:
         with:
           name: orbok-bin-archive
           path: /tmp/orbok-bin-artifact
+
+      - name: let builder read the downloaded archive (dry run only)
+        if: env.DRY_RUN == 'true'
+        run: chmod -R a+rX /tmp/orbok-bin-artifact
 
       # Task 133 §2: refuse to continue if pkgrel is not 1 for a new
       # version, or not above the AUR's current pkgrel for a recipe fix of
@@ -243,8 +245,12 @@ jobs:
             fi
           done
 
+      # An explicit `cd` inside the command string -- `su` without `-`/`-l`
+      # is not relied on to preserve this step's own working directory,
+      # and aur-prepare.sh itself reads packaging/linux/PKGBUILD relative
+      # to its caller's cwd.
       - name: prepare orbok (source package)
-        run: su builder -c "HOME=/home/builder bash packaging/linux/aur-prepare.sh orbok $TAG /home/builder/orbok"
+        run: su builder -c "cd $GITHUB_WORKSPACE && HOME=/home/builder bash packaging/linux/aur-prepare.sh orbok $TAG /home/builder/orbok"
 
       - name: prepare orbok-bin (prebuilt binary package)
         run: |
@@ -253,7 +259,7 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             extra="LOCAL_ARCHIVE=/tmp/orbok-bin-artifact/orbok-$TAG-x86_64-linux.tar.gz"
           fi
-          su builder -c "HOME=/home/builder $extra bash packaging/linux/aur-prepare.sh orbok-bin $TAG /home/builder/orbok-bin"
+          su builder -c "cd $GITHUB_WORKSPACE && HOME=/home/builder $extra bash packaging/linux/aur-prepare.sh orbok-bin $TAG /home/builder/orbok-bin"
 
       - name: namcap on both recipes
         run: |
