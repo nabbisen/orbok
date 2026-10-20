@@ -280,12 +280,18 @@ jobs:
       # is dlopen'd at runtime, never a build-time requirement, so building
       # does not need those packages installed; pacman -U below verifies
       # the real runtime requirement by actually installing and running it.
+      # [0-9]* excludes makepkg's own auto-generated orbok-debug package
+      # (strip's debuginfo split) -- a plain orbok-* glob installs that
+      # one too, and it then conflicts with orbok-bin's own -debug
+      # package (both claim /usr/lib/debug/usr/bin/orbok.debug) once
+      # orbok-bin is installed next. The debug package is not evidence
+      # this task needs; only the real package is.
       - name: build, install and verify orbok
         run: |
           set -euo pipefail
           su builder -c "cd /home/builder/orbok && HOME=/home/builder makepkg --noconfirm --nodeps"
           pacman -R --noconfirm orbok-bin 2>/dev/null || true
-          pacman -U --noconfirm /home/builder/orbok/orbok-*.pkg.tar.zst
+          pacman -U --noconfirm /home/builder/orbok/orbok-[0-9]*.pkg.tar.zst
           orbok --version
           ORBOK_DATA_DIR="$(mktemp -d)" orbok --check
 
@@ -294,7 +300,7 @@ jobs:
           set -euo pipefail
           su builder -c "cd /home/builder/orbok-bin && HOME=/home/builder makepkg --noconfirm --nodeps"
           pacman -R --noconfirm orbok 2>/dev/null || true
-          pacman -U --noconfirm /home/builder/orbok-bin/orbok-bin-*.pkg.tar.zst
+          pacman -U --noconfirm /home/builder/orbok-bin/orbok-bin-[0-9]*.pkg.tar.zst
           orbok --version
           ORBOK_DATA_DIR="$(mktemp -d)" orbok --check
 
@@ -332,11 +338,11 @@ jobs:
               esac
             done <"$file"
           }
-          su builder -c "namcap /home/builder/orbok/orbok-*.pkg.tar.zst" >/tmp/namcap-orbok-pkg.txt
+          su builder -c "namcap /home/builder/orbok/orbok-[0-9]*.pkg.tar.zst" >/tmp/namcap-orbok-pkg.txt
           cat /tmp/namcap-orbok-pkg.txt
           check_namcap /tmp/namcap-orbok-pkg.txt orbok
 
-          su builder -c "namcap /home/builder/orbok-bin/orbok-bin-*.pkg.tar.zst" >/tmp/namcap-orbok-bin-pkg.txt
+          su builder -c "namcap /home/builder/orbok-bin/orbok-bin-[0-9]*.pkg.tar.zst" >/tmp/namcap-orbok-bin-pkg.txt
           cat /tmp/namcap-orbok-bin-pkg.txt
           check_namcap /tmp/namcap-orbok-bin-pkg.txt orbok-bin
 
