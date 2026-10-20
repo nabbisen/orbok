@@ -346,6 +346,9 @@ jobs:
           cat /tmp/namcap-orbok-bin-pkg.txt
           check_namcap /tmp/namcap-orbok-bin-pkg.txt orbok-bin
 
+      # include-hidden-files: true -- actions/upload-artifact's own
+      # default (false) silently drops .SRCINFO, a dotfile, from the
+      # artifact with no error, only a smaller-than-expected file count.
       - name: upload orbok's prepared recipe
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -353,6 +356,7 @@ jobs:
           path: |
             /home/builder/orbok/PKGBUILD
             /home/builder/orbok/.SRCINFO
+          include-hidden-files: true
           retention-days: 7
 
       - name: upload orbok-bin's prepared recipe
@@ -362,6 +366,7 @@ jobs:
           path: |
             /home/builder/orbok-bin/PKGBUILD
             /home/builder/orbok-bin/.SRCINFO
+          include-hidden-files: true
           retention-days: 7
 
       - name: upload namcap outputs (evidence)
