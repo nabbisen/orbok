@@ -312,7 +312,7 @@ fn build_tab_bar(
     active: ViewId,
 ) -> Element<'static, Message> {
     app_tab_bar(
-        tokens,
+        tokens.for_snora_widget(),
         TabBar { tabs, active },
         &tab_action_to_msg,
         LayoutDirection::Ltr,
@@ -440,7 +440,7 @@ impl OrbokApp {
             },
         ];
         let side_bar = app_side_bar(
-            snora_tokens,
+            snora_tokens.for_snora_widget(),
             SideBar {
                 items: sidebar_items,
                 active: self.state.active_view.group(),

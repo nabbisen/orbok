@@ -34,7 +34,7 @@ fi
 
 violation_out="$(check_tokens scripts/fixtures/design-tokens/violation.rs || true)"
 violation_findings="$(echo "$violation_out" | grep -c "^design-token gate:" || true)"
-check "violation fixture produces exactly eleven findings (one per category)" "11" "$violation_findings"
+check "violation fixture produces exactly twelve findings (one per category)" "12" "$violation_findings"
 if [ "$violation_findings" != "11" ]; then
   echo "$violation_out" >&2
 fi
@@ -50,7 +50,8 @@ for expected_substr in \
   'holds a control but does not wrap' \
   "press is decided by comparing with the current value" \
   "a button has no .style(..)" \
-  "unscaled theme::body(/meta(/title(/heading("
+  "unscaled theme::body(/meta(/title(/heading(" \
+  "already-scaled tokens (snora_tokens/for_snora_widget) passed into a _s("
 do
   if echo "$violation_out" | grep -qF "$expected_substr"; then
     echo "ok: violation fixture reports $expected_substr"

@@ -408,8 +408,12 @@ pub(crate) fn friendly_notice<'a>(
     has_action: bool,
 ) -> Element<'a, Message> {
     use snora::design::notice::Notice;
-    let mut builder = Notice::new(tokens, notice.tone(), notice.body(locale).to_string())
-        .title(notice.title(locale).to_string());
+    let mut builder = Notice::new(
+        tokens.for_snora_widget(),
+        notice.tone(),
+        notice.body(locale).to_string(),
+    )
+    .title(notice.title(locale).to_string());
     // Task 060: a labelled action renders only when its raise site stored the
     // concrete retry. Task 072: dismiss is always offered, beside the action
     // when there is one (Task 060 §1).

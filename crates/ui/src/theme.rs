@@ -207,14 +207,22 @@ fn scale(px: Pixels, s: TextScale) -> Pixels {
 ///
 /// Its only public constructor is [`snora_tokens`], so every instance is
 /// genuinely scaled; nothing elsewhere in this crate can build one from a
-/// base `Tokens` by hand. `Deref`s to `Tokens` for the scale-independent
-/// fields (palette, spacing, radius, focus) those same widgets also read.
+/// base `Tokens` by hand.
+///
+/// No `Deref` to `Tokens` (Review 314 §3): that would let a `&SnoraTokens`
+/// reach `body_s` and its siblings through coercion alone, scaling twice
+/// (1.69×) -- exactly the mistake the module comment above warns against.
+/// [`SnoraTokens::for_snora_widget`] is the one, explicit way out, named
+/// for the only thing it is for.
 #[derive(Debug, Clone)]
 pub struct SnoraTokens(Tokens);
 
-impl std::ops::Deref for SnoraTokens {
-    type Target = Tokens;
-    fn deref(&self) -> &Tokens {
+impl SnoraTokens {
+    /// The scaled bundle, for a `snora::design`/`snora::design::widget`
+    /// constructor that renders its own text (or reads a scale-independent
+    /// field, such as spacing or palette, it also exposes) -- never for a
+    /// `theme::*_s` helper, which would scale what is already scaled.
+    pub(crate) fn for_snora_widget(&self) -> &Tokens {
         &self.0
     }
 }

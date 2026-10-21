@@ -118,6 +118,20 @@ check_tokens() {
     echo "$unscaled_text"
     flag "unscaled theme::body(/meta(/title(/heading( — use its _s scaled sibling, or say why not with '// not a text size: <reason>' ($(echo "$unscaled_text" | grep -c .) found)"
   fi
+
+  # Review 314 §3: `SnoraTokens` has no `Deref` to `Tokens` any more, so
+  # reaching the scaled bundle's inner tokens needs the explicit
+  # `for_snora_widget()` (or, before that, the field was `snora_tokens`
+  # itself) -- and either one, fed into a `_s(` helper, scales what the
+  # helper already scales again (1.69x, not 1.3x). The type system cannot
+  # catch this on its own, since `for_snora_widget()` legitimately returns
+  # a plain `&Tokens` that `_s(` also legitimately accepts.
+  local double_scaled
+  double_scaled=$(grep -nE '\b(body|meta|title|heading|label)_s\([^)]*\b(snora_tokens|for_snora_widget)\b' "${files[@]}" || true)
+  if [ -n "$double_scaled" ]; then
+    echo "$double_scaled"
+    flag "already-scaled tokens (snora_tokens/for_snora_widget) passed into a _s( helper — doubles the scale ($(echo "$double_scaled" | grep -c .) found)"
+  fi
 }
 
 # presses_decided_by_comparison <file...> — prints file:line for each

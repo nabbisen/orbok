@@ -584,7 +584,7 @@ pub fn primary<'a>(
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
-    snora::design::button::primary_maybe(tokens, label, on)
+    snora::design::button::primary_maybe(tokens.for_snora_widget(), label, on)
 }
 
 pub fn secondary<'a>(
@@ -592,7 +592,7 @@ pub fn secondary<'a>(
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
-    snora::design::button::secondary_maybe(tokens, label, on)
+    snora::design::button::secondary_maybe(tokens.for_snora_widget(), label, on)
 }
 
 pub fn ghost<'a>(
@@ -600,7 +600,7 @@ pub fn ghost<'a>(
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
-    snora::design::button::ghost_maybe(tokens, label, on)
+    snora::design::button::ghost_maybe(tokens.for_snora_widget(), label, on)
 }
 
 /// Danger button for irreversible actions (Reset, Delete, Remove).
@@ -613,7 +613,7 @@ pub fn danger<'a>(
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
-    snora::design::button::danger_maybe(tokens, label, on)
+    snora::design::button::danger_maybe(tokens.for_snora_widget(), label, on)
 }
 
 /// An icon + label button using the primary style.
@@ -678,7 +678,7 @@ pub fn job_progress<'a>(
     label: &'a str,
     value: Option<f32>,
 ) -> Element<'a, Message> {
-    progress::row(tokens, label, value, Tone::Accent)
+    progress::row(tokens.for_snora_widget(), label, value, Tone::Accent)
 }
 
 // ── Cleanup action button row ─────────────────────────────────────────────
@@ -713,7 +713,7 @@ pub fn danger_action<'a>(
     // button::danger_maybe already handles padding via snora; no extra
     // container padding is needed (RFC-052 §5 -- the prior zero padding
     // here was redundant and has been removed, not replaced with a helper).
-    let btn = snora::design::button::danger_maybe(tokens, label, on);
+    let btn = snora::design::button::danger_maybe(tokens.for_snora_widget(), label, on);
     iced::widget::container(btn).into()
 }
 
@@ -762,7 +762,7 @@ pub fn removable_chip<'a>(
 ) -> Element<'a, Message> {
     // `selected` is false: the outlined look, whatever the state.
     snora::design::chip::removable_with_tooltip(
-        tokens,
+        tokens.for_snora_widget(),
         label.to_string(),
         false,
         on_change,

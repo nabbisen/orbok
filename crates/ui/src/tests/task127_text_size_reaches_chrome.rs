@@ -111,7 +111,7 @@ fn the_sidebar_and_its_tooltip_take_the_scaled_tokens() {
     let from = source.find("let side_bar = app_side_bar(").unwrap();
     let call = &source[from..from + source[from..].find(");").unwrap()];
     assert!(
-        call.contains("snora_tokens,"),
+        call.contains("snora_tokens.for_snora_widget(),"),
         "app_side_bar must be called with the scaled snora_tokens, not the base tokens: {call}"
     );
 }
@@ -138,7 +138,10 @@ fn orbok_s_own_text_is_scaled_once_not_twice() {
     // mistake).
     let scaled = snora_tokens(&tokens, TextScale::Larger);
     let scaled_once = body_s(&tokens, TextScale::Larger).0;
-    let would_double = body_s(&scaled, TextScale::Larger).0;
+    // `for_snora_widget` (Review 314 §3) is the one, explicit way to reach the
+    // base `Tokens` inside -- forced here only to prove the arithmetic; no
+    // production call site may do this.
+    let would_double = body_s(scaled.for_snora_widget(), TextScale::Larger).0;
     assert!(
         (would_double / scaled_once - TextScale::Larger.factor()).abs() < 0.001,
         "reading body_s through the scaled copy doubles the scale -- {scaled_once} vs \
@@ -201,6 +204,7 @@ fn the_result_cards_title_scales_once_not_twice() {
 fn snora_tokens_scales_size_only() {
     let tokens = Theme::Light.tokens();
     let scaled = snora_tokens(&tokens, TextScale::Larger);
+    let scaled = scaled.for_snora_widget();
     let f = TextScale::Larger.factor();
     for (base, s) in [
         (tokens.typography.body, scaled.typography.body),
@@ -230,16 +234,19 @@ fn snora_tokens_scales_size_only() {
 fn snora_tokens_field_stays_in_sync_with_text_scale() {
     let mut state = AppState::default();
     assert_eq!(
-        state.snora_tokens.typography.label.size,
+        state.snora_tokens.for_snora_widget().typography.label.size,
         state.tokens.typography.label.size
     );
     state.update(&crate::state::Message::SetTextScale(TextScale::Larger));
     let expected = snora_tokens(&state.tokens, TextScale::Larger);
     assert_eq!(
-        state.snora_tokens.typography.label.size,
-        expected.typography.label.size
+        state.snora_tokens.for_snora_widget().typography.label.size,
+        expected.for_snora_widget().typography.label.size
     );
-    assert!(state.snora_tokens.typography.label.size > state.tokens.typography.label.size);
+    assert!(
+        state.snora_tokens.for_snora_widget().typography.label.size
+            > state.tokens.typography.label.size
+    );
 }
 
 /// §1.4: the tab bar grows at Larger; Task 106's narrow-window rule (nothing

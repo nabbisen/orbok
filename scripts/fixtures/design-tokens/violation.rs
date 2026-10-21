@@ -31,5 +31,7 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     let l = button(text(label)).on_press(m);
     // Category 11 (Task 136 §1.4): an unscaled theme::body( text size.
     let unscaled_label = text(label).size(theme::body(tokens));
+    // Category 12 (Review 314 §3): already-scaled tokens fed into a _s( helper.
+    let double_scaled = text(label).size(theme::body_s(snora_tokens.for_snora_widget(), sc));
     a
 }

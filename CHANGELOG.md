@@ -9,11 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- The text size setting now reaches buttons, the search box, search results
-  and folder cards; before, they stayed at the default size.
-
 ## [0.29.0] — 2026-10-21
 
 ### Security
@@ -44,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could fail to open at all -- and every later attempt did nothing, with no
   explanation, until orbok was restarted. It now gives up after a few
   seconds, tells you, and lets you try again.
+- The text size setting now reaches buttons, the search box, search results
+  and folder cards; before, they stayed at the default size (Task 136).
 
 ### Added
 
