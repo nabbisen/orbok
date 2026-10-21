@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packaging/linux/icons/hicolor/256x256/apps/orbok.png" alt="orbok icon" width="128" height="128">
+  <img src="https://github.com/nabbisen/orbok/raw/0.28.0/packaging/linux/icons/hicolor/256x256/apps/orbok.png" alt="orbok icon" width="128" height="128">
 </p>
 
 # orbok

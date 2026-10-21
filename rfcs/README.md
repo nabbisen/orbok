@@ -92,6 +92,7 @@ may start" a checked state rather than an implicit convention.
 | 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
 | 010 | [Optional Local Reranking](proposed/010-optional-local-reranking.md) | **Parked** since v0.4.0 — moved out of `done/` 2026-09-04 (RFC-060 §8, Task 040); the only implementation scored by passage length, not relevance, and had no production caller. Reopen when the p99 search-latency gate is met with one embedding model |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
+| 065 | [orbok on Flathub](proposed/065-flatpak-on-flathub.md) | Proposed 2026-10-21 — publish on Flathub as `io.github.nabbisen.orbok` (ID approved by the owner): read-only home, network only for the model download, built by Flathub from the reviewed archive, each release behind the owner's approval |
 
 
 **2026-09-01 — external audit; dispositions applied 2026-09-02.** An independent
