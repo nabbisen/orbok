@@ -4,7 +4,7 @@
 //! picker-opening message.
 
 use crate::i18n::{Locale, MessageKey, tr};
-use crate::state::{AppState, Message, SourceCard};
+use crate::state::{AppState, Message, SearchLocation, SourceCard};
 use crate::tests::iced_test_guard;
 use crate::views;
 use iced_test::simulator;
@@ -188,4 +188,93 @@ fn the_offer_renders_in_both_locales() {
             "{locale:?}: the fallback label renders"
         );
     }
+}
+
+/// Review 313 §3: once chosen, a folder must not lose the distinction the
+/// offer gave it -- the chip shows the same disambiguated label as the
+/// offer did, not the bare name both same-named folders share.
+#[test]
+fn the_chosen_chip_keeps_the_offers_disambiguated_label() {
+    let _guard = iced_test_guard();
+    let sources = vec![
+        folder_at("s_work", "Documents", "/home/user/Work/Documents"),
+        folder_at("s_home", "Documents", "/home/user/Personal/Home/Documents"),
+    ];
+    let state = AppState {
+        sources,
+        search_location: crate::state::SearchLocationState {
+            selected: Some(SearchLocation::remembered(
+                SourceId::from_string("s_home"),
+                "Documents",
+            )),
+            ..Default::default()
+        },
+        ..AppState::default()
+    };
+    let mut ui = simulator(views::search_view(&state));
+    assert!(
+        ui.find("Home/Documents").is_ok(),
+        "the chosen chip must show the disambiguated label, matching the offer's own"
+    );
+}
+
+/// A chosen folder whose name is unique among the added folders keeps its
+/// bare name on the chip -- disambiguation only grows a label when another
+/// added folder actually shares it.
+#[test]
+fn a_chosen_folder_with_a_unique_name_keeps_its_bare_label() {
+    let _guard = iced_test_guard();
+    let sources = vec![
+        folder_at("s_docs", "Docs", "/home/user/Docs"),
+        folder_at("s_work", "Documents", "/home/user/Work/Documents"),
+    ];
+    let state = AppState {
+        sources,
+        search_location: crate::state::SearchLocationState {
+            selected: Some(SearchLocation::remembered(
+                SourceId::from_string("s_docs"),
+                "Docs",
+            )),
+            ..Default::default()
+        },
+        ..AppState::default()
+    };
+    let mut ui = simulator(views::search_view(&state));
+    assert!(
+        ui.find("Docs").is_ok(),
+        "a uniquely-named chosen folder keeps its bare label"
+    );
+}
+
+/// Review 313 §3 item 2: a Task 113 subfolder location (chosen with the
+/// system picker, *inside* an added folder) is disambiguated the same way
+/// when its own name collides with an added folder's -- using its own
+/// full path, through the one shared algorithm, not a second one.
+#[test]
+fn a_chosen_subfolder_is_disambiguated_against_the_added_folders_by_its_own_path() {
+    let _guard = iced_test_guard();
+    // The added folder's own name does not collide with anything here --
+    // what collides is the *subfolder*'s name ("Documents") against an
+    // unrelated added folder also named "Documents" elsewhere on disk.
+    let sources = vec![
+        folder_at("s_work", "Work", "/home/user/Work"),
+        folder_at("s_home", "Documents", "/home/user/Personal/Home/Documents"),
+    ];
+    let state = AppState {
+        sources,
+        search_location: crate::state::SearchLocationState {
+            selected: Some(SearchLocation::within(
+                SourceId::from_string("s_work"),
+                "Documents",
+                "/home/user/Work/Documents",
+            )),
+            ..Default::default()
+        },
+        ..AppState::default()
+    };
+    let mut ui = simulator(views::search_view(&state));
+    assert!(
+        ui.find("Work/Documents").is_ok(),
+        "the chosen subfolder must be told apart from the added 'Documents' folder by its own path"
+    );
 }

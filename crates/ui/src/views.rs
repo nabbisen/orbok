@@ -20,7 +20,8 @@ use crate::i18n::{
     fmt_storage_total, preparing_folder_for_search, search_result_count, source_summary, tr,
 };
 use crate::state::{
-    AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope, SourceCard,
+    AppState, FileCountState, Message, ResultTrustDisplay, SearchFolderScope, SearchLocation,
+    SourceCard,
 };
 use crate::theme::{self, TextScale, Theme};
 use iced::widget::{button, column, container, scrollable, text, text_input, tooltip};
@@ -177,38 +178,39 @@ fn recent_searches_clear_control<'a>(state: &'a AppState) -> Element<'a, Message
 
 // ── Search location row ───────────────────────────────────────────────────
 
-/// Task 132 review §3.3: a label per folder in `sources`' own order --
-/// each folder's bare `display_name`, unless another folder shares it, in
-/// which case the shortest trailing part of its path that tells every
-/// same-named folder apart (e.g. `Work/Documents` and `Home/Documents` for
-/// two folders both named `Documents`). A folder whose name is unique among
-/// the ones shown is unaffected.
-pub(crate) fn disambiguated_folder_labels(sources: &[SourceCard]) -> Vec<String> {
-    let path_components: Vec<Vec<&str>> = sources
+/// The shared disambiguation algorithm (Task 132 review §3.3; pulled out
+/// of `disambiguated_folder_labels` by Review 313 §3 so the chosen chip's
+/// own label, below, computes it the same way instead of risking a second
+/// implementation that drifts from this one): one label per `(name, path)`
+/// entry, in order -- each entry's bare name, unless another entry shares
+/// it, in which case the shortest trailing part of its path that tells
+/// every same-named entry apart (e.g. `Work/Documents` and `Home/Documents`
+/// for two entries both named `Documents`). An entry whose name is unique
+/// among the ones given is unaffected.
+fn disambiguate_by_path(entries: &[(&str, &str)]) -> Vec<String> {
+    let path_components: Vec<Vec<&str>> = entries
         .iter()
-        .map(|card| card.display_path.split(['/', '\\']).rev().collect())
+        .map(|(_, path)| path.split(['/', '\\']).rev().collect())
         .collect();
 
-    sources
+    entries
         .iter()
         .enumerate()
-        .map(|(i, card)| {
-            let collides = sources
+        .map(|(i, (name, _))| {
+            let collides = entries
                 .iter()
                 .enumerate()
-                .any(|(j, other)| j != i && other.display_name == card.display_name);
+                .any(|(j, (other_name, _))| j != i && other_name == name);
             if !collides {
-                return card.display_name.clone();
+                return (*name).to_string();
             }
             let max_depth = path_components[i].len();
             let mut depth = 1;
             while depth < max_depth {
                 depth += 1;
                 let mine = &path_components[i][..depth];
-                let distinct = sources.iter().enumerate().all(|(j, other)| {
-                    j == i
-                        || other.display_name != card.display_name
-                        || path_components[j].get(..depth) != Some(mine)
+                let distinct = entries.iter().enumerate().all(|(j, (other_name, _))| {
+                    j == i || other_name != name || path_components[j].get(..depth) != Some(mine)
                 });
                 if distinct {
                     break;
@@ -219,6 +221,53 @@ pub(crate) fn disambiguated_folder_labels(sources: &[SourceCard]) -> Vec<String>
             suffix.join("/")
         })
         .collect()
+}
+
+/// Task 132 review §3.3: a label per folder in `sources`' own order --
+/// each folder's bare `display_name`, unless another folder shares it, in
+/// which case the shortest trailing part of its path that tells every
+/// same-named folder apart. A folder whose name is unique among the ones
+/// shown is unaffected.
+pub(crate) fn disambiguated_folder_labels(sources: &[SourceCard]) -> Vec<String> {
+    let entries: Vec<(&str, &str)> = sources
+        .iter()
+        .map(|card| (card.display_name.as_str(), card.display_path.as_str()))
+        .collect();
+    disambiguate_by_path(&entries)
+}
+
+/// Review 313 §3: the chosen search location's own label, told apart from
+/// a same-named added folder the same way the offer tells them apart --
+/// computed fresh from `sources` on every draw (not stored), so a folder
+/// added or removed while one is chosen is reflected immediately.
+///
+/// A Task 113 subfolder location (`location.limit_path()` is `Some`) is
+/// disambiguated against the added folders using its own full (canonical)
+/// path, through the same `disambiguate_by_path` the offer uses -- never a
+/// second algorithm that could tell folders apart differently than the
+/// offer did.
+pub(crate) fn chosen_location_label(sources: &[SourceCard], location: &SearchLocation) -> String {
+    if let Some(limit_path) = location.limit_path() {
+        let mut entries: Vec<(&str, &str)> = sources
+            .iter()
+            .map(|card| (card.display_name.as_str(), card.display_path.as_str()))
+            .collect();
+        entries.push((location.display_name(), limit_path));
+        disambiguate_by_path(&entries)
+            .pop()
+            .unwrap_or_else(|| location.display_name().to_string())
+    } else {
+        sources
+            .iter()
+            .zip(disambiguated_folder_labels(sources))
+            .find(|(card, _)| {
+                location
+                    .source_id()
+                    .is_some_and(|id| id.as_str() == card.source_id)
+            })
+            .map(|(_, label)| label)
+            .unwrap_or_else(|| location.display_name().to_string())
+    }
 }
 
 /// "Search in: [Folder and subfolders ×] [Change]" row (RFC-045 §7.3, §11).
@@ -320,13 +369,17 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 MessageKey::SearchScopeOnly,
             ));
 
+            // Review 313 §3: told apart from a same-named added folder the
+            // same way the offer told them apart -- not the bare name,
+            // which a same-named sibling folder also has.
+            let chip_label = chosen_location_label(&state.sources, location);
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
                 // The folder: its name changes it (the same picker "Choose a
                 // folder" opens), its `×` clears it (RFC-045 §7.3, §11.3).
                 components::removable_chip(
                     &state.snora_tokens,
-                    location.display_name(),
+                    &chip_label,
                     (!state.search_location.picker_in_progress)
                         .then_some(Message::ChooseSearchFolder),
                     Message::SearchLocationCleared,
