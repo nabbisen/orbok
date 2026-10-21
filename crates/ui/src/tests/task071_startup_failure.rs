@@ -95,3 +95,25 @@ fn close_and_escape_both_exit() {
     );
     assert_eq!(startup_failure_key(&Key::Named(Named::Enter)), None);
 }
+
+/// Review 316 §3: this screen has no stored theme setting -- always Follow
+/// system, through `Theme::resolved`, not a second, independent rule. Red
+/// first against the pre-fix code, which ignored the mode entirely
+/// (`Theme::from_env().unwrap_or(Theme::Light)`).
+#[test]
+fn the_theme_follows_the_system_mode() {
+    assert_eq!(
+        StartupFailureScreen::resolve_theme(iced::theme::Mode::Dark),
+        Theme::Dark,
+        "a reported dark mode must resolve to the dark theme"
+    );
+    assert_eq!(
+        StartupFailureScreen::resolve_theme(iced::theme::Mode::Light),
+        Theme::Light
+    );
+    assert_eq!(
+        StartupFailureScreen::resolve_theme(iced::theme::Mode::None),
+        Theme::Light,
+        "no preference reported must resolve to Light, the one documented fallback"
+    );
+}

@@ -26,11 +26,17 @@ pub enum StartupFailureCause {
     Other,
 }
 
-/// The window's only message.
+/// The window's messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartupFailureMessage {
     /// Close, Escape: exit.
     Close,
+    /// The OS's own light/dark preference, reported once by the boot `Task`
+    /// (Review 316 §3). This screen has no stored theme setting to defer
+    /// to -- there is no `AppState`, and the settings file may itself be
+    /// what failed -- so it always follows the system, the same as the
+    /// main app's own default.
+    SystemThemeMode(iced::theme::Mode),
 }
 
 /// Everything the window renders. Tokens are passed in explicitly, since
@@ -44,6 +50,16 @@ pub struct StartupFailureScreen {
 }
 
 impl StartupFailureScreen {
+    /// This screen's theme for a given OS mode (Task 138 follow-up, Review
+    /// 316 §3): always `Theme::System` resolved -- there is no stored
+    /// setting here to defer to, so "whatever the OS prefers right now" is
+    /// the only sensible default, through the one place that turns a mode
+    /// into a concrete theme ([`Theme::resolved`]), not a second,
+    /// independent resolution rule.
+    pub fn resolve_theme(system_mode: iced::theme::Mode) -> Theme {
+        Theme::System.resolved(system_mode)
+    }
+
     pub fn title(&self) -> String {
         tr(self.locale, MessageKey::StartupFailedTitle).to_string()
     }

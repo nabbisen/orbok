@@ -395,7 +395,12 @@ fn show_startup_failure(failed: FailedStartup) -> ! {
         .stored_locale
         .or_else(orbok_ui::i18n::Locale::from_env)
         .unwrap_or_default();
-    let theme = orbok_ui::Theme::from_env().unwrap_or(orbok_ui::Theme::Light);
+    // Task 138 follow-up (Review 316 §3): resolved the same way as the main
+    // app's own "Follow system" -- `Mode::None` for this first frame, since
+    // the real OS mode is not known synchronously; the boot `Task` below
+    // answers for real shortly after, through `SystemThemeMode`, so the two
+    // windows cannot disagree on what "Follow system" means.
+    let theme = StartupFailureScreen::resolve_theme(iced::theme::Mode::None);
     let screen = StartupFailureScreen {
         cause: failed.failure.cause(),
         locale,
@@ -403,9 +408,18 @@ fn show_startup_failure(failed: FailedStartup) -> ! {
         tokens: theme.tokens(),
     };
     let shown = iced::application(
-        move || screen.clone(),
-        |_: &mut StartupFailureScreen, message: StartupFailureMessage| match message {
+        move || {
+            let detect_system_theme =
+                iced::system::theme().map(StartupFailureMessage::SystemThemeMode);
+            (screen.clone(), detect_system_theme)
+        },
+        |screen: &mut StartupFailureScreen, message: StartupFailureMessage| match message {
             StartupFailureMessage::Close => iced::exit(),
+            StartupFailureMessage::SystemThemeMode(mode) => {
+                screen.theme = StartupFailureScreen::resolve_theme(mode);
+                screen.tokens = screen.theme.tokens();
+                iced::Task::none()
+            }
         },
         StartupFailureScreen::view,
     )
