@@ -183,14 +183,15 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
 
     let projection = crate::model_flow::project_startup(outcome, resolved_model.provenance);
 
-    // Theme priority (RFC-032): stored intent is kept as-is; `System` is
-    // resolved once here to a concrete preset for token construction. The OS
-    // probe is best-effort (Theme::from_env), falling back to Light.
+    // Theme priority (RFC-032, Task 138): stored intent is kept as-is;
+    // `System` is resolved here to a concrete preset for this first frame's
+    // token construction, via `Theme::resolved`'s own fallback order
+    // (`ORBOK_THEME` override, then the system mode). `Mode::None` because
+    // the real OS mode is not known synchronously at this point -- the
+    // `orbok` binary's boot `Task` (`iced::system::theme()`) answers shortly
+    // after, through `Message::SystemThemeMode`, and resolves it for real.
     let stored_theme = Theme::parse(&settings.theme).unwrap_or_default();
-    let resolved_theme = match stored_theme {
-        Theme::System => Theme::from_env().unwrap_or(Theme::Light),
-        concrete => concrete,
-    };
+    let resolved_theme = stored_theme.resolved(iced::theme::Mode::None);
 
     let health = get_health(&catalog);
     // Task 075 (Review 253 §2.3): an unreadable folder list is a startup

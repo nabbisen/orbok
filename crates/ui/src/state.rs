@@ -721,9 +721,18 @@ pub struct AppState {
     /// `Message` arms that can change either input recompute it from
     /// `theme::snora_tokens(&self.tokens, self.text_scale)`, never by hand.
     pub snora_tokens: crate::theme::SnoraTokens,
-    /// The user's selected theme. `System` is resolved to a concrete preset at
-    /// startup in `orbok`; `tokens` always holds the resolved bundle.
+    /// The user's selected theme (the stored setting, `System` included
+    /// verbatim -- never overwritten with what it resolves to). `tokens`
+    /// always holds the resolved bundle, from `theme.resolved(system_theme_mode)`.
     pub theme: crate::theme::Theme,
+    /// The OS's own last-known light/dark preference (Task 138, RFC-032
+    /// §5.5), updated by `Message::SystemThemeMode` both once at startup
+    /// (`iced::system::theme()`) and continuously while running
+    /// (`iced::system::theme_changes()`). Only `theme.resolved(..)` reads
+    /// this; a concrete `theme` ignores it. `Mode::None` until the startup
+    /// probe answers, the same "unknown" default `Theme::resolved` already
+    /// maps to Light.
+    pub system_theme_mode: iced::theme::Mode,
     /// User-selected text scale multiplier (RFC-035). Applied via the `*_s`
     /// helpers in `theme.rs`; views read `state.text_scale` alongside tokens.
     pub text_scale: crate::theme::TextScale,
@@ -781,6 +790,7 @@ impl Default for AppState {
                 crate::theme::TextScale::default(),
             ),
             theme: crate::theme::Theme::default(),
+            system_theme_mode: iced::theme::Mode::default(),
             text_scale: crate::theme::TextScale::default(),
             reduced_motion: false,
         }
@@ -794,6 +804,11 @@ pub enum Message {
     SwitchGroup(NavGroup),
     ToggleAdvanced,
     SetTheme(crate::theme::Theme),
+    /// The OS's own light/dark preference, reported once at startup and on
+    /// every change while running (Task 138). Recomputes `tokens` when the
+    /// stored setting is `Theme::System`; a no-op on the resolved theme
+    /// otherwise, since `Theme::resolved` ignores this for a concrete theme.
+    SystemThemeMode(iced::theme::Mode),
     /// User selected a text scale step (RFC-035).
     SetTextScale(crate::theme::TextScale),
     /// User toggled reduced-motion preference (RFC-035).
@@ -1214,7 +1229,12 @@ impl AppState {
             Message::ToggleAdvanced => self.show_advanced = !self.show_advanced,
             Message::SetTheme(theme) => {
                 self.theme = *theme;
-                self.tokens = theme.tokens();
+                self.tokens = theme.resolved(self.system_theme_mode).tokens();
+                self.snora_tokens = crate::theme::snora_tokens(&self.tokens, self.text_scale);
+            }
+            Message::SystemThemeMode(mode) => {
+                self.system_theme_mode = *mode;
+                self.tokens = self.theme.resolved(self.system_theme_mode).tokens();
                 self.snora_tokens = crate::theme::snora_tokens(&self.tokens, self.text_scale);
             }
             Message::SetTextScale(scale) => {

@@ -246,7 +246,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     iced::application(
-        move || OrbokApp::with_state(state.clone()),
+        move || {
+            // Task 138: the OS's own light/dark mode is not known
+            // synchronously at boot (bootstrap/startup.rs's own
+            // construction already resolved `System` to a best-effort
+            // placeholder for this first frame) -- this one-shot `Task`
+            // answers for real shortly after, through
+            // `Message::SystemThemeMode`, which re-resolves `tokens` if the
+            // stored setting is `System`. `iced::system::theme_changes()`,
+            // in the subscription below, keeps it answering while orbok runs.
+            let app = OrbokApp::with_state(state.clone());
+            let detect_system_theme = iced::system::theme().map(Message::SystemThemeMode);
+            (app, detect_system_theme)
+        },
         move |app: &mut OrbokApp, message: Message| -> iced::Task<Message> {
             router::route(app, message, &deps)
         },
@@ -271,6 +283,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 resource_signals: resource_signals.clone(),
                 resource_signal_tx: battery_resource_signal_tx.clone(),
             }),
+            // Task 138: keeps "Follow system" following while orbok runs,
+            // not only at boot.
+            iced::system::theme_changes().map(Message::SystemThemeMode),
             iced::keyboard::listen()
                 .with(ctx)
                 .filter_map(|(ctx, event)| {

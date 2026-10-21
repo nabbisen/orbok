@@ -17,9 +17,10 @@ use crate::i18n::MessageKey;
 
 // ── Theme ─────────────────────────────────────────────────────────────────
 
-/// User-selectable UI theme. `System` is resolved to a concrete variant at
-/// startup (in `orbok`) via [`Theme::from_env`]; the other four map
-/// directly to the built-in Snora Design presets.
+/// User-selectable UI theme. `System` is resolved to a concrete variant by
+/// [`Theme::resolved`], continuously, from the OS's own detected light/dark
+/// mode (Task 138); the other four map directly to the built-in Snora
+/// Design presets and ignore the OS entirely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -82,9 +83,13 @@ impl Theme {
 
     /// The concrete Snora Design token bundle for this theme.
     ///
-    /// `System` falls back to Light here; the real OS resolution happens once
-    /// at startup in `orbok` via [`Theme::from_env`]. Selecting `System`
-    /// at runtime therefore applies Light until the next launch (RFC-032 §5.5).
+    /// `System` falls back to Light here, since resolving it for real needs
+    /// the OS's detected light/dark mode, which this method has no way to
+    /// take -- call [`Theme::resolved`] first wherever that mode is known
+    /// (`AppState::tokens`'s own construction, Task 138), and only read
+    /// `tokens()` directly where a theme is already concrete, or where a
+    /// placeholder for `System` is genuinely wanted (a Settings preview, for
+    /// example, that shows what each named option looks like on its own).
     pub fn tokens(self) -> Tokens {
         match self {
             Theme::Light | Theme::System => Tokens::light(),
@@ -94,11 +99,29 @@ impl Theme {
         }
     }
 
-    /// Best-effort OS colour-scheme probe for the `System` theme.
-    ///
-    /// Checks `ORBOK_THEME` env var first (concrete override). Returns `None`
-    /// when the OS preference is unknown, leaving the caller to fall back to
-    /// `Light`. A richer per-platform probe is a tracked follow-up (RFC-032 §9).
+    /// The concrete theme this resolves to right now (Task 138, RFC-032
+    /// §5.5). Every variant but `System` ignores `system_mode` and returns
+    /// itself unchanged -- a concrete theme never reacts to the OS. `System`
+    /// resolves to [`Theme::from_env`]'s override when one is set (unchanged
+    /// behaviour, still an explicit override for tests and diagnostics), else
+    /// to `system_mode`: `Dark` → [`Theme::Dark`], `Light` or `None` (no
+    /// preference reported) → [`Theme::Light`] -- one documented fallback,
+    /// here, not duplicated at each caller.
+    pub fn resolved(self, system_mode: iced::theme::Mode) -> Theme {
+        match self {
+            Theme::System => Theme::from_env().unwrap_or(match system_mode {
+                iced::theme::Mode::Dark => Theme::Dark,
+                iced::theme::Mode::Light | iced::theme::Mode::None => Theme::Light,
+            }),
+            concrete => concrete,
+        }
+    }
+
+    /// An explicit override for tests and diagnostics, read from the
+    /// `ORBOK_THEME` env var. Takes priority over the OS's own detected
+    /// mode in [`Theme::resolved`]. Returns `None` when the var is unset, or
+    /// set to something other than a concrete theme name (including
+    /// `"system"` itself, which would otherwise be a no-op override).
     pub fn from_env() -> Option<Theme> {
         let raw = std::env::var("ORBOK_THEME").ok()?;
         match Theme::parse(raw.trim()) {

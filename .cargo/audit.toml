@@ -57,24 +57,38 @@ ignore = [
     "RUSTSEC-2026-0253",
 
     # ── zbus_names, zvariant, zvariant_derive -- "unmaintained" (RustSec,
-    #    published 2026-10-16), Task 134. zbus's own D-Bus variant/name-
-    #    encoding helpers, pulled in by zbus 5.16 (Task 132's portal probe)
-    #    and by ashpd 0.11.1 (rfd's own XDG portal backend on Linux)
-    #    through the same zbus 5.x line. Not a known vulnerability -- a
-    #    maintenance-status warning for a proc-macro/encoding helper orbok
-    #    calls only to probe for a FileChooser portal backend and read one
-    #    D-Bus property (Task 132 review §2), never to parse untrusted
-    #    D-Bus input from outside the local session bus.
+    #    published 2026-10-16), Task 134, corrected Task 138. zbus's own
+    #    D-Bus variant/name-encoding helpers, pulled in by zbus 5.16 through
+    #    **two independent paths**, confirmed with `cargo tree -i zbus@5`:
+    #
+    #    1. ashpd 0.11.1 (rfd's own XDG portal backend on Linux), used only
+    #       to probe for a FileChooser portal backend and read one D-Bus
+    #       property (Task 132 review §2), never to parse untrusted D-Bus
+    #       input from outside the local session bus;
+    #    2. iced's own default `linux-theme-detection` feature
+    #       (`iced_winit` → `mundy` → `zbus` 5), which reads the desktop's
+    #       light/dark preference over D-Bus (Task 138) -- snora's own
+    #       letter about this release names the same two IDs and accepts
+    #       the same three advisories for the same reason:
+    #       `.git-exclude/upstream/snora/receive/0.53.0/snora-0.53.0-guarantee-correction-and-advisories-2026-10-20.md`.
+    #
+    #    Not a known vulnerability -- a maintenance-status warning for a
+    #    proc-macro/encoding helper, on both paths.
     #
     #    zbus 6.0.0 has in fact dropped all three, replaced internally by a
     #    new zbus_utils crate with no zvariant/zbus_names dependency at
     #    all -- but ashpd, even its own latest release (0.13.13), still
     #    requires `zbus = "^5.13"` (checked against crates.io's own
     #    dependency API, not assumed), so orbok's own zbus cannot move to
-    #    6.x without a version conflict against ashpd's pin.
+    #    6.x without a version conflict against ashpd's pin. mundy has no
+    #    comparable published release against zbus 6 yet either.
     #
-    # REMOVE WHEN: ashpd (or whichever portal crate orbok then depends on
-    # for Task 132's probe) itself moves to zbus >= 6.0.0 -- check on every
-    # ashpd/rfd upgrade, not just this one.
+    # REMOVE WHEN: **both** paths have moved to zbus >= 6.0.0 -- ashpd (or
+    # whichever portal crate orbok then depends on for Task 132's probe)
+    # *and* mundy (or whichever crate `iced_winit`'s `linux-theme-detection`
+    # then depends on for Task 138's OS theme detection). Naming only the
+    # first would leave this entry true of neither path once one moves
+    # without the other -- check both on every ashpd/rfd/iced upgrade, not
+    # just one of them.
     "RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372",
 ]
