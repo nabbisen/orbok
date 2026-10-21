@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 065\
 **Title:** orbok on Flathub\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-10-21 by the project owner, with the application ID (§3.1) and the summary line (§3.4)\
 **Target milestone:** Linux distribution (the release after 0.29.0)\
 **Date:** 2026-10-21\
 **Related RFCs:** RFC-017 (packaging and distribution); RFC-051 (the reviewed source archive); RFC-064 (every file belongs to one folder); RFC-041 (plain language)\
@@ -103,8 +104,8 @@ of any Linux distribution can install it from their software center.
 **No email address.** `update_contact` is optional and is left out. The
 developer is `nabbisen`.
 
-The summary is new copy (AppStream wants about 35 characters) and needs
-the owner's approval. Proposal: "Search your documents by meaning" /
+The summary, new copy (AppStream wants about 35 characters), is
+**approved by the owner, 2026-10-21:** "Search your documents by meaning" /
 「意味から文書を検索」. Every other sentence is already approved.
 
 ### 3.5 Publishing

@@ -81,6 +81,7 @@ may start" a checked state rather than an implicit convention.
 | 058 | [Verifying the Wired Application](accepted/058-verifying-the-wired-application.md) | Accepted 2026-09-02 — open: rows written and green; §10 criteria 1–2 can no longer be observed as worded (fixes landed before assertions; HANDOFF-058 substituted mutation — needs an amendment), criterion 4's ≥ 100-sample half is not reported, criterion 6 has no scratch-branch evidence or CI count check (Task 052) |
 | 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — open: all slices landed; criteria 3, 7, 8, 9 evidenced. Criterion 4's user-visible notice does not exist for an unopenable catalog (fails before the event loop), criterion 6's benchmark still rebuilds the model per search, and 1, 2, 5 have no test (Task 052) |
 | 064 | [What a Folder Covers](done/064-what-a-folder-covers.md) | Implemented (unreleased) — closed 2026-09-25 (Tasks 113 and 114): every file belongs to one folder (nested adds refused, folders above added ones combine them, search in a subfolder registers nothing, overlaps combined at startup) and a folder covers "This folder and subfolders" or "This folder only", chosen on its card. Closure record: [closures/064](closures/064-what-a-folder-covers.md) |
+| 065 | [orbok on Flathub](accepted/065-flatpak-on-flathub.md) | Accepted 2026-10-21 — open: nothing implemented yet (Task 137). Publish on Flathub as `io.github.nabbisen.orbok`: read-only home, network only for the model download, built by Flathub from the reviewed archive, each release behind the owner's approval |
 
 ## Proposed
 
@@ -92,7 +93,6 @@ may start" a checked state rather than an implicit convention.
 | 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
 | 010 | [Optional Local Reranking](proposed/010-optional-local-reranking.md) | **Parked** since v0.4.0 — moved out of `done/` 2026-09-04 (RFC-060 §8, Task 040); the only implementation scored by passage length, not relevance, and had no production caller. Reopen when the p99 search-latency gate is met with one embedding model |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 065 | [orbok on Flathub](proposed/065-flatpak-on-flathub.md) | Proposed 2026-10-21 — publish on Flathub as `io.github.nabbisen.orbok` (ID approved by the owner): read-only home, network only for the model download, built by Flathub from the reviewed archive, each release behind the owner's approval |
 
 
 **2026-09-01 — external audit; dispositions applied 2026-09-02.** An independent
