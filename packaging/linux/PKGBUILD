@@ -89,9 +89,8 @@ check() {
 package() {
     cd "$pkgname-$pkgver"
     install -Dm755 target/release/orbok "$pkgdir/usr/bin/orbok"
-    # Task 137 §1.1 (RFC-065 §3.1): the desktop entry and icons are named
-    # by orbok's Flathub application ID, not the bare "orbok" -- one ID on
-    # every Linux package, AUR or Flatpak alike.
+    # The desktop entry and icons are named by orbok's application ID, not
+    # the bare "orbok" -- one ID on every Linux package.
     install -Dm644 packaging/linux/io.github.nabbisen.orbok.desktop \
         "$pkgdir/usr/share/applications/io.github.nabbisen.orbok.desktop"
     # Every size this repository carries, so Icon=io.github.nabbisen.orbok
