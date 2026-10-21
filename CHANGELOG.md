@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.29.0] — 2026-10-21
 
-- **Release packages for Arch Linux** (Task 133): `orbok` and `orbok-bin`
-  are published to the AUR automatically with each release, after the
-  owner's approval.
+### Security
+
+- Updated the TLS library used to download the search model (rustls
+  0.23.46, rustls-webpki 0.103.16, webpki-roots 1.0.10), for advisories
+  including a downgrade to classical key exchange and TLS secrets exposed
+  in debug output (Task 134).
+- Updated the ZIP library used to read `.docx` files (zip 9.0.5), for
+  advisories about symlink targets and permission bits escaping the
+  extraction directory during `extract()` -- a method orbok never calls,
+  but the crate is patched rather than left on a flagged version (Task 134).
+- Updated an unused, orphaned entry in the dependency lockfile (quinn-proto
+  0.11.19), reported by the security audit although no orbok build
+  compiles it (Task 134).
 
 ### Changed
 
@@ -30,19 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explanation, until orbok was restarted. It now gives up after a few
   seconds, tells you, and lets you try again.
 
-### Security
+### Added
 
-- Updated the TLS library used to download the search model (rustls
-  0.23.46, rustls-webpki 0.103.16, webpki-roots 1.0.10), for advisories
-  including a downgrade to classical key exchange and TLS secrets exposed
-  in debug output (Task 134).
-- Updated the ZIP library used to read `.docx` files (zip 9.0.5), for
-  advisories about symlink targets and permission bits escaping the
-  extraction directory during `extract()` -- a method orbok never calls,
-  but the crate is patched rather than left on a flagged version (Task 134).
-- Updated an unused, orphaned entry in the dependency lockfile (quinn-proto
-  0.11.19), reported by the security audit although no orbok build
-  compiles it (Task 134).
+- **Release packages for Arch Linux** (Task 133): `orbok` and `orbok-bin`
+  are published to the AUR automatically with each release, after the
+  owner's approval.
 
 ## [0.28.0] — 2026-10-03
 
