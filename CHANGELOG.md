@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **On Linux, the menu entry's file name changed** to
+  `io.github.nabbisen.orbok.desktop` (from `orbok.desktop`), the first step
+  toward publishing orbok on Flathub (Task 137). Menus pick this up
+  automatically; a launcher pinned to the old entry has to be pinned again.
+
 ## [0.29.0] — 2026-10-21
 
 ### Security

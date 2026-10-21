@@ -89,13 +89,16 @@ check() {
 package() {
     cd "$pkgname-$pkgver"
     install -Dm755 target/release/orbok "$pkgdir/usr/bin/orbok"
-    install -Dm644 packaging/linux/orbok.desktop \
-        "$pkgdir/usr/share/applications/orbok.desktop"
-    # Every size this repository carries, so Icon=orbok (above) always
-    # resolves.
+    # Task 137 §1.1 (RFC-065 §3.1): the desktop entry and icons are named
+    # by orbok's Flathub application ID, not the bare "orbok" -- one ID on
+    # every Linux package, AUR or Flatpak alike.
+    install -Dm644 packaging/linux/io.github.nabbisen.orbok.desktop \
+        "$pkgdir/usr/share/applications/io.github.nabbisen.orbok.desktop"
+    # Every size this repository carries, so Icon=io.github.nabbisen.orbok
+    # (above) always resolves.
     for size in 16 32 48 64 128 256 512; do
-        install -Dm644 "packaging/linux/icons/hicolor/${size}x${size}/apps/orbok.png" \
-            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/orbok.png"
+        install -Dm644 "packaging/linux/icons/hicolor/${size}x${size}/apps/io.github.nabbisen.orbok.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/io.github.nabbisen.orbok.png"
     done
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"

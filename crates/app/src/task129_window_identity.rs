@@ -1,16 +1,21 @@
 //! Task 129 §2.1 and Task 130 §1.3: the window carries orbok's own
-//! identity (the Linux application id, so a desktop can match it to
-//! `orbok.desktop` for the task bar / dock icon) and its own icon
+//! identity (the Linux application id, so a desktop can match it to the
+//! desktop entry for the task bar / dock icon) and its own icon
 //! (cross-platform). Both come from the one `window_settings()` function
 //! in `main.rs`, tested here together.
+//!
+//! Task 137 §1.2: the application id is [`crate::APP_ID`]
+//! (`io.github.nabbisen.orbok`, RFC-065 §3.1), not the bare `"orbok"` this
+//! test asserted before Flathub's one-ID-per-package rule.
 
 #[test]
 fn the_window_settings_carry_the_application_id_on_linux() {
     let settings = crate::window_settings();
     #[cfg(target_os = "linux")]
     assert_eq!(
-        settings.platform_specific.application_id, "orbok",
-        "the Linux application id must be set, matching orbok.desktop"
+        settings.platform_specific.application_id,
+        crate::APP_ID,
+        "the Linux application id must be set, matching the desktop entry's own file name"
     );
     // Windows and macOS: proven untouched by construction, not merely
     // asserted -- `window_settings` only ever writes to

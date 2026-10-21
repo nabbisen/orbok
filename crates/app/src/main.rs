@@ -51,6 +51,19 @@ use orbok_ui::{Message, OrbokApp, key_to_message};
 use orbok_workers::VerifyOutcome;
 use orbok_workers::model_verifier::REQUIRED_MODEL_FILES;
 
+/// orbok's Flathub application ID (RFC-065 §3.1), approved by the owner
+/// 2026-10-21. The one place it is written in Rust: the Linux desktop
+/// entry, every hicolor icon file, the Flatpak manifest and its AppStream
+/// metadata all carry their own literal copy, each checked against this
+/// one by a gate (`scripts/check-pkgbuild.sh`), never copied by hand.
+///
+/// Linux-only, like [`window_settings`]'s own use of it (§1.4: the
+/// Windows/Store identity is unchanged) -- cfg-gating this, rather than
+/// `#[allow(dead_code)]`, says that plainly instead of silencing what
+/// would otherwise be a real "unused on this platform" signal.
+#[cfg(target_os = "linux")]
+pub(crate) const APP_ID: &str = "io.github.nabbisen.orbok";
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -276,10 +289,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Task 129 §2.1: the window's application id, so a desktop environment can
-/// match it to `orbok.desktop` for the task bar / dock icon -- measured
+/// match it to the desktop entry for the task bar / dock icon -- measured
 /// absent (`niri msg windows` showed an empty `app_id`), not assumed.
 /// `window::Settings::default()` otherwise, so nothing else about the
 /// window changes.
+///
+/// Task 137 §1.2 (RFC-065 §3.1): this is [`APP_ID`], the same ID the
+/// desktop entry's own file name, `Icon=` and `StartupWMClass=` carry --
+/// one ID on every Linux package, AUR or Flatpak alike.
 ///
 /// Linux-only, cfg-gated rather than written unconditionally: iced's
 /// `PlatformSpecific` is a different struct per platform (`application_id`
@@ -294,7 +311,7 @@ fn window_settings() -> iced::window::Settings {
     let mut settings = iced::window::Settings::default();
     #[cfg(target_os = "linux")]
     {
-        settings.platform_specific.application_id = "orbok".to_string();
+        settings.platform_specific.application_id = APP_ID.to_string();
     }
     settings.icon = Some(window_icon());
     settings

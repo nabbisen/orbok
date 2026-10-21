@@ -21,10 +21,11 @@ check() {
 
 reset_fixture() {
   rm -rf "$tmp/work"
-  mkdir -p "$tmp/work/packaging/linux/orbok-bin" "$tmp/work/scripts"
+  mkdir -p "$tmp/work/packaging/linux/orbok-bin" "$tmp/work/scripts" "$tmp/work/crates/app/src"
   cp "$repo_root/Cargo.toml" "$tmp/work/Cargo.toml"
   cp "$repo_root/packaging/linux/PKGBUILD" "$tmp/work/packaging/linux/PKGBUILD"
   cp "$repo_root/packaging/linux/orbok-bin/PKGBUILD" "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+  cp "$repo_root/crates/app/src/main.rs" "$tmp/work/crates/app/src/main.rs"
   cp "${GATE_UNDER_TEST:-$repo_root/scripts/check-pkgbuild.sh}" "$tmp/work/scripts/check-pkgbuild.sh"
 }
 
@@ -86,6 +87,26 @@ reset_fixture
 rm "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
 check "(g) a missing orbok-bin template fails" "fail" "$(run_gate)"
 expect_message "missing packaging/linux/orbok-bin/PKGBUILD"
+
+# (h) A PKGBUILD that installs a stale, hand-copied desktop entry name
+#     (not APP_ID) fails -- Task 137 §1.3's drift guard.
+reset_fixture
+sed -i 's/io\.github\.nabbisen\.orbok\.desktop/orbok.desktop/g' "$tmp/work/packaging/linux/PKGBUILD"
+check "(h) a stale desktop entry name fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/PKGBUILD does not install io.github.nabbisen.orbok.desktop"
+
+# (i) The same, for a stale hand-copied icon name.
+reset_fixture
+sed -i 's/io\.github\.nabbisen\.orbok\.png/orbok.png/g' "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+check "(i) a stale icon name fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/orbok-bin/PKGBUILD does not install io.github.nabbisen.orbok.png"
+
+# (j) If APP_ID itself ever changes in main.rs, a PKGBUILD not yet updated
+#     to match fails, rather than passing against its own stale copy.
+reset_fixture
+sed -i 's/pub(crate) const APP_ID: &str = "[^"]*"/pub(crate) const APP_ID: \&str = "io.github.nabbisen.orbok2"/' "$tmp/work/crates/app/src/main.rs"
+check "(j) a PKGBUILD not matching a changed APP_ID fails" "fail" "$(run_gate)"
+expect_message "does not install io.github.nabbisen.orbok2.desktop"
 
 # Self-check: a gutted gate must fail this self-test, proving the 'fail'
 # results above were the real gate firing, not this harness.

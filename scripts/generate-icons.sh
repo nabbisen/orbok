@@ -33,14 +33,19 @@ resize "$MASTER" 50x50 packaging/windows/Assets/StoreLogo.png
 echo "Windows Assets (wide, from $MASTER_WIDE):"
 resize "$MASTER_WIDE" 310x150 packaging/windows/Assets/Wide310x150Logo.png
 
+# Task 137 §1.1 (RFC-065 §3.1): one application ID on every Linux package
+# -- the hicolor icon file name is the ID, not the bare "orbok" the AUR
+# packages alone used before Flathub required otherwise.
+APP_ID="io.github.nabbisen.orbok"
+
 echo "Linux hicolor icons, 16/32 (from $MASTER_SMALL):"
 for size in 16 32; do
-  resize "$MASTER_SMALL" "${size}x${size}" "packaging/linux/icons/hicolor/${size}x${size}/apps/orbok.png"
+  resize "$MASTER_SMALL" "${size}x${size}" "packaging/linux/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
 done
 
 echo "Linux hicolor icons, 48 and up (from $MASTER):"
 for size in 48 64 128 256 512; do
-  resize "$MASTER" "${size}x${size}" "packaging/linux/icons/hicolor/${size}x${size}/apps/orbok.png"
+  resize "$MASTER" "${size}x${size}" "packaging/linux/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
 done
 
 echo "Store listing logo (from $MASTER):"
