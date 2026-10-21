@@ -290,7 +290,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
                 components::ghost(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::SearchChooseFolder),
                     (!state.search_location.picker_in_progress)
                         .then_some(Message::ChooseSearchFolder),
@@ -327,7 +327,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
                 components::choice(tokens, meta, options),
                 components::ghost(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::NoticeActionChooseFolder),
                     (!state.search_location.picker_in_progress)
                         .then_some(Message::ChooseSearchFolder),
@@ -396,8 +396,13 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
 
 /// The one notice renderer (Task 064: called only from the shell, above
 /// every view and the wizard).
+/// Task 136: `snora::design::notice::Notice` renders its own title/body
+/// text from the tokens it is given, so this takes `&SnoraTokens` --
+/// tightened from a base `&Tokens` every call site already happened to
+/// pass correctly (Task 127), so deref coercion alone cannot let a future
+/// call quietly regress it.
 pub(crate) fn friendly_notice<'a>(
-    tokens: &'a Tokens,
+    tokens: &'a theme::SnoraTokens,
     locale: Locale,
     notice: &crate::notice::UserNotice,
     has_action: bool,
@@ -468,13 +473,13 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         .on_submit(Message::SubmitSearch)
         // Task 072: the same text size and vertical padding as the Search
         // button beside it, so the two are the same height.
-        .size(theme::body(tokens))
+        .size(theme::body_s(tokens, sc))
         .padding(components::input_padding(tokens));
 
     let submit = components::icon_primary(
         tokens,
+        sc,
         char::from(lucide::Search),
-        13.0,
         tr(locale, MessageKey::SearchButton),
         (!state.search_running).then_some(Message::SubmitSearch),
     );
@@ -568,8 +573,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                 // beside it uses (Review 284 §3).
                 components::icon_primary(
                     tokens,
+                    sc,
                     char::from(lucide::FolderPlus),
-                    13.0,
                     tr(locale, MessageKey::SourcesAddFolder),
                     Some(Message::Switch(crate::state::ViewId::Sources)),
                 ),
@@ -617,6 +622,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                     let heading_str = card_heading_line(&title_str, result.heading_path.as_deref());
                     content = content.push(result_card(
                         tokens,
+                        sc,
                         locale,
                         title_str,
                         result.display_path.clone(),
@@ -639,12 +645,12 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
                         content = content.push(
                             hrow![
                                 components::secondary(
-                                    tokens,
+                                    &state.snora_tokens,
                                     tr(locale, MessageKey::SearchResultOpenFile),
                                     Some(Message::OpenResult(i)),
                                 ),
                                 components::secondary(
-                                    tokens,
+                                    &state.snora_tokens,
                                     tr(locale, MessageKey::SearchResultShowInFolder),
                                     Some(Message::RevealResult(i)),
                                 ),
@@ -750,7 +756,7 @@ fn trust_recovery<'a>(
         }
         any_button = true;
         buttons = buttons.push(components::secondary(
-            tokens,
+            &state.snora_tokens,
             tr(locale, key),
             Some(Message::TrustRecoveryAction {
                 result_idx: index,
@@ -789,12 +795,12 @@ fn private_folder_dialog(state: &AppState) -> Element<'_, Message> {
             .line_height(theme::body_lh(tokens)),
         hrow![
             components::ghost(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::Cancel),
                 Some(Message::CancelAddSensitiveFolder)
             ),
             components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::AddSensitiveConfirm),
                 Some(Message::ConfirmAddSensitiveFolder)
             ),
@@ -835,12 +841,12 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 .line_height(theme::body_lh(tokens)),
             hrow![
                 components::ghost(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::Cancel),
                     Some(Message::CancelRemoveSource)
                 ),
                 components::danger(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::SourceRemoveConfirm),
                     Some(Message::ConfirmRemoveSource)
                 ),
@@ -878,12 +884,12 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(
             hrow![
                 components::ghost(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::Cancel),
                     Some(Message::CancelNarrowFolder)
                 ),
                 components::danger(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::NarrowFolderConfirm),
                     Some(Message::ConfirmNarrowFolder)
                 ),
@@ -898,8 +904,8 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     let add_folder = (!state.add_source_picker_in_progress).then_some(Message::RequestAddSource);
     let add_btn = components::icon_secondary(
         tokens,
+        sc,
         char::from(lucide::FolderPlus),
-        13.0,
         tr(locale, MessageKey::SourcesAddFolder),
         add_folder.clone(),
     );
@@ -910,7 +916,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     .on_input(Message::SourcePathChanged)
     .on_submit(Message::SubmitSourcePath)
     // Task 072: matches the Add Folder button beside it.
-    .size(theme::body(tokens))
+    .size(theme::body_s(tokens, sc))
     .padding(components::input_padding(tokens));
 
     let mut content = column![
@@ -967,6 +973,8 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
             );
             content = content.push(source_card(
                 tokens,
+                sc,
+                &state.snora_tokens,
                 card.display_name.clone(),
                 card.display_path.clone(),
                 summary,
@@ -974,7 +982,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
                 detail,
                 components::choice(
                     tokens,
-                    theme::meta(tokens),
+                    theme::meta_s(tokens, sc),
                     vec![
                         components::ChoiceOption {
                             label: tr(locale, MessageKey::SearchScopeSubfolders).to_string(),
@@ -1012,6 +1020,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
 
     let mut cells = hrow![health_cell(
         tokens,
+        sc,
         tr(locale, FileCountState::Ready.label_key()),
         h.indexed
     )]
@@ -1019,6 +1028,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     if h.queued > 0 || state.show_advanced {
         cells = cells.push(health_cell(
             tokens,
+            sc,
             tr(locale, MessageKey::IndexingHealthQueued),
             h.queued,
         ));
@@ -1026,6 +1036,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     if h.stale > 0 || state.show_advanced {
         cells = cells.push(health_cell(
             tokens,
+            sc,
             tr(locale, FileCountState::NeedsUpdate.label_key()),
             h.stale,
         ));
@@ -1033,6 +1044,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
     if h.failed > 0 || state.show_advanced {
         cells = cells.push(health_cell(
             tokens,
+            sc,
             tr(locale, FileCountState::Failed.label_key()),
             h.failed,
         ));
@@ -1068,7 +1080,7 @@ pub fn indexing_view(state: &AppState) -> Element<'_, Message> {
 
     if h.queued > 0 {
         content = content.push(job_progress(
-            tokens,
+            &state.snora_tokens,
             tr(locale, MessageKey::IndexingRunning),
             None,
         ));
@@ -1131,12 +1143,12 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         content = content.push(
             hrow![
                 components::ghost(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::Cancel),
                     Some(Message::CancelResetCatalog)
                 ),
                 components::danger(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::StorageResetConfirm),
                     Some(Message::ConfirmResetCatalog)
                 ),
@@ -1187,9 +1199,13 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         }
         content = content.push(
             hrow![
-                components::ghost(tokens, tr(locale, MessageKey::Cancel), Some(cancel_msg)),
+                components::ghost(
+                    &state.snora_tokens,
+                    tr(locale, MessageKey::Cancel),
+                    Some(cancel_msg)
+                ),
                 components::danger(
-                    tokens,
+                    &state.snora_tokens,
                     tr(locale, MessageKey::RebuildConfirm),
                     Some(confirm_msg)
                 ),
@@ -1215,7 +1231,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             text(tr(locale, MessageKey::StorageNotCalculatedYet)).size(theme::body_s(tokens, sc)),
         );
         breakdown = breakdown.push(components::secondary(
-            tokens,
+            &state.snora_tokens,
             tr(locale, MessageKey::StorageCalculateNow),
             Some(Message::StorageMeasurementRequested),
         ));
@@ -1244,7 +1260,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         breakdown = breakdown
             .push(text(fmt_storage_total(locale, total_bytes)).size(theme::title_s(tokens, sc)));
         breakdown = breakdown.push(components::secondary(
-            tokens,
+            &state.snora_tokens,
             tr(locale, MessageKey::StorageCalculateNow),
             Some(Message::StorageMeasurementRequested),
         ));
@@ -1319,22 +1335,22 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
         text(tr(locale, MessageKey::StorageSafeCleanupHeading)).size(theme::body_s(tokens, sc)),
         hrow![
             components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::StorageClearSnippets),
                 Some(Message::CleanSnippets)
             ),
             components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::StorageClearSearchCache),
                 Some(Message::CleanSearchCache)
             ),
             components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::StorageClearTemporaryExtraction),
                 Some(Message::CleanTemporaryExtraction)
             ),
             components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::StorageRemoveReplacedStaleIndexes),
                 Some(Message::RemoveReplacedStaleIndexes)
             ),
@@ -1350,13 +1366,13 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     // only has an index to rebuild when a model is actually configured.
     if state.show_advanced {
         let mut rebuild_row = hrow![components::secondary(
-            tokens,
+            &state.snora_tokens,
             tr(locale, MessageKey::StorageRebuildKeywordButton),
             Some(Message::AskDeleteKeywordIndex)
         )];
         if state.capability != SearchCapability::KeywordOnly {
             rebuild_row = rebuild_row.push(components::secondary(
-                tokens,
+                &state.snora_tokens,
                 tr(locale, MessageKey::StorageRebuildVectorButton),
                 Some(Message::AskDeleteVectorIndex),
             ));
@@ -1367,7 +1383,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
     content = content
         .push(text(tr(locale, MessageKey::StorageDangerHeading)).size(theme::body_s(tokens, sc)));
     content = content.push(components::danger(
-        tokens,
+        &state.snora_tokens,
         tr(locale, MessageKey::StorageResetCatalog),
         Some(Message::AskResetCatalog),
     ));

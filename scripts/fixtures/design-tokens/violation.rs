@@ -29,5 +29,7 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     }
     // Category 10 (Task 118 follow-up): a button that takes iced's default fill.
     let l = button(text(label)).on_press(m);
+    // Category 11 (Task 136 §1.4): an unscaled theme::body( text size.
+    let unscaled_label = text(label).size(theme::body(tokens));
     a
 }

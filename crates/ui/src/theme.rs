@@ -197,12 +197,34 @@ fn scale(px: Pixels, s: TextScale) -> Pixels {
 // and the search row's folder chip (`components::removable_chip`, called
 // from `views::search_location_row`).
 
+/// Tokens scaled for every snora-drawn surface (Task 136). The *only* type
+/// a `components`/`shell`/`views` function that hands tokens to a
+/// `snora::design`/`snora::design::widget` constructor which renders its
+/// own text accepts -- a plain `&Tokens` (the base, unscaled bundle) no
+/// longer compiles there, which is the whole point: passing the wrong
+/// bundle was previously a silent, correctly-typed mistake (Review 313
+/// §2.2).
+///
+/// Its only public constructor is [`snora_tokens`], so every instance is
+/// genuinely scaled; nothing elsewhere in this crate can build one from a
+/// base `Tokens` by hand. `Deref`s to `Tokens` for the scale-independent
+/// fields (palette, spacing, radius, focus) those same widgets also read.
+#[derive(Debug, Clone)]
+pub struct SnoraTokens(Tokens);
+
+impl std::ops::Deref for SnoraTokens {
+    type Target = Tokens;
+    fn deref(&self) -> &Tokens {
+        &self.0
+    }
+}
+
 /// A copy of `tokens` with every [`snora::design::Tokens::typography`] role's
 /// size multiplied by `s`; line heights are untouched (already a multiplier
 /// of the size, not a size themselves). Pass this, never the base tokens, to
 /// any `snora::design` widget that renders its own text -- see the rule
 /// above.
-pub fn snora_tokens(tokens: &Tokens, s: TextScale) -> Tokens {
+pub fn snora_tokens(tokens: &Tokens, s: TextScale) -> SnoraTokens {
     let mut scaled = tokens.clone();
     let f = s.factor();
     scaled.typography.body.size *= f;
@@ -211,7 +233,7 @@ pub fn snora_tokens(tokens: &Tokens, s: TextScale) -> Tokens {
     scaled.typography.title.size *= f;
     scaled.typography.heading.size *= f;
     scaled.typography.display.size *= f;
-    scaled
+    SnoraTokens(scaled)
 }
 
 /// Page / section heading size (unscaled).

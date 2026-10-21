@@ -138,6 +138,7 @@ fn a_suppressed_heading_reserves_no_row() {
     let card = |heading: &str| {
         crate::components::result_card(
             &tokens,
+            crate::theme::TextScale::default(),
             crate::i18n::Locale::En,
             "My document.md".to_string(),
             "/docs/My document.md".to_string(),

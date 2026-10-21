@@ -38,5 +38,8 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     if candidate != state.theme {
         log(candidate);
     }
+    // Task 136 §1.4: an unscaled helper used for something that is not a
+    // rendered text size, allow-listed with a reason on the line.
+    let icon_glyph_metric = theme::body(tokens).0; // not a text size: glyph advance width, not drawn text
     a
 }

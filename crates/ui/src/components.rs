@@ -308,11 +308,18 @@ pub fn tone_icon(tone: Tone) -> char {
 ///
 /// The label is mandatory; tone is supplementary. Passing an empty label is
 /// a logic error and is caught by the `status_badge_label_invariant` test.
-pub fn status_badge<'a>(tokens: &Tokens, label: &str, tone: Tone) -> Element<'a, Message> {
+pub fn status_badge<'a>(
+    tokens: &Tokens,
+    sc: crate::theme::TextScale,
+    label: &str,
+    tone: Tone,
+) -> Element<'a, Message> {
     debug_assert!(!label.is_empty(), "status_badge: label must not be empty");
+    let size = theme::meta_s(tokens, sc);
     hrow![
-        icon_text(tone_icon(tone), theme::meta(tokens).0),
-        text(label.to_string()).size(theme::meta(tokens)),
+        // Task 136 §1.2: a glyph beside a label scales with the label.
+        icon_text(tone_icon(tone), size.0),
+        text(label.to_string()).size(size),
     ]
     .spacing(tokens.spacing.xs)
     .into()
@@ -381,6 +388,7 @@ pub(crate) fn selection_ring_style(tokens: &Tokens) -> iced::widget::container::
 #[allow(clippy::too_many_arguments)]
 pub fn result_card<'a>(
     tokens: &'a Tokens,
+    sc: crate::theme::TextScale,
     locale: Locale,
     title: String,
     display_path: String,
@@ -404,9 +412,9 @@ pub fn result_card<'a>(
 
     // HANDOFF-038: the trust badge sits beside the match badges, first
     // because it is the one that says whether to rely on the result.
-    let trust_badge = result_trust_badge(tokens, trust, locale);
+    let trust_badge = result_trust_badge(tokens, sc, trust, locale);
     let badge_row: Element<'a, Message> = if shown_badges.is_empty() && trust_badge.is_none() {
-        text("").size(theme::meta(tokens)).into()
+        text("").size(theme::meta_s(tokens, sc)).into()
     } else {
         // no-wrap: badges, not controls
         let mut r = hrow![].spacing(tokens.spacing.sm);
@@ -415,7 +423,7 @@ pub fn result_card<'a>(
         }
         for b in shown_badges {
             let label = tr(locale, badge_message_key(b));
-            r = r.push(status_badge(tokens, label, badge_tone(b)));
+            r = r.push(status_badge(tokens, sc, label, badge_tone(b)));
         }
         r.into()
     };
@@ -423,7 +431,7 @@ pub fn result_card<'a>(
     // A result's title -- often a document heading, not guaranteed to fit
     // one line at the card's bounded width (Task 028 §2).
     let title_text = text(title)
-        .size(theme::body(tokens))
+        .size(theme::body_s(tokens, sc))
         .line_height(theme::body_lh(tokens));
     // Task 072: the selected result's non-colour marker (RFC-034 §5.2) is a
     // lucide chevron, not a text "▶".
@@ -431,7 +439,11 @@ pub fn result_card<'a>(
         // Top-aligned: the title can wrap, and the marker belongs beside its
         // first line.
         row![
-            icon_text(char::from(lucide::ChevronRight), theme::body(tokens).0),
+            // Task 136 §1.2: the chevron beside the title scales with it.
+            icon_text(
+                char::from(lucide::ChevronRight),
+                theme::body_s(tokens, sc).0
+            ),
             title_text,
         ]
         .spacing(tokens.spacing.xs)
@@ -444,10 +456,13 @@ pub fn result_card<'a>(
     // Review 306 §3.2: an empty heading renders no row at all, not an empty
     // `text("")` -- that still reserved a line's height, leaving a blank
     // gap between the path and the snippet.
-    let mut body = column![title_line, text(display_path).size(theme::meta(tokens))]
-        .spacing(tokens.spacing.xs);
+    let mut body = column![
+        title_line,
+        text(display_path).size(theme::meta_s(tokens, sc))
+    ]
+    .spacing(tokens.spacing.xs);
     if !heading_str.is_empty() {
-        body = body.push(text(heading_str).size(theme::meta(tokens)));
+        body = body.push(text(heading_str).size(theme::meta_s(tokens, sc)));
     }
     body = body.push(
         // A genuine excerpt, meant to give context across more than one
@@ -455,7 +470,7 @@ pub fn result_card<'a>(
         // the engine built it: cutting again here would be a second rule
         // on top of the engine's one (Task 128, `orbok_search::snippet`).
         text(snippet)
-            .size(theme::meta(tokens))
+            .size(theme::meta_s(tokens, sc))
             .line_height(theme::meta_lh(tokens)),
     );
     body = body.push(badge_row);
@@ -481,6 +496,11 @@ pub fn result_card<'a>(
 #[allow(clippy::too_many_arguments)]
 pub fn source_card<'a>(
     tokens: &'a Tokens,
+    sc: crate::theme::TextScale,
+    // Task 136: `secondary`/`danger` below render their own label text from
+    // the tokens they are given, so this card needs the scaled bundle too,
+    // beside the base `tokens` its own hand-drawn text scales from.
+    snora_tokens: &'a theme::SnoraTokens,
     display_name: String,
     display_path: String,
     summary: String,
@@ -502,23 +522,23 @@ pub fn source_card<'a>(
     remove_label: &'a str,
     on_remove: Message,
 ) -> Element<'a, Message> {
-    let mut actions =
-        hrow![text(status_label.to_string()).size(theme::meta(tokens))].spacing(tokens.spacing.sm);
+    let mut actions = hrow![text(status_label.to_string()).size(theme::meta_s(tokens, sc))]
+        .spacing(tokens.spacing.sm);
     if let Some((label, on_refresh)) = refresh_action {
-        actions = actions.push(secondary(tokens, label, Some(on_refresh)));
+        actions = actions.push(secondary(snora_tokens, label, Some(on_refresh)));
     }
-    actions = actions.push(danger(tokens, remove_label, Some(on_remove)));
+    actions = actions.push(danger(snora_tokens, remove_label, Some(on_remove)));
 
     let mut body = column![
-        text(display_name).size(theme::body(tokens)),
-        text(display_path).size(theme::meta(tokens)),
-        text(summary).size(theme::meta(tokens)),
+        text(display_name).size(theme::body_s(tokens, sc)),
+        text(display_path).size(theme::meta_s(tokens, sc)),
+        text(summary).size(theme::meta_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.xs);
     if let Some(detail) = detail {
         body = body.push(
             text(detail.to_string())
-                .size(theme::meta(tokens))
+                .size(theme::meta_s(tokens, sc))
                 .line_height(theme::meta_lh(tokens)),
         );
     }
@@ -532,12 +552,17 @@ pub fn source_card<'a>(
 }
 
 /// An indexing health stat cell: label above a large number.
-pub fn health_cell<'a>(tokens: &'a Tokens, label: &str, value: u64) -> Element<'a, Message> {
+pub fn health_cell<'a>(
+    tokens: &'a Tokens,
+    sc: crate::theme::TextScale,
+    label: &str,
+    value: u64,
+) -> Element<'a, Message> {
     card::surface(
         tokens,
         column![
-            text(label.to_string()).size(theme::meta(tokens)),
-            text(value.to_string()).size(theme::title(tokens)),
+            text(label.to_string()).size(theme::meta_s(tokens, sc)),
+            text(value.to_string()).size(theme::title_s(tokens, sc)),
         ]
         .spacing(tokens.spacing.xs),
     )
@@ -549,16 +574,32 @@ pub fn health_cell<'a>(tokens: &'a Tokens, label: &str, value: u64) -> Element<'
 // roles (primary/secondary/ghost/danger). Each accepts Option<Message> so
 // the caller uses the same call site whether the action is enabled or not —
 // snora renders a visually disabled button when `on_press` is `None`.
+//
+// Task 136: `snora::design::button::*_maybe` reads its own label's text size
+// from the tokens it is given (`style::text::label_size`), so these take
+// `&SnoraTokens` -- a base `&Tokens` no longer compiles here.
 
-pub fn primary<'a>(tokens: &Tokens, label: &str, on: Option<Message>) -> Element<'a, Message> {
+pub fn primary<'a>(
+    tokens: &theme::SnoraTokens,
+    label: &str,
+    on: Option<Message>,
+) -> Element<'a, Message> {
     snora::design::button::primary_maybe(tokens, label, on)
 }
 
-pub fn secondary<'a>(tokens: &Tokens, label: &str, on: Option<Message>) -> Element<'a, Message> {
+pub fn secondary<'a>(
+    tokens: &theme::SnoraTokens,
+    label: &str,
+    on: Option<Message>,
+) -> Element<'a, Message> {
     snora::design::button::secondary_maybe(tokens, label, on)
 }
 
-pub fn ghost<'a>(tokens: &Tokens, label: &str, on: Option<Message>) -> Element<'a, Message> {
+pub fn ghost<'a>(
+    tokens: &theme::SnoraTokens,
+    label: &str,
+    on: Option<Message>,
+) -> Element<'a, Message> {
     snora::design::button::ghost_maybe(tokens, label, on)
 }
 
@@ -567,28 +608,32 @@ pub fn ghost<'a>(tokens: &Tokens, label: &str, on: Option<Message>) -> Element<'
 /// Uses the `danger_text on danger` contrast-verified pair. Every destructive
 /// action in orbok-ui must go through this function — never a neutral button
 /// (RFC-033 §6, rule 2).
-pub fn danger<'a>(tokens: &Tokens, label: &str, on: Option<Message>) -> Element<'a, Message> {
+pub fn danger<'a>(
+    tokens: &theme::SnoraTokens,
+    label: &str,
+    on: Option<Message>,
+) -> Element<'a, Message> {
     snora::design::button::danger_maybe(tokens, label, on)
 }
 
 /// An icon + label button using the primary style.
 ///
-/// `icon_size` is a glyph dimension, not a typography role — stays explicit.
-/// Uses the snora primary style function directly since `button::primary_maybe`
-/// takes `impl Into<String>`; icon content is an `Element`, not a string.
+/// Task 136 §1.2: the glyph is not a typography role, but it sits beside a
+/// label and scales with it -- no separate `icon_size` parameter for a
+/// caller to forget to scale. Uses the snora primary style function
+/// directly since `button::primary_maybe` takes `impl Into<String>`; icon
+/// content is an `Element`, not a string.
 pub fn icon_primary<'a>(
     tokens: &'a Tokens,
+    sc: crate::theme::TextScale,
     glyph: char,
-    icon_size: f32,
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
     let t = tokens.clone();
-    let content = hrow![
-        icon_text(glyph, icon_size),
-        text(label.to_string()).size(theme::body(tokens)),
-    ]
-    .spacing(tokens.spacing.sm);
+    let size = theme::body_s(tokens, sc);
+    let content = hrow![icon_text(glyph, size.0), text(label.to_string()).size(size),]
+        .spacing(tokens.spacing.sm);
     let mut b = button(content)
         .padding(control_padding(tokens))
         .style(move |_theme, status| btn_style::primary(&t, status));
@@ -599,19 +644,20 @@ pub fn icon_primary<'a>(
 }
 
 /// An icon + label button using the secondary style.
+///
+/// Task 136 §1.2: see [`icon_primary`]'s own comment -- the glyph scales
+/// with the label beside it.
 pub fn icon_secondary<'a>(
     tokens: &'a Tokens,
+    sc: crate::theme::TextScale,
     glyph: char,
-    icon_size: f32,
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
     let t = tokens.clone();
-    let content = hrow![
-        icon_text(glyph, icon_size),
-        text(label.to_string()).size(theme::body(tokens)),
-    ]
-    .spacing(tokens.spacing.sm);
+    let size = theme::body_s(tokens, sc);
+    let content = hrow![icon_text(glyph, size.0), text(label.to_string()).size(size),]
+        .spacing(tokens.spacing.sm);
     let mut b = button(content)
         .padding(control_padding(tokens))
         .style(move |_theme, status| btn_style::secondary(&t, status));
@@ -624,8 +670,11 @@ pub fn icon_secondary<'a>(
 // ── Progress ──────────────────────────────────────────────────────────────
 
 /// An indexing-job progress row. Pass `None` for indeterminate state.
+///
+/// Task 136: `progress::row` renders its own label from the tokens it is
+/// given (`style::text::body_size`), so this takes `&SnoraTokens`.
 pub fn job_progress<'a>(
-    tokens: &'a Tokens,
+    tokens: &'a theme::SnoraTokens,
     label: &'a str,
     value: Option<f32>,
 ) -> Element<'a, Message> {
@@ -637,12 +686,13 @@ pub fn job_progress<'a>(
 /// A row of token-padded buttons for safe cleanup actions (secondary style).
 pub fn cleanup_row<'a>(
     tokens: &Tokens,
+    sc: crate::theme::TextScale,
     actions: impl IntoIterator<Item = (&'a str, Message)>,
 ) -> Element<'a, Message> {
     let mut r = hrow![].spacing(tokens.spacing.sm);
     for (label, msg) in actions {
         r = r.push(
-            button(text(label.to_string()).size(theme::body(tokens)))
+            button(text(label.to_string()).size(theme::body_s(tokens, sc)))
                 .padding(Padding::from([tokens.spacing.md, tokens.spacing.lg]))
                 .style(outlined(tokens))
                 .on_press(msg),
@@ -652,8 +702,11 @@ pub fn cleanup_row<'a>(
 }
 
 /// A danger action button with standard token padding (for danger-zone rows).
+///
+/// Task 136: `button::danger_maybe` renders its own label text from the
+/// tokens it is given, so this takes `&SnoraTokens`.
 pub fn danger_action<'a>(
-    tokens: &Tokens,
+    tokens: &theme::SnoraTokens,
     label: &str,
     on: Option<Message>,
 ) -> Element<'a, Message> {
@@ -695,8 +748,13 @@ pub fn filter_chip<'a>(
 /// least 24 × 24 (WCAG 2.5.8), which the tests measure.
 ///
 /// The tooltip is a visual tooltip, not an accessible name (snora, Task 121).
+///
+/// Task 136: `chip::removable_with_tooltip` renders its own label text from
+/// the tokens it is given, so this takes `&SnoraTokens` -- tightened from a
+/// base `&Tokens` that every call site already happened to pass correctly
+/// (Task 127), so a future call cannot regress it silently.
 pub fn removable_chip<'a>(
-    tokens: &Tokens,
+    tokens: &theme::SnoraTokens,
     label: &str,
     on_change: Option<Message>,
     on_clear: Message,
@@ -767,6 +825,7 @@ pub fn trust_tone(state: orbok_search::ResultTrustState) -> Tone {
 /// rendering entirely — keeping clean results uncluttered (RFC-038 §6.1).
 pub fn result_trust_badge<'a>(
     tokens: &Tokens,
+    sc: crate::theme::TextScale,
     state: orbok_search::ResultTrustState,
     locale: crate::i18n::Locale,
 ) -> Option<Element<'a, Message>> {
@@ -780,5 +839,5 @@ pub fn result_trust_badge<'a>(
         ResultTrustState::PartlyPrepared => MessageKey::TrustPartlyPrepared,
         ResultTrustState::CannotOpen => MessageKey::TrustCannotOpen,
     };
-    Some(status_badge(tokens, tr(locale, key), trust_tone(state)))
+    Some(status_badge(tokens, sc, tr(locale, key), trust_tone(state)))
 }

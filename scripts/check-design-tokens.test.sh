@@ -34,8 +34,8 @@ fi
 
 violation_out="$(check_tokens scripts/fixtures/design-tokens/violation.rs || true)"
 violation_findings="$(echo "$violation_out" | grep -c "^design-token gate:" || true)"
-check "violation fixture produces exactly ten findings (one per category)" "10" "$violation_findings"
-if [ "$violation_findings" != "10" ]; then
+check "violation fixture produces exactly eleven findings (one per category)" "11" "$violation_findings"
+if [ "$violation_findings" != "11" ]; then
   echo "$violation_out" >&2
 fi
 
@@ -49,7 +49,8 @@ for expected_substr in \
   'row![ without .align_y(' \
   'holds a control but does not wrap' \
   "press is decided by comparing with the current value" \
-  "a button has no .style(..)"
+  "a button has no .style(..)" \
+  "unscaled theme::body(/meta(/title(/heading("
 do
   if echo "$violation_out" | grep -qF "$expected_substr"; then
     echo "ok: violation fixture reports $expected_substr"

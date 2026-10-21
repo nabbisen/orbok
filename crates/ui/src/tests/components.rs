@@ -40,6 +40,7 @@ fn status_badge_label_and_icon_invariant() {
         );
     }
     let tokens = Tokens::light();
+    let sc = crate::theme::TextScale::default();
     for badge in [
         MatchBadge::SourceStale,
         MatchBadge::Keyword,
@@ -47,7 +48,7 @@ fn status_badge_label_and_icon_invariant() {
         MatchBadge::Reranked,
     ] {
         let label = crate::i18n::tr(Locale::En, crate::components::badge_message_key(badge));
-        let _ = status_badge(&tokens, label, badge_tone(badge));
+        let _ = status_badge(&tokens, sc, label, badge_tone(badge));
     }
 }
 
@@ -55,9 +56,11 @@ fn status_badge_label_and_icon_invariant() {
 #[test]
 fn component_smoke_result_card() {
     let tokens = Tokens::light();
+    let sc = crate::theme::TextScale::default();
     // Normal unselected card.
     let _ = crate::components::result_card(
         &tokens,
+        sc,
         Locale::En,
         "My document.md".to_string(),
         "/home/user/My document.md".to_string(),
@@ -72,6 +75,7 @@ fn component_smoke_result_card() {
     // Selected card with no heading and empty badges.
     let _ = crate::components::result_card(
         &tokens,
+        sc,
         Locale::Ja,
         "selected.pdf".to_string(),
         "/docs/selected.pdf".to_string(),
@@ -101,8 +105,12 @@ fn cover() -> iced::Element<'static, Message> {
 #[test]
 fn component_smoke_source_card() {
     let tokens = Tokens::light();
+    let sc = crate::theme::TextScale::default();
+    let snora_tokens = crate::theme::snora_tokens(&tokens, sc);
     let _ = crate::components::source_card(
         &tokens,
+        sc,
+        &snora_tokens,
         "Documents".to_string(),
         "/home/user/Documents".to_string(),
         "812 indexed · 0 stale".to_string(),
@@ -121,6 +129,8 @@ fn component_smoke_source_card() {
     // selected case above -- "both cards, not one" (Task 031 §2).
     let _ = crate::components::source_card(
         &tokens,
+        sc,
+        &snora_tokens,
         "Documents".to_string(),
         "/home/user/Documents".to_string(),
         "812 indexed · 0 stale".to_string(),
@@ -135,6 +145,8 @@ fn component_smoke_source_card() {
     // RFC-037 §17.3 (Task 035): the Missing state's detail line.
     let _ = crate::components::source_card(
         &tokens,
+        sc,
+        &snora_tokens,
         "Reports".to_string(),
         "/home/user/Reports".to_string(),
         "0 indexed".to_string(),
@@ -154,26 +166,31 @@ fn component_smoke_source_card() {
 #[test]
 fn component_smoke_health_cell() {
     let tokens = Tokens::light();
-    let _ = crate::components::health_cell(&tokens, "Indexed", 812);
-    let _ = crate::components::health_cell(&tokens, "Failed", 0);
+    let sc = crate::theme::TextScale::default();
+    let _ = crate::components::health_cell(&tokens, sc, "Indexed", 812);
+    let _ = crate::components::health_cell(&tokens, sc, "Failed", 0);
 }
 
 #[test]
 fn component_smoke_action_buttons() {
     let tokens = Tokens::light();
-    let _ = crate::components::primary(&tokens, "Save", Some(Message::ToggleAdvanced));
-    let _ = crate::components::primary(&tokens, "Save", None);
-    let _ = crate::components::secondary(&tokens, "Cancel", Some(Message::ClearNotice));
-    let _ = crate::components::ghost(&tokens, "Details", None);
-    let _ = crate::components::danger(&tokens, "Delete", Some(Message::AskResetCatalog));
-    let _ = crate::components::danger(&tokens, "Delete", None);
+    let sc = crate::theme::TextScale::default();
+    let snora_tokens = crate::theme::snora_tokens(&tokens, sc);
+    let _ = crate::components::primary(&snora_tokens, "Save", Some(Message::ToggleAdvanced));
+    let _ = crate::components::primary(&snora_tokens, "Save", None);
+    let _ = crate::components::secondary(&snora_tokens, "Cancel", Some(Message::ClearNotice));
+    let _ = crate::components::ghost(&snora_tokens, "Details", None);
+    let _ = crate::components::danger(&snora_tokens, "Delete", Some(Message::AskResetCatalog));
+    let _ = crate::components::danger(&snora_tokens, "Delete", None);
 }
 
 #[test]
 fn component_smoke_progress() {
     let tokens = Tokens::light();
-    let _ = crate::components::job_progress(&tokens, "Indexing...", Some(0.42));
-    let _ = crate::components::job_progress(&tokens, "Queued", None);
+    let sc = crate::theme::TextScale::default();
+    let snora_tokens = crate::theme::snora_tokens(&tokens, sc);
+    let _ = crate::components::job_progress(&snora_tokens, "Indexing...", Some(0.42));
+    let _ = crate::components::job_progress(&snora_tokens, "Queued", None);
 }
 
 // Task 031 §4: the guard against hardcoding, the same shape as Task 028's

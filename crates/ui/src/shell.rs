@@ -301,8 +301,13 @@ fn tab_action_to_msg(action: snora::TabAction<ViewId>) -> Message {
     Message::Switch(id)
 }
 
+/// Task 136: `app_tab_bar` derives its own label geometry from the tokens
+/// it is given, so this takes `&SnoraTokens` -- tightened from a base
+/// `&Tokens` every call site already happened to pass correctly (Task
+/// 127), so deref coercion alone cannot let a future call quietly regress
+/// it.
 fn build_tab_bar(
-    tokens: &snora::design::Tokens,
+    tokens: &crate::theme::SnoraTokens,
     tabs: Vec<Tab<ViewId>>,
     active: ViewId,
 ) -> Element<'static, Message> {

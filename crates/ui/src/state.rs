@@ -720,7 +720,7 @@ pub struct AppState {
     /// `tokens` already is (Task 127, Review 305 §2). Derived, always: the two
     /// `Message` arms that can change either input recompute it from
     /// `theme::snora_tokens(&self.tokens, self.text_scale)`, never by hand.
-    pub snora_tokens: snora::design::Tokens,
+    pub snora_tokens: crate::theme::SnoraTokens,
     /// The user's selected theme. `System` is resolved to a concrete preset at
     /// startup in `orbok`; `tokens` always holds the resolved bundle.
     pub theme: crate::theme::Theme,
@@ -1828,10 +1828,6 @@ impl AppState {
         }
     }
 
-    /// Abandon the model-setup wizard, falling back to keyword-only
-    /// search. Shared by `Message::WizardSkip` (the mouse-only button)
-    /// and `Message::DismissOverlay` (RFC-034 §2.1.1 / Task 024's
-    /// keyboard equivalent) so the two can never drift apart.
     /// Show `notice`, with the retry its action button sends, or none.
     fn raise_notice(&mut self, notice: UserNotice, action: Option<Box<Message>>) {
         // Task 064: an info notice never replaces an unresolved problem; it is
@@ -2123,6 +2119,10 @@ impl AppState {
         action
     }
 
+    /// Abandon the model-setup wizard, falling back to keyword-only
+    /// search. Shared by `Message::WizardSkip` (the mouse-only button)
+    /// and `Message::DismissOverlay` (RFC-034 §2.1.1 / Task 024's
+    /// keyboard equivalent) so the two can never drift apart.
     fn skip_wizard(&mut self) {
         self.capability = SearchCapability::KeywordOnly;
         // Task 053: a Conceptual selection made while a model was active

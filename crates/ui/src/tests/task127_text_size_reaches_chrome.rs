@@ -146,6 +146,56 @@ fn orbok_s_own_text_is_scaled_once_not_twice() {
     );
 }
 
+/// Review 313 §2.2 / Task 136 §2: the same one-scale-applied-once property
+/// as `orbok_s_own_text_is_scaled_once_not_twice` above, proved through an
+/// actual component's real render path (the result card's title) rather
+/// than `theme.rs`'s own helpers in isolation -- this guards `result_card`'s
+/// own wiring specifically, so a future change that passed it the
+/// already-scaled `snora_tokens` as its base `tokens` *and* kept `sc` would
+/// be caught here even though `body_s`'s own arithmetic is innocent.
+#[test]
+fn the_result_cards_title_scales_once_not_twice() {
+    let _guard = iced_test_guard();
+    use crate::components::result_card;
+    use crate::state::Message;
+    let tokens = Theme::Light.tokens();
+
+    let card_at = |sc: TextScale| {
+        result_card(
+            &tokens,
+            sc,
+            crate::i18n::Locale::En,
+            "A result title".to_string(),
+            "/docs/a-result-title.md".to_string(),
+            String::new(),
+            "a snippet".to_string(),
+            &[],
+            orbok_search::ResultTrustState::Ready,
+            false,
+            false,
+            Message::SelectResult(0),
+        )
+    };
+    let height_at = |sc: TextScale| -> f32 {
+        let mut ui = simulator(card_at(sc));
+        ui.find("A result title")
+            .expect("the title text must render")
+            .bounds()
+            .height
+    };
+
+    let default = height_at(TextScale::Default);
+    let larger = height_at(TextScale::Larger);
+    let ratio = larger / default;
+    assert!(
+        (ratio - TextScale::Larger.factor()).abs() < 0.05,
+        "the result card's title must grow by exactly {}x at Larger, got {ratio:.3}x -- \
+         {:.2}x would mean the scale was applied twice",
+        TextScale::Larger.factor(),
+        TextScale::Larger.factor() * TextScale::Larger.factor(),
+    );
+}
+
 /// `snora_tokens` scales every role's size and leaves line heights alone.
 #[test]
 fn snora_tokens_scales_size_only() {

@@ -101,6 +101,23 @@ check_tokens() {
     echo "$unwrapped"
     flag "hrow![ holds a control but does not wrap — add .wrap() after .spacing(..) (or // no-wrap: reason) ($(echo "$unwrapped" | grep -c .) found)"
   fi
+
+  # Task 136 §1.4: an unscaled theme::body(/meta(/title(/heading( call in a
+  # view/component module is (almost always) a text size that silently
+  # ignores the user's TextScale preference -- the _s siblings
+  # (body_s/meta_s/title_s/heading_s) exist for exactly this. A line that
+  # genuinely needs the unscaled value for something that is not a
+  # rendered text size says why with a trailing `// not a text size:
+  # <reason>` comment, the same escape-hatch shape `// no-wrap:` already
+  # uses elsewhere in this gate. The word-boundary-free `\(` after each
+  # name already excludes the `_s`/`_lh` siblings (`body_lh(` does not
+  # match `body\(`), so no further exclusion is needed.
+  local unscaled_text
+  unscaled_text=$(grep -nE 'theme::(body|meta|title|heading)\(' "${files[@]}" | grep -v '// not a text size:' || true)
+  if [ -n "$unscaled_text" ]; then
+    echo "$unscaled_text"
+    flag "unscaled theme::body(/meta(/title(/heading( — use its _s scaled sibling, or say why not with '// not a text size: <reason>' ($(echo "$unscaled_text" | grep -c .) found)"
+  fi
 }
 
 # presses_decided_by_comparison <file...> — prints file:line for each
