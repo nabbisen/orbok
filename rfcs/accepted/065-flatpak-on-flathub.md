@@ -5,6 +5,7 @@
 **Title:** orbok on Flathub\
 **Status:** Accepted\
 **Accepted:** 2026-10-21 by the project owner, with the application ID (§3.1) and the summary line (§3.4)\
+**Amended:** 2026-10-27, Amendment 1 (§9): Flathub's generative-AI policy; the AUR comes first\
 **Target milestone:** Linux distribution (the release after 0.29.0)\
 **Date:** 2026-10-21\
 **Related RFCs:** RFC-017 (packaging and distribution); RFC-051 (the reviewed source archive); RFC-064 (every file belongs to one folder); RFC-041 (plain language)\
@@ -23,9 +24,9 @@ of any Linux distribution can install it from their software center.
 - **The sandbox is narrow:** read-only access to the home folder, network
   only for the optional model download, and nothing else beyond what a
   windowed app needs.
-- **Releases reach Flathub the way they reach the AUR.** The release
-  workflow prepares the update and pauses for the owner's approval.
-  Flathub's own pull request is then the second, visible check.
+- **The owner writes and submits everything Flathub reads** (the
+  manifest, the pull requests, the disclosure and the exception request),
+  as Flathub's policy requires (Amendment 1, §9).
 
 ## 2. Motivation
 
@@ -87,9 +88,10 @@ of any Linux distribution can install it from their software center.
 - **Runtime:** the current `org.freedesktop.Platform`, with the
   `rust-stable` SDK extension. It must meet the MSRV (1.91); check the
   extension's version, do not assume it.
-- **The manifest is kept in this repository** (`packaging/flatpak/`), next
-  to the AUR recipes. The Flathub repository receives a copy with each
-  release, so this repository stays the reviewed source of truth.
+- **The Flathub manifest is the owner's, written by hand,** and lives in
+  `flathub/io.github.nabbisen.orbok` (Amendment 1). This repository keeps
+  only a **test manifest** (`packaging/flatpak/test/`), marked as never
+  submitted, used to build orbok locally in the sandbox and measure §5.
 
 ### 3.4 The metadata (AppStream)
 
@@ -108,31 +110,27 @@ The summary, new copy (AppStream wants about 35 characters), is
 **approved by the owner, 2026-10-21:** "Search your documents by meaning" /
 「意味から文書を検索」. Every other sentence is already approved.
 
-### 3.5 Publishing
+### 3.5 Publishing (Amendment 1)
 
-1. **First submission:** a pull request to `flathub/flathub`, opened by the
-   owner from their GitHub account (Owner Task 006). Flathub's reviewers
-   check the sandbox and the metadata. After acceptance, Flathub creates
-   `flathub/io.github.nabbisen.orbok` and gives the owner maintainer
-   access.
-2. **Each release:** the release workflow (Task 133) gains two jobs, on
-   the same pattern as the AUR's:
-   - **`flatpak-check`:** builds the manifest from the release archive with
-     `flatpak-builder` in CI, runs `flatpak-builder-lint` on the manifest
-     and the metadata, and starts orbok's `--version` and `--check`
-     inside the sandbox;
-   - **`flathub-publish`:** `environment: flathub`, with the owner as
-     required reviewer, the same guard as `aur` (it refuses without a
-     reviewer rule). It opens a pull request on
-     `flathub/io.github.nabbisen.orbok` with the new manifest and
-     `cargo-sources.json`. Flathub builds that pull request, and **the
-     owner merges it.**
+1. **First submission:** the owner writes the manifest and opens the pull
+   request to `flathub/flathub` from their GitHub account (Owner Task 006),
+   with:
+   - **the disclosure:** development is AI-assisted, and every change is
+     verified by the owner;
+   - **the `home:ro` exception request,** in the owner's own words.
 
-   Flathub's external-data checker cannot regenerate
-   `cargo-sources.json`, so it is not used.
-3. **The token** that opens the pull request is fine-grained, scoped to
-   `flathub/io.github.nabbisen.orbok` only, and stored only in the
-   `flathub` environment.
+   After acceptance, Flathub creates `flathub/io.github.nabbisen.orbok`
+   and gives the owner maintainer access.
+2. **Each release:** the owner updates the manifest (version, `sha256`)
+   and regenerates `cargo-sources.json` with `flatpak-cargo-generator`
+   (a deterministic tool, run by the owner), then opens the pull request.
+   Flathub builds it, and the owner merges it.
+3. **No CI job opens, writes or automates a Flathub pull request,** and no
+   Flathub token is stored anywhere. Flathub's policy forbids AI tools
+   from automating submissions, and this project's automation is
+   AI-written.
+4. **The architect's release cycle tells the owner** when a release is
+   ready for Flathub, with the archive's URL and checksum.
 
 ## 4. What does not change
 
@@ -198,8 +196,45 @@ The summary, new copy (AppStream wants about 35 characters), is
    exactly §3.2's permissions.
 2. Every item in §5 is measured inside the sandbox and recorded, and any
    behaviour change it required is reviewed.
-3. A release reaches Flathub only through the owner's approval and merge.
+3. A release reaches Flathub only through a manifest and a pull request
+   the owner wrote, and the owner's merge.
 4. The AUR packages and the Flatpak share one ID, desktop entry and icon
    set.
 5. The user guide has a Flathub install line, written after the first
    publication.
+
+## 9. Amendment 1 — 2026-10-27: Flathub's generative-AI policy, and the AUR first
+
+**Why.** Task 137 stopped at Flathub's linter (Review 315). Flathub's
+requirements, read at the source on 2026-10-21, say:
+- manifests "must not contain AI-generated or AI-assisted content";
+- AI tools "must not open or automate" submission pull requests;
+- AI-generated material in the app must be disclosed, and reviewers
+  decide;
+- the `home` exception is not granted "if there are signs of LLM usage in
+  the software or in the exception PR".
+
+The policy is not applied retroactively, which is why apps already on
+Flathub include AI-assisted ones. Exceptions for mature, well-maintained
+projects are reported, without published criteria.
+
+**The owner's position.** What counts is who confirms and verifies the
+work, and the owner does both for every change. Read-only home access is
+not negotiable: without it, orbok cannot work properly (folders added by
+path, prepared again later). So portal-only access is out.
+
+**Decided (the owner, 2026-10-27):**
+1. **The AUR comes first.** The Flathub work does not delay the AUR's
+   first publication or any AUR fix.
+2. **Measure, then submit.** The dev team measures §5 on a local test
+   build with `home:ro`, which is never submitted. The owner then writes
+   and submits the manifest, the disclosure and the `home:ro` exception
+   request (§3.5).
+3. **If Flathub declines,** the Flatpak goes out from this project's own
+   repository instead: a signed Flatpak repository on GitHub Pages, with
+   `home:ro`, outside Flathub's review. That would be a further
+   amendment.
+
+**Superseded:** §1's third bullet, §3.3's last bullet, §3.5 (the
+`flathub-publish` job, the `flathub` environment and its token), and
+§8.3. Everything else stands.
