@@ -159,6 +159,7 @@ jobs:
           cp target/release/orbok "$stage/orbok"
           cp packaging/linux/io.github.nabbisen.orbok.desktop "$stage/io.github.nabbisen.orbok.desktop"
           cp -r packaging/linux/icons/hicolor "$stage/icons/hicolor"
+          cp packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml "$stage/io.github.nabbisen.orbok.metainfo.xml"
           cp LICENSE NOTICE "$stage/"
           tar -czf "$stage.tar.gz" "$stage"
           sha256sum "$stage.tar.gz" >"$stage.tar.gz.sha256"

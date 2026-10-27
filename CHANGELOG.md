@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when it changes while orbok is open; before, it always used the light theme
   (Task 138).
 
+### Added
+
+- AppStream metadata, so software centers can describe orbok.
+
 ## [0.29.0] — 2026-10-21
 
 ### Security

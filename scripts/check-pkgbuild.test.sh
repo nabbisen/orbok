@@ -21,10 +21,11 @@ check() {
 
 reset_fixture() {
   rm -rf "$tmp/work"
-  mkdir -p "$tmp/work/packaging/linux/orbok-bin" "$tmp/work/scripts" "$tmp/work/crates/app/src"
+  mkdir -p "$tmp/work/packaging/linux/orbok-bin" "$tmp/work/packaging/flatpak" "$tmp/work/scripts" "$tmp/work/crates/app/src"
   cp "$repo_root/Cargo.toml" "$tmp/work/Cargo.toml"
   cp "$repo_root/packaging/linux/PKGBUILD" "$tmp/work/packaging/linux/PKGBUILD"
   cp "$repo_root/packaging/linux/orbok-bin/PKGBUILD" "$tmp/work/packaging/linux/orbok-bin/PKGBUILD"
+  cp "$repo_root/packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml" "$tmp/work/packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml"
   cp "$repo_root/crates/app/src/main.rs" "$tmp/work/crates/app/src/main.rs"
   cp "${GATE_UNDER_TEST:-$repo_root/scripts/check-pkgbuild.sh}" "$tmp/work/scripts/check-pkgbuild.sh"
 }
@@ -107,6 +108,33 @@ reset_fixture
 sed -i 's/pub(crate) const APP_ID: &str = "[^"]*"/pub(crate) const APP_ID: \&str = "io.github.nabbisen.orbok2"/' "$tmp/work/crates/app/src/main.rs"
 check "(j) a PKGBUILD not matching a changed APP_ID fails" "fail" "$(run_gate)"
 expect_message "does not install io.github.nabbisen.orbok2.desktop"
+
+# (k) A PKGBUILD that installs a stale, hand-copied metainfo name (not
+#     APP_ID) fails.
+reset_fixture
+sed -i 's/io\.github\.nabbisen\.orbok\.metainfo\.xml/orbok.metainfo.xml/g' "$tmp/work/packaging/linux/PKGBUILD"
+check "(k) a stale metainfo name fails" "fail" "$(run_gate)"
+expect_message "packaging/linux/PKGBUILD does not install io.github.nabbisen.orbok.metainfo.xml"
+
+# (l) A missing metainfo file fails outright.
+reset_fixture
+rm "$tmp/work/packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml"
+check "(l) a missing metainfo file fails" "fail" "$(run_gate)"
+expect_message "missing packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml"
+
+# (m) The metainfo's own <id> not matching APP_ID fails.
+reset_fixture
+sed -i 's#<id>io.github.nabbisen.orbok</id>#<id>io.github.nabbisen.orbok2</id>#' "$tmp/work/packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml"
+check "(m) a mismatched metainfo <id> fails" "fail" "$(run_gate)"
+expect_message "<id>io.github.nabbisen.orbok2</id> does not match APP_ID"
+
+# (n) A workspace version bump with no matching <release version=...> entry
+#     in the metainfo fails, the same drift check (d) makes for the
+#     PKGBUILDs.
+reset_fixture
+sed -i -E '/^\[workspace.package\]/,/^\[/ s/^version = "[^"]*"/version = "9.9.9"/' "$tmp/work/Cargo.toml"
+check "(n) a workspace version bump with no matching metainfo release fails" "fail" "$(run_gate)"
+expect_message "does not match the workspace version 9.9.9"
 
 # Self-check: a gutted gate must fail this self-test, proving the 'fail'
 # results above were the real gate firing, not this harness.

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Part of orbok's own source. Software centers that read AppStream (the
+  AUR packages install this file too) use it to describe orbok. The
+  Flathub manifest that builds from a copy of this file is maintained
+  separately by the project owner, outside this repository.
+
+  The summary and description are the owner's own approved copy
+  (packaging/windows/store-listing/{en-us,ja-jp}/listing.md), adding no
+  new copy. No sentence in the Store listing's "Description" section is
+  Windows-only, so none was left out.
+
+  No update_contact, and no email address anywhere, per the owner's
+  privacy rule.
+-->
+<component type="desktop-application">
+  <id>io.github.nabbisen.orbok</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>orbok</name>
+  <summary>Search your documents by meaning</summary>
+  <summary xml:lang="ja">意味から文書を検索</summary>
+  <description>
+    <p>
+      orbok searches the documents on your own computer, in the folders
+      you choose.
+    </p>
+    <p xml:lang="ja">
+      orbok は、あなたが選んだフォルダーの中の文書を、お使いのコンピューター
+      の上で検索するアプリです。
+    </p>
+    <p>
+      Search by meaning. Ask in your own words, such as "how much will
+      the trip cost", and orbok finds the passage about the budget even
+      when it never uses those words. It works across many languages,
+      and can find a document written in one language from a question
+      asked in another. Keyword search works too, for names, codes and
+      exact phrases.
+    </p>
+    <p xml:lang="ja">
+      意味による検索。「旅行の費用はどのくらい」のように普段の言葉でたずねる
+      と、その言葉が使われていない予算の記述も見つけます。多くの言語に対応
+      し、ある言語での質問から別の言語で書かれた文書を見つけることもできま
+      す。名前やコード、決まった言い回しには、キーワード検索も使えます。
+    </p>
+    <p>
+      Private by design. Your documents are processed on your computer
+      only. orbok has no account, no cloud service, no analytics and no
+      advertising. Search by meaning uses a local AI model. orbok asks
+      before downloading it (about 490 MB, once, from Hugging Face), and
+      sends nothing about your files or searches when it does. Keyword
+      search works without it.
+    </p>
+    <p xml:lang="ja">
+      プライバシーを最初から。文書はお使いのコンピューター上でのみ処理され
+      ます。アカウント、クラウドサービス、利用状況の収集、広告はありませ
+      ん。意味による検索にはローカル AI モデルを使います。ダウンロード
+      （約 490 MB、Hugging Face から 1 回だけ）の前には必ず確認し、その際
+      にもファイルや検索の内容は一切送信しません。キーワード検索はモデル
+      なしで使えます。
+    </p>
+    <p>
+      Your files stay yours. orbok reads only the folders you add, and
+      never scans your whole computer. Your files are never changed or
+      deleted. Before adding a folder that may contain private files,
+      such as SSH keys or application data, orbok asks first. Files your
+      system keeps hidden are skipped.
+    </p>
+    <p xml:lang="ja">
+      ファイルはあなたのもの。orbok が読むのは、追加したフォルダーだけで
+      す。コンピューター全体を自動的にスキャンすることはありません。ファ
+      イルは変更も削除もされません。SSH 鍵やアプリのデータなど、機密ファ
+      イルを含む可能性のあるフォルダーを追加するときは、先に確認します。
+      システムが隠しているファイルは対象外です。
+    </p>
+    <p>Clear and calm to use:</p>
+    <p xml:lang="ja">わかりやすく、落ち着いて使える:</p>
+    <ul>
+      <li>Choose whether a folder includes its subfolders.</li>
+      <li xml:lang="ja">フォルダーごとに、サブフォルダーを含めるかどうかを選べます。</li>
+      <li>Watch preparation as it happens.</li>
+      <li xml:lang="ja">準備の進み具合がその場でわかります。</li>
+      <li>
+        Results show which file and section each match is in, and say
+        plainly when a file has changed since orbok prepared it.
+      </li>
+      <li xml:lang="ja">
+        検索結果には一致したファイルと見出しが表示され、orbok が準備した
+        後にファイルが変更された場合はそのことをはっきり伝えます。
+      </li>
+      <li>
+        Light, dark and two high-contrast themes, three text sizes,
+        reduced motion, and keyboard shortcuts.
+      </li>
+      <li xml:lang="ja">
+        ライト、ダーク、2 種類のハイコントラストのテーマ、3 段階の文字サ
+        イズ、モーションを減らす設定、キーボードショートカットに対応して
+        います。
+      </li>
+    </ul>
+    <p>
+      Storage you can see. orbok shows what it stores and lets you clean
+      up temporary data safely.
+    </p>
+    <p xml:lang="ja">
+      保存しているものが見える。orbok が保存しているデータを表示し、一時
+      的なデータを安全に整理できます。
+    </p>
+    <p>
+      Supported files include text, Markdown, PDF, Word (.docx), HTML,
+      CSV and common source-code files. The app itself is in English and
+      Japanese.
+    </p>
+    <p xml:lang="ja">
+      対応ファイル：テキスト、Markdown、PDF、Word（.docx）、HTML、CSV、主
+      なソースコード。アプリの表示言語は日本語と英語です。
+    </p>
+    <p>orbok is open source under the Apache License 2.0.</p>
+    <p xml:lang="ja">orbok は Apache License 2.0 のオープンソースソフトウェアです。</p>
+  </description>
+  <launchable type="desktop-id">io.github.nabbisen.orbok.desktop</launchable>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>search</keyword>
+    <keyword>documents</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/nabbisen/orbok</url>
+  <url type="bugtracker">https://github.com/nabbisen/orbok/issues</url>
+  <url type="vcs-browser">https://github.com/nabbisen/orbok</url>
+  <developer id="io.github.nabbisen">
+    <name>nabbisen</name>
+  </developer>
+  <!-- None. Every IARC question in the Store listing is answered "No"
+       (packaging/windows/store-listing/en-us/listing.md), the same absence
+       of concerning content this empty rating states. -->
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <caption>Ask in your own words. orbok finds the budget section, and a Japanese document too.</caption>
+      <caption xml:lang="ja">普段の言葉でたずねると、予算の記述を見つけます。英語の文書も対象です。</caption>
+      <image>https://raw.githubusercontent.com/nabbisen/orbok/0.29.0/packaging/windows/store-listing/en-us/screenshots/en-1-search-by-meaning.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>"How do I look after my bike" finds the bicycle checklist, in the dark theme.</caption>
+      <caption xml:lang="ja">日本語の質問から英語の自転車メンテナンスの文書を見つけます（ダークテーマ）。</caption>
+      <image>https://raw.githubusercontent.com/nabbisen/orbok/0.29.0/packaging/windows/store-listing/en-us/screenshots/en-2-search-dark-theme.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Your documents are processed on your computer only. Themes, text size and reduced motion.</caption>
+      <caption xml:lang="ja">文書はお使いのコンピューター上でのみ処理されます。テーマ、文字サイズ、モーションの軽減。</caption>
+      <image>https://raw.githubusercontent.com/nabbisen/orbok/0.29.0/packaging/windows/store-listing/en-us/screenshots/en-3-settings-privacy.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Search by meaning is optional. Nothing is uploaded, and keyword search works without it.</caption>
+      <caption xml:lang="ja">意味による検索は任意です。アップロードは一切なく、キーワード検索はそのまま使えます。</caption>
+      <image>https://raw.githubusercontent.com/nabbisen/orbok/0.29.0/packaging/windows/store-listing/en-us/screenshots/en-4-first-run.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.29.0" date="2026-10-21">
+      <description>
+        <ul>
+          <li>Security: updated the TLS and ZIP libraries, and removed an unused, orphaned dependency, for advisories reported against them.</li>
+          <li>Folders you added can be chosen directly when searching, instead of only opening the system's folder picker.</li>
+          <li>Fixed: a folder picker that never opens no longer blocks searching.</li>
+          <li>Fixed: the text size setting now reaches buttons, the search box, search results and folder cards.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.28.0" date="2026-10-03">
+      <description>
+        <ul>
+          <li>New app icon.</li>
+          <li>Search results are cleaner: each heading appears once, and excerpts end at a whole word.</li>
+          <li>Text size now applies to tabs, tooltips and notices.</li>
+          <li>Fixed: the language you choose is now remembered.</li>
+          <li>The folder list keeps its order.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.27.0" date="2026-09-29">
+      <description>
+        <p>A folder can leave out its subfolders, and an upgrade keeps your settings without preparing anything again.</p>
+      </description>
+    </release>
+  </releases>
+</component>

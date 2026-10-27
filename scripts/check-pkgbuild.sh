@@ -13,17 +13,19 @@
 # and written only into the copy it produces, never into these files (see
 # each PKGBUILD's own header comment).
 #
-# Also checks (Task 137 §1.3) that both templates' package() installs the
-# desktop entry and icons under orbok's one application ID
+# Also checks that both templates' package() installs the desktop entry,
+# icons and AppStream metadata under orbok's one application ID
 # (`crate::APP_ID` in `crates/app/src/main.rs`), never a hand-copied
-# literal that could drift from it.
+# literal that could drift from it; and that the AppStream metadata's own
+# `<id>` and newest `<release version=...>` agree with APP_ID and the
+# workspace version.
 #
 # Run from the release checklist, not CI: a PKGBUILD only needs
 # re-checking when a release is about to be cut or published, not on every
 # push.
 #
 # Overridable for the self-test: CARGO_TOML, PKGBUILDS (space-separated),
-# APP_ID_SOURCE.
+# APP_ID_SOURCE, METAINFO.
 set -euo pipefail
 
 cargo_toml="${CARGO_TOML:-Cargo.toml}"
@@ -48,7 +50,29 @@ app_id="$(sed -n 's/.*pub(crate) const APP_ID: &str = "\([^"]*\)".*/\1/p' "$app_
 [ -n "$app_id" ] \
   || { echo "check-pkgbuild: no 'pub(crate) const APP_ID: &str = \"...\"' line in $app_id_source" >&2; exit 1; }
 
+metainfo="${METAINFO:-packaging/flatpak/$app_id.metainfo.xml}"
+
 fail=0
+
+if [ ! -f "$metainfo" ]; then
+  echo "check-pkgbuild: missing $metainfo" >&2
+  fail=1
+else
+  metainfo_id="$(sed -n 's#.*<id>\([^<]*\)</id>.*#\1#p' "$metainfo" | head -1)"
+  if [ "$metainfo_id" != "$app_id" ]; then
+    echo "check-pkgbuild: $metainfo's <id>$metainfo_id</id> does not match APP_ID ($app_id_source: $app_id)" >&2
+    fail=1
+  fi
+  metainfo_release="$(grep -m1 -oE '<release version="[^"]+"' "$metainfo" | sed -E 's/.*version="([^"]+)"/\1/')"
+  if [ -z "$metainfo_release" ]; then
+    echo "check-pkgbuild: $metainfo has no '<release version=\"...\">' line" >&2
+    fail=1
+  elif [ "$metainfo_release" != "$workspace_version" ]; then
+    echo "check-pkgbuild: $metainfo's newest <release version=\"$metainfo_release\"> does not match the workspace version $workspace_version -- add a release entry in the release commit" >&2
+    fail=1
+  fi
+  [ "$fail" -eq 0 ] && echo "check-pkgbuild: ok: $metainfo (id $metainfo_id, newest release $metainfo_release)"
+fi
 for pkgbuild in "${pkgbuilds[@]}"; do
   if [ ! -f "$pkgbuild" ]; then
     echo "check-pkgbuild: missing $pkgbuild" >&2
@@ -81,6 +105,11 @@ for pkgbuild in "${pkgbuilds[@]}"; do
   fi
   if ! grep -qF "$app_id.png" "$pkgbuild"; then
     echo "check-pkgbuild: $pkgbuild does not install $app_id.png icons -- every hicolor icon must be named by APP_ID ($app_id_source), not a hand-copied literal" >&2
+    fail=1
+    file_fail=1
+  fi
+  if ! grep -qF "$app_id.metainfo.xml" "$pkgbuild"; then
+    echo "check-pkgbuild: $pkgbuild does not install $app_id.metainfo.xml -- the AppStream metadata must be named by APP_ID ($app_id_source), not a hand-copied literal" >&2
     fail=1
     file_fail=1
   fi
