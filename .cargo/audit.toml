@@ -91,4 +91,62 @@ ignore = [
     # without the other -- check both on every ashpd/rfd/iced upgrade, not
     # just one of them.
     "RUSTSEC-2026-0370", "RUSTSEC-2026-0371", "RUSTSEC-2026-0372",
+
+    # ── zstd / zstd-safe — thirteen advisories published 2026-10-16
+    #    (four "vulnerability", nine "unsound"), all in the same batch
+    #    (zstd-rs PR #384). Pulled by `localcache` 0.21.4 (`zstd::encode_all`/
+    #    `zstd::decode_all`, `src/serialization.rs` -- confirmed by reading
+    #    that source, not assumed), the only two zstd calls anywhere in
+    #    localcache's own tree (`grep -rn "zstd::" src/`).
+    #
+    #    Each advisory's own affected-function list names a narrower API
+    #    `encode_all`/`decode_all` never reaches, checked individually
+    #    against localcache 0.21.4's actual two call sites, both the
+    #    simplest one-shot form (a fresh context per call, used once, never
+    #    reused, never mixed with streaming, no custom parameters, no
+    #    dictionary, no `seekable` feature):
+    #
+    #      - RUSTSEC-2026-0391: `Encoder::with_context`/`Decoder::with_context`
+    #        -- the raw, explicitly-context-reusing stream API; `encode_all`/
+    #        `decode_all` construct a fresh `Encoder`/`Decoder` via `::new`,
+    #        never `with_context`.
+    #      - RUSTSEC-2026-0396, -0398, -0405: `Seekable`/`AdvancedSeekable`/
+    #        `SeekableCStream` -- the `seekable` feature's own API, unused.
+    #      - RUSTSEC-2026-0403: `DCtx::decompress_stream` -- the advisory's
+    #        own text states plainly: "`zstd::stream::read::Decoder`,
+    #        `zstd::decode_all` and the bulk API are not affected."
+    #      - RUSTSEC-2026-0395: `CCtx::set_parameter` -- no custom parameter
+    #        is ever set.
+    #      - RUSTSEC-2026-0397: `OutBuffer::around_pos` -- manual
+    #        buffer-position streaming, not `io::copy` through `Read`/`Write`
+    #        (what `copy_encode`/`copy_decode` actually use).
+    #      - RUSTSEC-2026-0399, -0400: one-shot calls
+    #        (`init_using_cdict`/`init_using_ddict`,
+    #        `decompress`/`decompress_using_dict`/`_ddict`) left open against
+    #        a *later, reused* streaming call on the same context -- there is
+    #        no later call; each context is used exactly once, then dropped.
+    #      - RUSTSEC-2026-0401: `train_from_buffer` -- no dictionary
+    #        training anywhere in localcache.
+    #      - RUSTSEC-2026-0402, -0404: `CCtx`/`DCtx::try_clone` -- never
+    #        called.
+    #      - RUSTSEC-2026-0406: `CCtx::load_dictionary`/`ref_cdict` -- no
+    #        dictionary.
+    #
+    #    Cannot be resolved locally: the patched `zstd-safe` line is
+    #    `>= 8.2.0`, which needs `zstd >= 0.14.3` (confirmed against
+    #    crates.io's own dependency API: `zstd` 0.14.3 requires
+    #    `zstd-safe = "^8.2.0"`) -- but localcache 0.21.4, the latest
+    #    published release, still pins `zstd = "0.13"`
+    #    (`[dependencies.zstd] version = "0.13"` in its own Cargo.toml), so
+    #    `cargo update -p zstd` moves nothing within that constraint. The
+    #    fix must come from localcache.
+    #
+    # REMOVE WHEN: localcache publishes a release requiring `zstd >= 0.14.3`.
+    # Re-check on every localcache upgrade; this entry must not outlive that
+    # release.
+    "RUSTSEC-2026-0391", "RUSTSEC-2026-0395", "RUSTSEC-2026-0396",
+    "RUSTSEC-2026-0397", "RUSTSEC-2026-0398", "RUSTSEC-2026-0399",
+    "RUSTSEC-2026-0400", "RUSTSEC-2026-0401", "RUSTSEC-2026-0402",
+    "RUSTSEC-2026-0403", "RUSTSEC-2026-0404", "RUSTSEC-2026-0405",
+    "RUSTSEC-2026-0406",
 ]

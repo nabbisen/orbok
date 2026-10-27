@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Updated tokio (1.54.1), for an advisory about `AsyncFd::new` and related
+  constructors violating I/O safety.
+- Updated zstd-sys (2.1.2), for an advisory about a WebAssembly allocator
+  shim corrupting memory on allocation failure.
+- Updated clipboard-win (5.4.3): 5.4.1 was yanked.
+- Updated localcache (0.21.4).
+
 ### Changed
 
 - **On Linux, the menu entry's file name changed** to
