@@ -1,0 +1,72 @@
+#
+# Test manifest for local sandbox measurement only. Never submitted to
+# Flathub. The Flathub manifest is maintained by the owner.
+#
+# Built only by build.sh, which assembles this file, a freshly archived
+# copy of the committed tree, and a freshly generated cargo-sources.json
+# together in a scratch directory before invoking flatpak-builder there --
+# see build.sh's own comments. `path:`/bare filenames below resolve
+# relative to wherever this file ends up, by flatpak-builder's own rule,
+# not to this file's committed location.
+#
+app-id: io.github.nabbisen.orbok
+# The current org.freedesktop.Platform branch, checked to meet the MSRV
+# (1.91) before being pinned here -- not assumed. The rust-stable SDK
+# extension on this branch carries rustc 1.98.0.
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: orbok
+# Exactly RFC-065 §3.2, verbatim -- nothing more. The same six permissions
+# the real Flathub manifest the owner maintains separately must also use.
+finish-args:
+  - --filesystem=home:ro
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+modules:
+  - name: orbok
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/orbok/cargo
+        CARGO_NET_OFFLINE: "true"
+    # No CPU-specific flags -- the same baseline-x86-64 rule
+    # release-packages.yml's own linux-binary job already follows. No
+    # RUSTFLAGS/CARGO_BUILD_RUSTFLAGS is set anywhere in this environment,
+    # so cargo's own default applies.
+    build-commands:
+      - cargo build --release --locked --offline -p orbok
+      - install -Dm755 target/release/orbok /app/bin/orbok
+      - install -Dm644 packaging/linux/io.github.nabbisen.orbok.desktop
+        /app/share/applications/io.github.nabbisen.orbok.desktop
+      - install -Dm644
+        packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml
+        /app/share/metainfo/io.github.nabbisen.orbok.metainfo.xml
+      - |
+        set -e
+        for size in 16 32 48 64 128 256 512; do
+          install -Dm644 \
+            "packaging/linux/icons/hicolor/${size}x${size}/apps/io.github.nabbisen.orbok.png" \
+            "/app/share/icons/hicolor/${size}x${size}/apps/io.github.nabbisen.orbok.png"
+        done
+      - install -Dm644 LICENSE
+        /app/share/licenses/orbok/LICENSE
+      - install -Dm644 NOTICE
+        /app/share/licenses/orbok/NOTICE
+    sources:
+      # build.sh's own `git archive` of the committed tree -- never a
+      # download, never a binary built on a developer machine distributed
+      # anywhere (this build is local-only and never submitted). The
+      # archive's own entries have no top-level directory (matching
+      # RFC-051's reviewed source archive shape), so strip-components is
+      # 0, not flatpak-builder's own default of 1.
+      - type: archive
+        path: orbok-src.tar.gz
+        strip-components: 0
+      - cargo-sources.json

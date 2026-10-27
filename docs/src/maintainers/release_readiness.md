@@ -655,6 +655,79 @@ architect: the "Install" section of `docs/src/users/` naming
 actually live (Tasks 129 §3.4, 133 §3) — a doc claiming an install method
 that does not exist yet would be worse than no doc at all.
 
+## Publish to Flathub (RFC-065, Amendment 1)
+
+**Entirely by the owner, by hand — no automation opens, writes or touches
+a Flathub pull request.** Flathub's own policy forbids AI tools from
+automating a submission, and this project's automation is AI-written
+(RFC-065 §9), so nothing in `.github/workflows/` or `scripts/` does any
+part of this.
+
+**What the dev team's work gives the owner, each release:**
+
+- the AppStream metadata, already part of orbok's own source
+  (`packaging/flatpak/io.github.nabbisen.orbok.metainfo.xml`), kept in
+  step with the workspace version and installed by both AUR packages —
+  nothing further to write by hand for the metadata itself;
+- the sandbox measurements (RFC-065 §5), each in a review request under
+  `.git-exclude/review-request/`, confirming `home:ro` and the rest of
+  §3.2's permissions actually work;
+- from the architect, each time a release is ready for Flathub: the
+  GitHub release's archive URL and its `sha256` — the same two values
+  `aur-prepare.sh` already consumes for the AUR.
+
+**What the owner writes and submits, themselves:**
+
+- the real Flathub manifest (kept in `flathub/io.github.nabbisen.orbok`,
+  not in this repository) — the archive URL and `sha256` above, plus
+  `cargo-sources.json`, regenerated each release with
+  `flatpak-cargo-generator` the same way `packaging/flatpak/test/build.sh`
+  does (below);
+- the pull request to `flathub/flathub` for the first submission, and to
+  `flathub/io.github.nabbisen.orbok` for every release after;
+- the disclosure Flathub's policy requires (development is AI-assisted,
+  every change verified by the owner) and the `home:ro` exception
+  request, both in the owner's own words;
+- the merge, once Flathub's own build of the pull request passes.
+
+### Running the local test build (never submitted)
+
+`packaging/flatpak/test/` holds a manifest marked, in its own first
+comment, as test-only and never submitted — used to measure RFC-065 §5
+locally, with the real `home:ro` permission, without touching Flathub at
+all.
+
+**Prerequisites, once:** `flatpak` and `flatpak-builder`; the
+`org.freedesktop.Platform`/`org.freedesktop.Sdk` runtime and the
+`org.freedesktop.Sdk.Extension.rust-stable` extension at the manifest's
+own `runtime-version`, installed from Flathub
+(`flatpak install flathub org.freedesktop.Platform//<version>
+org.freedesktop.Sdk//<version> org.freedesktop.Sdk.Extension.rust-stable//<version>`);
+Python 3.9+ (for `flatpak-cargo-generator`'s own venv, which
+`build.sh` creates itself — no system-wide `pip` install needed).
+
+```sh
+./packaging/flatpak/test/build.sh
+```
+
+Refuses a dirty or unpushed working tree, and refuses if
+`io.github.nabbisen.orbok` is already installed (user) or
+`~/.var/app/io.github.nabbisen.orbok/` already exists — run `clean.sh`
+first if either is left over from an earlier session. Builds entirely
+from a `git archive` of the committed tree and a freshly generated
+`cargo-sources.json`, in a scratch directory removed on exit; nothing is
+written outside that directory and the user's own Flatpak installation.
+Installs the result with `flatpak --user` and prints its permissions —
+compare against RFC-065 §3.2's six, exactly.
+
+**After measuring, clean up:**
+
+```sh
+./packaging/flatpak/test/clean.sh
+```
+
+Uninstalls the test app and removes its own data folder.
+
 ## Publish to the Microsoft Store (by hand, on Windows)
 
 **Manual — no `store-submit.yml`-style workflow exists for this project**
