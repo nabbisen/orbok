@@ -3,7 +3,8 @@
 **Project:** orbok\
 **RFC:** 066\
 **Title:** Easy to Read, Easy to Use\
-**Status:** Proposed\
+**Status:** Accepted\
+**Accepted:** 2026-11-04 by the project owner, with "Largest" / 「最大」 (§3.2)\
 **Target milestone:** accessibility for older users (after the AUR publication and Task 139)\
 **Date:** 2026-11-04\
 **Related RFCs:** RFC-032 (tokens and themes); RFC-034 (accessibility conformance); RFC-035 (inclusive design, text size); RFC-041 (plain language)\
@@ -76,7 +77,7 @@ From snora 0.53's tokens and orbok's own screenshots:
   | Larger / 特大 | ×1.5 | 24 px |
   | Largest / 最大 | ×2.0 | 32 px |
 
-  "Largest" / 「最大」 is **new copy, for the owner's approval.** The saved
+  "Largest" / 「最大」 is new copy, **approved by the owner 2026-11-04.** The saved
   values `large` and `larger` keep their names. Their factors grow (1.15 →
   1.25, 1.3 → 1.5), in the direction the user chose. The CHANGELOG says
   so.
@@ -145,8 +146,8 @@ From snora 0.53's tokens and orbok's own screenshots:
   adds a control to a page, except the first screen's two choices, which
   replace a trip to Settings.
 - **The high-contrast themes,** already 10–21 : 1.
-- **Copy,** except "Largest" / 「最大」 and the placeholder instruction that
-  becomes a label (same words).
+- **Copy,** except "Largest" / 「最大」 (approved) and the placeholder
+  instruction that becomes a label (same words).
 
 ## 5. What orbok asks of snora (one letter)
 

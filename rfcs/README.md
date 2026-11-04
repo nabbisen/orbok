@@ -82,6 +82,7 @@ may start" a checked state rather than an implicit convention.
 | 061 | [Catalog Access and the Application Boundary](accepted/061-catalog-access-and-application-boundary.md) | Accepted 2026-09-02 — open: all slices landed; criteria 3, 7, 8, 9 evidenced. Criterion 4's user-visible notice does not exist for an unopenable catalog (fails before the event loop), criterion 6's benchmark still rebuilds the model per search, and 1, 2, 5 have no test (Task 052) |
 | 064 | [What a Folder Covers](done/064-what-a-folder-covers.md) | Implemented (unreleased) — closed 2026-09-25 (Tasks 113 and 114): every file belongs to one folder (nested adds refused, folders above added ones combine them, search in a subfolder registers nothing, overlaps combined at startup) and a folder covers "This folder and subfolders" or "This folder only", chosen on its card. Closure record: [closures/064](closures/064-what-a-folder-covers.md) |
 | 065 | [orbok on Flathub](accepted/065-flatpak-on-flathub.md) | Accepted 2026-10-21, amended 2026-10-27 (Flathub's AI policy: the owner writes and submits the manifest and PRs; the AUR comes first) — open: the shared app ID is done (Task 137 §1); the sandbox measurements and the owner's submission remain |
+| 066 | [Easy to Read, Easy to Use](accepted/066-easy-to-read-easy-to-use.md) | Accepted 2026-11-04 — open: nothing implemented yet (Task 140; snora letter for the labelled sidebar, target size, link underline and a 7:1 accent). For older users: named sidebar items, text size up to ×2.0 on the first screen, 7:1 text contrast, 44 px controls, underlined links, semibold headings |
 
 ## Proposed
 
@@ -93,7 +94,6 @@ may start" a checked state rather than an implicit convention.
 | 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
 | 010 | [Optional Local Reranking](proposed/010-optional-local-reranking.md) | **Parked** since v0.4.0 — moved out of `done/` 2026-09-04 (RFC-060 §8, Task 040); the only implementation scored by passage length, not relevance, and had no production caller. Reopen when the p99 search-latency gate is met with one embedding model |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
-| 066 | [Easy to Read, Easy to Use](proposed/066-easy-to-read-easy-to-use.md) | Proposed 2026-11-04 — for older users: named sidebar items, text size up to ×2.0 offered on the first screen, 7:1 contrast for every rendered text (placeholders included), 44 px controls, underlined links, semibold headings; four asks to snora |
 
 
 **2026-09-01 — external audit; dispositions applied 2026-09-02.** An independent
