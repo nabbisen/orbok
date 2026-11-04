@@ -93,6 +93,7 @@ may start" a checked state rather than an implicit convention.
 | 028 | [Plugin Extractor Architecture](proposed/028-plugin-extractor-architecture.md) | **Parked** — interface only; the extensibility stance is undecided |
 | 010 | [Optional Local Reranking](proposed/010-optional-local-reranking.md) | **Parked** since v0.4.0 — moved out of `done/` 2026-09-04 (RFC-060 §8, Task 040); the only implementation scored by passage length, not relevance, and had no production caller. Reopen when the p99 search-latency gate is met with one embedding model |
 | 047 | [v1.0.0 RC Evidence Collection and Review](proposed/047-v1-rc-evidence-collection.md) | Proposed |
+| 066 | [Easy to Read, Easy to Use](proposed/066-easy-to-read-easy-to-use.md) | Proposed 2026-11-04 — for older users: named sidebar items, text size up to ×2.0 offered on the first screen, 7:1 contrast for every rendered text (placeholders included), 44 px controls, underlined links, semibold headings; four asks to snora |
 
 
 **2026-09-01 — external audit; dispositions applied 2026-09-02.** An independent
