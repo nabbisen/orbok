@@ -188,6 +188,7 @@ declare -A EXCLUDED_FILES=(
   ["crates/app/src/lib.rs"]="crate root: module declarations only, verified zero display text"
   ["crates/app/src/model_flow.rs"]="developer-facing tracing/log/panic/assert strings and inline #[cfg(test)] module content only, verified in full"
   ["crates/app/src/physical_identity.rs"]="io::Error Display strings only — a backend error type never rendered raw to users (RFC-052 §3), verified in full"
+  ["crates/app/src/portal_path.rs"]="developer-facing tracing::debug! log strings (plus a #[cfg(test)] panic!) only, verified in full; resolve_portal_path never fails the pick -- an unresolved document-portal path is kept silently (Task 139)"
   ["crates/app/src/rfc059_cache_measurement.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as runtime_isolation_tests.rs; its println! output is a one-time developer measurement pass, not user-facing"
   ["crates/app/src/rfc060_duplication_measurement.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as rfc059_cache_measurement.rs; its println! output is a one-time developer measurement pass, not user-facing"
   ["crates/app/src/rfc061_acceptance_tests.rs"]="test-only module (#[cfg(test)] in main.rs), not production code -- same exemption as runtime_isolation_tests.rs"
