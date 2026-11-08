@@ -397,3 +397,40 @@ fn task079_purge_cost_at_20000_retired_rows() {
     println!("{ROWS} retired rows: purge_retired_namespaces took {elapsed:?}, removed {removed}");
     assert_eq!(removed, ROWS as u64);
 }
+
+// Task 141 §1.3: localcache 0.21.5/0.21.6 moved to `zstd ^0.14` from
+// `zstd ^0.13` (Review 317 §2's thirteen advisories; the patched
+// `zstd-safe` line needs it). The actual compatibility question this
+// upgrade raises is narrower than localcache's whole `CacheEngine` API:
+// its SQLite schema and path-keyed lookup are unchanged by this bump --
+// only the compressed payload BLOB's own zstd container could, in
+// principle, stop decoding. A `CacheEngine` round trip through two
+// different dependency-pinned builds cannot run inside one `cargo test`
+// (Cargo resolves one `zstd` version per build), and a binary SQLite
+// fixture keyed by an absolute canonical path would not survive a
+// different checkout location or OS (Windows paths cannot match a
+// Linux-generated one) -- so this tests the frame directly instead,
+// which is the one thing that could actually have changed.
+//
+// `ZSTD_013_FRAME` is a real frame, not a hand-built one: produced once
+// by an isolated scratch crate pinned to `zstd = "0.13"` (the same
+// version localcache 0.21.4 resolves), encoding `PLAINTEXT` at the
+// default level, with that crate's own `zstd::decode_all` confirming it
+// round-trips before these bytes were copied out. Red first: before
+// `zstd` was a dev-dependency here at all, this did not compile; wrong
+// bytes decode to the wrong text or fail outright (mutation-tested below
+// by this same reasoning against a corrupted copy of the frame, not
+// committed).
+const PLAINTEXT: &[u8] = b"task141 round-trip fixture: localcache 0.21.4, zstd 0.13";
+const ZSTD_013_FRAME: &[u8] = &[
+    40, 181, 47, 253, 0, 88, 193, 1, 0, 116, 97, 115, 107, 49, 52, 49, 32, 114, 111, 117, 110, 100,
+    45, 116, 114, 105, 112, 32, 102, 105, 120, 116, 117, 114, 101, 58, 32, 108, 111, 99, 97, 108,
+    99, 97, 99, 104, 101, 32, 48, 46, 50, 49, 46, 52, 44, 32, 122, 115, 116, 100, 32, 48, 46, 49,
+    51,
+];
+
+#[test]
+fn a_frame_zstd_013_wrote_still_decodes_under_014() {
+    let decoded = zstd::decode_all(ZSTD_013_FRAME).unwrap();
+    assert_eq!(decoded, PLAINTEXT);
+}

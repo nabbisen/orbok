@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated zstd-sys (2.1.2), for an advisory about a WebAssembly allocator
   shim corrupting memory on allocation failure.
 - Updated clipboard-win (5.4.3): 5.4.1 was yanked.
-- Updated localcache (0.21.4).
+- Updated localcache (0.21.6). The compression library the cache uses
+  (zstd) is updated along with it, which clears thirteen advisories that
+  did not affect how orbok used it.
 
 ### Changed
 

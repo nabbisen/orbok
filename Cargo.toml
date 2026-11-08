@@ -132,6 +132,12 @@ uuid                        = { version = "1", features = ["v7"] }
 dirs                        = "6"
 zip                         = { version = "9", default-features = false, features = ["deflate"] }
 lopdf                       = "0.42"
+# Task 141 §1: orbok-cache's own dev-dependency, to assert the zstd frame
+# `localcache` wrote with 0.13.x still decodes under the 0.14.x line
+# localcache 0.21.5+ requires. Already in the dependency tree transitively
+# through localcache -- adds no new audit surface, and no orbok crate
+# calls zstd directly outside this one test.
+zstd                        = "0.14"
 futures                     = "0.3"
 fs4                         = "1.1"
 reqwest                     = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
