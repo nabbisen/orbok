@@ -448,11 +448,27 @@ mod tests {
     /// instantly, the same mechanism `router`'s `a_slow_user_still_gets_
     /// their_folder` already uses the other way (letting a real wait
     /// through unbounded).
+    ///
+    /// Review 318 §4's follow-up: a regression here must **fail** this
+    /// test, not hang the CI job until its own time limit. Wrapped in an
+    /// outer `tokio::time::timeout` with its own 10-second budget, far
+    /// past the 2-second deadline this is actually testing -- under
+    /// `start_paused`, virtual time still advances through a real wait,
+    /// but only when some pending timer exists to advance *to*. With the
+    /// deadline removed (no timer anywhere inside), this outer one is the
+    /// only timer left, so time advances to it and the `timeout` call
+    /// fails cleanly, confirmed by removing `host_paths_within_deadline`'s
+    /// race again and seeing this fail (not hang) before restoring it.
     #[cfg(target_os = "linux")]
     #[tokio::test(start_paused = true)]
     async fn a_portal_that_never_answers_keeps_the_document_path() {
         let path = PathBuf::from("/run/flatpak/doc/abc123/Documents");
-        let resolved = resolve_portal_path(path.clone(), &NeverResolves).await;
+        let resolved = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            resolve_portal_path(path.clone(), &NeverResolves),
+        )
+        .await
+        .expect("resolve_portal_path must return well within its own 2-second deadline");
         assert_eq!(resolved, path);
     }
 
