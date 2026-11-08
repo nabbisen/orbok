@@ -168,6 +168,10 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDeliveryConnection => {
             "The download could not connect. Check your connection and try again."
         }
+        ModelDeliveryTrustPolicy => {
+            "The download was stopped because it was sent to a server orbok does not trust. \
+             A newer version of orbok may fix this."
+        }
         ModelDeliveryVerification => "The downloaded files could not be verified. Try again.",
         ModelDeliveryLocalStorage => {
             "The model could not be saved safely. Check local storage and try again."

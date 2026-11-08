@@ -127,8 +127,13 @@ fn map_delivery_error(error: &ModelDeliveryError) -> ModelDeliveryFailure {
             ModelDeliveryFailure::StoreUnavailable
         }
         ModelDeliveryError::Network => ModelDeliveryFailure::Connection,
-        ModelDeliveryError::TrustPolicy
-        | ModelDeliveryError::Plan
+        // Task 142 §2: a trust-policy refusal reaches a server (the
+        // transport itself works) but is sent somewhere, or something,
+        // the reviewed trust root does not allow -- distinct from
+        // Verification below, which is bytes actually received and found
+        // wrong.
+        ModelDeliveryError::TrustPolicy => ModelDeliveryFailure::TrustPolicy,
+        ModelDeliveryError::Plan
         | ModelDeliveryError::TransferLimit
         | ModelDeliveryError::Integrity
         | ModelDeliveryError::FinalCheck => ModelDeliveryFailure::Verification,
@@ -314,7 +319,7 @@ mod tests {
             ),
             (
                 ModelDeliveryError::TrustPolicy,
-                ModelDeliveryFailure::Verification,
+                ModelDeliveryFailure::TrustPolicy,
             ),
             (ModelDeliveryError::Plan, ModelDeliveryFailure::Verification),
             (

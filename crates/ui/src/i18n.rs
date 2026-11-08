@@ -270,6 +270,7 @@ message_keys! {
     ModelArtifactOnnx,
     ModelDeliveryStoreUnavailable,
     ModelDeliveryConnection,
+    ModelDeliveryTrustPolicy,
     ModelDeliveryVerification,
     ModelDeliveryLocalStorage,
     ModelDeliveryInternalState,

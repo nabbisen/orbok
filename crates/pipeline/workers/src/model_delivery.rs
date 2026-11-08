@@ -409,11 +409,19 @@ async fn download_file(
     events: &mut futures::channel::mpsc::Sender<ModelDeliveryEvent>,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), ModelDeliveryError> {
-    let response = client
-        .get(file.remote_url)
-        .send()
-        .await
-        .map_err(|_| ModelDeliveryError::Network)?;
+    let response = client.get(file.remote_url).send().await.map_err(|e| {
+        // Task 142 §2: `production_client`'s redirect policy rejects an
+        // untrusted host or too many redirects by calling `attempt.error`,
+        // which reqwest surfaces as `Kind::Redirect` -- a policy refusal,
+        // not a transport failure, and `reqwest::Error::is_redirect` is
+        // exactly the type-level distinction (not a string match on the
+        // error's Display) that tells the two apart here.
+        if e.is_redirect() {
+            ModelDeliveryError::TrustPolicy
+        } else {
+            ModelDeliveryError::Network
+        }
+    })?;
     if !response.status().is_success() {
         return Err(ModelDeliveryError::Network);
     }
@@ -1675,6 +1683,79 @@ mod tests {
         .await;
         disconnect_server.finish().await;
         assert!(matches!(disconnect, Err(ModelDeliveryError::Network)));
+    }
+
+    /// Task 142 §2, red first against `.map_err(|_| ModelDeliveryError::
+    /// Network)`: a redirect the trust policy refuses must surface as
+    /// `TrustPolicy`, not `Network` -- the transport worked, orbok refused
+    /// where it was sent (Review Request 319b's actual failure, exactly
+    /// this path, misreported as "could not connect"). The redirect
+    /// target (`denied.example`) is never actually connected to: reqwest
+    /// evaluates the policy against the `Location` header before issuing
+    /// any request to it, so an unreachable host here still proves the
+    /// point.
+    #[tokio::test]
+    async fn an_untrusted_redirect_is_a_trust_policy_refusal_not_a_network_failure() {
+        let redirect = b"HTTP/1.1 302 Found\r\nLocation: https://denied.example/object\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+        let (url, server) = RawServer::start(vec![(Duration::ZERO, redirect)]).await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = test_file_plan(&url, b"unused", 1);
+        let (mut events, _receiver) = futures::channel::mpsc::channel(4);
+
+        let manifest: &'static TrustedModelManifest = Box::leak(Box::new(TrustedModelManifest {
+            schema_version: 1,
+            manifest_id: "redirect-policy-test",
+            model: TrustedModelIdentity {
+                id: "test/model",
+                display_name: "test-model",
+                revision: "0000000000000000000000000000000000000000",
+                role: "embedding",
+                dimension: 2,
+                license: "MIT",
+            },
+            transport: TrustedTransportPolicy {
+                https_only: true,
+                credentials_allowed: false,
+                max_redirects: 1,
+                initial_host: "example.invalid",
+                permitted_redirect_domains: &["permitted.example"],
+                relative_redirects_allowed: false,
+                strip_sensitive_headers_on_redirect: true,
+            },
+            files: &[],
+        }));
+        // The same redirect policy `production_client` builds, against
+        // `manifest` rather than `DEFAULT_TRUSTED_MODEL`, so this test does
+        // not also need a real HTTPS huggingface.co-shaped URL to satisfy
+        // `production_client`'s own upfront `validate_initial_url` pass
+        // over every file in the manifest.
+        let client = base_client_builder()
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                let redirect_number = u8::try_from(attempt.previous().len()).unwrap_or(u8::MAX);
+                if validate_redirect_url(manifest, attempt.url().as_str(), redirect_number).is_ok()
+                {
+                    attempt.follow()
+                } else {
+                    attempt.error("redirect rejected by trusted model policy")
+                }
+            }))
+            .build()
+            .unwrap();
+
+        let result = download_file(
+            &client,
+            &file,
+            temp.path(),
+            temp.path(),
+            0,
+            1,
+            &mut events,
+            &never_cancelled(),
+        )
+        .await;
+        server.finish().await;
+
+        assert!(matches!(result, Err(ModelDeliveryError::TrustPolicy)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

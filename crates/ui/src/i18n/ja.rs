@@ -165,6 +165,9 @@ pub fn message(key: MessageKey) -> &'static str {
         ModelDeliveryConnection => {
             "ダウンロードに接続できませんでした。接続を確認してもう一度お試しください。"
         }
+        ModelDeliveryTrustPolicy => {
+            "ダウンロード先が orbok の信頼していないサーバーだったため、ダウンロードを中止しました。新しいバージョンの orbok で解決する場合があります。"
+        }
         ModelDeliveryVerification => {
             "ダウンロードしたファイルを検証できませんでした。もう一度お試しください。"
         }

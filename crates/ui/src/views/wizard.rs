@@ -457,6 +457,7 @@ fn page_download_failed(
             tr(locale, MessageKey::ModelDeliveryStoreUnavailable)
         }
         ModelDeliveryFailure::Connection => tr(locale, MessageKey::ModelDeliveryConnection),
+        ModelDeliveryFailure::TrustPolicy => tr(locale, MessageKey::ModelDeliveryTrustPolicy),
         ModelDeliveryFailure::Verification => tr(locale, MessageKey::ModelDeliveryVerification),
         ModelDeliveryFailure::LocalStorage => tr(locale, MessageKey::ModelDeliveryLocalStorage),
         ModelDeliveryFailure::InternalState => tr(locale, MessageKey::ModelDeliveryInternalState),

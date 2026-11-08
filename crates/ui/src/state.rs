@@ -449,6 +449,12 @@ pub enum ModelArtifact {
 pub enum ModelDeliveryFailure {
     StoreUnavailable,
     Connection,
+    /// Task 142 §2: the download reached a server, but one the trust
+    /// policy refused -- an untrusted redirect host, a moving revision, or
+    /// too many redirects. Distinct from `Connection` (the transport
+    /// itself failing) and `Verification` (bytes received but wrong):
+    /// here nothing was ever downloaded, and saying so is not true.
+    TrustPolicy,
     Verification,
     LocalStorage,
     InternalState,
