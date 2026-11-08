@@ -22,6 +22,7 @@ mod history;
 mod model_flow;
 mod notice_retry;
 mod platform_host;
+mod portal_path;
 mod result_launch;
 #[cfg(test)]
 mod rfc059_cache_measurement;

@@ -37,6 +37,20 @@ use orbok::runtime_context::{PlatformRuntimePaths, RuntimeSelection};
 use orbok_ui::i18n::Locale;
 use orbok_ui::state::{AppState, Message, ResultTrustDisplay, SearchResultDisplay, ViewId};
 
+/// Task 139: a [`crate::portal_path::DocumentPortal`] for `run_folder_
+/// picker`'s own tests, which pick paths that are never under a
+/// document-portal mount -- `resolve_portal_path` must return before
+/// asking the portal anything, so asking it at all is already the bug.
+struct NeverAsked;
+impl crate::portal_path::DocumentPortal for NeverAsked {
+    async fn host_paths(
+        &self,
+        _doc_id: &str,
+    ) -> Option<std::collections::HashMap<String, std::path::PathBuf>> {
+        panic!("the document portal must never be asked about a path outside its own mount")
+    }
+}
+
 fn test_deps(dir: &std::path::Path) -> AppDeps {
     // A home of the test's own, beside nothing real: on Windows the system temp
     // folder lies under the real home's `AppData`, which orbok asks about before
@@ -926,9 +940,11 @@ async fn a_probe_future_that_resolves_in_time_is_not_timed_out() {
 /// touches the dialog future at all -- if it did, this `panic!` would fire.
 #[tokio::test]
 async fn a_failed_probe_returns_unavailable_without_touching_the_dialog() {
-    let outcome = run_folder_picker(std::future::ready(false), async {
-        panic!("the dialog must never be awaited when the probe fails")
-    })
+    let outcome = run_folder_picker(
+        std::future::ready(false),
+        async { panic!("the dialog must never be awaited when the probe fails") },
+        &NeverAsked,
+    )
     .await;
     assert!(matches!(outcome, PickerOutcome::Unavailable));
 }
@@ -937,9 +953,11 @@ async fn a_failed_probe_returns_unavailable_without_touching_the_dialog() {
 /// pick comes through unchanged.
 #[tokio::test]
 async fn a_working_probe_proceeds_to_the_dialog() {
-    let outcome = run_folder_picker(std::future::ready(true), async {
-        Some(std::path::PathBuf::from("/chosen"))
-    })
+    let outcome = run_folder_picker(
+        std::future::ready(true),
+        async { Some(std::path::PathBuf::from("/chosen")) },
+        &NeverAsked,
+    )
     .await;
     assert!(matches!(
         outcome,
@@ -959,10 +977,14 @@ async fn a_working_probe_proceeds_to_the_dialog() {
 /// pick at 30s ever had a chance to land.
 #[tokio::test(start_paused = true)]
 async fn a_slow_user_still_gets_their_folder() {
-    let outcome = run_folder_picker(std::future::ready(true), async {
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-        Some(std::path::PathBuf::from("/chosen-after-a-while"))
-    })
+    let outcome = run_folder_picker(
+        std::future::ready(true),
+        async {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            Some(std::path::PathBuf::from("/chosen-after-a-while"))
+        },
+        &NeverAsked,
+    )
     .await;
     assert!(matches!(
         outcome,

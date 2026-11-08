@@ -337,15 +337,24 @@ async fn folder_picker_probe() -> bool {
 /// here races the user. Generic over both futures so this is testable
 /// without `rfd`, a real OS dialog, or a real D-Bus session (`open_folder_
 /// picker` below is the only caller that supplies the real ones).
+///
+/// Task 139: a pick that comes back is passed through [`portal_path::
+/// resolve_portal_path`] before it reaches [`PickerOutcome::Picked`] --
+/// the one place every picker caller's result comes from, so the fix
+/// reaches add-folder, the search location and the wizard's model folder
+/// the same way `open_folder_picker` itself already does.
 async fn run_folder_picker(
     probe_available: impl std::future::Future<Output = bool>,
     dialog: impl std::future::Future<Output = Option<std::path::PathBuf>>,
+    portal: &impl crate::portal_path::DocumentPortal,
 ) -> PickerOutcome {
     if !probe_available.await {
         return PickerOutcome::Unavailable;
     }
     match dialog.await {
-        Some(path) => PickerOutcome::Picked(path),
+        Some(path) => {
+            PickerOutcome::Picked(crate::portal_path::resolve_portal_path(path, portal).await)
+        }
         None => PickerOutcome::Cancelled,
     }
 }
@@ -363,13 +372,20 @@ fn open_folder_picker(
     unavailable: Message,
 ) -> iced::Task<Message> {
     iced::Task::perform(
-        run_folder_picker(folder_picker_probe(), async move {
-            rfd::AsyncFileDialog::new()
-                .set_title(title)
-                .pick_folder()
-                .await
-                .map(|h| h.path().to_path_buf())
-        }),
+        async move {
+            run_folder_picker(
+                folder_picker_probe(),
+                async move {
+                    rfd::AsyncFileDialog::new()
+                        .set_title(title)
+                        .pick_folder()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
+                &crate::portal_path::RealDocumentPortal,
+            )
+            .await
+        },
         move |outcome| match outcome {
             PickerOutcome::Picked(path) => picked(path),
             PickerOutcome::Cancelled => cancelled.clone(),
