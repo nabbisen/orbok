@@ -10,7 +10,13 @@ use url::Url;
 
 pub const DEFAULT_MODEL_REVISION: &str = "614241f622f53c4eeff9890bdc4f31cfecc418b3";
 
-const PERMITTED_REDIRECT_HOSTS: &[&str] = &["cas-bridge.xethub.hf.co"];
+/// Appendix B Amendment 1 (§6, Task 142): Hugging Face's redirect target is a
+/// regional CDN assignment (`us.aws.cdn.hf.co` as of 2026-11-09, previously
+/// `cas-bridge.xethub.hf.co`), not one fixed host. The permitted target is
+/// the provider's own registrable domain, matched at a label boundary
+/// (`validate_redirect_url`), not a list of observed hosts that would break
+/// again for a user routed elsewhere.
+const PERMITTED_REDIRECT_DOMAINS: &[&str] = &["hf.co"];
 
 const DEFAULT_MODEL_FILES: &[TrustedModelFile] = &[
     TrustedModelFile {
@@ -48,7 +54,7 @@ pub const DEFAULT_TRUSTED_MODEL: TrustedModelManifest = TrustedModelManifest {
         credentials_allowed: false,
         max_redirects: 1,
         initial_host: "huggingface.co",
-        permitted_redirect_hosts: PERMITTED_REDIRECT_HOSTS,
+        permitted_redirect_domains: PERMITTED_REDIRECT_DOMAINS,
         relative_redirects_allowed: false,
         strip_sensitive_headers_on_redirect: true,
     },
@@ -102,7 +108,7 @@ impl TrustedModelManifest {
             || self.transport.credentials_allowed
             || self.transport.max_redirects != 1
             || self.transport.initial_host.is_empty()
-            || self.transport.permitted_redirect_hosts.is_empty()
+            || self.transport.permitted_redirect_domains.is_empty()
             || self.transport.relative_redirects_allowed
             || !self.transport.strip_sensitive_headers_on_redirect
         {
@@ -163,10 +169,10 @@ pub(crate) fn trust_root_binding(manifest: &'static TrustedModelManifest) -> Tru
     hash_str(&mut hasher, manifest.transport.initial_host);
     hash_u64(
         &mut hasher,
-        manifest.transport.permitted_redirect_hosts.len() as u64,
+        manifest.transport.permitted_redirect_domains.len() as u64,
     );
-    for host in manifest.transport.permitted_redirect_hosts {
-        hash_str(&mut hasher, host);
+    for domain in manifest.transport.permitted_redirect_domains {
+        hash_str(&mut hasher, domain);
     }
     hash_bool(&mut hasher, manifest.transport.relative_redirects_allowed);
     hash_bool(
@@ -207,7 +213,7 @@ pub struct TrustedTransportPolicy {
     pub credentials_allowed: bool,
     pub max_redirects: u8,
     pub initial_host: &'static str,
-    pub permitted_redirect_hosts: &'static [&'static str],
+    pub permitted_redirect_domains: &'static [&'static str],
     pub relative_redirects_allowed: bool,
     pub strip_sensitive_headers_on_redirect: bool,
 }
@@ -302,6 +308,19 @@ pub fn validate_initial_url(
     Ok(parsed)
 }
 
+/// `true` when `domain` is exactly `allowed`, or ends in `allowed` at a
+/// label boundary (`.` immediately before it) -- Appendix B Amendment 1
+/// (§6): `us.aws.cdn.hf.co` and `cas-bridge.xethub.hf.co` both qualify for
+/// `hf.co`, but `xhf.co` (no label boundary) and `hf.co.example` (`hf.co`
+/// is not the suffix at all) do not. `url::Host::Domain` is already
+/// lowercased by its own IDNA parsing, so this needs no case-folding.
+fn domain_matches(domain: &str, allowed: &str) -> bool {
+    domain == allowed
+        || domain
+            .strip_suffix(allowed)
+            .is_some_and(|prefix| prefix.ends_with('.'))
+}
+
 /// Validate one absolute redirect target. `redirect_number` is one-based.
 pub fn validate_redirect_url(
     manifest: &TrustedModelManifest,
@@ -313,10 +332,21 @@ pub fn validate_redirect_url(
     }
     let parsed = Url::parse(location).map_err(|_| TrustPolicyError::RelativeOrInvalidRedirect)?;
     validate_common_url(&parsed)?;
-    let host = parsed
-        .host_str()
-        .ok_or(TrustPolicyError::UntrustedRedirectHost)?;
-    if !manifest.transport.permitted_redirect_hosts.contains(&host) {
+    // Appendix B Amendment 1 (§6): a redirect host must be a DNS name, not
+    // an IP address -- `url::Host::Ipv4`/`Ipv6` never match a domain rule,
+    // regardless of its value.
+    let url::Host::Domain(domain) = parsed
+        .host()
+        .ok_or(TrustPolicyError::UntrustedRedirectHost)?
+    else {
+        return Err(TrustPolicyError::UntrustedRedirectHost);
+    };
+    if !manifest
+        .transport
+        .permitted_redirect_domains
+        .iter()
+        .any(|allowed| domain_matches(domain, allowed))
+    {
         return Err(TrustPolicyError::UntrustedRedirectHost);
     }
     Ok(parsed)
@@ -567,6 +597,54 @@ mod tests {
                 1
             ),
             Err(TrustPolicyError::AlternatePortForbidden)
+        );
+    }
+
+    /// Appendix B Amendment 1 (§6), red first against the exact-host rule
+    /// this replaces: `cas-bridge.xethub.hf.co` and `hf.co` itself both
+    /// already passed (the former by what was then an exact match, now a
+    /// label-boundary suffix match; the latter never tried before).
+    /// `us.aws.cdn.hf.co` is the regional target the rule exists for --
+    /// confirmed still red under the old exact-host rule by reverting
+    /// `validate_redirect_url` to `host == "cas-bridge.xethub.hf.co"` and
+    /// seeing this fail, then restored.
+    #[test]
+    fn redirect_policy_accepts_any_hf_co_subdomain_at_a_label_boundary() {
+        for host in ["us.aws.cdn.hf.co", "cas-bridge.xethub.hf.co", "hf.co"] {
+            let url = format!("https://{host}/object");
+            assert!(
+                validate_redirect_url(&DEFAULT_TRUSTED_MODEL, &url, 1).is_ok(),
+                "{host} must be accepted"
+            );
+        }
+    }
+
+    /// The label-boundary rule's own edge, not a different kind of host:
+    /// `xhf.co` ends in the literal substring `hf.co` but not at a `.`
+    /// boundary, and `hf.co.example` has `hf.co` as a label in the middle,
+    /// not as its suffix at all.
+    #[test]
+    fn redirect_policy_rejects_look_alike_domains() {
+        for host in ["xhf.co", "hf.co.example", "evil.example"] {
+            let url = format!("https://{host}/object");
+            assert_eq!(
+                validate_redirect_url(&DEFAULT_TRUSTED_MODEL, &url, 1),
+                Err(TrustPolicyError::UntrustedRedirectHost),
+                "{host} must be rejected"
+            );
+        }
+    }
+
+    /// Appendix B Amendment 1 (§6): the redirect host must be a DNS name.
+    /// An IP address literal never matches a domain rule, however it
+    /// looks as a string -- `url::Host::Ipv4`/`Ipv6` is a different enum
+    /// variant from `Domain`, so this is a type-level rejection, not a
+    /// string comparison that happens to fail.
+    #[test]
+    fn redirect_policy_rejects_an_ip_address_host() {
+        assert_eq!(
+            validate_redirect_url(&DEFAULT_TRUSTED_MODEL, "https://203.0.113.10/object", 1),
+            Err(TrustPolicyError::UntrustedRedirectHost)
         );
     }
 

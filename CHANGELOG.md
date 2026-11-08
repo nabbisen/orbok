@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inside a sandbox (Flatpak), a folder chosen with the system picker is
   kept by its real location**, so choosing it or typing its path gives the
   same folder.
+- **The search model can be downloaded again.** Hugging Face began sending
+  downloads to a regional server, which orbok refused. The download is
+  still checked file by file against the pinned checksums.
 
 ### Added
 

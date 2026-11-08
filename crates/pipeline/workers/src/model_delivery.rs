@@ -1979,7 +1979,7 @@ mod tests {
                 credentials_allowed: false,
                 max_redirects: 1,
                 initial_host: "example.invalid",
-                permitted_redirect_hosts: &["cdn.example.invalid"],
+                permitted_redirect_domains: &["cdn.example.invalid"],
                 relative_redirects_allowed: false,
                 strip_sensitive_headers_on_redirect: true,
             },

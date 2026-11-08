@@ -22,7 +22,7 @@ const TEST_FILES: &[TrustedModelFile] = &[
     },
 ];
 
-const TEST_REDIRECT_HOSTS: &[&str] = &["cas-bridge.xethub.hf.co"];
+const TEST_REDIRECT_DOMAINS: &[&str] = &["hf.co"];
 
 const TEST_MANIFEST: TrustedModelManifest = TrustedModelManifest {
     schema_version: 1,
@@ -40,7 +40,7 @@ const TEST_MANIFEST: TrustedModelManifest = TrustedModelManifest {
         credentials_allowed: false,
         max_redirects: 1,
         initial_host: "huggingface.co",
-        permitted_redirect_hosts: TEST_REDIRECT_HOSTS,
+        permitted_redirect_domains: TEST_REDIRECT_DOMAINS,
         relative_redirects_allowed: false,
         strip_sensitive_headers_on_redirect: true,
     },
