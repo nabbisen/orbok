@@ -130,6 +130,38 @@ pub(crate) trait DocumentPortal {
 /// `PathBuf`, or the portal's own padding would end up inside it.
 pub(crate) struct RealDocumentPortal;
 
+/// `portal.host_paths(doc_id)`, bounded the same way the Linux portal
+/// *probe* already is (`router::race_with_deadline`,
+/// `router::FOLDER_PICKER_PROBE_DEADLINE`) -- Review 318 §3: this call
+/// runs after the dialog has already returned a pick, so a wedged
+/// Documents service must not leave the pick "in progress" forever.
+/// Timing out is treated exactly like every other "the portal did not
+/// help" outcome: `None`, which [`resolve_portal_path`] keeps the
+/// document-portal path for. One deadline constant, not a second one.
+/// Linux-only, like [`RealDocumentPortal::host_paths`]'s own real call --
+/// elsewhere `host_paths` always resolves immediately (`None`), so
+/// nothing here can hang on another platform.
+#[cfg(target_os = "linux")]
+async fn host_paths_within_deadline(
+    portal: &impl DocumentPortal,
+    doc_id: &str,
+) -> Option<HashMap<String, PathBuf>> {
+    crate::router::race_with_deadline(
+        portal.host_paths(doc_id),
+        crate::router::FOLDER_PICKER_PROBE_DEADLINE,
+    )
+    .await
+    .flatten()
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn host_paths_within_deadline(
+    portal: &impl DocumentPortal,
+    doc_id: &str,
+) -> Option<HashMap<String, PathBuf>> {
+    portal.host_paths(doc_id).await
+}
+
 impl DocumentPortal for RealDocumentPortal {
     #[cfg(target_os = "linux")]
     async fn host_paths(&self, doc_id: &str) -> Option<HashMap<String, PathBuf>> {
@@ -176,21 +208,23 @@ impl DocumentPortal for RealDocumentPortal {
 /// **never fails the pick.** Every path that is not under a document-
 /// portal mount passes through unchanged (`portal` is not even asked) --
 /// the only case outside a sandbox, and the common case inside one too.
-/// Under one, the portal is asked for the real host path, and it is used
-/// only once two things both hold: the portal actually answered for this
-/// document id, and the resulting path is one orbok can read into here
-/// and now. Any other outcome keeps the document-portal path the picker
-/// already returned, logged at `debug` so each case is visible without a
-/// sandbox session to hand -- never surfaced to the user, who asked to
-/// choose a folder and got one.
+/// Under one, the portal is asked for the real host path (bounded by
+/// [`host_paths_within_deadline`], Review 318 §3 -- a wedged Documents
+/// service must not leave the pick "in progress" forever), and the host
+/// path is used only once two things both hold: the portal actually
+/// answered in time for this document id, and the resulting path is one
+/// orbok can read into here and now. Any other outcome keeps the
+/// document-portal path the picker already returned, logged at `debug`
+/// so each case is visible without a sandbox session to hand -- never
+/// surfaced to the user, who asked to choose a folder and got one.
 pub(crate) async fn resolve_portal_path(path: PathBuf, portal: &impl DocumentPortal) -> PathBuf {
     let Some(parsed) = parse_document_portal_path(&path) else {
         return path;
     };
-    let Some(mut answers) = portal.host_paths(&parsed.doc_id).await else {
+    let Some(mut answers) = host_paths_within_deadline(portal, &parsed.doc_id).await else {
         tracing::debug!(
             path = %path.display(),
-            "document portal did not answer (no session, too old, or the call failed) -- keeping the document-portal path"
+            "document portal did not answer (no session, too old, timed out, or the call failed) -- keeping the document-portal path"
         );
         return path;
     };
@@ -247,6 +281,19 @@ mod tests {
                 .map(|(id, p)| ((*id).to_string(), PathBuf::from(p)))
                 .collect(),
         ))
+    }
+
+    /// Review 318 §3: a portal that never answers at all -- a wedged
+    /// Documents service, not one that refuses or answers wrong. Used
+    /// only with `start_paused` so the deadline's real 2 seconds cost the
+    /// test nothing.
+    #[cfg(target_os = "linux")]
+    struct NeverResolves;
+    #[cfg(target_os = "linux")]
+    impl DocumentPortal for NeverResolves {
+        async fn host_paths(&self, _doc_id: &str) -> Option<HashMap<String, PathBuf>> {
+            std::future::pending().await
+        }
     }
 
     // ── Parsing: pure, no D-Bus, no filesystem ───────────────────────
@@ -391,6 +438,53 @@ mod tests {
         let path = PathBuf::from("/run/flatpak/doc/abc123/not-a-folder.txt");
         let portal = fixed(&[("abc123", file.to_str().unwrap())]);
         let resolved = resolve_portal_path(path.clone(), &portal).await;
+        assert_eq!(resolved, path);
+    }
+
+    /// Review 318 §3, red first: before `host_paths_within_deadline`
+    /// existed, this hung the whole test (and would have hung a real
+    /// pick, forever, behind a wedged Documents service). `start_paused`
+    /// advances virtual time through the deadline's real 2 seconds
+    /// instantly, the same mechanism `router`'s `a_slow_user_still_gets_
+    /// their_folder` already uses the other way (letting a real wait
+    /// through unbounded).
+    #[cfg(target_os = "linux")]
+    #[tokio::test(start_paused = true)]
+    async fn a_portal_that_never_answers_keeps_the_document_path() {
+        let path = PathBuf::from("/run/flatpak/doc/abc123/Documents");
+        let resolved = resolve_portal_path(path.clone(), &NeverResolves).await;
+        assert_eq!(resolved, path);
+    }
+
+    /// The other branch `is_readable_dir` has: `metadata()` succeeds (it
+    /// is a directory) but `read_dir()` does not (no permission). Only
+    /// "a file, not a directory" covered this function's `if`/`else`
+    /// before -- red against `is_readable_dir` reduced to
+    /// `metadata(path).is_ok()`. Skipped when the process can still read
+    /// a mode-000 directory (running as root), so a root CI container
+    /// cannot produce a false pass (the same guard `result_launch/
+    /// tests.rs`'s mode-000 tests use).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_unreadable_host_directory_keeps_the_document_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let real_dir = tempfile::tempdir().unwrap();
+        let locked = real_dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let readable_anyway = std::fs::read_dir(&locked).is_ok();
+        let path = PathBuf::from("/run/flatpak/doc/abc123/Documents");
+        let portal = fixed(&[("abc123", locked.to_str().unwrap())]);
+        let got = if readable_anyway {
+            None
+        } else {
+            Some(resolve_portal_path(path.clone(), &portal).await)
+        };
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let Some(resolved) = got else {
+            eprintln!("skipped: a mode-000 directory is readable (running as root)");
+            return;
+        };
         assert_eq!(resolved, path);
     }
 }

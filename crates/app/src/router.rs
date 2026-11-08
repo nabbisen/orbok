@@ -271,8 +271,14 @@ fn widen_folder(app: &mut OrbokApp, deps: &AppDeps, source_id: &str) {
 /// never starts, not that it is slow -- checked before the dialog, not
 /// raced alongside it. 2 seconds is generous for a real backend's own
 /// D-Bus property read while still resolving quickly if nothing answers.
+///
+/// Review 318 §3: `portal_path`'s `GetHostPaths` call, made after the
+/// dialog has already returned a pick, uses this same constant and
+/// [`race_with_deadline`] -- one deadline, not a second one, for the
+/// project's one other unbounded D-Bus call on this path.
 #[cfg(target_os = "linux")]
-const FOLDER_PICKER_PROBE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
+pub(crate) const FOLDER_PICKER_PROBE_DEADLINE: std::time::Duration =
+    std::time::Duration::from_secs(2);
 
 /// What `run_folder_picker` decided. A plain enum, not nested `Option`s, so
 /// the three outcomes read at the call site instead of being inferred from
@@ -395,14 +401,15 @@ fn open_folder_picker(
 }
 
 /// Task 132 review §2: `future`, or `None` if `deadline` passes first.
-/// Linux-only, like its one caller (`folder_picker_probe`) -- Windows and
-/// macOS never probe, so nothing here may race anything on those
-/// platforms. Its own test does not depend on `zbus`, a real D-Bus session,
-/// or the actual portal query: a future that never resolves, raced against
-/// a short deadline, is exactly what a session with no answer looks like
-/// from here.
+/// Linux-only, like its two callers (`folder_picker_probe` here and
+/// `portal_path`'s `GetHostPaths` call, Review 318 §3) -- Windows and
+/// macOS never probe or resolve a document-portal path, so nothing here
+/// may race anything on those platforms. Its own test does not depend on
+/// `zbus`, a real D-Bus session, or the actual portal query: a future
+/// that never resolves, raced against a short deadline, is exactly what a
+/// session with no answer looks like from here.
 #[cfg(target_os = "linux")]
-async fn race_with_deadline<T>(
+pub(crate) async fn race_with_deadline<T>(
     future: impl std::future::Future<Output = T>,
     deadline: std::time::Duration,
 ) -> Option<T> {
