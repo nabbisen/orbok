@@ -2,7 +2,7 @@
 
 **Status:** Implemented normative companion to RFC-050 in 0.25.0
 
-**Evidence captured:** 2026-07-14
+**Evidence captured:** 2026-07-14; redirect evidence renewed 2026-11-09 (Amendment 1, §6)
 
 **Model:** `intfloat/multilingual-e5-small`
 
@@ -38,7 +38,7 @@ must never appear in a production model URL.
     "credentials_allowed": false,
     "max_redirects": 1,
     "initial_host": "huggingface.co",
-    "permitted_redirect_hosts": ["cas-bridge.xethub.hf.co"],
+    "permitted_redirect_domains": ["hf.co"],
     "relative_redirects_allowed": false,
     "strip_sensitive_headers_on_redirect": true
   },
@@ -74,7 +74,9 @@ The client starts only at the exact URLs above and implements redirects itself:
 1. Accept zero or one redirect.
 2. Accept only an absolute `https` URL.
 3. The initial request host must be exactly `huggingface.co`.
-4. A redirect host must be exactly `cas-bridge.xethub.hf.co`.
+4. A redirect host must be a DNS name (not an IP address) that is exactly
+   `hf.co` or ends in `.hf.co` at a label boundary (Amendment 1, §6).
+   `xhf.co` and `hf.co.example` do not qualify.
 5. Reject relative, scheme-relative, downgrade, user-info, alternate-port,
    additional, or differently hosted redirects.
 6. Do not configure credentials, cookies, bearer tokens, proxy authorization,
@@ -125,3 +127,37 @@ revision, new independently cross-checked metadata, local compatibility and
 retrieval tests, security review, and a normal RFC/change-review trail. Existing
 verified generations remain usable until the replacement generation is fully
 staged and activated under RFC-050.
+
+## 6. Amendment 1 — 2026-11-09: the redirect host became regional
+
+**What changed at the provider.** On 2026-11-09 (Review Request 319b), both
+pinned files redirect, once, to `us.aws.cdn.hf.co` instead of
+`cas-bridge.xethub.hf.co`. The exact-host rule therefore rejected every
+download, so model installation failed closed for every user. The name is a
+regional CDN assignment, so other users can be sent to other hosts under the
+same domain.
+
+**Evidence (2026-11-09):** `HEAD` on both revision-qualified resolver URLs
+answered with one redirect to `https://us.aws.cdn.hf.co/…`. Following it ended
+in `206` (a one-byte range) after exactly one redirect. The revision, file
+set, sizes and SHA-256 values in §2 are unchanged.
+
+**Decision (security/design review, the architect).** The permitted redirect
+target becomes the provider's own registrable domain, `hf.co`, matched at a
+label boundary, instead of one exact host:
+- **Integrity does not depend on the host.** Every file is still hashed
+  locally and compared with §2's pinned SHA-256 and exact size before
+  promotion. A wrong file from any host is still refused.
+- **The host rule limits where requests go.** It keeps them on the
+  provider's own domain, never a third party. A domain-level rule does that,
+  and survives regional reassignment. A list of observed hosts would break
+  again for users routed elsewhere.
+- **Everything else in §3 stands:** one redirect, absolute `https`, no
+  user-info, default port, header stripping, no proxy, and no logging of query
+  parameters.
+- **A future redirect outside `hf.co`** still fails closed and needs another
+  amendment.
+
+**Manifest:** `permitted_redirect_hosts: ["cas-bridge.xethub.hf.co"]` became
+`permitted_redirect_domains: ["hf.co"]`. Production code and the test that
+proves it matches this appendix change with it (Task 142).
