@@ -6,6 +6,7 @@
 **Status:** Accepted\
 **Accepted:** 2026-10-21 by the project owner, with the application ID (§3.1) and the summary line (§3.4)\
 **Amended:** 2026-10-27, Amendment 1 (§9): Flathub's generative-AI policy; the AUR comes first\
+**Deferred:** 2026-11-08 by the project owner. Flatpak waits until the owner reopens it; the AUR comes first. The sandbox measurements (§5) and the submission (§3.5) are not started until then\
 **Target milestone:** Linux distribution (the release after 0.29.0)\
 **Date:** 2026-10-21\
 **Related RFCs:** RFC-017 (packaging and distribution); RFC-051 (the reviewed source archive); RFC-064 (every file belongs to one folder); RFC-041 (plain language)\
