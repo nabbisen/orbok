@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated localcache (0.21.6). The compression library the cache uses
   (zstd) is updated along with it, which clears thirteen advisories that
   did not affect how orbok used it.
+- Updated localcache (0.26.2) and rusqlite (0.41.1): SQLite moves to
+  3.54.1, which reaches both the catalog and the cache. It fixes
+  CVE-2026-119375 — a crafted database file, paired with its own `-wal`
+  file, can make an ordinary query return uninitialized memory. orbok's
+  own database and cache files are written only by the user's own
+  orbok, which is outside that threat model, but the fix applies
+  either way. Neither RustSec, OSV nor GitHub's reviewed advisory
+  database lists it against any crate, so `cargo audit` and `cargo
+  deny` stay silent about it.
 
 ### Changed
 
@@ -27,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toward publishing orbok on Flathub (Task 137). Menus pick this up
   automatically; a launcher pinned to the old entry has to be pinned again.
 - snora 0.53 (Task 138).
+- **The cache's stored format moved to a newer schema** (localcache
+  0.23.0's schema v6). A profile opens normally either way: this
+  release migrates its cache the first time it opens one, and an older
+  orbok opened against an already-migrated cache works without it
+  (logged, never shown to the user) instead of reading or rewriting
+  it. Folders, settings and the catalog are unaffected in either
+  direction — only the cache, which is always derived data, is ever
+  rebuilt.
 
 ### Fixed
 
