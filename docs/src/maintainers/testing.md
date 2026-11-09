@@ -78,21 +78,23 @@ RUST_LOG=debug cargo test -p orbok-workers -- --nocapture
 
 Real-model tests (`RFC013_MODEL_DIR`, the real-model benchmark above, a
 manual pass that includes search by meaning) need `multilingual-e5-small`
-on disk. It lives at:
+on disk. It lives at, project-root relative:
 
 ```
-${XDG_CACHE_HOME:-$HOME/.cache}/orbok-dev/models/multilingual-e5-small/
+.git-exclude/dev-fixtures/models/multilingual-e5-small/
 ```
 
-(Review Request 319 §3.) This is a development fixture, not a profile:
+(Review Request 319b §5: files the team creates live inside the project
+or under `/tmp`, never elsewhere, so this replaced an earlier
+`~/.cache/orbok-dev/` choice.) This is a development fixture, not a
+profile:
 
 - **Not the production data directory** (`~/.local/share/orbok/…`). That
   is a real profile, which the GUI rule file keeps every test out of.
-- **Not the repository.** The model is several hundred megabytes; it does
-  not belong in source control or in anything archived with it.
-- **A cache directory**, because it can always be downloaded again. If it
-  is cleared, the next task that needs it fills it again — that is the
-  only cost.
+- **Not tracked.** `.gitignore` excludes all of `/.git-exclude/`, and the
+  release archive is built only from tracked files (`git archive`), so
+  this never reaches a commit or a shipped archive despite living inside
+  the project tree.
 
 **To fill it**, use orbok's own verified download rather than fetching
 the files by hand: run the built binary once with a scratch
@@ -105,10 +107,14 @@ two files it downloads (`tokenizer.json` and `onnx/model.onnx` —
 above, flat (no `generations/<id>/` level, no `COMPLETE` or
 `trusted-manifest.json`), and remove the scratch profile.
 
-**To use it:** `RFC013_MODEL_DIR=$XDG_CACHE_HOME/orbok-dev/models/multilingual-e5-small`
-(or the `$HOME/.cache` default) for the model-backed tests; the wizard's
-"Point orbok at the folder" with the same path for a manual pass. orbok
-only reads from this directory — it never writes into it.
+**To use it,** from the project root: `RFC013_MODEL_DIR=$PWD/.git-exclude/dev-fixtures/models/multilingual-e5-small`
+for the model-backed tests; the wizard's "Point orbok at the folder" with
+the same path for a manual pass. orbok only reads from this directory —
+it never writes into it.
+
+**To remove it** when no longer needed: `rm -rf .git-exclude/dev-fixtures/`.
+The next task that needs the model fills it again the same way; that is
+the only cost.
 
 ## Test organisation
 
