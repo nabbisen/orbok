@@ -1978,20 +1978,13 @@ fn add_extraction_cache_entry(
     path
 }
 
-/// Seed `count` entries with staggered last-use times (entry `i` at unix
+/// Seed `count` entries with staggered `last_accessed_at` (entry `i` at unix
 /// second `i + 1`), returning canonical paths oldest first. The backdating
 /// is raw SQL on the cache file -- test setup only, the same precedent as
 /// `orbok-workers`' `rfc059_cache_lifetime.rs`; the production trim uses
 /// localcache's public API (Review 214 §2). Each update is asserted to hit
 /// exactly one row, so a path mismatch fails here rather than silently
 /// leaving every entry tied.
-///
-/// Task 141: localcache 0.26.2's schema v6 renamed the column this writes
-/// to -- `last_accessed_at` (unix seconds) is now `last_used_us` (unix
-/// microseconds; schema-dumped directly from a fresh 0.26.2 database,
-/// not assumed). `CacheEntryMeta::last_accessed_at`, the *public* field
-/// `extraction_cache_paths`/`trim_engine_namespace_to` read, kept its old
-/// name and unit -- only this raw-SQL write needed to change.
 fn seed_extraction_cache(
     temp: &Path,
     context: &RuntimeContext,
@@ -2006,8 +1999,8 @@ fn seed_extraction_cache(
     for (i, path) in paths.iter().enumerate() {
         let updated = raw
             .execute(
-                "UPDATE files SET last_used_us = ?1 WHERE namespace = ?2 AND path = ?3",
-                rusqlite::params![(i + 1) as i64 * 1_000_000, ns, path.to_string_lossy()],
+                "UPDATE files SET last_accessed_at = ?1 WHERE namespace = ?2 AND path = ?3",
+                rusqlite::params![(i + 1) as i64, ns, path.to_string_lossy()],
             )
             .unwrap();
         assert_eq!(updated, 1, "backdating must match exactly one cache row");
