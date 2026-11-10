@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toward publishing orbok on Flathub (Task 137). Menus pick this up
   automatically; a launcher pinned to the old entry has to be pinned again.
 - snora 0.53 (Task 138).
+- **The sidebar shows each place's name under its icon, not only on
+  hover** (snora 0.57).
 
 ### Fixed
 
