@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-10-03)
+## Current Status (2026-11-11)
 
-Shipped: **0.28.0**. Latest tagged release: **0.28.0**, also the newest on crates.io. Each RFC's state is
+Shipped: **0.30.0**. Latest tagged release: **0.30.0**, also the newest on crates.io (0.29.0 was published to crates.io only). Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -52,8 +52,20 @@ across v0.16.0–v0.24.0:
   and cut at a whole word (Task 128); Text size reaches snora's chrome
   (Task 127); the folder list keeps its order (Task 126); a privacy policy
   and Arch Linux packaging (Tasks 129–130). No migration.
+- 0.29.0 — the TLS library for the model download patched (Task 134); added
+  folders offered when searching (Task 132); text size reaches every word
+  (Task 136); release packages for the AUR, published with the owner's
+  approval (Task 133). crates.io only: its model download broke on the
+  provider's side before its GitHub release. No migration.
+- 0.30.0 — the model downloads again (Task 142, Appendix B Amendment 1),
+  with an honest message when a download is refused; the sidebar names its
+  places (snora 0.57, Task 143); "Follow system" follows the system
+  (Task 138); one application ID on every Linux package (Task 137 §1);
+  AppStream metadata; dependency advisories cleared (Tasks 139, 141). The
+  SQLite update is held back for a keyword-search slowdown (Task 144; Task
+  145 fixes the query). No migration.
 
-Stack: snora 0.52 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.57 / iced 0.14, localcache 0.21 + rusqlite 0.39.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 
