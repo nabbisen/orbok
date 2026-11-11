@@ -159,6 +159,18 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.30.0" date="2026-11-11">
+      <description>
+        <ul>
+          <li>The search model can be downloaded again, after Hugging Face began sending downloads to a regional server.</li>
+          <li>Fixed: a refused download now says so, instead of "could not connect".</li>
+          <li>Fixed: "Follow system" now follows the system's light or dark setting.</li>
+          <li>Fixed: inside a sandbox (Flatpak), a folder chosen with the system picker is kept by its real location.</li>
+          <li>The sidebar shows each place's name under its icon, not only on hover.</li>
+          <li>Security: updated several dependencies for advisories reported against them.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.29.0" date="2026-10-21">
       <description>
         <ul>

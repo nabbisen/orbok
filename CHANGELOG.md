@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-11-11
+
 ### Security
 
 - Updated tokio (1.54.1), for an advisory about `AsyncFd::new` and related
@@ -16,31 +18,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated zstd-sys (2.1.2), for an advisory about a WebAssembly allocator
   shim corrupting memory on allocation failure.
 - Updated clipboard-win (5.4.3): 5.4.1 was yanked.
+- Updated wasmtimer (0.4.5), which drops the unmaintained `pin-utils`.
+- Updated async-executor (1.14.1), replacing a yanked release.
 - Updated localcache (0.21.6). The compression library the cache uses
   (zstd) is updated along with it, which clears thirteen advisories that
   did not affect how orbok used it.
+- The bundled SQLite is not yet updated to the release that fixes
+  CVE-2026-119375: that update slowed keyword search down, and the
+  slowdown is still being fixed. orbok is not exposed by the version it
+  ships: the flaw needs a crafted database file (with a matching `-wal`
+  file) planted in orbok's own data folder, which only orbok itself
+  writes to. The update returns once search no longer slows down.
 
 ### Changed
 
 - **On Linux, the menu entry's file name changed** to
-  `io.github.nabbisen.orbok.desktop` (from `orbok.desktop`), the first step
-  toward publishing orbok on Flathub (Task 137). Menus pick this up
-  automatically; a launcher pinned to the old entry has to be pinned again.
-- snora 0.53 (Task 138).
+  `io.github.nabbisen.orbok.desktop` (from `orbok.desktop`), so every
+  Linux package shares one application ID. Menus pick this up
+  automatically; a launcher pinned to the old entry has to be pinned
+  again.
 - **The sidebar shows each place's name under its icon, not only on
   hover** (snora 0.57).
 
 ### Fixed
 
+- **The search model can be downloaded again.** Hugging Face began sending
+  downloads to a regional server, which orbok refused. The download is
+  still checked file by file against the pinned checksums.
+- **A refused download now says so**, instead of "could not connect".
 - **"Follow system" now follows the system's light or dark setting**, including
   when it changes while orbok is open; before, it always used the light theme
   (Task 138).
 - **Inside a sandbox (Flatpak), a folder chosen with the system picker is
   kept by its real location**, so choosing it or typing its path gives the
   same folder.
-- **The search model can be downloaded again.** Hugging Face began sending
-  downloads to a regional server, which orbok refused. The download is
-  still checked file by file against the pinned checksums.
 
 ### Added
 
