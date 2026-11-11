@@ -2,7 +2,7 @@
 
 ## Current Status (2026-11-11)
 
-Shipped: **0.30.0**. Latest tagged release: **0.30.0**, also the newest on crates.io (0.29.0 was published to crates.io only). Each RFC's state is
+Shipped: **0.30.0**. Latest tagged release: **0.30.0**, also the newest on crates.io (0.29.0 has no AUR package). Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -55,8 +55,8 @@ across v0.16.0–v0.24.0:
 - 0.29.0 — the TLS library for the model download patched (Task 134); added
   folders offered when searching (Task 132); text size reaches every word
   (Task 136); release packages for the AUR, published with the owner's
-  approval (Task 133). crates.io only: its model download broke on the
-  provider's side before its GitHub release. No migration.
+  approval (Task 133). No AUR package: its model download broke on the
+  provider's side before it was packaged. No migration.
 - 0.30.0 — the model downloads again (Task 142, Appendix B Amendment 1),
   with an honest message when a download is refused; the sidebar names its
   places (snora 0.57, Task 143); "Follow system" follows the system
