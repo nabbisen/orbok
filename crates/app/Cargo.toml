@@ -65,3 +65,6 @@ zip                         = { workspace = true }
 # true)` advances virtual time through a real 30s sleep instantly, instead
 # of the test actually taking 30 real seconds.
 tokio                       = { workspace = true, features = ["test-util"] }
+# Task 150 §4.1: an independent SHA-256 check of a real model download,
+# separate from `model_delivery`'s own internal integrity check.
+sha2                        = { workspace = true }

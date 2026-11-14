@@ -299,6 +299,39 @@ release" rule the next section states for the upgrade pass itself).
 
 **To remove it** when no longer needed: `rm -rf .git-exclude/dev-fixtures/bin/`.
 
+## The real model download
+
+Task 150 §4.1: `the_real_model_download_installs_and_searches`
+(`crates/app/src/wired_application_tests.rs`), `#[ignore]`'d. Where the
+manual pass used to go through the wizard's download screen by hand,
+this runs the exact same production code headlessly instead:
+
+```sh
+cargo test -p orbok --bin orbok --features orbok-embed/tract --release \
+  the_real_model_download_installs_and_searches -- --ignored --nocapture
+```
+
+It calls `crate::download::run` — the function `router.rs` spawns when
+the wizard starts a download, not a copy of it — against a scratch
+profile (a `tempfile::tempdir()`, removed automatically when the test
+ends). From there it:
+
+1. downloads the pinned `multilingual-e5-small` generation for real,
+   from the live Hugging Face endpoint;
+2. checks both files' SHA-256 and size against Appendix B's pinned
+   values itself, independently of `model_delivery`'s own internal
+   integrity check;
+3. resolves the embedding model through the ordinary (no manual
+   override) path — the same resolution `main.rs` and the hosted
+   scheduler use — which can only succeed by reading the managed
+   generation the download just wrote;
+4. seeds one small document, indexes it, and runs one search by
+   meaning against it, asserting a result comes back.
+
+Needs a real network connection and downloads the full ~490 MB model
+every run; that is the download this pass exists to prove, so there is
+no fixture shortcut here the way `RFC013_MODEL_DIR`'s tests take.
+
 ## When the expensive checks run
 
 (`.git-exclude/rules/project-instructions-gui-common.md`'s "Don't repeat
@@ -308,9 +341,9 @@ own three passes):
 - **The upgrade pass** (the previous release's binary opens a profile
   this release wrote, or vice versa): when a migration, the settings
   format, or the cache format changed since the last pass.
-- **The real model download** (the wizard's own download and trust
-  verification, not a test against the fixture above): when the
-  download or trust code changed.
+- **The real model download** (`the_real_model_download_installs_and_searches`
+  above, not a test against the fixture): when the download or trust
+  code changed.
 - **Otherwise**, the model-backed tests with the fixture
   (`RFC013_MODEL_DIR`) plus the headless UI layout matrix above — both
   cheap enough to run every time regardless.

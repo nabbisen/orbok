@@ -29,6 +29,7 @@
 //! rather than force-written.
 
 use super::bootstrap;
+use super::download;
 use super::scheduler_host::{self, ResourceObservation};
 use orbok::runtime_context::{
     AllowRuntimePathProbe, PlatformRuntimePaths, RuntimeContext, RuntimeSelection,
@@ -2928,6 +2929,154 @@ async fn deleting_the_vector_index_and_draining_the_scheduler_makes_search_find_
         !after_rebuild.is_empty(),
         "the scheduler picked up the rebuild-marking and re-embedded the file; meaning-only \
          search finds it again"
+    );
+}
+
+// ── Task 150 §4.1: the real model download ──────────────────────────────
+
+/// Task 150 §4.1: the real model download, driven through
+/// `crate::download::run` -- the exact function `router.rs`'s own
+/// `tokio::spawn(download::run(model_store, deps.catalog.clone(), tx,
+/// cancel))` calls when the wizard starts a download, not a copy of it.
+/// `run_with_installer`'s own `tokio::select!` drains progress
+/// concurrently with the installer future, so this does not need to
+/// worry about the bounded event channel filling up during a real,
+/// many-chunk transfer the way a naive "await, then drain" would.
+///
+/// Downloads the pinned `multilingual-e5-small` generation for real,
+/// into a scratch profile under a `tempfile::tempdir()` (cleaned up on
+/// drop, never left behind), checks both files' pinned SHA-256 and
+/// size independently of `model_delivery`'s own internal integrity
+/// check, confirms the ordinary (no manual override) resolution path
+/// loads the generation it just wrote -- the same resolution `main.rs`
+/// and the hosted scheduler use in production -- and runs one search
+/// by meaning against a tiny seeded catalog.
+///
+/// Run manually, once per release (`testing.md`, "the real model
+/// download"):
+/// ```sh
+/// cargo test -p orbok --bin orbok --features orbok-embed/tract --release \
+///   the_real_model_download_installs_and_searches -- --ignored --nocapture
+/// ```
+///
+/// `flavor = "multi_thread"`, matching `model_delivery.rs`'s own
+/// `mock_server_install_promotes_complete_generation_and_activates_it`
+/// precedent: the installer downloads both files concurrently (two
+/// real, independent HTTP transfers), and a plain `#[tokio::test]`'s
+/// single-threaded `current_thread` runtime only ever runs one of them
+/// at a time, cooperatively -- confirmed to genuinely stall indefinitely
+/// under real network conditions here (over 35 minutes with zero
+/// progress on both files' `.part` size, 0% CPU, while a plain `curl`
+/// against the same URLs sustained tens of MB/s throughout), not merely
+/// slow.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "downloads the real ~490 MB model from Hugging Face; run manually, once per release"]
+async fn the_real_model_download_installs_and_searches() {
+    use futures::StreamExt as _;
+
+    let temp = tempfile::tempdir().unwrap();
+    let context = test_context(temp.path());
+
+    let model_store = bootstrap::model_store(&context).unwrap();
+    let catalog = std::sync::Arc::new(bootstrap::open_catalog(&context).unwrap());
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    download::run(model_store, catalog, tx, cancel).await;
+    let messages: Vec<orbok_ui::state::Message> = rx.collect().await;
+    let dest_dir = messages
+        .iter()
+        .find_map(|message| match message {
+            orbok_ui::state::Message::DownloadAllComplete { dest_dir } => {
+                Some(std::path::PathBuf::from(dest_dir))
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the real download must succeed against the live Hugging Face endpoint; \
+                 got {messages:?}"
+            )
+        });
+
+    // Independent integrity check: this test's own hash/size pass over the
+    // files on disk, separate from model_delivery's own internal one.
+    for file in orbok_models::DEFAULT_TRUSTED_MODEL.files {
+        let path = dest_dir.join(file.relative_path);
+        let bytes =
+            std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        assert_eq!(
+            bytes.len() as u64,
+            file.exact_size_bytes,
+            "{}: wrong size",
+            file.relative_path
+        );
+        use sha2::{Digest as _, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hex: String = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_eq!(hex, file.sha256, "{}: wrong SHA-256", file.relative_path);
+    }
+
+    // The model loads: resolved through the ordinary (no manual override)
+    // path, which can only succeed by reading the managed generation
+    // `download::run` just wrote.
+    let settings = bootstrap::load_runtime_settings(&context).unwrap();
+    assert!(
+        settings.embedding_model_dir.is_none(),
+        "this profile must have no manual override, so resolution below can only \
+         succeed by reading the managed generation just installed"
+    );
+
+    let source_dir = temp.path().join("source");
+    write_markdown(
+        &source_dir.join("doc.md"),
+        "# Doc\n\nA short note about quarterly budget planning and cost review.\n",
+    );
+    {
+        let catalog = bootstrap::open_catalog(&context).unwrap();
+        let (card, _) =
+            bootstrap::add_source_expect_added(&catalog, &source_dir.to_string_lossy()).unwrap();
+        bootstrap::scan_and_index_source(&catalog, &card.source_id).unwrap();
+        let indexing_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+            &context,
+            &AllowRuntimePathProbe,
+            &catalog,
+            &settings,
+        )
+        .expect("the just-installed generation must load as a real embedding model");
+        drain_scheduler_until_idle_with_embedding(
+            &context,
+            Duration::from_secs(120),
+            Some(indexing_model),
+        )
+        .await;
+    }
+
+    let catalog = bootstrap::open_catalog(&context).unwrap();
+    let search_model = bootstrap::embedding_resolution::resolve_embedding_worker_parts(
+        &context,
+        &AllowRuntimePathProbe,
+        &catalog,
+        &settings,
+    )
+    .expect("resolves again for the search half");
+    let results = bootstrap::run_search(
+        &catalog,
+        Some(&search_model),
+        None,
+        "quarterly budget planning",
+        orbok_search::SearchMode::Conceptual,
+        20,
+        orbok_core::SearchScope::default(),
+    )
+    .unwrap();
+    assert!(
+        !results.is_empty(),
+        "a real search by meaning against the freshly-downloaded model must find the seeded doc"
     );
 }
 
