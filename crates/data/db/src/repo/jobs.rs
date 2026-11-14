@@ -56,6 +56,13 @@ pub(crate) const EXTRACTION_BACKFILL_FILES_SQL: &str = "SELECT f.file_id, f.sour
         AND j.status IN ('queued', 'running', 'paused', 'blocked', \
                          'waiting_for_dependency'))";
 
+/// Task 034 §6 / Task 145 §7: `IndexJobRepository::count_with_status`'s own
+/// query, shared with its plan test
+/// (`count_with_status_query_uses_the_status_index_not_a_full_scan`) so the
+/// two cannot drift apart, the same `pub(crate)` constant trick as
+/// `EMBEDDING_BACKFILL_FILES_SQL`.
+pub(crate) const COUNT_WITH_STATUS_SQL: &str = "SELECT COUNT(*) FROM index_jobs WHERE status = ?1";
+
 pub struct IndexJobRepository<'a> {
     catalog: &'a Catalog,
 }
@@ -370,14 +377,15 @@ impl<'a> IndexJobRepository<'a> {
     /// `idx_index_jobs_status` (Task 034 §6, audit P-02) -- for a caller
     /// that only needs the count, not `list_by_status(status,
     /// u32::MAX).len()`, which materializes and sorts every matching row.
+    /// The plan is pinned by
+    /// `count_with_status_query_uses_the_status_index_not_a_full_scan`
+    /// (Task 145 §7), against `COUNT_WITH_STATUS_SQL` below.
     pub fn count_with_status(&self, status: JobStatus) -> OrbokResult<u64> {
         let conn = self.catalog.lock();
         let n: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM index_jobs WHERE status = ?1",
-                params![status.as_str()],
-                |r| r.get(0),
-            )
+            .query_row(COUNT_WITH_STATUS_SQL, params![status.as_str()], |r| {
+                r.get(0)
+            })
             .map_err(db_err)?;
         Ok(n as u64)
     }

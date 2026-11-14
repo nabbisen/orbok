@@ -68,19 +68,21 @@ fn count_with_status_is_substantially_faster_than_materializing_every_row() {
     );
 }
 
-/// `get_health` itself must actually be fast at this scale, not just the
-/// underlying query in isolation -- confirms the wiring, not only the
-/// repository method.
+/// `get_health` itself must actually reach the fast path at this scale, not
+/// just the underlying query in isolation -- confirms the wiring, not only
+/// the repository method. Task 145 §7 (Review 323 §3): no longer asserted
+/// by wall-clock time (a contaminated proxy for "uses the index, not a
+/// scan" -- it can fail under load with the real property still holding).
+/// The property itself is pinned directly, by plan, in
+/// `orbok_db::tests::task145_health_query_plan::count_with_status_query_uses_the_status_index_not_a_full_scan`;
+/// this test only confirms `get_health` still returns the right count at
+/// the same 20,000-row scale the old timing test used.
 #[test]
-fn get_health_is_fast_with_many_queued_jobs() {
+fn get_health_is_correct_with_many_queued_jobs() {
     let catalog = Catalog::open_in_memory().unwrap();
     seed_queued_jobs(&catalog, 20_000);
-    let elapsed = best_of(|| get_health(&catalog), 5);
-    assert!(
-        elapsed.as_millis() < 5,
-        "get_health with 20,000 queued jobs took {elapsed:?}, expected a \
-         COUNT(*)-backed query to stay well under 5ms"
-    );
+    let health = get_health(&catalog);
+    assert_eq!(health.queued, 20_000);
 }
 
 /// Sanity check that the query is still counting the right thing, not just
