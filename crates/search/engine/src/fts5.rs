@@ -20,6 +20,34 @@ const ENGINE_NAME: &str = "sqlite-fts5";
 const TOKENIZER_NAME: &str = "unicode61";
 const TOKENIZER_VERSION: &str = "v1";
 
+/// Task 145 §1 (Review 321 §2): CROSS JOIN, not JOIN, from `chunk_fts`
+/// onward -- SQLite's query planner is free to reorder a plain JOIN chain,
+/// and left to itself it drove this query from `keyword_index_records`
+/// (via `idx_keyword_index_status`) outward, running `chunk_fts MATCH` once
+/// per active row there: a search cost time in proportion to the whole
+/// library, not the match count. `CROSS JOIN` is the one join keyword
+/// SQLite's optimizer will not reorder past, so writing `chunk_fts` first
+/// here makes it the outermost loop; the real indexes are unchanged
+/// (`idx_keyword_index_fts_rowid` still serves the join into
+/// `keyword_index_records`). A function, not a `const`, since
+/// `scope_predicate` is dynamic (RFC-060 §7); shared with the plan test
+/// (`keyword_search_runs_the_match_in_the_outermost_loop`) so the two
+/// cannot drift apart.
+pub(crate) fn keyword_search_sql(scope_predicate: &str) -> String {
+    format!(
+        "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
+         FROM chunk_fts \
+         CROSS JOIN keyword_index_records r ON r.fts_rowid = chunk_fts.rowid \
+         CROSS JOIN chunks c ON c.chunk_id = r.chunk_id \
+         CROSS JOIN files f ON f.file_id = c.file_id \
+         CROSS JOIN sources s ON s.source_id = f.source_id \
+         WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
+           AND c.chunk_status = 'active' \
+           AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{scope_predicate} \
+         ORDER BY score LIMIT ?2"
+    )
+}
+
 /// FTS5-backed keyword engine bound to the catalog.
 pub struct Fts5KeywordEngine<'a> {
     catalog: &'a Catalog,
@@ -72,19 +100,7 @@ impl<'a> Fts5KeywordEngine<'a> {
         // (RFC-041 §25.5).
         let scope_sql = scope_sql(scope, "f", "s", 3);
         let mut stmt = conn
-            .prepare(&format!(
-                "SELECT r.chunk_id, c.file_id, bm25(chunk_fts) AS score \
-                 FROM chunk_fts \
-                 JOIN keyword_index_records r ON r.fts_rowid = chunk_fts.rowid \
-                 JOIN chunks c ON c.chunk_id = r.chunk_id \
-                 JOIN files f ON f.file_id = c.file_id \
-                 JOIN sources s ON s.source_id = f.source_id \
-                 WHERE chunk_fts MATCH ?1 AND r.status = 'active' \
-                   AND c.chunk_status = 'active' \
-                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{} \
-                 ORDER BY score LIMIT ?2",
-                scope_sql.predicate
-            ))
+            .prepare(&keyword_search_sql(&scope_sql.predicate))
             .map_err(db)?;
         let mut binds: Vec<rusqlite::types::Value> = vec![
             match_expr.into(),

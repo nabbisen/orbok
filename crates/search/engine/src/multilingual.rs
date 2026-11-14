@@ -67,6 +67,28 @@ pub fn normalize_query(query: &str) -> String {
         .to_string()
 }
 
+/// Task 145 §1 (same shape and reason as `fts5::keyword_search_sql`'s own
+/// doc comment): `CROSS JOIN` keeps `chunk_fts_trigram` as the outermost
+/// loop, rather than letting the planner drive the query from
+/// `keyword_index_records` outward. A function, not a `const`, since
+/// `scope_predicate` is dynamic (RFC-060 §7); shared with the plan test
+/// (`trigram_search_runs_the_match_in_the_outermost_loop`) so the two
+/// cannot drift apart.
+pub(crate) fn trigram_search_sql(scope_predicate: &str) -> String {
+    format!(
+        "SELECT r.chunk_id, c.file_id, bm25(chunk_fts_trigram) AS score \
+         FROM chunk_fts_trigram \
+         CROSS JOIN keyword_index_records r ON r.trigram_fts_rowid = chunk_fts_trigram.rowid \
+         CROSS JOIN chunks c ON c.chunk_id = r.chunk_id \
+         CROSS JOIN files f ON f.file_id = c.file_id \
+         CROSS JOIN sources s ON s.source_id = f.source_id \
+         WHERE chunk_fts_trigram MATCH ?1 AND r.status = 'active' \
+           AND c.chunk_status = 'active' \
+           AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{scope_predicate} \
+         ORDER BY score LIMIT ?2"
+    )
+}
+
 /// Multilingual keyword search engine (RFC-014 §12).
 pub struct MultilingualKeywordEngine<'a> {
     catalog: &'a Catalog,
@@ -227,19 +249,7 @@ impl MultilingualKeywordEngine<'_> {
         // RFC-060 §5/§7, same joins and scope as the unicode61 path.
         let scope_sql = scope_sql(scope, "f", "s", 3);
         let mut stmt = conn
-            .prepare(&format!(
-                "SELECT r.chunk_id, c.file_id, bm25(chunk_fts_trigram) AS score \
-                 FROM chunk_fts_trigram \
-                 JOIN keyword_index_records r ON r.trigram_fts_rowid = chunk_fts_trigram.rowid \
-                 JOIN chunks c ON c.chunk_id = r.chunk_id \
-                 JOIN files f ON f.file_id = c.file_id \
-                 JOIN sources s ON s.source_id = f.source_id \
-                 WHERE chunk_fts_trigram MATCH ?1 AND r.status = 'active' \
-                   AND c.chunk_status = 'active' \
-                   AND s.status IN {SEARCHABLE_SOURCE_STATUS_SQL}{} \
-                 ORDER BY score LIMIT ?2",
-                scope_sql.predicate
-            ))
+            .prepare(&trigram_search_sql(&scope_sql.predicate))
             .map_err(|e| OrbokError::Database(e.to_string()))?;
         let mut binds: Vec<rusqlite::types::Value> = vec![
             match_expr.into(),

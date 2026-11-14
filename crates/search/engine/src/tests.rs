@@ -9,3 +9,5 @@ mod task034_ranking_fusion;
 mod task034_snippet_robustness;
 mod task099_independent_rebuild;
 mod task128_what_a_result_and_a_page_show_is_clean;
+mod task145_fts_join_order;
+mod task145_results_unchanged;
