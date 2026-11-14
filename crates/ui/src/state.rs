@@ -644,6 +644,14 @@ pub struct AppState {
     pub storage_cache_file_bytes: Option<u64>,
     pub health: IndexHealth,
     pub sources: Vec<SourceCard>,
+    /// Review 326 §3.1: whether `Message::SourcesLoaded` has run at
+    /// least once this session -- the *first* load (restoring folders
+    /// from an earlier session) is one of the three moments a single
+    /// usable folder is chosen automatically; every later load (while
+    /// files are being prepared, the common case) must not re-run that
+    /// choice, or it would silently undo a `×` a moment after the user
+    /// pressed it.
+    pub sources_loaded_once: bool,
     /// RFC-034 (Task 024): keyboard-driven selection into `sources`,
     /// mirroring `selected_result` for the Sources view -- arrow keys move
     /// it, `Enter` removes the selected source, `Escape` clears it.
@@ -766,6 +774,7 @@ impl Default for AppState {
             storage_cache_file_bytes: None,
             health: IndexHealth::default(),
             sources: Vec::new(),
+            sources_loaded_once: false,
             selected_source: None,
             capability: SearchCapability::KeywordOnly,
             active_model_provenance: None,
@@ -1698,19 +1707,7 @@ impl AppState {
                 // `SearchResultsReady`'s own reset of `selected_result`
                 // rather than risk a stale/misleading index.
                 self.selected_source = None;
-                // Task 147 §1.1: with exactly one usable folder and
-                // nothing chosen yet, there is nothing to choose between,
-                // so it becomes the chosen search location. With two or
-                // more, nothing is preselected -- the choice matters there.
-                if self.search_location.selected.is_none() {
-                    let mut usable = self.sources.iter().filter(|s| s.status.is_searchable());
-                    if let (Some(only), None) = (usable.next(), usable.next()) {
-                        self.search_location.selected = Some(SearchLocation::remembered(
-                            orbok_core::SourceId::from_string(only.source_id.clone()),
-                            only.display_name.clone(),
-                        ));
-                    }
-                }
+                self.choose_the_only_usable_folder_if_nothing_is_chosen();
             }
             // Task 073: the list changes only after the catalog does.
             Message::SourceRemoved(_) => {} // handled by orbok: source_removal::remove
@@ -1727,6 +1724,12 @@ impl AppState {
             Message::SourcesLoaded(cards) => {
                 self.sources = cards.clone();
                 self.selected_source = None;
+                // Review 326 §3.1: only the *first* load of a session --
+                // see `sources_loaded_once`'s own doc comment.
+                if !self.sources_loaded_once {
+                    self.sources_loaded_once = true;
+                    self.choose_the_only_usable_folder_if_nothing_is_chosen();
+                }
             }
             Message::SourceCardsRefreshed(cards) => {
                 for fresh in cards {
@@ -2036,6 +2039,30 @@ impl AppState {
         self.confirm_narrow_source
             .take()
             .map(Message::NarrowFolderRequested)
+    }
+
+    /// Task 147 §1.1 / Review 326 §3.1: with exactly one usable folder
+    /// and nothing chosen, there is nothing to choose between, so it
+    /// becomes the chosen search location. With two or more, nothing
+    /// is preselected -- the choice matters there. One function, called
+    /// from the three moments this can first become true:
+    /// `Message::SourceAdded`, the first `Message::SourcesLoaded` of a
+    /// session (`router.rs`'s own first-load gate), and
+    /// `Message::SubmitSearch` (covers a folder removed or paused down
+    /// to one, without reacting to every refresh in between -- see
+    /// `router.rs`'s own `SubmitSearch` handler, which calls this
+    /// *before* checking whether a location is already chosen).
+    pub fn choose_the_only_usable_folder_if_nothing_is_chosen(&mut self) {
+        if self.search_location.selected.is_some() {
+            return;
+        }
+        let mut usable = self.sources.iter().filter(|s| s.status.is_searchable());
+        if let (Some(only), None) = (usable.next(), usable.next()) {
+            self.search_location.selected = Some(SearchLocation::remembered(
+                orbok_core::SourceId::from_string(only.source_id.clone()),
+                only.display_name.clone(),
+            ));
+        }
     }
 
     /// Task 114: whether the selected search location is a folder set to

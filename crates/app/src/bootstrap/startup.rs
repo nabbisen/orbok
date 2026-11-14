@@ -235,6 +235,14 @@ pub fn load_initial_state_with<P: RuntimePathProbe + ?Sized>(
         },
         ..Default::default()
     };
+    let mut state = state;
+    // Review 326 §3.1: this *is* the session's first load of `sources`
+    // (built directly here, at boot, never through
+    // `Message::SourcesLoaded`) -- the same "exactly one usable folder,
+    // nothing chosen" rule applies, and `sources_loaded_once` is set so
+    // a later, real `SourcesLoaded` (a refresh) does not re-run it.
+    state.sources_loaded_once = true;
+    state.choose_the_only_usable_folder_if_nothing_is_chosen();
     Ok(state)
 }
 

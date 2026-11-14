@@ -1062,12 +1062,16 @@ fn the_search_folder_failed_retry_actually_opens_a_request() {
     assert!(app.state.search_location.picker_in_progress);
 }
 
-/// Task 132 §1.1: choosing an already-added folder promotes it to the
-/// search location and resumes the search that was pending -- the same
-/// outcome `folder_picked` gives a brand new path, without the picker in
-/// between. Red before Task 132: `ExistingSearchFolderChosen` did not exist.
+/// Review 326 §3.1 item 3: `SubmitSearch` with exactly one usable
+/// folder and nothing chosen picks it itself -- visibly, in the chip --
+/// and runs the search in the same press, rather than showing the
+/// "choose a folder" line for a choice that was never really one. Red
+/// before this follow-up: the one-usable-folder rule ran only from
+/// `Message::SourceAdded`, so a folder removed or paused down to one
+/// (the state this fixture models directly) left this case stuck
+/// showing the line forever.
 #[test]
-fn choosing_an_existing_folder_resumes_the_pending_search() {
+fn submit_search_with_one_usable_folder_chooses_it_and_runs() {
     let temp = tempfile::tempdir().unwrap();
     let deps = test_deps(temp.path());
     let mut app = OrbokApp::with_state(AppState {
@@ -1084,6 +1088,182 @@ fn choosing_an_existing_folder_resumes_the_pending_search() {
             status: orbok_core::SourceStatus::Active,
             source_id: "s_docs".into(),
         }],
+        ..AppState::default()
+    });
+
+    let task = route(&mut app, Message::SubmitSearch, &deps);
+
+    let source_id = orbok_core::SourceId::from_string("s_docs".to_string());
+    assert_eq!(
+        app.state
+            .search_location
+            .selected
+            .as_ref()
+            .map(|l| l.source_id()),
+        Some(Some(&source_id)),
+        "the only usable folder is chosen, visibly, in the chip"
+    );
+    assert!(
+        app.state.search_location.pending_query.is_none(),
+        "nothing is pending -- the search already ran"
+    );
+    assert_eq!(
+        task.units(),
+        1,
+        "the search itself must run in the same press, not wait for a second one"
+    );
+}
+
+/// Review 326 §3.1/§3.2: two folders, one removed, leaving one usable --
+/// pressing Search afterward chooses the remaining one and runs, the
+/// same as `submit_search_with_one_usable_folder_chooses_it_and_runs`
+/// but reached by removal rather than starting with one.
+#[test]
+fn submit_search_after_a_folder_is_removed_chooses_the_remaining_one() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState {
+        query: "renewal policy".into(),
+        sources: vec![
+            orbok_ui::state::SourceCard {
+                display_name: "Docs".into(),
+                display_path: "/docs".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Active,
+                source_id: "s_docs".into(),
+            },
+            orbok_ui::state::SourceCard {
+                display_name: "Notes".into(),
+                display_path: "/notes".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Active,
+                source_id: "s_notes".into(),
+            },
+        ],
+        ..AppState::default()
+    });
+    app.state
+        .update(&Message::SourceRemovalSucceeded("s_notes".to_string()));
+
+    let task = route(&mut app, Message::SubmitSearch, &deps);
+
+    let source_id = orbok_core::SourceId::from_string("s_docs".to_string());
+    assert_eq!(
+        app.state
+            .search_location
+            .selected
+            .as_ref()
+            .map(|l| l.source_id()),
+        Some(Some(&source_id)),
+        "the remaining usable folder is chosen after the other was removed"
+    );
+    assert_eq!(task.units(), 1, "the search itself must run");
+}
+
+/// Same as above, reached by pausing the other folder rather than
+/// removing it -- a paused source is not usable either.
+#[test]
+fn submit_search_after_a_folder_is_paused_chooses_the_remaining_one() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    let mut app = OrbokApp::with_state(AppState {
+        query: "renewal policy".into(),
+        sources: vec![
+            orbok_ui::state::SourceCard {
+                display_name: "Docs".into(),
+                display_path: "/docs".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Active,
+                source_id: "s_docs".into(),
+            },
+            orbok_ui::state::SourceCard {
+                display_name: "Notes".into(),
+                display_path: "/notes".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Paused,
+                source_id: "s_notes".into(),
+            },
+        ],
+        ..AppState::default()
+    });
+
+    let task = route(&mut app, Message::SubmitSearch, &deps);
+
+    let source_id = orbok_core::SourceId::from_string("s_docs".to_string());
+    assert_eq!(
+        app.state
+            .search_location
+            .selected
+            .as_ref()
+            .map(|l| l.source_id()),
+        Some(Some(&source_id)),
+        "the one active folder is chosen; the paused one does not count"
+    );
+    assert_eq!(task.units(), 1, "the search itself must run");
+}
+
+/// Task 132 §1.1: choosing an already-added folder promotes it to the
+/// search location and resumes the search that was pending -- the same
+/// outcome `folder_picked` gives a brand new path, without the picker in
+/// between. Red before Task 132: `ExistingSearchFolderChosen` did not exist.
+#[test]
+fn choosing_an_existing_folder_resumes_the_pending_search() {
+    let temp = tempfile::tempdir().unwrap();
+    let deps = test_deps(temp.path());
+    // Review 326 §3.1: two usable folders, not one -- with exactly one,
+    // `SubmitSearch` now chooses it itself and runs (its own test,
+    // `submit_search_with_one_usable_folder_chooses_it_and_runs`), so
+    // this scenario (an ambiguous choice, a pending query, resumed by
+    // an explicit pick) needs the genuinely ambiguous case to still
+    // reach it.
+    let mut app = OrbokApp::with_state(AppState {
+        query: "renewal policy".into(),
+        sources: vec![
+            orbok_ui::state::SourceCard {
+                display_name: "Docs".into(),
+                display_path: "/docs".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Active,
+                source_id: "s_docs".into(),
+            },
+            orbok_ui::state::SourceCard {
+                display_name: "Notes".into(),
+                display_path: "/notes".into(),
+                indexed: 1,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                covers_subfolders: true,
+                status: orbok_core::SourceStatus::Active,
+                source_id: "s_notes".into(),
+            },
+        ],
         ..AppState::default()
     });
     // As a submitted search with no location leaves it (Task 132 §1.1): the

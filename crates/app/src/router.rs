@@ -950,6 +950,14 @@ pub(crate) fn route(app: &mut OrbokApp, message: Message, deps: &AppDeps) -> ice
         Message::SubmitSearch => {
             let query = app.state.query.trim().to_string();
             if !query.is_empty() {
+                // Review 326 §3.1: covers a folder removed or paused down
+                // to exactly one usable folder, without reacting to every
+                // refresh in between -- called before the location check
+                // below, so Search itself chooses the only usable folder
+                // (visibly, in the chip) and runs, rather than showing the
+                // "choose a folder" line for a choice that isn't one.
+                app.state
+                    .choose_the_only_usable_folder_if_nothing_is_chosen();
                 // RFC-045: if no search location is selected, open the
                 // folder picker first and store the pending query -- unless
                 // added folders are offered directly instead (Task 132

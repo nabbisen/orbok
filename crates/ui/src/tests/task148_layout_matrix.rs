@@ -432,6 +432,11 @@ pub(crate) fn search_two_folders_no_location_app(locale: Locale, scale: TextScal
             })
             .collect(),
     ));
+    // Review 326 §3.3: a typed query, kept -- the earlier version of
+    // this fixture left the query box empty, so neither the matrix nor
+    // its own evidence snapshot showed the one thing this state is
+    // actually about (the query survives, it is not cleared).
+    state.update(&Message::QueryChanged("report".into()));
     // Task 147 §1.2: with two usable folders, nothing was preselected --
     // this models the real app's own gate (`router.rs`'s `SubmitSearch`,
     // `!has_selected() && !sources.is_empty()`), which dispatches this

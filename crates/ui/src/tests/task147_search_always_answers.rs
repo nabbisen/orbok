@@ -44,6 +44,59 @@ fn one_folder_added_none_chosen_is_chosen_automatically() {
     );
 }
 
+/// Review 326 §3.1 item 2: the *first* `SourcesLoaded` of a session (a
+/// folder added in an earlier session, restored at startup) is one of
+/// the three moments this rule applies -- not only `SourceAdded`. This
+/// is the exact gap the review named: "every 0.30.0 user with one
+/// folder, after upgrading."
+#[test]
+fn one_folder_present_at_the_first_load_is_chosen() {
+    let mut state = AppState::default();
+    assert!(!state.sources_loaded_once);
+    state.update(&Message::SourcesLoaded(vec![folder("s_docs", "Docs")]));
+    assert_eq!(
+        state.search_location.selected,
+        Some(SearchLocation::remembered(
+            SourceId::from_string("s_docs"),
+            "Docs"
+        )),
+        "the one usable folder present at the first load is chosen"
+    );
+    assert!(state.sources_loaded_once);
+}
+
+/// A later `SourcesLoaded` (a refresh while files are prepared, the
+/// common case) must not re-run the rule -- it would silently undo a
+/// `×` a moment after the user pressed it.
+#[test]
+fn a_later_sources_loaded_does_not_re_choose_after_the_user_cleared_it() {
+    let mut state = AppState::default();
+    state.update(&Message::SourcesLoaded(vec![folder("s_docs", "Docs")]));
+    assert!(state.search_location.selected.is_some());
+    state.update(&Message::SearchLocationCleared);
+    assert!(state.search_location.selected.is_none());
+
+    // A refresh with the same one folder -- not the first load any more.
+    state.update(&Message::SourcesLoaded(vec![folder("s_docs", "Docs")]));
+    assert!(
+        state.search_location.selected.is_none(),
+        "a later SourcesLoaded must not re-choose what the user just cleared"
+    );
+
+    // Review 326 §3.1 item 3: pressing Search is still the third
+    // moment -- modelled directly here since the router (where
+    // `SubmitSearch` actually calls this) is a different crate.
+    state.choose_the_only_usable_folder_if_nothing_is_chosen();
+    assert_eq!(
+        state.search_location.selected,
+        Some(SearchLocation::remembered(
+            SourceId::from_string("s_docs"),
+            "Docs"
+        )),
+        "Search still chooses the only usable folder afterward"
+    );
+}
+
 /// With two or more usable folders present from the start (the realistic
 /// case this bears on: two folders already added in an earlier session,
 /// loaded together at startup), nothing is preselected -- the choice
