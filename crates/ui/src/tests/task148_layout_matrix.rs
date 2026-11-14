@@ -331,6 +331,124 @@ fn the_search_page_with_a_result_matrix() {
     }
 }
 
+// ── Task 147 §4: the two new search-location states ─────────────────────
+
+/// `pub(crate)`: Task 147's own evidence test (headless snapshots of
+/// this same state) reuses this fixture rather than a second copy that
+/// could drift from the one the matrix itself checks.
+pub(crate) fn search_one_folder_app(locale: Locale, scale: TextScale) -> OrbokApp {
+    let mut state = AppState {
+        locale,
+        active_view: ViewId::Search,
+        ..AppState::default()
+    };
+    state.update(&Message::SetTextScale(scale));
+    // Task 147 §1.1: the one usable folder just added becomes the
+    // chosen location -- `Message::SourceAdded` is the reducer this
+    // runs through, not a struct literal, so the derived selection is
+    // real, not asserted by construction.
+    state.update(&Message::SourceAdded(SourceCard {
+        display_name: "Documents".into(),
+        display_path: "/home/user/Documents".into(),
+        indexed: 3,
+        stale: 0,
+        failed: 0,
+        no_text_found: 0,
+        unfinished_jobs: 0,
+        status: orbok_core::SourceStatus::Active,
+        source_id: "s1".into(),
+        covers_subfolders: true,
+    }));
+    OrbokApp::with_state(state)
+}
+
+#[test]
+fn the_search_page_with_one_folder_chosen_by_default_matrix() {
+    let _guard = iced_test_guard();
+    for &locale in Locale::ALL {
+        for &scale in TextScale::ALL {
+            let app = search_one_folder_app(locale, scale);
+            let mut expect = tab_bar_labels(locale, ViewId::Search);
+            expect.extend(sidebar_group_labels(locale));
+            expect.push(label("Documents"));
+            expect.push(label(tr(locale, MessageKey::SearchScopeOnly)));
+            for window in window_sizes() {
+                assert_matrix(
+                    app.view(),
+                    window,
+                    &format!(
+                        "search, one folder chosen by default, {locale:?}, {scale:?}, {window:?}"
+                    ),
+                    &expect,
+                );
+            }
+        }
+    }
+}
+
+/// `pub(crate)`: see `search_one_folder_app`'s own doc comment.
+pub(crate) fn search_two_folders_no_location_app(locale: Locale, scale: TextScale) -> OrbokApp {
+    let mut state = AppState {
+        locale,
+        active_view: ViewId::Search,
+        ..AppState::default()
+    };
+    state.update(&Message::SetTextScale(scale));
+    // `SourcesLoaded`, not two `SourceAdded`s: both folders present from
+    // the start (the realistic trigger per Review 324 §3's own origin --
+    // folders added in an earlier session), so §1.1's auto-select on add
+    // never runs here. Adding them one at a time would auto-select the
+    // first (its own test, `the_search_page_with_one_folder_chosen_by_default_matrix`),
+    // leaving no way to reach "two folders, none chosen" through
+    // `SourceAdded` alone.
+    state.update(&Message::SourcesLoaded(
+        [("s1", "Documents"), ("s2", "Projects")]
+            .into_iter()
+            .map(|(id, name)| SourceCard {
+                display_name: name.into(),
+                display_path: format!("/home/user/{name}"),
+                indexed: 3,
+                stale: 0,
+                failed: 0,
+                no_text_found: 0,
+                unfinished_jobs: 0,
+                status: orbok_core::SourceStatus::Active,
+                source_id: id.into(),
+                covers_subfolders: true,
+            })
+            .collect(),
+    ));
+    // Task 147 §1.2: with two usable folders, nothing was preselected --
+    // this models the real app's own gate (`router.rs`'s `SubmitSearch`,
+    // `!has_selected() && !sources.is_empty()`), which dispatches this
+    // reducer message.
+    state.update(&Message::SearchFolderChoicesPending);
+    OrbokApp::with_state(state)
+}
+
+#[test]
+fn the_search_page_with_two_folders_and_no_location_matrix() {
+    let _guard = iced_test_guard();
+    for &locale in Locale::ALL {
+        for &scale in TextScale::ALL {
+            let app = search_two_folders_no_location_app(locale, scale);
+            let mut expect = tab_bar_labels(locale, ViewId::Search);
+            expect.extend(sidebar_group_labels(locale));
+            expect.push(label("Documents"));
+            expect.push(label("Projects"));
+            expect.push(label(tr(locale, MessageKey::SearchFolderNotChosen)));
+            for window in window_sizes() {
+                assert_matrix(
+                    app.view(),
+                    window,
+                    &format!("search, two folders, none chosen, {locale:?}, {scale:?}, {window:?}"),
+                    &expect,
+                );
+            }
+        }
+    }
+}
+
 // ── Folders ──────────────────────────────────────────────────────────────
 
 fn folders_app(locale: Locale, scale: TextScale) -> OrbokApp {

@@ -1688,6 +1688,19 @@ impl AppState {
                 // `SearchResultsReady`'s own reset of `selected_result`
                 // rather than risk a stale/misleading index.
                 self.selected_source = None;
+                // Task 147 §1.1: with exactly one usable folder and
+                // nothing chosen yet, there is nothing to choose between,
+                // so it becomes the chosen search location. With two or
+                // more, nothing is preselected -- the choice matters there.
+                if self.search_location.selected.is_none() {
+                    let mut usable = self.sources.iter().filter(|s| s.status.is_searchable());
+                    if let (Some(only), None) = (usable.next(), usable.next()) {
+                        self.search_location.selected = Some(SearchLocation::remembered(
+                            orbok_core::SourceId::from_string(only.source_id.clone()),
+                            only.display_name.clone(),
+                        ));
+                    }
+                }
             }
             // Task 073: the list changes only after the catalog does.
             Message::SourceRemoved(_) => {} // handled by orbok: source_removal::remove
@@ -1735,12 +1748,19 @@ impl AppState {
                 // Task 068: the search this picker is for.
                 let query = self.query.trim();
                 self.search_location.pending_query = (!query.is_empty()).then(|| query.to_string());
+                // Task 147 §1.2: opening the system picker is a different
+                // flow from the inline "choose a folder" line below the
+                // offered choices -- it isn't about either any more.
+                self.search_location.folder_not_chosen = false;
             }
             Message::SearchFolderChoicesPending => {
                 // Task 132: the choices are already on the page; only the
                 // pending query needs remembering so picking one resumes it.
                 let query = self.query.trim();
                 self.search_location.pending_query = (!query.is_empty()).then(|| query.to_string());
+                // Task 147 §1.2: Search (or Enter) with two or more
+                // folders and none chosen -- say so beside the choices.
+                self.search_location.folder_not_chosen = true;
             }
             Message::FolderPickerCancelled => {
                 // RFC-045 §8.2: cancel is neutral — no error, query preserved.
@@ -1761,6 +1781,8 @@ impl AppState {
             Message::SearchLocationSelected(location) => {
                 self.search_location.picker_in_progress = false;
                 self.search_location.selected = Some(location.clone());
+                // Task 147 §1.2: resolved -- a folder is now chosen.
+                self.search_location.folder_not_chosen = false;
                 // Task 068: no "Searching" here. This message issues no search
                 // task, so setting it left a first search stuck forever;
                 // `SubmitSearch`, which does issue one, sets it.

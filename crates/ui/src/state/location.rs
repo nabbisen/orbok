@@ -159,6 +159,12 @@ pub struct SearchLocationState {
     /// resumed once a folder is picked. Held here because the portal picker
     /// is not modal -- the box can change while it is open.
     pub pending_query: Option<String>,
+    /// Task 147 §1.2: Search (or Enter) was pressed with two or more
+    /// folders added and none chosen yet, so the query was kept but
+    /// nothing could run -- the inline line beside the folder choices
+    /// says so until a folder is chosen (or the system picker is opened
+    /// instead, a different flow this prompt isn't about).
+    pub folder_not_chosen: bool,
 }
 
 impl SearchLocationState {
@@ -171,6 +177,7 @@ impl SearchLocationState {
     /// elsewhere (`AppState::query`) and is intentionally untouched.
     pub fn clear(&mut self) {
         self.selected = None;
+        self.folder_not_chosen = false;
     }
 
     /// Change the scope of the selected location in place, preserving the

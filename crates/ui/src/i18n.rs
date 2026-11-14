@@ -450,6 +450,10 @@ message_keys! {
     /// Scope toggle label shown when current scope is FolderOnly: offers to
     /// switch to including subfolders.
     SearchScopeSubfolders,
+    /// Task 147 §1.2: shown beside the folder choices after Search (or
+    /// Enter) is pressed with two or more folders added and none chosen
+    /// yet -- today's query stays, nothing silently happens.
+    SearchFolderNotChosen,
     // RFC-042: search history
     /// Panel / section header.
     RecentSearchesLabel,

@@ -372,6 +372,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchLocationClear => "Clear this folder",
         SearchScopeOnly => "This folder only",
         SearchScopeSubfolders => "This folder and subfolders",
+        SearchFolderNotChosen => "Choose a folder to search in.",
         // RFC-042: search history
         RecentSearchesLabel => "Recent searches",
         SearchAgainButton => "Search again",

@@ -378,6 +378,7 @@ pub fn message(key: MessageKey) -> &'static str {
         SearchLocationClear => "このフォルダーの選択を解除",
         SearchScopeOnly => "このフォルダーのみ",
         SearchScopeSubfolders => "このフォルダーとサブフォルダー",
+        SearchFolderNotChosen => "検索するフォルダーを選んでください。",
         // RFC-042: search history
         RecentSearchesLabel => "最近の検索",
         SearchAgainButton => "もう一度検索",

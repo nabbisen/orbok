@@ -323,7 +323,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
                     )),
                 })
                 .collect();
-            hrow![
+            let choices_row: Element<'a, Message> = hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
                 components::choice(tokens, meta, options),
                 components::ghost(
@@ -336,7 +336,22 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             .spacing(tokens.spacing.xs)
             .align_y(iced::Alignment::Center)
             .wrap()
-            .into()
+            .into();
+            // Task 147 §1.2: Search (or Enter) with none of these chosen
+            // keeps the query and says so, instead of changing nothing
+            // the user can see (Review 324 §3).
+            if state.search_location.folder_not_chosen {
+                column![
+                    choices_row,
+                    text(tr(locale, MessageKey::SearchFolderNotChosen))
+                        .size(theme::meta_s(tokens, sc))
+                        .line_height(theme::meta_lh(tokens)),
+                ]
+                .spacing(tokens.spacing.xs)
+                .into()
+            } else {
+                choices_row
+            }
         }
         Some(location) => {
             // Task 114 (RFC-064 §3.4): a folder set to "this folder only" has
