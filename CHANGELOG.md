@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- rustix and quinn-udp are updated for their advisories (RUSTSEC-2026-0486,
+  RUSTSEC-2026-0538).
+
 ## [0.30.0] — 2026-11-11
 
 ### Security
