@@ -168,6 +168,119 @@ the notice). The skip is visible in plain `cargo test` output without
 branch with a fake `bwrap` and asserts the notice appears in captured child
 output.
 
+## The headless UI layout matrix
+
+`crates/ui/src/tests/task148_layout_matrix.rs`: renders Search (with a
+result), Folders, Settings, the wizard's first screen, and the notice
+through the real shell (`OrbokApp::view`), across every text size
+(`TextScale::ALL`), both locales (`Locale::ALL`), and the narrowest
+window this crate tests against (450x1400) plus the GUI rule file's own
+1280x720 manual-capture default — asserting, for each combination, that
+every named element is present, lies inside the window, and is not
+clipped (Task 106's property, generalized from one scale/width to the
+whole matrix). It also exposes a `min` check for a control's hit area
+(Task 140's house 44 px rule), proven against the file's own red-first
+tests rather than asserted against today's controls, which do not meet
+it yet.
+
+Theme is deliberately not part of the matrix — nothing here lays out
+differently by theme (color tokens, not typography or spacing); "Follow
+system" resolving to the right concrete theme is covered separately by
+`task138_follow_system_follows_the_system.rs`.
+
+```sh
+cargo test -p orbok-ui --lib task148_layout_matrix
+```
+
+This is part of `orbok-ui`'s own test suite, which the Fast gate excludes
+entirely for build-time reasons (compiling `orbok-ui`'s `iced`/`wgpu`/
+`snora` dependency tree costs much more than running any one test module
+inside it) — not because of this matrix's own runtime, which is a couple
+of seconds. It runs on `main` (the Release gate's workspace library
+tests) and on all three OSes (the Cross-platform smoke job's own
+`orbok-ui` step), the same two places the rest of `orbok-ui`'s tests
+already run.
+
+## The real-UI session script
+
+`scripts/gui-session.sh` is the one reusable setup for a pass that needs
+an actual rendered window (what the layout matrix above cannot reach —
+font rendering, "does it read well", anything needing human eyes). It
+starts a nested niri compositor sized for the request, isolates every
+directory the app reads (`ORBOK_DATA_DIR`, `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`, `XDG_CACHE_HOME`) under a scratch directory inside
+`.git-exclude/`, launches one binary inside it, captures its window, and
+tears everything down:
+
+```sh
+scripts/gui-session.sh <task> <width> <height> <capture-name.png> <binary> [args...]
+# for example:
+scripts/gui-session.sh task150 1280 720 en-default.png target/release/orbok
+```
+
+The capture lands at `.git-exclude/evidence/<task>/<capture-name.png>`.
+See the script's own header for what it verified about niri (a nested
+compositor's outer window is still owned by the *host's* tiling layout
+and must be floated and resized there, not configured from inside; the
+host's output scale changes the arithmetic between the outer window size
+and the nested app's logical size) and for which input channel
+(`wtype`/`xdotool`) reaches the session once it is up — driving that
+input is the caller's job, not this script's.
+
+`scripts/gui-session.test.sh` is its self-test (skips, rather than
+failing, on a machine with no niri session running).
+
+## The previous release's build
+
+An upgrade pass needs the previous release's binary. Rebuilding it from
+a worktree every time (as every pass before this one did) costs a full
+release build per pass. Instead, it is kept at, project-root relative:
+
+```
+.git-exclude/dev-fixtures/bin/orbok-<version>
+```
+
+with its commit and checksum recorded beside it in
+`orbok-<version>.sha256`. Not tracked, same reasoning as the embedding
+model fixture above: `.gitignore` excludes all of `/.git-exclude/`.
+
+**To fill it**, from a clean worktree at the release tag:
+
+```sh
+git worktree add /tmp/orbok-prev-release <tag>
+(cd /tmp/orbok-prev-release && cargo build --release -p orbok)
+mkdir -p .git-exclude/dev-fixtures/bin
+cp /tmp/orbok-prev-release/target/release/orbok \
+   .git-exclude/dev-fixtures/bin/orbok-<version>
+sha256sum .git-exclude/dev-fixtures/bin/orbok-<version> \
+   > .git-exclude/dev-fixtures/bin/orbok-<version>.sha256   # add the tag and commit as comments
+git worktree remove --force /tmp/orbok-prev-release
+```
+
+Built once per release, on the release commit (the same "once per
+release" rule the next section states for the upgrade pass itself).
+
+**To remove it** when no longer needed: `rm -rf .git-exclude/dev-fixtures/bin/`.
+
+## When the expensive checks run
+
+(`.git-exclude/rules/project-instructions-gui-common.md`'s "Don't repeat
+an expensive pass on unchanged code" rule, restated for this project's
+own three passes):
+
+- **The upgrade pass** (the previous release's binary opens a profile
+  this release wrote, or vice versa): when a migration, the settings
+  format, or the cache format changed since the last pass.
+- **The real model download** (the wizard's own download and trust
+  verification, not a test against the fixture above): when the
+  download or trust code changed.
+- **Otherwise**, the model-backed tests with the fixture
+  (`RFC013_MODEL_DIR`) plus the headless UI layout matrix above — both
+  cheap enough to run every time regardless.
+
+Each of the first two still runs at least once per release, on the
+release commit, whether or not its own trigger fired since the last one.
+
 ## CI gates
 
 See [`docs/src/maintainers/release_readiness.md`](release_readiness.md)
