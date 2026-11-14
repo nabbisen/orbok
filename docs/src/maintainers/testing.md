@@ -175,13 +175,21 @@ result), Folders, Settings, the wizard's first screen, and the notice
 through the real shell (`OrbokApp::view`), across every text size
 (`TextScale::ALL`), both locales (`Locale::ALL`), and the narrowest
 window this crate tests against (450x1400) plus the GUI rule file's own
-1280x720 manual-capture default — asserting, for each combination, that
-every named element is present, lies inside the window, and is not
-clipped (Task 106's property, generalized from one scale/width to the
-whole matrix). It also exposes a `min` check for a control's hit area
-(Task 140's house 44 px rule), proven against the file's own red-first
-tests rather than asserted against today's controls, which do not meet
-it yet.
+1280x720 manual-capture default — asserting, for each combination:
+
+- every **named** element (a sidebar group name, a tab-bar label, a
+  choice option the test lists by hand) is present and fully visible;
+- **every rendered text, named or not** (Review 325 §4.1): inside the
+  window, not squeezed to zero width, and not clipped sideways (hidden
+  only because it scrolled below the window's bottom is allowed — every
+  page here scrolls). This is the check that actually catches a real
+  regression: in iced, a row given too little space squeezes or clips a
+  child rather than pushing it past the window, so the named list alone
+  only ever checks what it happens to name.
+
+It also exposes a `min` check for a control's hit area (Task 140's house
+44 px rule), proven against the file's own red-first tests rather than
+asserted against today's controls, which do not meet it yet.
 
 Theme is deliberately not part of the matrix — nothing here lays out
 differently by theme (color tokens, not typography or spacing); "Follow
@@ -200,6 +208,35 @@ of seconds. It runs on `main` (the Release gate's workspace library
 tests) and on all three OSes (the Cross-platform smoke job's own
 `orbok-ui` step), the same two places the rest of `orbok-ui`'s tests
 already run.
+
+## Headless snapshots
+
+`crate::tests::task148_layout_matrix::snapshot` (`pub(crate)`, not a
+test itself) renders a page through `iced_test::Simulator::snapshot`
+and compares it against a stored PNG under
+`.git-exclude/evidence/<task>/<name>.png`
+(`Snapshot::matches_image`) — writing the file the first time, rather
+than failing, so recording a new baseline is just: delete the old file,
+run the test once. No window, no compositor, no host to size one on —
+this answers most "does it look right" / "does it read well in
+Japanese" questions the layout matrix above cannot (it checks bounds,
+not pixels), **by default**, per Review 325 §3's decision: until the
+owner's `.git-exclude/tasks/owner/007-sizing-the-nested-compositor-window.md`
+is settled, nothing sizes a window on the host.
+
+Loads the real icon font (`crate::LUCIDE_FONT_BYTES`, the same constant
+`orbok`'s own `main.rs` passes to `.font(..)`) — without it, every icon
+in the snapshot is a placeholder box.
+
+A task that needs one calls `snapshot(..)` from its own test file, in a
+test marked `#[ignore]` (this crate's existing convention for anything
+that needs more than a plain `cargo test` — see `RFC013_MODEL_DIR`'s own
+model-backed tests): CI must never write an evidence file as a side
+effect of an ordinary run.
+
+```sh
+cargo test -p orbok-ui --lib <the ignored test's name> -- --ignored
+```
 
 ## The real-UI session script
 
