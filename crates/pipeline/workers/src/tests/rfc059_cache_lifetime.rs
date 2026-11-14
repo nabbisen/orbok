@@ -99,13 +99,16 @@ fn extract_segments_namespace_is_registered_with_a_ttl_but_no_write_time_cap() {
 /// value (waiting 90 real days is not a test): the mechanism is identical
 /// either way -- an engine's own configured TTL compared against each
 /// row's stored `updated_at` -- so this proves the fix restores the
-/// capability itself, not the specific duration.
+/// capability itself, not the specific duration. The shortest allowed:
+/// Task 141 / Task 145 §4 (localcache 0.26.2) added its own floor, one
+/// second -- confirmed by running this test unchanged first and reading
+/// the resulting "ttl: must be at least one second" error, not assumed.
 #[test]
 fn cleanup_expired_removes_entries_once_a_ttl_is_actually_set() {
     let dir = tempfile::tempdir().unwrap();
     let (catalog, cache) = setup(dir.path());
     let short_ttl_options = EngineOptions {
-        ttl: Some(Duration::from_millis(20)),
+        ttl: Some(Duration::from_secs(1)),
         max_entries: None,
     };
     let engine = cache
@@ -121,7 +124,7 @@ fn cleanup_expired_removes_entries_once_a_ttl_is_actually_set() {
     engine.set(&path, &b"payload".to_vec()).unwrap();
     assert_eq!(engine.entry_count().unwrap(), 1);
 
-    std::thread::sleep(Duration::from_millis(60));
+    std::thread::sleep(Duration::from_millis(1100));
 
     let removed = engine.cleanup_expired().unwrap();
     assert_eq!(

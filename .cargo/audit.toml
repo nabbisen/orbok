@@ -1,43 +1,5 @@
 [advisories]
 ignore = [
-    # ── libsqlite3-sys 0.37.0 — CVE-2026-119375 (RUSTSEC-2026-0459,
-    #    published 2026-10-30, medium severity 6.8). Task 144 reverted
-    #    rusqlite/libsqlite3-sys to this line for a keyword-search
-    #    regression on the patched version (see `rusqlite` in the root
-    #    Cargo.toml); this advisory appeared in the local advisory-db
-    #    only after that revert's own gate run, not missed earlier.
-    #
-    #    The advisory's own text: a crafted database file, paired with a
-    #    sibling `-wal` file of a different page size, can make an
-    #    ordinary query return uninitialized page-cache memory -- but
-    #    "only a process that opens a database file, with its -wal, that
-    #    a less trusted party could have written is exposed." orbok's
-    #    own catalog and cache files are created and opened only inside
-    #    its own data directory (`Catalog::open`/`CacheService::new`,
-    #    joined onto `ORBOK_DATA_DIR`/`dirs::data_local_dir()`), by
-    #    orbok's own code, never a path or a `-wal` file a less trusted
-    #    party supplied. orbok never opens a database file a user picked
-    #    from an arbitrary, untrusted source the way it opens a folder
-    #    to search -- the threat model this advisory describes does not
-    #    reach it.
-    #
-    #    No intermediate fix exists: the advisory's own patched range is
-    #    `>= 0.39.0`, exactly the version that carries the regression
-    #    (confirmed: `libsqlite3-sys` 0.39.0/0.39.1 bundle SQLite 3.54.0/
-    #    3.54.1, the two versions this task measured as slow).
-    #
-    # REMOVE WHEN: a SQLite release fixes the regression (Task 144's own
-    # report to localcache/rusqlite), and phase 2 (rusqlite >= 0.41,
-    # libsqlite3-sys >= 0.39) returns.
-    "RUSTSEC-2026-0459",
-
-    # bincode 2.0.1 is pulled through localcache (0.21.1 as of RFC-053
-    # Slice 2; still bincode 2.0.1 after that move). The advisory is
-    # unmaintained status rather than a known vulnerability; nothing in
-    # orbok or localcache's current line depends on a fixed release
-    # existing yet.
-    "RUSTSEC-2025-0141",
-
     # paste 1.0.15 is pulled transitively by GUI/model-support crates
     # (notably wgpu/metal and tokenizers macro helpers). The advisory is
     # unmaintained status for a proc-macro helper with no direct orbok usage.

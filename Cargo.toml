@@ -55,27 +55,27 @@ tract-core                  = { version = "0.23" }
 tokenizers                  = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 prost                       = { version = "0.14" }
 
-# database — pinned to 0.39 (Task 144 reverts Task 141 Phase 2): rusqlite
-# 0.41.1 / SQLite 3.54.1 measured about +37% slower at p50 and +40% at
-# p99 on orbok's own keyword search (chunk_fts's five-way join), on an
-# otherwise unchanged query plan -- confirmed with EXPLAIN QUERY PLAN
-# (identical on both versions) and a 2x2 binary x database cross-check
-# (the slowdown follows the SQLite version, not the data or the plan).
-# Not something orbok's own query can fix: the plan was already the one
-# SQLite chose on 3.51.3 too. Reported upstream
-# (.git-exclude/upstream/localcache/send/draft/). Phase 1 (0.21.6,
-# the zstd fix) stays. Track localcache's current requirement line
-# rather than pinning a specific localcache release (single
-# libsqlite3-sys rule; see RFC-002 §16).
-rusqlite                    = { version = "0.39", features = ["bundled"] }
+# database — 0.41 (Task 145 §4 re-applies Task 141 Phase 2, reverted by
+# Task 144): the +37%/+40% keyword-search slowdown Task 144 measured on
+# SQLite 3.54.1 was specific to the pre-Task-145 query plan, driven from
+# keyword_index_records rather than from chunk_fts's own FTS5 match (Task
+# 144's own EXPLAIN QUERY PLAN finding). With Task 145's FTS-driven plan,
+# an interleaved A/B (orbok-bench 1000 and 5000, 3+ runs each) put SQLite
+# 3.54.1 back within 3.51.3's own range at both scales -- the regression
+# does not reach the new plan. rusqlite 0.41.1 / libsqlite3-sys 0.39.1 /
+# SQLite 3.54.1. Track localcache's current requirement line rather than
+# pinning a specific localcache release (single libsqlite3-sys rule; see
+# RFC-002 §16).
+rusqlite                    = { version = "0.41", features = ["bundled"] }
 
-# cache engine — Task 144: back to the `^0.21` line Task 141 Phase 1 left
-# (0.21.6, which already clears the thirteen zstd advisories). Phase 2
-# (0.26.2) is reverted for the keyword-search regression documented at
-# `rusqlite` above; it returns once SQLite fixes the regression upstream.
+# cache engine — Task 145 §4: `>=0.26.2, <0.27` (0.26.0/0.26.1 excluded --
+# a `prepare_cached` recompilation slowdown from a SQLite 3.54.1
+# regression, fixed in 0.26.2; Task 141's own finding). 0.26.2 moves the
+# stored schema to v6, a one-way migration (RFC-062) -- downgrading orbok
+# loses nothing in the catalog, only the derived cache, which rebuilds.
 # Track localcache's current requirement line rather than pinning a
-# specific patch (single libsqlite3-sys rule; see RFC-002 §16).
-localcache                  = { version = "0.21", features = ["compression", "tracing"] }
+# specific release (single libsqlite3-sys rule, see RFC-002 §16).
+localcache                  = { version = ">=0.26.2, <0.27", features = ["compression", "tracing"] }
 
 # GUI — RFC-027 decision: iced 0.14, via snora. The snora pin below moves with
 # upgrade-plan Phase 1 bumps (Tasks 022/023/029) and is deliberately not restated

@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - rustix and quinn-udp are updated for their advisories (RUSTSEC-2026-0486,
   RUSTSEC-2026-0538).
+- Updated localcache (0.26.2) and rusqlite (0.41.1): SQLite moves to
+  3.54.1, which reaches both the catalog and the cache. It fixes
+  CVE-2026-119375 — a crafted database file, paired with its own `-wal`
+  file, can make an ordinary query return uninitialized memory. orbok's
+  own database and cache files are written only by the user's own orbok,
+  which is outside that threat model, but the fix applies either way.
+  Neither RustSec, OSV nor GitHub's reviewed advisory database lists it
+  against any crate, so `cargo audit` and `cargo deny` stay silent about
+  it.
+
+### Changed
+
+- Keyword search evaluates the full-text match once per search, instead
+  of once per indexed chunk, so it no longer slows down as the library
+  grows.
+- **The cache's stored format moved to a newer schema** (localcache
+  0.26.2's schema v6). A profile opens normally either way: this release
+  migrates its cache the first time it opens one. Moving back to an
+  older orbok after that: folders, settings and the catalog are
+  unaffected, but background indexing jobs that need the cache fail
+  with a reported error (not a crash, and nothing is lost) until the
+  cache is cleared or a newer orbok reopens the profile again — only the
+  cache, which is always derived data, is ever at risk, never the
+  catalog.
 
 ## [0.30.0] — 2026-11-11
 
