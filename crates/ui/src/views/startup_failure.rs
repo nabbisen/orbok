@@ -87,7 +87,7 @@ impl StartupFailureScreen {
         let tokens = &self.tokens;
         let sc = TextScale::default();
         let content = column![
-            text(self.title()).size(theme::title_s(tokens, sc)),
+            crate::views::title(tokens, sc, self.title()),
             text(self.body())
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),

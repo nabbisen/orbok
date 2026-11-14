@@ -3,6 +3,7 @@
 use crate::components::{badge_tone, status_badge, tone_icon};
 use crate::i18n::Locale;
 use crate::state::Message;
+use iced::Background;
 use orbok_search::MatchBadge;
 use snora::design::{Tokens, Tone};
 
@@ -245,4 +246,40 @@ fn selection_ring_is_wider_on_high_contrast_presets() {
         hc_dark_width > dark_width,
         "high_contrast_dark's ring ({hc_dark_width}) must be wider than dark's ({dark_width})"
     );
+}
+
+// Review 320 §4.3: `text_input_style` wires its placeholder/value/background
+// to `tokens.palette.text_secondary`/`text_primary`/`background` across
+// every theme preset, not a hardcoded or swapped role -- the exact pair
+// (placeholder vs. background) `crates/ui/src/a11y.rs`'s own contrast audit
+// measures, so a swap here would quietly audit the wrong colors.
+#[test]
+fn text_input_style_wires_the_right_palette_roles_in_every_preset() {
+    use crate::components::text_input_style;
+    use iced::widget::text_input::Status;
+    use snora::design::style::color::to_iced_color;
+
+    for tokens in [
+        Tokens::light(),
+        Tokens::dark(),
+        Tokens::high_contrast_light(),
+        Tokens::high_contrast_dark(),
+    ] {
+        let style = text_input_style(&tokens)(&iced::Theme::Light, Status::Active);
+        assert_eq!(
+            style.placeholder,
+            to_iced_color(tokens.palette.text_secondary),
+            "placeholder must read tokens.palette.text_secondary"
+        );
+        assert_eq!(
+            style.value,
+            to_iced_color(tokens.palette.text_primary),
+            "value must read tokens.palette.text_primary"
+        );
+        assert_eq!(
+            style.background,
+            Background::Color(to_iced_color(tokens.palette.background)),
+            "background must read tokens.palette.background"
+        );
+    }
 }

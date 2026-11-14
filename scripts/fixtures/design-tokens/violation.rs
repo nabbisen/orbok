@@ -35,5 +35,7 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     let double_scaled = text(label).size(theme::body_s(snora_tokens.for_snora_widget(), sc));
     // Category 13 (Task 140 §2.2): a text_input with no .style(..).
     let m = text_input(placeholder, &value).on_input(Message::Changed);
+    // Category 14 (Review 320 §4.2): a title size with no semibold weight.
+    let n = text(label).size(theme::title_s(tokens, sc));
     a
 }

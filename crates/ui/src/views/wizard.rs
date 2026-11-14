@@ -23,7 +23,7 @@ use crate::state::{
     ModelPersistenceState, ModelProvenance, ModelTrustPresentation, WizardFileCheck, WizardState,
 };
 use crate::theme;
-use crate::views::{language_choice_row, text_scale_choice_row};
+use crate::views::{language_choice_row, text_scale_choice_row, title};
 use iced::widget::{button, column, container, progress_bar, text, text_input};
 use iced::{Element, Length, Padding};
 use snora::design::Tokens;
@@ -217,7 +217,7 @@ fn page_setup<'a>(
         language_choice_row(state),
         text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
         text_scale_choice_row(state),
-        text(tr(locale, title_key)).size(theme::title_s(tokens, sc)),
+        title(tokens, sc, tr(locale, title_key)),
         text(tr(locale, MessageKey::WizardBodyNotConfigured))
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
@@ -327,7 +327,7 @@ fn page_download_consent<'a>(
         ModelTrustPresentation::UserSupplied => tr(locale, MessageKey::ModelTrustUserSupplied),
     };
     let col = column![
-        text(tr(locale, MessageKey::ModelConsentTitle)).size(theme::title_s(tokens, sc)),
+        title(tokens, sc, tr(locale, MessageKey::ModelConsentTitle)),
         text(presentation.model_name).size(theme::body_s(tokens, sc)),
         text(tr(locale, MessageKey::ModelConsentBody))
             .size(theme::body_s(tokens, sc))
@@ -430,7 +430,7 @@ fn page_downloading<'a>(
     let mut col = column![
         hrow![
             icon_text(char::from(lucide::Download), 16.0),
-            text(tr(locale, MessageKey::WizardDownloadProgress)).size(theme::title_s(tokens, sc)),
+            title(tokens, sc, tr(locale, MessageKey::WizardDownloadProgress)),
         ]
         .spacing(tokens.spacing.sm),
         text(format!(
@@ -494,7 +494,7 @@ fn page_download_failed(
         ModelDeliveryFailure::Cancelled => tr(locale, MessageKey::ModelDeliveryCancelled),
     };
     let col = column![
-        text(tr(locale, MessageKey::ModelDownloadFailed)).size(theme::title_s(tokens, sc)),
+        title(tokens, sc, tr(locale, MessageKey::ModelDownloadFailed)),
         text(detail)
             .size(theme::body_s(tokens, sc))
             .line_height(theme::body_lh(tokens)),
@@ -521,7 +521,7 @@ fn page_checked<'a>(
     let tokens = &state.tokens;
     let sc = state.text_scale;
     let mut col = column![
-        text(tr(locale, MessageKey::WizardTitleValidating)).size(theme::title_s(tokens, sc)),
+        title(tokens, sc, tr(locale, MessageKey::WizardTitleValidating)),
         text(model_dir).size(theme::meta_s(tokens, sc)),
     ]
     .spacing(tokens.spacing.sm);
@@ -618,7 +618,7 @@ fn page_ready<'a>(
     let mut col = column![
         hrow![
             icon_text(char::from(lucide::CheckCircle), 18.0),
-            text(tr(locale, MessageKey::WizardTitleReady)).size(theme::title_s(tokens, sc)),
+            title(tokens, sc, tr(locale, MessageKey::WizardTitleReady)),
         ]
         .spacing(tokens.spacing.sm),
         text(model_dir).size(theme::meta_s(tokens, sc)),

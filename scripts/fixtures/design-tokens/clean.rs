@@ -41,5 +41,12 @@ fn clean_view(tokens: &Tokens) -> Element<'_, Message> {
     // Task 136 §1.4: an unscaled helper used for something that is not a
     // rendered text size, allow-listed with a reason on the line.
     let icon_glyph_metric = theme::body(tokens).0; // not a text size: glyph advance width, not drawn text
+    // Review 320 §4.2: a title built with the semibold weight right there
+    // (the shape `views::title(..)` itself builds), and one allow-listed
+    // because it is a numeric stat value, not a title.
+    let title_text = text(label.to_string())
+        .size(theme::title_s(tokens, sc))
+        .font(theme::semibold());
+    let stat_value = text(value.to_string()).size(theme::title_s(tokens, sc)); // not a title: numeric stat value
     a
 }

@@ -623,7 +623,7 @@ pub fn health_cell<'a>(
         tokens,
         column![
             text(label.to_string()).size(theme::meta_s(tokens, sc)),
-            text(value.to_string()).size(theme::title_s(tokens, sc)),
+            text(value.to_string()).size(theme::title_s(tokens, sc)), // not a title: a numeric stat value, not a heading or card title (Review 320 §4.2)
         ]
         .spacing(tokens.spacing.xs),
     )

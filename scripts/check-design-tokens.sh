@@ -139,6 +139,49 @@ check_tokens() {
     echo "$double_scaled"
     flag "already-scaled tokens (snora_tokens/for_snora_widget) passed into a _s( helper — doubles the scale ($(echo "$double_scaled" | grep -c .) found)"
   fi
+
+  # Review 320 §4.2: every card/dialog/metric title (`theme::title_s(`/
+  # `title_m(`) is semibold, the same rule a page heading already follows
+  # (`views::heading`) -- a title built by `views::title(..)` carries
+  # `.font(theme::semibold())` right there, two lines down from its own
+  # `theme::title_s(` call, so this check accepts either that shape or a
+  # bare call with the weight on the same or next line. A value that is a
+  # title in size only, not in role (a numeric stat, Task 140's own
+  # `health_cell`), says why with a trailing `// not a title: <reason>`
+  # comment, the same escape-hatch shape `// not a text size:` already
+  # uses above.
+  local no_semibold_titles
+  no_semibold_titles=$(titles_without_semibold "${files[@]}")
+  if [ -n "$no_semibold_titles" ]; then
+    echo "$no_semibold_titles"
+    flag "theme::title_s(/title_m( without .font(theme::semibold()) nearby — build through views::title(..), or say why not with '// not a title: <reason>' ($(echo "$no_semibold_titles" | grep -c .) found)"
+  fi
+}
+
+# titles_without_semibold <file...> — prints file:line for each
+# `theme::title_s(`/`title_m(` call whose own line, or the escape-hatch
+# comment on it, does not account for the semibold weight (Review 320
+# §4.2). Looks at the matched line plus the next one, since
+# `views::title(..)`'s own definition puts `.font(theme::semibold())` on
+# the line right after `.size(theme::title_s(..))`.
+titles_without_semibold() {
+  perl -0777 -ne '
+    my $src = $_;
+    while ($src =~ /theme::title_[sm]\(/g) {
+      my $start = $-[0];
+      my $line_start = rindex($src, "\n", $start) + 1;
+      my $line_end = index($src, "\n", $start);
+      $line_end = length($src) if $line_end < 0;
+      my $line = substr($src, $line_start, $line_end - $line_start);
+      next if $line =~ m{// not a title:};
+      my $next_end = index($src, "\n", $line_end + 1);
+      $next_end = length($src) if $next_end < 0;
+      my $window = substr($src, $line_start, $next_end - $line_start);
+      next if $window =~ /\.font\(theme::semibold\(\)\)/;
+      my $lineno = (substr($src, 0, $start) =~ tr/\n//) + 1;
+      print "$ARGV:$lineno: theme::title_s(/title_m( without .font(theme::semibold()) nearby\n";
+    }
+  ' "$@"
 }
 
 # presses_decided_by_comparison <file...> — prints file:line for each

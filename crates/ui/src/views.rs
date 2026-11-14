@@ -464,6 +464,23 @@ fn heading<'a>(tokens: &Tokens, sc: TextScale, label: &'a str) -> iced::widget::
         .font(theme::semibold())
 }
 
+/// Review 320 §4.2: every card/dialog/metric title (`theme::title_s`)
+/// is semibold too, the same rule `heading` already applies at the
+/// page-heading size -- `check-design-tokens.sh`'s own
+/// `titles_without_semibold` check (Task 140 §4) holds every other
+/// `theme::title_s`/`title_m` call site to building through this
+/// helper instead of a bare `text(..).size(title_s(..))`, so a future
+/// title can't quietly skip the weight the way these did.
+pub(crate) fn title<'a>(
+    tokens: &Tokens,
+    sc: TextScale,
+    label: impl ToString,
+) -> iced::widget::Text<'a> {
+    text(label.to_string())
+        .size(theme::title_s(tokens, sc))
+        .font(theme::semibold())
+}
+
 /// Task 128: a result card's heading line shows only what the title does
 /// not already say -- it disappears entirely when it equals the title.
 /// `title` is `heading_path` itself whenever one exists
@@ -586,7 +603,7 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
     if state.sources.is_empty() {
         content = content.push(
             column![
-                text(tr(locale, MessageKey::SearchNoSourcesTitle)).size(theme::title_s(tokens, sc)),
+                title(tokens, sc, tr(locale, MessageKey::SearchNoSourcesTitle)),
                 text(tr(locale, MessageKey::SearchNoSourcesBody))
                     .size(theme::body_s(tokens, sc))
                     .line_height(theme::body_lh(tokens)),
@@ -811,7 +828,7 @@ fn private_folder_dialog(state: &AppState) -> Element<'_, Message> {
         .map(|p| p.path.as_str())
         .unwrap_or_default();
     let content = column![
-        text(tr(locale, MessageKey::AddSensitiveTitle)).size(theme::title_s(tokens, sc)),
+        title(tokens, sc, tr(locale, MessageKey::AddSensitiveTitle)),
         text(path.to_string()).size(theme::meta_s(tokens, sc)),
         text(crate::i18n::fmt_add_sensitive_body(locale))
             .size(theme::body_s(tokens, sc))
@@ -854,11 +871,11 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     .flatten()
     {
         let content = column![
-            text(crate::i18n::fmt_remove_source_title(
-                locale,
-                &folder.display_name
-            ))
-            .size(theme::title_s(tokens, sc)),
+            title(
+                tokens,
+                sc,
+                crate::i18n::fmt_remove_source_title(locale, &folder.display_name),
+            ),
             text(tr(locale, MessageKey::SourceRemoveConfirmBody))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
@@ -890,7 +907,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     .flatten()
     {
         let mut content = column![
-            text(tr(locale, MessageKey::NarrowFolderTitle)).size(theme::title_s(tokens, sc)),
+            title(tokens, sc, tr(locale, MessageKey::NarrowFolderTitle)),
             text(folder.display_path.clone()).size(theme::meta_s(tokens, sc)),
             text(tr(locale, MessageKey::NarrowFolderBody))
                 .size(theme::body_s(tokens, sc))
@@ -957,7 +974,7 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
     if state.sources.is_empty() {
         content = content.push(
             column![
-                text(tr(locale, MessageKey::SourcesEmptyTitle)).size(theme::title_s(tokens, sc)),
+                title(tokens, sc, tr(locale, MessageKey::SourcesEmptyTitle)),
                 text(tr(locale, MessageKey::SourcesEmptyBody))
                     .size(theme::body_s(tokens, sc))
                     .line_height(theme::body_lh(tokens)),
@@ -1142,7 +1159,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
 
     if state.visible_confirmation() == Some(crate::state::Confirmation::ResetCatalog) {
         let mut content = column![
-            text(tr(locale, MessageKey::StorageResetConfirmTitle)).size(theme::title_s(tokens, sc)),
+            title(tokens, sc, tr(locale, MessageKey::StorageResetConfirmTitle)),
             text(tr(locale, MessageKey::StorageResetWarning))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
@@ -1209,7 +1226,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
             continue;
         }
         let mut content = column![
-            text(tr(locale, title_key)).size(theme::title_s(tokens, sc)),
+            title(tokens, sc, tr(locale, title_key)),
             text(tr(locale, MessageKey::RebuildConfirmBody))
                 .size(theme::body_s(tokens, sc))
                 .line_height(theme::body_lh(tokens)),
@@ -1285,8 +1302,7 @@ pub fn storage_view(state: &AppState) -> Element<'_, Message> {
                 orbok_core::StorageMeasurement::Unknown => None,
             })
             .sum();
-        breakdown = breakdown
-            .push(text(fmt_storage_total(locale, total_bytes)).size(theme::title_s(tokens, sc)));
+        breakdown = breakdown.push(title(tokens, sc, fmt_storage_total(locale, total_bytes)));
         breakdown = breakdown.push(components::secondary(
             &state.snora_tokens,
             tr(locale, MessageKey::StorageCalculateNow),

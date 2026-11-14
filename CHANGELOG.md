@@ -40,11 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the new Largest.
 - Page headings and card titles (a result's own title, a folder's name)
   are semibold; body text is unchanged.
-- "Choose a folder" and "Choose another folder" are underlined links,
-  not buttons -- the system folder picker is one choice away either way.
+- "Choose a folder" and "Choose another folder" are links now, not
+  buttons.
 - Light and Dark use higher-contrast text (WCAG AAA, 7:1) throughout,
-  and every control reaches at least 44×44 px, the same minimum
-  High contrast already met.
+  and every control is at least 44 × 44 px, in every theme.
 - orbok's own window now has a minimum size (450×360); it previously had
   none.
 
