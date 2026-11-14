@@ -102,6 +102,13 @@ check_tokens() {
     flag "hrow![ holds a control but does not wrap — add .wrap() after .spacing(..) (or // no-wrap: reason) ($(echo "$unwrapped" | grep -c .) found)"
   fi
 
+  local unstyled_inputs
+  unstyled_inputs=$(text_inputs_without_style "${files[@]}")
+  if [ -n "$unstyled_inputs" ]; then
+    echo "$unstyled_inputs"
+    flag "text_input(..) has no .style(..) — use components::text_input_style ($(echo "$unstyled_inputs" | grep -c .) found)"
+  fi
+
   # Task 136 §1.4: an unscaled theme::body(/meta(/title(/heading( call in a
   # view/component module is (almost always) a text size that silently
   # ignores the user's TextScale preference -- the _s siblings
@@ -177,6 +184,43 @@ buttons_without_style() {
       }
       my $line = (substr($src, 0, $start) =~ tr/\n//) + 1;
       print "$ARGV:$line: button(..) with no .style(..)\n" unless $chain =~ /\bstyle\b/;
+    }
+  ' "$@"
+}
+
+# text_inputs_without_style <file...> — Task 140 §2.2: every `text_input(..)`
+# must carry its own `.style(..)` (`components::text_input_style`, so its
+# placeholder is `text_secondary`, not iced's derived approximation --
+# unaudited by `a11y.rs` and, in practice, not this theme's own colour).
+# Same method-chain-walk shape as `buttons_without_style` above.
+text_inputs_without_style() {
+  perl -0777 -ne '
+    my $src = $_;
+    while ($src =~ /(?<![A-Za-z0-9_:.])text_input\(/g) {
+      my $start = $-[0];
+      my $pos = pos($src);
+      my $depth = 1;
+      while ($depth > 0 && $pos < length $src) {
+        my $c = substr($src, $pos, 1);
+        $depth++ if $c eq "(";
+        $depth-- if $c eq ")";
+        $pos++;
+      }
+      my $chain = "";
+      while (substr($src, $pos) =~ /^((?:\s*\/\/[^\n]*)*\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*)\(/) {
+        my $len = length $1;
+        $chain .= " $2";
+        $pos += $len + 1;
+        my $d = 1;
+        while ($d > 0 && $pos < length $src) {
+          my $c = substr($src, $pos, 1);
+          $d++ if $c eq "(";
+          $d-- if $c eq ")";
+          $pos++;
+        }
+      }
+      my $line = (substr($src, 0, $start) =~ tr/\n//) + 1;
+      print "$ARGV:$line: text_input(..) with no .style(..)\n" unless $chain =~ /\bstyle\b/;
     }
   ' "$@"
 }

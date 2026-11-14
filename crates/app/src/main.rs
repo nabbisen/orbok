@@ -330,6 +330,16 @@ fn window_settings() -> iced::window::Settings {
         settings.platform_specific.application_id = APP_ID.to_string();
     }
     settings.icon = Some(window_icon());
+    // Task 140 §1.4: the narrowest window orbok allows, defined for the
+    // first time -- there was no minimum before this. Width: 450, the
+    // same narrow width `crates/ui/src/tests/task148_layout_matrix.rs`'s
+    // own matrix already passes at every text size up to Largest (x2.0),
+    // in both languages (confirmed; no need to widen past it). Height:
+    // 360, enough for the sidebar's three labelled items to stay fully
+    // visible at Largest (measured: the third, "Settings", ends at
+    // y ≈ 311 px there; page *content* below the sidebar always scrolls,
+    // so it does not drive this number).
+    settings.min_size = Some(iced::Size::new(450.0, 360.0));
     settings
 }
 

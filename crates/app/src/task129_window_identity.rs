@@ -7,6 +7,9 @@
 //! Task 137 §1.2: the application id is [`crate::APP_ID`]
 //! (`io.github.nabbisen.orbok`, RFC-065 §3.1), not the bare `"orbok"` this
 //! test asserted before Flathub's one-ID-per-package rule.
+//!
+//! Task 140 §1.4: the same function also sets the first minimum window
+//! size orbok has ever had.
 
 #[test]
 fn the_window_settings_carry_the_application_id_on_linux() {
@@ -47,4 +50,19 @@ fn the_window_settings_carry_an_icon() {
         "the embedded bytes must be exactly width * height * 4 (raw RGBA), \
          matching assets/icon-256.rgba"
     );
+}
+
+/// Task 140 §1.4: the narrowest window orbok allows is now defined --
+/// 450x360, the exact size `crates/ui/src/tests/task148_layout_matrix.rs`'s
+/// own matrix validates at every text size (including Largest, x2.0) in
+/// both languages, so this is true by construction, not asserted in two
+/// unrelated places that could drift apart.
+#[test]
+fn the_window_settings_carry_the_minimum_size() {
+    let settings = crate::window_settings();
+    let min = settings
+        .min_size
+        .expect("a minimum window size must be set");
+    assert_eq!(min.width, 450.0);
+    assert_eq!(min.height, 360.0);
 }

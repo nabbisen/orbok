@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A fourth, larger text size, "Largest" (×2.0). The setup wizard's first
+  screen now offers Language and Text size too, so either can be fixed
+  before reading the rest of the wizard.
+
 ### Security
 
 - rustix and quinn-udp are updated for their advisories (RUSTSEC-2026-0486,
@@ -29,11 +35,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the converted cache: your folders, settings and the catalog open as
   before, but preparing files reports an error until the cache file
   (`orbok-cache.sqlite3` in orbok's data folder) is deleted.
+- The "Large" and "Larger" text sizes grow further (×1.25 and ×1.5,
+  previously ×1.15 and ×1.3), to read as one even progression together
+  with the new Largest.
+- Page headings and card titles (a result's own title, a folder's name)
+  are semibold; body text is unchanged.
+- "Choose a folder" and "Choose another folder" are underlined links,
+  not buttons -- the system folder picker is one choice away either way.
+- Light and Dark use higher-contrast text (WCAG AAA, 7:1) throughout,
+  and every control reaches at least 44×44 px, the same minimum
+  High contrast already met.
+- orbok's own window now has a minimum size (450×360); it previously had
+  none.
 
 ### Fixed
 
 - Pressing Search before choosing where to search now says so; with only
   one folder added, it is chosen for you.
+- A text input's placeholder now uses this theme's own secondary text
+  colour, not an unrelated one iced derived on its own.
+- "Or type a path manually…", previously only in the add-folder field's
+  placeholder (gone the moment you start typing), is now a visible label
+  above the field too.
 
 ## [0.30.0] — 2026-11-11
 

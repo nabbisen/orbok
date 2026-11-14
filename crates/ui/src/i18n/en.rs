@@ -266,6 +266,7 @@ pub fn message(key: MessageKey) -> &'static str {
         TextScaleDefault => "Default",
         TextScaleLarge => "Large",
         TextScaleLarger => "Larger",
+        TextScaleLargest => "Largest",
         SettingsReduceMotion => "Reduce motion",
         SettingsReduceMotionHint => "Fewer animations and transitions.",
         SettingsCvdNote => {

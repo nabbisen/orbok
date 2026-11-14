@@ -150,8 +150,11 @@ pub fn choice<'a>(
             content = content.push(icon_text(char::from(lucide::Check), size.0));
         }
         content = content.push(text(option.label).size(size));
+        // Task 140 §3: vertical padding grown from `xs` to `lg` so a
+        // choice option reaches the house 44 px minimum at Default --
+        // the same reasoning as `control_padding`'s own comment.
         let mut b = button(content)
-            .padding(Padding::from([tokens.spacing.xs, tokens.spacing.md]))
+            .padding(Padding::from([tokens.spacing.lg, tokens.spacing.md]))
             .style(move |_theme, status| {
                 if chosen {
                     btn_style::primary(&t, status)
@@ -189,11 +192,21 @@ pub fn switch<'a>(
     on_toggle: impl Fn(bool) -> Message + 'a,
 ) -> Element<'a, Message> {
     let t = tokens.clone();
+    // Task 140 §3: the toggler's own `size` (its track/knob height, the
+    // widget's real governing dimension -- `text_size` is independent)
+    // grown to `tokens.targets.min` (44.0) instead of `size.0 * 1.4`
+    // (~22.4 px at Default, measured before this). Deliberately not a
+    // `container` padding wrapper around an unchanged, smaller toggler:
+    // the whole labelled toggler is one click target
+    // (`a_switch_and_its_wrapped_label_stay_one_control`, clicking at
+    // either extreme of its own bounds toggles it), and padding around
+    // it would only make the *container* 44 px tall while leaving a
+    // dead, unclickable margin -- not a real 44 px hit area.
     iced::widget::container(
         iced::widget::toggler(is_on)
             .label(label.to_string())
             .on_toggle(on_toggle)
-            .size(size.0 * 1.4)
+            .size(tokens.targets.min)
             .text_size(size)
             .spacing(tokens.spacing.sm)
             .style(move |_theme, status| switch_style(&t, is_on, status)),
@@ -245,14 +258,57 @@ pub(crate) fn switch_style(
 /// Padding for a button that sits beside a text input. Its vertical padding
 /// is [`input_padding`]'s, so with the same text size both controls are the
 /// same height.
+/// Task 140 §3 (RFC-066 §3.4): vertical padding grown from `sm` to `lg` so
+/// every button built from this (icon_primary/icon_secondary,
+/// `choose_folder_button`) reaches the house 44 px minimum at Default --
+/// measured (`body_s`'s own line height at Default, ~18.2 px, plus
+/// `2 x lg` (32 px) = ~50.2 px tall; width was already well past 44 via
+/// the unchanged horizontal `lg` padding).
 pub fn control_padding(tokens: &Tokens) -> Padding {
-    Padding::from([tokens.spacing.sm, tokens.spacing.lg])
+    Padding::from([tokens.spacing.lg, tokens.spacing.lg])
 }
 
 /// Padding for a text input that sits beside a button; see
 /// [`control_padding`].
 pub fn input_padding(tokens: &Tokens) -> Padding {
     Padding::from([tokens.spacing.sm, tokens.spacing.sm])
+}
+
+/// The one style every `text_input` in this crate must use (Task 140
+/// §2.2, RFC-066 §3.3). Before this, every call site took iced's own
+/// default style, whose placeholder colour (`extended_palette().secondary`)
+/// is derived from the base `iced::theme::Palette` (itself only
+/// background/text/primary/success/warning/danger -- `iced_theme_for`'s
+/// own mapping, `shell.rs`), not any token this crate's own contrast
+/// audit (`a11y.rs`) ever reads -- so the placeholder's real contrast
+/// was unaudited and, in practice, unrelated to this theme's own
+/// secondary text colour. This gives every input the same background,
+/// border, text and placeholder roles the rest of the page already
+/// uses, with the placeholder explicitly `text_secondary` so it is
+/// exactly the pair `a11y.rs` audits.
+pub fn text_input_style(
+    tokens: &Tokens,
+) -> impl Fn(&iced::Theme, iced::widget::text_input::Status) -> iced::widget::text_input::Style + 'static
+{
+    let t = tokens.clone();
+    move |_theme, status| {
+        let border_color = match status {
+            iced::widget::text_input::Status::Focused { .. } => t.focus.ring_color,
+            _ => t.palette.border,
+        };
+        iced::widget::text_input::Style {
+            background: Background::Color(to_iced_color(t.palette.background)),
+            border: Border {
+                radius: t.radius.sm.into(),
+                width: 1.0,
+                color: to_iced_color(border_color),
+            },
+            icon: to_iced_color(t.palette.text_secondary),
+            placeholder: to_iced_color(t.palette.text_secondary),
+            value: to_iced_color(t.palette.text_primary),
+            selection: to_iced_color(t.palette.accent),
+        }
+    }
 }
 
 // ── Icon helper (same technique as views.rs; glyph size stays explicit) ──
@@ -430,9 +486,11 @@ pub fn result_card<'a>(
 
     // A result's title -- often a document heading, not guaranteed to fit
     // one line at the card's bounded width (Task 028 §2).
+    // Task 140 §4: a result's own title is a card title -- semibold.
     let title_text = text(title)
         .size(theme::body_s(tokens, sc))
-        .line_height(theme::body_lh(tokens));
+        .line_height(theme::body_lh(tokens))
+        .font(theme::semibold());
     // Task 072: the selected result's non-colour marker (RFC-034 §5.2) is a
     // lucide chevron, not a text "▶".
     let title_line: Element<'a, Message> = if is_selected {
@@ -530,7 +588,10 @@ pub fn source_card<'a>(
     actions = actions.push(danger(snora_tokens, remove_label, Some(on_remove)));
 
     let mut body = column![
-        text(display_name).size(theme::body_s(tokens, sc)),
+        // Task 140 §4: a folder card's own name is a card title -- semibold.
+        text(display_name)
+            .size(theme::body_s(tokens, sc))
+            .font(theme::semibold()),
         text(display_path).size(theme::meta_s(tokens, sc)),
         text(summary).size(theme::meta_s(tokens, sc)),
     ]
@@ -601,6 +662,31 @@ pub fn ghost<'a>(
     on: Option<Message>,
 ) -> Element<'a, Message> {
     snora::design::button::ghost_maybe(tokens.for_snora_widget(), label, on)
+}
+
+/// A text-styled navigation action (Task 140 §1a.3): every
+/// `components::ghost` used as a *link* ("Choose a folder", "Choose
+/// another folder") becomes this instead. Real ghost buttons (Cancel,
+/// for example) stay `ghost` -- this is only for the link look.
+///
+/// `snora::design::button::link` takes no `Option` -- deliberately, its
+/// own doc comment says, since a dimmed, underlined link still reads
+/// "you can go here" and then does nothing. When the action is
+/// unavailable (the picker is already open, say), this renders plain
+/// text at the same size instead, never a disabled-looking link.
+pub fn link<'a>(
+    tokens: &theme::SnoraTokens,
+    label: &str,
+    on: Option<Message>,
+) -> Element<'a, Message> {
+    match on {
+        Some(message) => snora::design::button::link(tokens.for_snora_widget(), label, message),
+        None => text(label.to_string())
+            .size(snora::design::style::text::label_size(
+                tokens.for_snora_widget(),
+            ))
+            .into(),
+    }
 }
 
 /// Danger button for irreversible actions (Reset, Delete, Remove).

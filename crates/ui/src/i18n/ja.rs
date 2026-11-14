@@ -270,6 +270,7 @@ pub fn message(key: MessageKey) -> &'static str {
         TextScaleDefault => "標準",
         TextScaleLarge => "大",
         TextScaleLarger => "特大",
+        TextScaleLargest => "最大",
         SettingsReduceMotion => "モーションを減らす",
         SettingsReduceMotionHint => "アニメーションとトランジションを減らします。",
         SettingsCvdNote => {

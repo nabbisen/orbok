@@ -5,7 +5,9 @@
 # files (scripts/fixtures/design-tokens/), proving both directions: the
 # clean fixture produces zero findings, and the violation fixture produces
 # exactly one finding per RFC-052 §5 category (font size, padding, array
-# padding, spacing, radius, colour), plus Task 072's row alignment.
+# padding, spacing, radius, colour), plus every category added since
+# (row alignment, control wrap, choice/switch, button style, text
+# scaling x2, Task 140 §2.2's text_input style).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,8 +36,8 @@ fi
 
 violation_out="$(check_tokens scripts/fixtures/design-tokens/violation.rs || true)"
 violation_findings="$(echo "$violation_out" | grep -c "^design-token gate:" || true)"
-check "violation fixture produces exactly twelve findings (one per category)" "12" "$violation_findings"
-if [ "$violation_findings" != "11" ]; then
+check "violation fixture produces exactly thirteen findings (one per category)" "13" "$violation_findings"
+if [ "$violation_findings" != "13" ]; then
   echo "$violation_out" >&2
 fi
 
@@ -51,7 +53,8 @@ for expected_substr in \
   "press is decided by comparing with the current value" \
   "a button has no .style(..)" \
   "unscaled theme::body(/meta(/title(/heading(" \
-  "already-scaled tokens (snora_tokens/for_snora_widget) passed into a _s("
+  "already-scaled tokens (snora_tokens/for_snora_widget) passed into a _s(" \
+  "text_input(..) has no .style(..)"
 do
   if echo "$violation_out" | grep -qF "$expected_substr"; then
     echo "ok: violation fixture reports $expected_substr"

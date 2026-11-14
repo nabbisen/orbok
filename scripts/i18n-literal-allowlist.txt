@@ -136,6 +136,9 @@ crates/ui/src/a11y.rs	warning_text on warning (stale badge surface)	WCAG contras
 crates/ui/src/a11y.rs	success_text on success (current badge surface)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
 crates/ui/src/a11y.rs	info_text on info (keyword badge surface)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
 crates/ui/src/a11y.rs	text_primary on surface_raised (raised cards)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	accent on background (link text)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	accent on surface (link text, on a card)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
+crates/ui/src/a11y.rs	text_secondary on background (text_input placeholder)	WCAG contrast-fixture description, developer-facing test data, never rendered to end users
 
 # ── Structural/decorative separators — BORDERLINE, see review-request 132 ──
 # Recommend exempt: purely structural, byte-identical across locales

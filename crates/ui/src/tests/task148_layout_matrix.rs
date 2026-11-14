@@ -198,12 +198,26 @@ fn assert_matrix(view: iced::Element<'_, Message>, window: Size, what: &str, exp
             bounds.x,
             bounds.x + bounds.width
         );
-        assert!(
-            visible.is_some_and(|v| {
-                (v.width - bounds.width).abs() < 0.5 && (v.height - bounds.height).abs() < 0.5
-            }),
-            "{what}: {describe} is clipped: bounds {bounds:?}, visible {visible:?}"
-        );
+        // Matches the every-text check below: visible, it must not be
+        // narrower (squeezed or clipped sideways) than its own bounds;
+        // not visible at all, that is only acceptable because it
+        // scrolled below the window's bottom (every page here scrolls).
+        // Confirmed real during this task's own development: Task 140's
+        // larger steps (Larger now 1.5x, Largest 2.0x) grow a page's
+        // content enough that even a *named* item like "Clear recent
+        // searches" needs scrolling at some combinations -- a normal
+        // scroll boundary, not a bug, and this check must not flag it.
+        match visible {
+            Some(v) => assert!(
+                (v.width - bounds.width).abs() < 0.5,
+                "{what}: {describe} is clipped: bounds {bounds:?}, visible {visible:?}"
+            ),
+            None => assert!(
+                bounds.y >= window.height - 0.5,
+                "{what}: {describe} is fully hidden, but not because it scrolled \
+                 below the window's bottom: bounds {bounds:?}"
+            ),
+        }
         if let Some((min_w, min_h)) = e.min {
             assert!(
                 bounds.width >= min_w - 0.5 && bounds.height >= min_h - 0.5,
@@ -270,7 +284,7 @@ fn assert_matrix(view: iced::Element<'_, Message>, window: Size, what: &str, exp
 
 // ── Search, with a result ───────────────────────────────────────────────
 
-fn search_app(locale: Locale, scale: TextScale) -> OrbokApp {
+pub(crate) fn search_app(locale: Locale, scale: TextScale) -> OrbokApp {
     let mut state = AppState {
         locale,
         active_view: ViewId::Search,
@@ -451,7 +465,7 @@ fn the_search_page_with_two_folders_and_no_location_matrix() {
 
 // ── Folders ──────────────────────────────────────────────────────────────
 
-fn folders_app(locale: Locale, scale: TextScale) -> OrbokApp {
+pub(crate) fn folders_app(locale: Locale, scale: TextScale) -> OrbokApp {
     let mut state = AppState {
         locale,
         active_view: ViewId::Sources,
@@ -497,7 +511,7 @@ fn the_folders_page_matrix() {
 
 // ── Settings ─────────────────────────────────────────────────────────────
 
-fn settings_app(locale: Locale, scale: TextScale) -> OrbokApp {
+pub(crate) fn settings_app(locale: Locale, scale: TextScale) -> OrbokApp {
     let mut state = AppState {
         locale,
         active_view: ViewId::Settings,
@@ -526,13 +540,17 @@ fn the_settings_page_matrix() {
                     .map(|t| label(tr(locale, t.label_key()))),
             );
             expect.push(label(tr(locale, MessageKey::ClearRecentSearches)));
-            // Presence only -- not the 44 px house minimum: measured today
-            // (narrow/Default) at 162.75x22.4, well under it. That is Task
-            // 140's own job to fix and assert; `switch_min` below already
-            // proves this helper's `min` check works, so Task 140 only has
-            // to call it once these controls actually meet the floor.
+            // Task 140 §3: the house 44 px minimum, now met (the switch's
+            // own `size` grew to `tokens.targets.min` -- `components::switch`'s
+            // own doc comment). Checked at Default only, matching the
+            // task's own scope ("a minimum of 44x44 at Default"); larger
+            // scales only grow further.
             for name in ["reduce-motion", "remember-recent-searches"] {
-                expect.push(switch(name));
+                expect.push(if scale == TextScale::Default {
+                    switch_min(name, 44.0, 44.0)
+                } else {
+                    switch(name)
+                });
             }
             for window in window_sizes() {
                 assert_matrix(
@@ -548,7 +566,7 @@ fn the_settings_page_matrix() {
 
 // ── The wizard's first screen ────────────────────────────────────────────
 
-fn wizard_app(locale: Locale, scale: TextScale) -> OrbokApp {
+pub(crate) fn wizard_app(locale: Locale, scale: TextScale) -> OrbokApp {
     let mut state = AppState {
         locale,
         wizard: Some(WizardState::NotConfigured),
@@ -582,7 +600,7 @@ fn the_wizard_s_first_screen_matrix() {
 
 // ── The notice ───────────────────────────────────────────────────────────
 
-fn notice_app(locale: Locale, scale: TextScale) -> OrbokApp {
+pub(crate) fn notice_app(locale: Locale, scale: TextScale) -> OrbokApp {
     let mut state = AppState {
         locale,
         active_view: ViewId::Search,
@@ -681,17 +699,24 @@ fn a_real_row_forced_narrower_than_its_minimum_is_caught_overflowing() {
 fn the_min_size_check_catches_a_control_under_the_floor() {
     let _guard = iced_test_guard();
     let app = settings_app(Locale::En, TextScale::Default);
+    // Task 140 §3 fixed the reduce-motion switch itself to clear the
+    // 44x44 house minimum (measured below 44 tall before that task;
+    // `a_switch_is_at_least_44_square` now pins it passing at 44x44).
+    // This proof still needs a floor the switch cannot meet, so it
+    // asks for comfortably more than any switch renders at Default --
+    // not asserting today's app is broken, only that `min` still
+    // fails a control against a floor it genuinely does not reach.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         assert_matrix(
             app.view(),
             NARROW,
             "red-first proof: hit area",
-            &[switch_min("reduce-motion", 44.0, 44.0)],
+            &[switch_min("reduce-motion", 44.0, 100.0)],
         );
     }));
     assert!(
         result.is_err(),
-        "a switch shorter than the house minimum must be caught"
+        "a switch shorter than an unreachably tall floor must be caught"
     );
 }
 

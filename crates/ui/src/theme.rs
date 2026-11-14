@@ -90,13 +90,24 @@ impl Theme {
     /// `tokens()` directly where a theme is already concrete, or where a
     /// placeholder for `System` is genuinely wanted (a Settings preview, for
     /// example, that shows what each named option looks like on its own).
+    ///
+    /// Task 140 §1a.2/§1a.4: Light and Dark use snora's AAA presets
+    /// (`Tokens::light_aaa`/`dark_aaa` -- every declared text pair at
+    /// 7:1, not light/dark's own AA floor), and every preset's
+    /// `targets.min` is set to the house 44 px minimum here, in this one
+    /// function, so every snora design control measures at least 44x44
+    /// regardless of which theme is active; `AppState::tokens` and the
+    /// scaled `snora_tokens` copy derived from it (`theme::snora_tokens`)
+    /// both carry it, since the copy clones from this return value.
     pub fn tokens(self) -> Tokens {
-        match self {
-            Theme::Light | Theme::System => Tokens::light(),
-            Theme::Dark => Tokens::dark(),
+        let mut tokens = match self {
+            Theme::Light | Theme::System => Tokens::light_aaa(),
+            Theme::Dark => Tokens::dark_aaa(),
             Theme::HighContrastLight => Tokens::high_contrast_light(),
             Theme::HighContrastDark => Tokens::high_contrast_dark(),
-        }
+        };
+        tokens.targets.min = 44.0;
+        tokens
     }
 
     /// The concrete theme this resolves to right now (Task 138, RFC-032
@@ -135,30 +146,48 @@ impl Theme {
 
 /// User-selectable text scale applied uniformly to all typography roles.
 ///
-/// Three discrete steps ("less is more"): predictable for layout testing and
+/// Four discrete steps ("less is more"): predictable for layout testing and
 /// avoids unbounded-growth risks of a continuous slider. Scrollable page
-/// wrappers absorb reflow at `Larger`.
+/// wrappers absorb reflow at `Larger`/`Largest`.
+///
+/// Task 140 §1 (RFC-066 §3.2): `Largest` (×2.0) is new; `Large` and
+/// `Larger` grow from their original 1.15x/1.3x to 1.25x/1.5x, a step
+/// RFC-066 asked for so the four steps read as one even progression
+/// rather than three small ones and a jump. `large`/`larger` keep their
+/// saved setting names -- only the factor each name maps to changes, so
+/// a settings file saved before this task still parses, just scaled
+/// differently once loaded (Task 117's "a file that cannot be parsed is
+/// kept, otherwise it's trusted" salvage behaviour is about a value this
+/// enum doesn't recognize at all, which is unaffected: every string
+/// `parse` already accepted still parses).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextScale {
-    /// Default token sizes (1×).
+    /// Default token sizes (1x).
     #[default]
     Default,
-    /// 15 % larger (1.15×).
+    /// 25 % larger (1.25x).
     Large,
-    /// 30 % larger (1.3×).
+    /// 50 % larger (1.5x).
     Larger,
+    /// 100% larger (2.0x).
+    Largest,
 }
 
 impl TextScale {
-    pub const ALL: &'static [TextScale] =
-        &[TextScale::Default, TextScale::Large, TextScale::Larger];
+    pub const ALL: &'static [TextScale] = &[
+        TextScale::Default,
+        TextScale::Large,
+        TextScale::Larger,
+        TextScale::Largest,
+    ];
 
     pub fn factor(self) -> f32 {
         match self {
             TextScale::Default => 1.0,
-            TextScale::Large => 1.15,
-            TextScale::Larger => 1.3,
+            TextScale::Large => 1.25,
+            TextScale::Larger => 1.5,
+            TextScale::Largest => 2.0,
         }
     }
 
@@ -167,6 +196,7 @@ impl TextScale {
             TextScale::Default => "default",
             TextScale::Large => "large",
             TextScale::Larger => "larger",
+            TextScale::Largest => "largest",
         }
     }
 
@@ -175,6 +205,7 @@ impl TextScale {
             "default" => TextScale::Default,
             "large" => TextScale::Large,
             "larger" => TextScale::Larger,
+            "largest" => TextScale::Largest,
             _ => return None,
         })
     }
@@ -184,6 +215,7 @@ impl TextScale {
             TextScale::Default => MessageKey::TextScaleDefault,
             TextScale::Large => MessageKey::TextScaleLarge,
             TextScale::Larger => MessageKey::TextScaleLarger,
+            TextScale::Largest => MessageKey::TextScaleLargest,
         }
     }
 }
@@ -265,6 +297,20 @@ pub fn snora_tokens(tokens: &Tokens, s: TextScale) -> SnoraTokens {
     scaled.typography.heading.size *= f;
     scaled.typography.display.size *= f;
     SnoraTokens(scaled)
+}
+
+/// Task 140 §4 (RFC-066 §3.5): the one weight a page heading or a card
+/// title (a result's own title, a folder card's name) uses; body text
+/// stays regular. A system with no semibold/bold face for a given
+/// script (checked for Japanese, Task 140's own stop condition) falls
+/// back to its nearest available weight on its own -- `iced`'s text
+/// renderer (`cosmic-text`) does this without orbok asking for it, the
+/// same as any other font request for a glyph a face does not cover.
+pub fn semibold() -> iced::Font {
+    iced::Font {
+        weight: iced::font::Weight::Semibold,
+        ..iced::Font::DEFAULT
+    }
 }
 
 /// Page / section heading size (unscaled).

@@ -160,6 +160,16 @@ fn problem_notices_offer_action_confirmations_do_not() {
     }
 }
 
+/// Task 140 §1a.2/§1a.4: `Theme::tokens` sets the house 44 px target
+/// minimum on every preset, and maps Light/Dark to snora's AAA presets.
+/// One place here too, mirroring `Theme::tokens` itself, so a test
+/// comparing against a raw `snora::design::Tokens::*()` preset doesn't
+/// have to repeat the `targets.min` override at every call site.
+fn with_house_target_min(mut tokens: snora::design::Tokens) -> snora::design::Tokens {
+    tokens.targets.min = 44.0;
+    tokens
+}
+
 // RFC-032: theme selection drives the active token preset.
 #[test]
 fn set_theme_swaps_token_preset() {
@@ -168,22 +178,31 @@ fn set_theme_swaps_token_preset() {
 
     state.update(&Message::SetTheme(Theme::Dark));
     assert_eq!(state.theme, Theme::Dark);
-    assert_eq!(state.tokens, snora::design::Tokens::dark());
+    assert_eq!(
+        state.tokens,
+        with_house_target_min(snora::design::Tokens::dark_aaa())
+    );
 
     state.update(&Message::SetTheme(Theme::HighContrastLight));
     assert_eq!(state.theme, Theme::HighContrastLight);
-    assert_eq!(state.tokens, snora::design::Tokens::high_contrast_light());
+    assert_eq!(
+        state.tokens,
+        with_house_target_min(snora::design::Tokens::high_contrast_light())
+    );
 
     state.update(&Message::SetTheme(Theme::Light));
-    assert_eq!(state.tokens, snora::design::Tokens::light());
+    assert_eq!(
+        state.tokens,
+        with_house_target_min(snora::design::Tokens::light_aaa())
+    );
 }
 
 // RFC-032: every concrete theme maps to its snora preset; string round-trip.
 #[test]
 fn theme_tokens_and_string_roundtrip() {
     let cases = [
-        (Theme::Light, snora::design::Tokens::light()),
-        (Theme::Dark, snora::design::Tokens::dark()),
+        (Theme::Light, snora::design::Tokens::light_aaa()),
+        (Theme::Dark, snora::design::Tokens::dark_aaa()),
         (
             Theme::HighContrastLight,
             snora::design::Tokens::high_contrast_light(),
@@ -194,7 +213,11 @@ fn theme_tokens_and_string_roundtrip() {
         ),
     ];
     for (theme, expected) in cases {
-        assert_eq!(theme.tokens(), expected, "{theme:?} preset");
+        assert_eq!(
+            theme.tokens(),
+            with_house_target_min(expected),
+            "{theme:?} preset"
+        );
     }
     for theme in Theme::ALL {
         assert_eq!(
@@ -233,8 +256,9 @@ fn theme_from_env_resolves_override() {
 #[test]
 fn text_scale_roundtrip() {
     assert!((TextScale::Default.factor() - 1.0).abs() < f32::EPSILON);
-    assert!((TextScale::Large.factor() - 1.15).abs() < f32::EPSILON);
-    assert!((TextScale::Larger.factor() - 1.3).abs() < f32::EPSILON);
+    assert!((TextScale::Large.factor() - 1.25).abs() < f32::EPSILON);
+    assert!((TextScale::Larger.factor() - 1.5).abs() < f32::EPSILON);
+    assert!((TextScale::Largest.factor() - 2.0).abs() < f32::EPSILON);
     for scale in TextScale::ALL {
         assert_eq!(
             TextScale::parse(scale.as_str()),

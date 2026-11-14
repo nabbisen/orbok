@@ -144,6 +144,9 @@ message_keys! {
     SourcesEmptyTitle,
     SourcesEmptyBody,
     SourcesAddFolder,
+    /// Task 140 §2.3: a visible label above the add-folder path field,
+    /// not (only) its placeholder any more -- the field's own
+    /// placeholder is empty.
     SourcesPathInputPlaceholder,
     NarrowFolderTitle,
     NarrowFolderBody,
@@ -345,6 +348,8 @@ message_keys! {
     TextScaleDefault,
     TextScaleLarge,
     TextScaleLarger,
+    /// Task 140 §1 (RFC-066 §3.2), owner-approved 2026-11-04.
+    TextScaleLargest,
     SettingsReduceMotion,
     SettingsReduceMotionHint,
     SettingsCvdNote,

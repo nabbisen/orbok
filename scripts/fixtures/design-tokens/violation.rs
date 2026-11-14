@@ -33,5 +33,7 @@ fn violation_view(tokens: &Tokens) -> Element<'_, Message> {
     let unscaled_label = text(label).size(theme::body(tokens));
     // Category 12 (Review 314 §3): already-scaled tokens fed into a _s( helper.
     let double_scaled = text(label).size(theme::body_s(snora_tokens.for_snora_widget(), sc));
+    // Category 13 (Task 140 §2.2): a text_input with no .style(..).
+    let m = text_input(placeholder, &value).on_input(Message::Changed);
     a
 }

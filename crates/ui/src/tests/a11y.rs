@@ -32,19 +32,31 @@ fn ctx(text_input_focused: bool) -> KeyboardContext {
 
 // ── RFC-034: contrast guard ───────────────────────────────────────────────
 
-// Every rendered foreground/background pair meets WCAG AA across all four
-// token presets. Failures print the pair name and ratio so they are actionable.
-#[test]
-fn contrast_usage_guard_all_presets() {
-    let presets = [
-        ("light", Tokens::light()),
-        ("dark", Tokens::dark()),
+/// Task 140 §2.1: the four presets `theme::Theme::tokens` actually hands
+/// out -- `light_aaa`/`dark_aaa`, not the plain AA `light`/`dark` this
+/// test read before this task.
+fn aaa_presets() -> [(&'static str, Tokens); 4] {
+    [
+        ("light", Tokens::light_aaa()),
+        ("dark", Tokens::dark_aaa()),
         ("high_contrast_light", Tokens::high_contrast_light()),
         ("high_contrast_dark", Tokens::high_contrast_dark()),
-    ];
+    ]
+}
+
+// Every rendered foreground/background pair meets WCAG AAA (Task 140
+// §2.1) across all four token presets actually in use
+// (`theme::Theme::tokens`) -- no exceptions: measured clean on all 12
+// pairs in `RENDERED_PAIRS` x 4 presets, including the two new
+// `accent`-as-text pairs Task 140 §1a.3 added and the new placeholder
+// pair §2.2 added, so Task 140 §2.1's own "any pair below 7:1 is a stop
+// condition, report it to snora" branch did not trigger. Failures print
+// the pair name and ratio so they are actionable if that ever changes.
+#[test]
+fn contrast_usage_guard_all_presets() {
     let mut failures: Vec<String> = Vec::new();
-    for (name, tokens) in &presets {
-        for r in a11y::audit(tokens) {
+    for (name, tokens) in aaa_presets() {
+        for r in a11y::audit(&tokens) {
             if !r.passes {
                 failures.push(format!(
                     "[{name}] {}: ratio {:.2} < min {:.1}",
@@ -55,7 +67,7 @@ fn contrast_usage_guard_all_presets() {
     }
     assert!(
         failures.is_empty(),
-        "WCAG AA contrast failures:\n{}",
+        "WCAG AAA contrast failures:\n{}",
         failures.join("\n")
     );
 }

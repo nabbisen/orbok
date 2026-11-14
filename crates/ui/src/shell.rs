@@ -94,6 +94,13 @@ pub fn key_to_message(
         // same primary-modifier convention as the two shortcuts above, for
         // the same cross-platform reason Ctrl+K uses `command()` rather than
         // `Modifiers::CTRL`.
+        //
+        // Task 140 §1a.6: kept deliberately, not replaced by snora's own
+        // `Shortcuts::digits(Digits::SideBar)`. snora's keys address the
+        // sidebar's three top-level *groups*; orbok's own switch between
+        // the *six views* (`ViewId::shortcut_order`) -- a different,
+        // finer-grained target. Adopting snora's binding here would
+        // change what Ctrl/Cmd+1..6 does, not just how it is wired.
         Key::Character(c)
             if modifiers.command()
                 && c.as_str().len() == 1

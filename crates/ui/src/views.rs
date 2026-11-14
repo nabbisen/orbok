@@ -289,7 +289,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             // something to press, not only text.
             hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(theme::meta_s(tokens, sc)),
-                components::ghost(
+                components::link(
                     &state.snora_tokens,
                     tr(locale, MessageKey::SearchChooseFolder),
                     (!state.search_location.picker_in_progress)
@@ -326,7 +326,7 @@ fn search_location_row<'a>(state: &'a AppState) -> Element<'a, Message> {
             let choices_row: Element<'a, Message> = hrow![
                 text(tr(locale, MessageKey::SearchInLabel)).size(meta),
                 components::choice(tokens, meta, options),
-                components::ghost(
+                components::link(
                     &state.snora_tokens,
                     tr(locale, MessageKey::NoticeActionChooseFolder),
                     (!state.search_location.picker_in_progress)
@@ -458,7 +458,10 @@ fn page<'a>(tokens: &Tokens, content: iced::widget::Column<'a, Message>) -> Elem
 }
 
 fn heading<'a>(tokens: &Tokens, sc: TextScale, label: &'a str) -> iced::widget::Text<'a> {
-    text(label.to_string()).size(theme::heading_s(tokens, sc))
+    // Task 140 §4: every page heading is semibold; body stays regular.
+    text(label.to_string())
+        .size(theme::heading_s(tokens, sc))
+        .font(theme::semibold())
 }
 
 /// Task 128: a result card's heading line shows only what the title does
@@ -493,7 +496,8 @@ pub fn search_view(state: &AppState) -> Element<'_, Message> {
         // Task 072: the same text size and vertical padding as the Search
         // button beside it, so the two are the same height.
         .size(theme::body_s(tokens, sc))
-        .padding(components::input_padding(tokens));
+        .padding(components::input_padding(tokens))
+        .style(components::text_input_style(tokens));
 
     let submit = components::icon_primary(
         tokens,
@@ -928,18 +932,23 @@ pub fn sources_view(state: &AppState) -> Element<'_, Message> {
         tr(locale, MessageKey::SourcesAddFolder),
         add_folder.clone(),
     );
-    let add_input = text_input(
-        tr(locale, MessageKey::SourcesPathInputPlaceholder),
-        &state.source_path_input,
-    )
-    .on_input(Message::SourcePathChanged)
-    .on_submit(Message::SubmitSourcePath)
-    // Task 072: matches the Add Folder button beside it.
-    .size(theme::body_s(tokens, sc))
-    .padding(components::input_padding(tokens));
+    // Task 140 §2.3: "Or type a path manually…" was only ever in the
+    // placeholder, which disappears the moment someone starts typing
+    // and is not reliably announced -- the same words now stand above
+    // the field as a visible label too, so the instruction is not lost
+    // either way. The placeholder itself is empty now, not a second
+    // copy of the label.
+    let add_input = text_input("", &state.source_path_input)
+        .on_input(Message::SourcePathChanged)
+        .on_submit(Message::SubmitSourcePath)
+        // Task 072: matches the Add Folder button beside it.
+        .size(theme::body_s(tokens, sc))
+        .padding(components::input_padding(tokens))
+        .style(components::text_input_style(tokens));
 
     let mut content = column![
         heading(tokens, sc, tr(locale, MessageKey::SourcesTitle)),
+        text(tr(locale, MessageKey::SourcesPathInputPlaceholder)).size(theme::meta_s(tokens, sc)),
         hrow![add_btn, container(add_input).width(Length::Fill)]
             .spacing(tokens.spacing.sm)
             .wrap(),
@@ -1466,32 +1475,64 @@ pub fn models_view(state: &AppState) -> Element<'_, Message> {
     page(tokens, content)
 }
 
+/// Language, as a choice row (Task 118). Task 140 §1.2: shared between
+/// Settings and the wizard's first screen -- the same component, the
+/// same copy, not a lookalike built twice.
+pub(crate) fn language_choice_row(state: &AppState) -> Element<'_, Message> {
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+    components::choice(
+        tokens,
+        theme::body_s(tokens, sc),
+        Locale::ALL
+            .iter()
+            .map(|candidate| components::ChoiceOption {
+                label: candidate.display_name().to_string(),
+                chosen: *candidate == state.locale,
+                available: true,
+                on_press: Message::SetLocale(*candidate),
+            })
+            .collect(),
+    )
+}
+
+/// Text size, as a choice row (Task 118). See
+/// [`language_choice_row`]'s own comment for why this is shared with
+/// the wizard rather than duplicated.
+pub(crate) fn text_scale_choice_row(state: &AppState) -> Element<'_, Message> {
+    let tokens = &state.tokens;
+    let sc = state.text_scale;
+    let locale = state.locale;
+    components::choice(
+        tokens,
+        theme::body_s(tokens, sc),
+        TextScale::ALL
+            .iter()
+            .map(|candidate| components::ChoiceOption {
+                label: tr(locale, candidate.label_key()).to_string(),
+                chosen: *candidate == sc,
+                available: true,
+                on_press: Message::SetTextScale(*candidate),
+            })
+            .collect(),
+    )
+}
+
 // ── Settings view ────────────────────────────────────────────────────────
 
 pub fn settings_view(state: &AppState) -> Element<'_, Message> {
     let locale = state.locale;
     let tokens = &state.tokens;
     let sc = state.text_scale;
-
-    // Task 118: language, theme and text size are choices, each shown as
-    // `components::choice` (the chosen option marked, none drawn disabled).
     let body = theme::body_s(tokens, sc);
-    let language_row = components::choice(
-        tokens,
-        body,
-        Locale::ALL
-            .iter()
-            .map(|candidate| components::ChoiceOption {
-                label: candidate.display_name().to_string(),
-                chosen: *candidate == locale,
-                available: true,
-                on_press: Message::SetLocale(*candidate),
-            })
-            .collect(),
-    );
+
+    // Task 118: theme is a choice too, shown as `components::choice`
+    // (the chosen option marked, none drawn disabled) -- language and
+    // text size are the same shape, built above and shared with the
+    // wizard's first screen (Task 140 §1.2).
     let theme_row = components::choice(
         tokens,
-        body,
+        theme::body_s(tokens, sc),
         Theme::ALL
             .iter()
             .map(|candidate| components::ChoiceOption {
@@ -1502,31 +1543,18 @@ pub fn settings_view(state: &AppState) -> Element<'_, Message> {
             })
             .collect(),
     );
-    let scale_row = components::choice(
-        tokens,
-        body,
-        TextScale::ALL
-            .iter()
-            .map(|candidate| components::ChoiceOption {
-                label: tr(locale, candidate.label_key()).to_string(),
-                chosen: *candidate == sc,
-                available: true,
-                on_press: Message::SetTextScale(*candidate),
-            })
-            .collect(),
-    );
 
     let content = column![
         heading(tokens, sc, tr(locale, MessageKey::SettingsTitle)),
         // Language
         text(tr(locale, MessageKey::SettingsLanguageHeading)).size(theme::body_s(tokens, sc)),
-        language_row,
+        language_choice_row(state),
         // Theme
         text(tr(locale, MessageKey::SettingsThemeHeading)).size(theme::body_s(tokens, sc)),
         theme_row,
         // Text size
         text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
-        scale_row,
+        text_scale_choice_row(state),
         // Accessibility: a switch, and what it does beneath it.
         components::switch(
             tokens,

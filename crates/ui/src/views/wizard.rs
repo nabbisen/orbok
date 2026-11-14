@@ -23,6 +23,7 @@ use crate::state::{
     ModelPersistenceState, ModelProvenance, ModelTrustPresentation, WizardFileCheck, WizardState,
 };
 use crate::theme;
+use crate::views::{language_choice_row, text_scale_choice_row};
 use iced::widget::{button, column, container, progress_bar, text, text_input};
 use iced::{Element, Length, Padding};
 use snora::design::Tokens;
@@ -94,15 +95,29 @@ fn choose_folder_button(
     }
 }
 
+/// Task 140 §1.3: pages scroll rather than squeeze. Scrollable, not a
+/// bare `container`: Task 140 §1.2 made this page taller (Language and
+/// Text size added at its top), and without this a column that no
+/// longer fits the window collapsed its last child -- the Skip button
+/// -- to 0x0 instead of overflowing into a scrollbar, confirmed real at
+/// Largest/1280x720 by `task148_layout_matrix`'s own every-text check.
+/// The same structure `views.rs`'s own `page` helper already uses for
+/// every other page.
 fn wizard_page<'a>(
     tokens: &Tokens,
     col: iced::widget::Column<'a, Message>,
 ) -> Element<'a, Message> {
-    container(col.spacing(tokens.spacing.md))
-        .padding(Padding::from([tokens.spacing.xxl, tokens.spacing.xxl]))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+    container(
+        iced::widget::scrollable(
+            container(col.spacing(tokens.spacing.md))
+                .padding(Padding::from([tokens.spacing.xxl, tokens.spacing.xxl]))
+                .width(Length::Fill),
+        )
+        .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 /// Dispatch to the correct wizard page.
@@ -190,7 +205,18 @@ fn page_setup<'a>(
     } else {
         MessageKey::WizardTitleNotConfigured
     };
+    // Task 140 §1.2: Language and Text size, at the very top, in case
+    // either is the reason the page is hard to read right now. The same
+    // choice components and copy as Settings (`language_choice_row`,
+    // `text_scale_choice_row`); choosing applies at once and is saved,
+    // exactly as it does there -- both dispatch the same
+    // `Message::SetLocale`/`SetTextScale` the Settings page's own rows
+    // do, so there is no separate wizard-only save path to keep in sync.
     let mut col = column![
+        text(tr(locale, MessageKey::SettingsLanguageHeading)).size(theme::body_s(tokens, sc)),
+        language_choice_row(state),
+        text(tr(locale, MessageKey::SettingsTextScaleHeading)).size(theme::body_s(tokens, sc)),
+        text_scale_choice_row(state),
         text(tr(locale, title_key)).size(theme::title_s(tokens, sc)),
         text(tr(locale, MessageKey::WizardBodyNotConfigured))
             .size(theme::body_s(tokens, sc))
@@ -265,7 +291,8 @@ fn page_setup<'a>(
     // Task 072: the same text size and vertical padding as the Validate
     // button beside it.
     .size(theme::body_s(tokens, sc))
-    .padding(input_padding(tokens));
+    .padding(input_padding(tokens))
+    .style(components::text_input_style(tokens));
 
     col = col.push(
         hrow![
@@ -540,7 +567,8 @@ fn page_checked<'a>(
         .on_submit(Message::WizardValidate)
         // Task 072: matches the Choose a folder button beside it.
         .size(theme::body_s(tokens, sc))
-        .padding(input_padding(tokens));
+        .padding(input_padding(tokens))
+        .style(components::text_input_style(tokens));
         col = col.push(
             hrow![
                 container(path_input).width(Length::Fill),

@@ -790,9 +790,19 @@ impl Default for AppState {
             narrow_file_count: None,
             remember_recent_searches: true,
             confirm_clear_history: false,
-            tokens: snora::design::Tokens::light(),
+            // Task 140 §1a.2/§1a.4: derived from `Theme::tokens`, not a
+            // bare `Tokens::light()` any more -- that skipped both the
+            // AAA preset swap and the 44 px `targets.min` floor, so a
+            // fixture built from this `Default` (every test in this
+            // crate that writes `..AppState::default()`) silently
+            // measured controls against the *old* preset's smaller
+            // floor (24.0) instead of the one the real app actually
+            // uses (confirmed real: `a_folder_card_action_is_at_least_44_square`
+            // failed against this stale default during this task's own
+            // development, not against production).
+            tokens: crate::theme::Theme::default().tokens(),
             snora_tokens: crate::theme::snora_tokens(
-                &snora::design::Tokens::light(),
+                &crate::theme::Theme::default().tokens(),
                 crate::theme::TextScale::default(),
             ),
             theme: crate::theme::Theme::default(),
