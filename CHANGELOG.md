@@ -9,11 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- A fourth, larger text size, "Largest" (×2.0). The setup wizard's first
-  screen now offers Language and Text size too, so either can be fixed
-  before reading the rest of the wizard.
+## [0.31.0] — 2026-11-14
 
 ### Security
 
@@ -34,18 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   converts it the first time it opens a profile. An older orbok can't use
   the converted cache: your folders, settings and the catalog open as
   before, but preparing files reports an error until the cache file
-  (`orbok-cache.sqlite3` in orbok's data folder) is deleted.
-- The "Large" and "Larger" text sizes grow further (×1.25 and ×1.5,
-  previously ×1.15 and ×1.3), to read as one even progression together
-  with the new Largest.
-- Page headings and card titles (a result's own title, a folder's name)
-  are semibold; body text is unchanged.
-- "Choose a folder" and "Choose another folder" are links now, not
-  buttons.
-- Light and Dark use higher-contrast text (WCAG AAA, 7:1) throughout,
-  and every control is at least 44 × 44 px, in every theme.
-- orbok's own window now has a minimum size (450×360); it previously had
-  none.
+  (`orbok-cache.sqlite3` in orbok's data folder) is deleted. The cache
+  holds only data orbok can rebuild.
+- **Easier to read and to use:**
+  - The "Large" and "Larger" text sizes grow further (×1.25 and ×1.5,
+    previously ×1.15 and ×1.3), to read as one even progression together
+    with the new Largest.
+  - Page headings and card titles (a result's own title, a folder's name)
+    are semibold; body text is unchanged.
+  - "Choose a folder" and "Choose another folder" are links now, not
+    buttons.
+  - Light and Dark use higher-contrast text (WCAG AAA, 7:1) throughout,
+    and every control is at least 44 × 44 px, in every theme.
+  - orbok's own window now has a minimum size (450×360); it previously had
+    none.
 
 ### Fixed
 
@@ -56,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Or type a path manually…", previously only in the add-folder field's
   placeholder (gone the moment you start typing), is now a visible label
   above the field too.
+
+### Added
+
+- A fourth, larger text size, "Largest" (×2.0). The setup wizard's first
+  screen now offers Language and Text size too, so either can be fixed
+  before reading the rest of the wizard.
 
 ## [0.30.0] — 2026-11-11
 

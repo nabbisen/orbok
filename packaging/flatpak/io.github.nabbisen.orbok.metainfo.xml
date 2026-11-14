@@ -159,6 +159,17 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.31.0" date="2026-11-14">
+      <description>
+        <ul>
+          <li>Keyword search no longer slows down as the library grows.</li>
+          <li>Easier to read and to use: higher-contrast text (WCAG AAA, 7:1), a fourth, larger text size ("Largest"), every control at least 44 x 44 px, semibold page headings and card titles, and "Choose a folder" as a link, not a button.</li>
+          <li>Fixed: pressing Search before choosing where to search now says so; with only one folder added, it is chosen for you.</li>
+          <li>Security: the bundled SQLite moves to 3.54.1, fixing CVE-2026-119375.</li>
+          <li>Security: updated rustix and quinn-udp for their advisories.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.30.0" date="2026-11-11">
       <description>
         <ul>
