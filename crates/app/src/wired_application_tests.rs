@@ -2938,10 +2938,6 @@ async fn deleting_the_vector_index_and_draining_the_scheduler_makes_search_find_
 /// `crate::download::run` -- the exact function `router.rs`'s own
 /// `tokio::spawn(download::run(model_store, deps.catalog.clone(), tx,
 /// cancel))` calls when the wizard starts a download, not a copy of it.
-/// `run_with_installer`'s own `tokio::select!` drains progress
-/// concurrently with the installer future, so this does not need to
-/// worry about the bounded event channel filling up during a real,
-/// many-chunk transfer the way a naive "await, then drain" would.
 ///
 /// Downloads the pinned `multilingual-e5-small` generation for real,
 /// into a scratch profile under a `tempfile::tempdir()` (cleaned up on
@@ -2959,16 +2955,24 @@ async fn deleting_the_vector_index_and_draining_the_scheduler_makes_search_find_
 ///   the_real_model_download_installs_and_searches -- --ignored --nocapture
 /// ```
 ///
-/// `flavor = "multi_thread"`, matching `model_delivery.rs`'s own
-/// `mock_server_install_promotes_complete_generation_and_activates_it`
-/// precedent: the installer downloads both files concurrently (two
-/// real, independent HTTP transfers), and a plain `#[tokio::test]`'s
-/// single-threaded `current_thread` runtime only ever runs one of them
-/// at a time, cooperatively -- confirmed to genuinely stall indefinitely
-/// under real network conditions here (over 35 minutes with zero
-/// progress on both files' `.part` size, 0% CPU, while a plain `curl`
-/// against the same URLs sustained tens of MB/s throughout), not merely
-/// slow.
+/// Review 327 §3.2: `download::run`'s own contract (see its doc comment)
+/// is that `tx`'s receiver is read concurrently with the download, not
+/// after it -- `run_with_installer` forwards every progress event onto
+/// `tx` with a plain `.send(..).await`, and a bounded channel's `send`
+/// blocks once the buffer (64 here) is full until something reads it.
+/// The first version of this test called `download::run(..).await` to
+/// completion and only then called `rx.collect()`, so nobody was
+/// reading while the download ran; past the 64th progress event, every
+/// further `send` -- and with it the whole installer, since
+/// `run_with_installer`'s `select!` stops polling the installer once a
+/// `send` it is awaiting blocks -- waited forever. That is exactly what
+/// was observed under real network conditions: both files' `.part` size
+/// stopped growing a few hundred KB in, 0% CPU, no error, no timeout,
+/// while a plain `curl` against the same URLs (and two from-scratch
+/// probes that *did* read their own progress channel concurrently)
+/// completed in seconds. `futures::join!` below drives both futures at
+/// once, the same way `run_with_installer` already drives the installer
+/// and its own internal channel.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "downloads the real ~490 MB model from Hugging Face; run manually, once per release"]
 async fn the_real_model_download_installs_and_searches() {
@@ -2981,8 +2985,10 @@ async fn the_real_model_download_installs_and_searches() {
     let catalog = std::sync::Arc::new(bootstrap::open_catalog(&context).unwrap());
     let (tx, rx) = futures::channel::mpsc::channel(64);
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    download::run(model_store, catalog, tx, cancel).await;
-    let messages: Vec<orbok_ui::state::Message> = rx.collect().await;
+    let ((), messages): ((), Vec<orbok_ui::state::Message>) = futures::join!(
+        download::run(model_store, catalog, tx, cancel),
+        rx.collect()
+    );
     let dest_dir = messages
         .iter()
         .find_map(|message| match message {

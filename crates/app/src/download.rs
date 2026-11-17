@@ -20,6 +20,19 @@ type InstallerFuture<'a> =
 /// `cancel` is checked cooperatively by the worker between files and
 /// between chunks (Task 025 §4.1-4.2); setting it does not abort this task,
 /// it asks the worker to stop at its next safe point.
+///
+/// **Contract on `tx` (Review 327 §3.2):** its receiver must be read
+/// concurrently with this call, not only after it returns. Every
+/// progress event is forwarded with a plain, blocking `.send(..).await`
+/// on a bounded channel; once the receiver's buffer fills, that `send`
+/// -- and, with it, this whole installer -- waits until something reads
+/// it. The router's own caller (`router.rs`) reads `tx`'s receiver
+/// continuously for as long as the wizard screen is open, so production
+/// is unaffected; a test or other caller that instead awaits `run` to
+/// completion before reading `tx`'s receiver will deadlock once the
+/// buffer fills (`wired_application_tests.rs`'s own real-download test
+/// hit exactly this before it was fixed to read both concurrently, e.g.
+/// via `futures::join!`).
 pub async fn run(
     store: ProfileModelStore,
     catalog: Arc<orbok_db::Catalog>,
