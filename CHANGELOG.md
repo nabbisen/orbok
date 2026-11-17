@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.31.0] — 2026-11-14
+## [0.31.0] — 2026-11-18
 
 ### Security
 
@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The flaw needs a crafted database file, with its `-wal` file, placed in
   orbok's own data folder, which only orbok writes to; the fix applies
   either way.
+- `chrono` (unmaintained, RUSTSEC-2026-0543) is no longer built: orbok
+  never used the PDF library's date features, which pulled it in.
 
 ### Changed
 
