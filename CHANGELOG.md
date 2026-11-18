@@ -42,8 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     are semibold; body text is unchanged.
   - "Choose a folder" and "Choose another folder" are links now, not
     buttons.
-  - Light and Dark use higher-contrast text (WCAG AAA, 7:1) throughout,
-    and every control is at least 44 × 44 px, in every theme.
+  - Light and Dark use higher-contrast text: orbok's own text reaches
+    7:1 (WCAG AAA). Two kinds of label drawn by the interface library
+    stay below 7:1 until orbok's next update brings its fix: the names
+    of tabs not currently open (6.1:1 in Light), and some button labels
+    while hovered or pressed (at least 4.5:1).
+  - Every control is at least 44 × 44 px, in every theme.
   - orbok's own window now has a minimum size (450×360); it previously had
     none.
 
