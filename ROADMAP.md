@@ -1,8 +1,8 @@
 # orbok Implementation Roadmap
 
-## Current Status (2026-11-11)
+## Current Status (2026-11-18)
 
-Shipped: **0.30.0**. Latest tagged release: **0.30.0**, also the newest on crates.io (0.29.0 has no AUR package). Each RFC's state is
+Shipped: **0.31.0**. Latest tagged release: **0.31.0**, also the newest on crates.io (0.29.0 has no AUR package). Each RFC's state is
 indexed in [`rfcs/README.md`](rfcs/README.md). The nine entries that made a
 false claim about the product were dispositioned under RFC-063 on
 2026-09-02 — moved back to `accepted/` or `proposed/`, or annotated with the
@@ -64,8 +64,15 @@ across v0.16.0–v0.24.0:
   AppStream metadata; dependency advisories cleared (Tasks 139, 141). The
   SQLite update is held back for a keyword-search slowdown (Task 144; Task
   145 fixes the query). No migration.
+- 0.31.0 — keyword search no longer slows down as the library grows
+  (Task 145), which lets SQLite 3.54.1 in (CVE-2026-119375); easier to
+  read and to use: ×2.0 text, 7:1 for orbok's own text, 44 px controls,
+  semibold headings, a minimum window size (RFC-066, Task 140); Search
+  always answers (Task 147); UI checks run headless across every
+  combination (Task 148). The cache format moves forward, one way
+  (localcache 0.26). No catalog migration.
 
-Stack: snora 0.57 / iced 0.14, localcache 0.21 + rusqlite 0.39.
+Stack: snora 0.57 / iced 0.14, localcache 0.26 + rusqlite 0.41.
 
 ## Forward Plan — revised 2026-09-01 after an external architecture audit
 
